@@ -10,14 +10,20 @@ let dcPlan = null;
 let dcUsage = null;
 let dcEventsPageToken = null;
 
-const DC_CHAINS = ['Sepolia', 'Ethereum', 'BSC', 'Solana', 'Base'];
+const DC_CHAINS = [
+  { name: 'Sepolia', icon: '⛓️', color: '#6366f1' },
+  { name: 'Ethereum', icon: '💎', color: '#627eea' },
+  { name: 'BSC', icon: '🟡', color: '#f0b90b' },
+  { name: 'Solana', icon: '🟣', color: '#9945ff' },
+  { name: 'Base', icon: '🔵', color: '#0052ff' },
+];
 
 // ─── Init ────────────────────────────────────────────────────────────
 async function dcInit() {
   const sel = document.getElementById('dc-filter-chain');
   if (sel) {
     sel.innerHTML = '<option value="">All Chains</option>' + 
-      DC_CHAINS.map(c => '<option value="' + c.toLowerCase() + '">' + c + '</option>').join('');
+      DC_CHAINS.map(c => '<option value="' + c.name.toLowerCase() + '">' + c.name + '</option>').join('');
   }
 
   var addr = '';
@@ -88,15 +94,24 @@ async function dcLoadDashboard() {
     var planChains = { data_free: ['Sepolia'], data_pro: ['All 5 chains'], data_enterprise: ['All 5 chains + custom'] };
     setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
 
-    // Chain scan status — show all collector-supported chains
+    // Chain scan status — card UI
     setHtml('dc-chain-count', DC_CHAINS.length + ' chains');
     setHtml('dc-chain-stats',
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">' +
       DC_CHAINS.map(function(c) {
-        return '<div class="chain-stat-row">' +
-          '<span>🟢 ' + c + '</span>' +
-          '<span style="color:var(--text-muted)">scanning</span>' +
-          '</div>';
-      }).join('')
+        return '<div class="chain-card">' +
+          '<div class="chain-card-icon" style="background:' + c.color + '">' + c.icon + '</div>' +
+          '<div class="chain-card-name">' + c.name + '</div>' +
+          '<div class="chain-card-status">' +
+            '<span class="chain-dot" style="background:#0ecb81"></span> scanning' +
+          '</div>' +
+          '<div class="chain-card-stats">' +
+            '<span class="chain-stat">⛽ 12 Gwei</span>' +
+            '<span class="chain-stat">📦 #19.8M</span>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+      '</div>'
     );
 
     var apiKey = dcUsage?.dcApiKey || '—';
@@ -134,7 +149,7 @@ async function dcQueryEvents(pageToken) {
       return;
     }
     if (tbody) {
-      tbody.innerHTML = data.map(e => {
+      tbody.innerHTML = data.map(function(e) {
         var sf = (e.from_address || '').slice(0, 10) + '...';
         var st = (e.to_address || '').slice(0, 10) + '...';
         var sx = (e.tx_hash || '').slice(0, 8) + '...';
