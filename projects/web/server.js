@@ -27,7 +27,7 @@ function serveFile(res, filePath) {
   const mime = MIME[ext] || 'application/octet-stream';
   try {
     const data = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control: no-store, no-cache, must-revalidate' });
     res.end(data);
   } catch (e) {
     if (e.code === 'ENOENT') {
