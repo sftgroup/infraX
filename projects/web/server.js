@@ -12,6 +12,7 @@ const API_ROUTES = {
   '/api/v2/wallet': { host: 'localhost', port: 6001 },
   '/api/v2/waas':   { host: 'localhost', port: 6001 },
   '/api/v2/saas':   { host: 'localhost', port: 6001 },
+  '/api/vault':     { host: 'localhost', port: 6002 },
   '/api/v2/vault':  { host: 'localhost', port: 6002 },
 };
 
@@ -23,44 +24,59 @@ const MIME = {
 
 function serveFile(res, filePath) {
   const ext = path.extname(filePath);
+  const mime = MIME[ext] || 'application/octet-stream';
   try {
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'max-age=3600' });
-    res.end(content);
-  } catch {
-    try {
-      const html = fs.readFileSync(path.join(WEB_DIR, 'index.html'));
-      res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' });
-      res.end(html);
-    } catch {
-      res.writeHead(404); res.end('Not Found');
+    const data = fs.readFileSync(filePath);
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
+    res.end(data);
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      // SPA fallback
+      const index = path.join(WEB_DIR, 'index.html');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(fs.readFileSync(index));
+    } else {
+      res.writeHead(500);
+      res.end('500 Internal Server Error');
     }
   }
 }
 
-function proxyTo(req, res, target) {
+function proxyRequest(req, res, target) {
   const opts = {
-    hostname: target.host, port: target.port,
-    path: req.url, method: req.method,
-    headers: Object.assign({}, req.headers, { host: target.host + ':' + target.port }),
+    hostname: target.host,
+    port: target.port,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: target.host + ':' + target.port }
   };
-  const proxy = http.request(opts, (pRes) => {
-    res.writeHead(pRes.statusCode, pRes.headers);
-    pRes.pipe(res);
+  const proxy = http.request(opts, (pres) => {
+    res.writeHead(pres.statusCode, pres.headers);
+    pres.pipe(res);
   });
   proxy.on('error', () => {
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ code: -1, message: 'Backend unavailable' }));
+    res.writeHead(502);
+    res.end('502 Bad Gateway');
   });
   req.pipe(proxy);
 }
 
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  const urlPath = url.pathname;
+
+  // Check API proxy routes
   for (const [prefix, target] of Object.entries(API_ROUTES)) {
-    if (req.url.startsWith(prefix)) return proxyTo(req, res, target);
+    if (urlPath.startsWith(prefix)) {
+      return proxyRequest(req, res, target);
+    }
   }
-  const safe = req.url.split('?')[0].replace(/\.\./g, '');
-  serveFile(res, path.join(WEB_DIR, safe === '/' ? 'index.html' : safe));
+
+  // Static file
+  let filePath = path.join(WEB_DIR, urlPath === '/' ? 'index.html' : urlPath);
+  serveFile(res, filePath);
 });
 
-server.listen(PORT, () => console.log('InfraX Web + Proxy on :' + PORT));
+server.listen(PORT, () => {
+  console.log('InfraX Web running on :' + PORT);
+});
