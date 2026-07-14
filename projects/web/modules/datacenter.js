@@ -22,10 +22,11 @@ async function dcInit() {
 
   // Check if user has an active Data Center plan
   try {
-    const usage = await afetch('/api/v2/data/usage', { method: 'GET', auth: 'none' });
-    if (usage && usage.planId) {
-      dcPlan = { id: usage.planId, name: usage.planName };
-      dcUsage = usage;
+    const usage = await afetch('/api/v2/data/usage', { method: 'GET', auth: 'wallet' });
+    var ud = usage && usage.data ? usage.data : usage;
+    if (ud && ud.planId) {
+      dcPlan = { id: ud.planId, name: ud.planName };
+      dcUsage = ud;
       await dcLoadDashboard();
       return;
     }
@@ -55,9 +56,10 @@ async function dcSubscribe(planId) {
       body: JSON.stringify({ planId }),
     });
     
-    if (resp && resp.planId) {
-      dcPlan = { id: resp.plan.id, name: resp.plan.name };
-      dcUsage = { dcApiKey: resp.dcApiKey, dcApiKeyObscured: obscureKey(resp.dcApiKey), planName: resp.plan.name, monthlyQuota: resp.plan.features?.apiCallsPerMonth || 100000, currentUsage: 0, dailyBreakdown: [] };
+    var r = resp && resp.data ? resp.data : resp;
+    if (r && r.planId) {
+      dcPlan = { id: r.planId, name: r.planName };
+      dcUsage = { dcApiKey: r.dcApiKey, dcApiKeyObscured: obscureKey(r.dcApiKey), planName: r.planName, monthlyQuota: r.monthlyQuota || 10000, currentUsage: r.currentUsage || 0, dailyBreakdown: [] };
       showToast('Data plan activated!', 'success');
       await dcLoadDashboard();
     } else {
@@ -76,11 +78,12 @@ async function dcLoadDashboard() {
 
   try {
     const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
-    const resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(wallet)}`);
+    const resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(wallet)}`, { auth: 'wallet' });
+    var r = resp && resp.data ? resp.data : resp;
 
-    if (resp && resp.planId) {
-      dcUsage = resp;
-      dcPlan = { id: resp.planId, name: resp.planName };
+    if (r && r.planId) {
+      dcUsage = r;
+      dcPlan = { id: r.planId, name: r.planName };
       
       // Show dashboard
       if (introEl) introEl.style.display = 'none';
