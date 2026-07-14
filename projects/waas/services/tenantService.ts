@@ -191,13 +191,13 @@ export async function getTenantByApiKey(apiKey: string): Promise<Tenant | null> 
  */
 export async function getTenantByWallet(walletAddress: string): Promise<Tenant | null> {
   const result = await pool.query(
-    `SELECT t.id, t.name, t.api_key, t.status, t.created_at, t.hot_wallet_address
+    `SELECT t.id, t.name, t.api_key, t.status, t.plan_id, t.created_at, t.hot_wallet_address
      FROM tenants t JOIN users u ON t.owner_user_id = u.id
      WHERE u.wallet_address = $1
      UNION ALL
-     SELECT t.id, t.name, t.api_key, t.status, t.created_at, t.hot_wallet_address
+     SELECT t.id, t.name, t.api_key, t.status, t.plan_id, t.created_at, t.hot_wallet_address
      FROM tenants t
-     WHERE t.owner_email = $2`,
+     WHERE LOWER(t.owner_email) = LOWER($2)`,
     [walletAddress.toLowerCase(), walletAddress.toLowerCase() + "@web3.pocketx.local"]
   );
   if (result.rows.length === 0) return null;
@@ -206,6 +206,8 @@ export async function getTenantByWallet(walletAddress: string): Promise<Tenant |
     tenantId: t.id,
     name: t.name,
     apiKey: t.api_key,
+    planId: t.plan_id || 'free',
+    planName: (t.plan_id === 'pro' ? 'Pro' : t.plan_id === 'enterprise' ? 'Enterprise' : 'Starter'),
     status: t.status,
     activated: true,
     createdAt: t.created_at,

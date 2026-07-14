@@ -804,7 +804,7 @@ function computeSafeTxHash(
  */
 export async function getSafeCount(walletAddress: string): Promise<number> {
   const result = await pool.query(
-    'SELECT COUNT(*) FROM safes WHERE owner_address = $1',
+    'SELECT COUNT(*) FROM safe_wallets WHERE LOWER(safe_address) = $1',
     [walletAddress.toLowerCase()]
   );
   return parseInt(result.rows[0]?.count || '0', 10);

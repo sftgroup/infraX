@@ -1,5 +1,5 @@
-// InfraX Vault Server — multi-sig + Safe chain execution + risk control
-// Standalone Express service, independent of other InfraX modules
+// PocketX Vault Server — multi-sig + Safe chain execution + risk control
+// Standalone Express service, independent of other PocketX modules
 import express from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
@@ -24,7 +24,7 @@ function apiResponse(data: any = null, message = 'success', code = 0) {
 }
 
 // ─── Health ───
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-vault', uptime: process.uptime() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-vault', uptime: process.uptime() }));
 
 // ─── Dashboard ───
 app.get('/api/vault/dashboard', asyncHandler(async (_req: any, res: any) => {
@@ -105,6 +105,27 @@ app.get('/api/vault/safe/participating', asyncHandler(async (req: any, res: any)
   res.json(apiResponse({ items: safes }));
 }));
 
+// GET /api/vault/safe/status
+app.get('/api/vault/safe/status', asyncHandler(async (req: any, res: any) => {
+  const walletAddress = (req.headers['x-wallet-address'] as string) || req.query.walletAddress as string || '0x';
+  const count = await multiSigService.getSafeCount(walletAddress);
+  res.json(apiResponse({ enabled: count > 0, count }));
+}));
+
+// ═══ Risk Rules ═══
+app.get('/api/vault/risk/rules', asyncHandler(async (_req: any, res: any) => {
+  const result = await pool.query('SELECT * FROM risk_rules ORDER BY created_at DESC').catch(() => ({ rows: [] }));
+  res.json(result.rows);
+}));
+
+app.post('/api/vault/risk/rules', asyncHandler(async (req: any, res: any) => {
+  const { name, chain, max_single, max_daily, enabled } = req.body;
+  const id = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO risk_rules (id, name, chain, max_single, max_daily, enabled) VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, name, chain, max_single, max_daily, enabled !== false]
+  );
+  res.status(201).json({ id, name });
 // GET /api/vault/safe/:address
 app.get('/api/vault/safe/:address', asyncHandler(async (req: any, res: any) => {
   const { address } = req.params;
@@ -151,27 +172,6 @@ app.post('/api/vault/safe/sync', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse(result, 'Safe synced'));
 }));
 
-// GET /api/vault/safe/status
-app.get('/api/vault/safe/status', asyncHandler(async (req: any, res: any) => {
-  const walletAddress = req.query.walletAddress as string || '0x';
-  const count = await multiSigService.getSafeCount(walletAddress);
-  res.json(apiResponse({ enabled: count > 0, count }));
-}));
-
-// ═══ Risk Rules ═══
-app.get('/api/vault/risk/rules', asyncHandler(async (_req: any, res: any) => {
-  const result = await pool.query('SELECT * FROM risk_rules ORDER BY created_at DESC').catch(() => ({ rows: [] }));
-  res.json(result.rows);
-}));
-
-app.post('/api/vault/risk/rules', asyncHandler(async (req: any, res: any) => {
-  const { name, chain, max_single, max_daily, enabled } = req.body;
-  const id = crypto.randomUUID();
-  await pool.query(
-    `INSERT INTO risk_rules (id, name, chain, max_single, max_daily, enabled) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [id, name, chain, max_single, max_daily, enabled !== false]
-  );
-  res.status(201).json({ id, name });
 }));
 
 app.post('/api/vault/risk/check', asyncHandler(async (req: any, res: any) => {
