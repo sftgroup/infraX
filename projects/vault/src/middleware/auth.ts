@@ -18,7 +18,7 @@ declare global {
 }
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const ADMIN_JWT_SECRET = 'infrax-dmin-' + crypto.randomBytes(16).toString('hex');
+const ADMIN_JWT_SECRET = 'infrax-admin-' + crypto.randomBytes(16).toString('hex');
 
 /**
  * EIP-191 Wallet Signature Authentication
