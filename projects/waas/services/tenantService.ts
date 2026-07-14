@@ -187,7 +187,7 @@ export async function getTenantByApiKey(apiKey: string): Promise<Tenant | null> 
 }
 
 /**
- * Get tenant by wallet address (owner_email = walletAddress@web3.infrax.local)
+ * Get tenant by wallet address (owner_email = walletAddress@web3.pocketx.local)
  */
 export async function getTenantByWallet(walletAddress: string): Promise<Tenant | null> {
   const result = await pool.query(
@@ -198,7 +198,7 @@ export async function getTenantByWallet(walletAddress: string): Promise<Tenant |
      SELECT t.id, t.name, t.api_key, t.status, t.created_at, t.hot_wallet_address
      FROM tenants t
      WHERE t.owner_email = $2`,
-    [walletAddress.toLowerCase(), walletAddress.toLowerCase() + "@web3.infrax.local"]
+    [walletAddress.toLowerCase(), walletAddress.toLowerCase() + "@web3.pocketx.local"]
   );
   if (result.rows.length === 0) return null;
   const t = result.rows[0];
@@ -223,7 +223,7 @@ export async function activateTenant(walletAddress: string, planId: string = 'fr
   }
   const tenantId = uuidv4();
   const apiKey = `pk_${crypto.randomBytes(16).toString('hex')}`;
-  const email = `${walletAddress}@web3.infrax.local`;
+  const email = `${walletAddress}@web3.pocketx.local`;
   const name = `Wallet ${walletAddress.slice(0, 8)}...`;
 
   // Resolve user_id from wallet_address
@@ -232,7 +232,7 @@ export async function activateTenant(walletAddress: string, planId: string = 'fr
 
   await pool.query(
     `INSERT INTO tenants (id, name, owner_email, owner_user_id, api_key, api_secret_hash, status, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())`,
+     VALUES ($1, $2, $3, $4, $5, $6, 'active', NOW(), NOW())`,
     [tenantId, name, email, userId, apiKey, '']
   );
 

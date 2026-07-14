@@ -1,5 +1,5 @@
-// InfraX MPC Server — email-based MPC key shard management
-// Standalone Express service, independent of other InfraX modules
+// PocketX MPC Server — email-based MPC key shard management
+// Standalone Express service, independent of other PocketX modules
 import express from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
@@ -75,7 +75,7 @@ function verifyCode(email: string, code: string): void {
 }
 
 // ─── Health ───
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-mpc', uptime: process.uptime() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-mpc', uptime: process.uptime() }));
 
 // ─── Send verification code ───
 app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
@@ -159,7 +159,7 @@ app.get('/api/v2/mpc/status', asyncHandler(async (req: any, res: any) => {
     const addr = walletAddress.toLowerCase();
     const result = await pool.query(
       `SELECT id, email, wallet_address, email_verified, shard_count, total_shards, created_at, recovered_at, recovery_count, status
-       FROM mpc_wallets WHERE connected_wallet_address = $1 OR wallet_address = $1`,
+       FROM mpc_wallets WHERE LOWER(connected_wallet_address) = $1 OR LOWER(wallet_address) = $1`,
       [addr]
     );
     if (result.rows.length === 0) return res.json(apiResponse({ registered: false }));
