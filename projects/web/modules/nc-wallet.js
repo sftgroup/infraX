@@ -1,8 +1,24 @@
 // Dashboard — Service Status Overview
 async function ncDash() {
   var walletAddr = user().walletAddress;
+  
+  // No wallet connected — show connect prompt
+  if (!walletAddr) {
+    document.getElementById("dash-wallet").textContent = "—";
+    document.getElementById("dash-active-count").textContent = "0/5";
+    document.getElementById("dash-dc-plan").textContent = "—";
+    document.getElementById("dash-waas-plan").textContent = "—";
+    document.getElementById("dash-services-body").innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px">' +
+      '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
+      '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect your wallet to view services</div>' +
+      '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a>' +
+      '</td></tr>';
+    document.getElementById("dash-usage").innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Connect wallet to view usage</div>';
+    return;
+  }
+
   var addrEl = document.getElementById("dash-wallet");
-  if (addrEl) addrEl.textContent = walletAddr ? fmtAddrLong(walletAddr) : "—";
+  if (addrEl) addrEl.textContent = fmtAddrLong(walletAddr);
 
   try {
     var me = await getMe();
@@ -26,7 +42,7 @@ async function ncDash() {
       setDashRow("waas", "inactive", "—", "Activate in WaaS tab");
     }
 
-    // Vault / Safe
+    // Vault
     if (me.safe && me.safe.count > 0) {
       activeCount++;
       setDashRow("safe", "active", "Free", me.safe.count + " safe(s)");
@@ -41,14 +57,11 @@ async function ncDash() {
         activeCount++;
         var dcPlanName = dcUsage.planName || "Data Free";
         setDashRow("dc", "active", dcPlanName, (dcUsage.currentUsage || 0) + "/" + (dcUsage.monthlyQuota || 0) + " calls");
-        var usageEl = document.getElementById("dash-usage");
-        if (usageEl) {
-          usageEl.innerHTML = "<table class=\"data-table\"><thead><tr><th>Service</th><th>Plan</th><th>Used</th><th>Quota</th></tr></thead><tbody>" +
-            "<tr><td>📡 Data Center</td><td>" + dcPlanName + "</td><td>" + (dcUsage.currentUsage||0) + "</td><td>" + (dcUsage.monthlyQuota||0) + "</td></tr>" +
-            "<tr><td>🔑 MPC</td><td>Free</td><td>1 wallet</td><td>5 wallets</td></tr>" +
-            "<tr><td>🏦 WaaS</td><td>" + waasPlan + "</td><td>1 tenant</td><td>—</td></tr>" +
-            "</tbody></table>";
-        }
+        document.getElementById("dash-usage").innerHTML = "<table class=\"data-table\"><thead><tr><th>Service</th><th>Plan</th><th>Used</th><th>Quota</th></tr></thead><tbody>" +
+          "<tr><td>📡 Data Center</td><td>" + dcPlanName + "</td><td>" + (dcUsage.currentUsage||0) + "</td><td>" + (dcUsage.monthlyQuota||0) + "</td></tr>" +
+          "<tr><td>🔑 MPC</td><td>Free</td><td>1 wallet</td><td>5 wallets</td></tr>" +
+          "<tr><td>🏦 WaaS</td><td>" + waasPlan + "</td><td>1 tenant</td><td>—</td></tr>" +
+          "</tbody></table>";
       } else {
         setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
       }
@@ -59,17 +72,12 @@ async function ncDash() {
     // Payment
     setDashRow("payment", "inactive", "—", "Coming soon");
 
-    // KPI cards
-    var countEl = document.getElementById("dash-active-count");
-    if (countEl) countEl.textContent = activeCount + "/5";
-    var dcPlanEl = document.getElementById("dash-dc-plan");
-    if (dcPlanEl) {
-      try { var du = await afetch("/api/v2/data/usage", { auth: "wallet" }); dcPlanEl.textContent = du && du.planName ? du.planName : "—"; } catch(e) { dcPlanEl.textContent = "—"; }
-    }
-    var waasPlanEl = document.getElementById("dash-waas-plan");
-    if (waasPlanEl) waasPlanEl.textContent = waasPlan;
+    // KPIs
+    document.getElementById("dash-active-count").textContent = activeCount + "/5";
+    document.getElementById("dash-dc-plan").textContent = dcPlanName || "—";
+    document.getElementById("dash-waas-plan").textContent = waasPlan;
 
-    // Topbar dot
+    // Topbar
     var dotEl = document.getElementById("topbar-wallet-dot");
     if (dotEl) dotEl.className = "topbar-wallet-dot connected";
 
@@ -88,7 +96,6 @@ function setDashRow(svc, status, plan, detail) {
     "<td class=\"mono\" style=\"font-size:12px\">" + detail + "</td>";
 }
 
-// Stubs
 function ncSendLoad(){}
 function ncReceiveLoad(){}
 function ncHistory(){}
