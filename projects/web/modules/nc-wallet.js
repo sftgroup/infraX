@@ -5,7 +5,7 @@ async function ncDash() {
   if (addrEl) addrEl.textContent = walletAddr ? fmtAddrLong(walletAddr) : "—";
 
   if (!walletAddr) {
-    document.getElementById("dash-active-count").textContent = "0/5";
+    document.getElementById("dash-active-count").textContent = "0/4";
     document.getElementById("dash-dc-plan").textContent = "—";
     document.getElementById("dash-waas-plan").textContent = "—";
     document.getElementById("dash-services-body").innerHTML =
@@ -71,11 +71,8 @@ async function ncDash() {
       setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
     }
 
-    // Payment
-    setDashRow("payment", "inactive", "—", "Coming soon");
-
     // KPI cards
-    document.getElementById("dash-active-count").textContent = activeCount + "/5";
+    document.getElementById("dash-active-count").textContent = activeCount + "/4";
     document.getElementById("dash-dc-plan").textContent = dcPlanName;
     document.getElementById("dash-waas-plan").textContent = waasPlan;
 
