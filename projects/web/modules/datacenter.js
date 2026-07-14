@@ -19,10 +19,25 @@ async function dcInit() {
       chains.map(c => `<option value="${c}">${c[0].toUpperCase()+c.slice(1)}</option>`).join('');
   }
 
-  // afetch() already unwraps .data — field access is direct
-  // auth: 'none' avoids MetaMask popup; afetch always sends x-wallet-address header
+  var addr = '';
+  try { addr = user().walletAddress || ''; } catch(e) {}
+
+  if (!addr) {
+    var intro = document.getElementById('dc-intro');
+    if (intro) {
+      intro.style.display = 'block';
+      intro.innerHTML = '<div style="text-align:center;padding:60px">' +
+        '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
+        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect your wallet to view Data Center</div>' +
+        '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a></div>';
+    }
+    return;
+  }
+
+  // Pass walletAddress as query param as fallback in case header fails
   try {
-    const usage = await afetch('/api/v2/data/usage', { method: 'GET', auth: 'none' });
+    var url = '/api/v2/data/usage?walletAddress=' + encodeURIComponent(addr);
+    const usage = await afetch(url, { auth: 'none' });
     if (usage && usage.planId) {
       dcPlan = { id: usage.planId, name: usage.planName };
       dcUsage = usage;
@@ -30,12 +45,13 @@ async function dcInit() {
       return;
     }
   } catch (e) {
-    console.log('dcInit: no plan');
+    console.log('dcInit error:', e.message);
   }
-  const introEl = document.getElementById('dc-intro');
-  const dashEl = document.getElementById('dc-dash');
-  if (introEl) { introEl.style.display = 'block'; }
-  if (dashEl) { dashEl.style.display = 'none'; }
+  // Show intro
+  var introEl = document.getElementById('dc-intro');
+  var dashEl = document.getElementById('dc-dash');
+  if (introEl) introEl.style.display = 'block';
+  if (dashEl) dashEl.style.display = 'none';
 }
 
 // ─── Subscribe ───────────────────────────────────────────────────────
@@ -69,37 +85,40 @@ async function dcSubscribe(planId) {
 
 // ─── Load Dashboard ──────────────────────────────────────────────────
 async function dcLoadDashboard() {
-  const introEl = document.getElementById('dc-intro');
-  const dashEl = document.getElementById('dc-dash');
+  var introEl = document.getElementById('dc-intro');
+  var dashEl = document.getElementById('dc-dash');
 
-  try {
-    const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
-    const resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(wallet)}`, { auth: 'none' });
+  if (dcUsage && dcPlan) {
+    if (introEl) introEl.style.display = 'none';
+    if (dashEl) dashEl.style.display = 'block';
 
-    if (resp && resp.planId) {
-      dcUsage = resp;
-      dcPlan = { id: resp.planId, name: resp.planName };
-      
-      if (introEl) introEl.style.display = 'none';
-      if (dashEl) dashEl.style.display = 'block';
+    setHtml('dc-plan-name', dcPlan.name);
+    setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
+    setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
 
-      setHtml('dc-plan-name', dcPlan.name);
-      setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
-      setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
+    var planChains = { data_free: ['Sepolia'], data_pro: ['All 7 chains'], data_enterprise: ['All 7 chains + custom'] };
+    setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
 
-      const planChains = { data_free: ['Sepolia'], data_pro: ['All 7 chains'], data_enterprise: ['All 7 chains + custom'] };
-      setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
-
-      const apiKey = dcUsage?.dcApiKey || '—';
-      const keyInput = document.getElementById('dc-api-key');
-      if (keyInput) keyInput.value = apiKey;
-    } else {
-      if (introEl) introEl.style.display = 'block';
-      if (dashEl) dashEl.style.display = 'none';
-    }
-  } catch (e) {
+    var apiKey = dcUsage?.dcApiKey || '—';
+    var keyInput = document.getElementById('dc-api-key');
+    if (keyInput) keyInput.value = apiKey;
+  } else {
     if (introEl) introEl.style.display = 'block';
     if (dashEl) dashEl.style.display = 'none';
+    // Reload usage
+    try {
+      var addr = user().walletAddress || '';
+      var resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(addr)}`, { auth: 'none' });
+      if (resp && resp.planId) {
+        dcUsage = resp;
+        dcPlan = { id: resp.planId, name: resp.planName };
+        if (introEl) introEl.style.display = 'none';
+        if (dashEl) dashEl.style.display = 'block';
+        setHtml('dc-plan-name', dcPlan.name);
+        setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
+        setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
+      }
+    } catch(e) {}
   }
 }
 
