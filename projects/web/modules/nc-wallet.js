@@ -18,49 +18,51 @@ async function ncDash() {
   }
 
   try {
+    // afetch() already unwraps .data → fields are direct on response
     var me = await getMe();
     var activeCount = 0;
     var waasPlan = "—";
     var dcPlanName = "—";
 
-    // MPC — {code:0, data:{registered, walletAddress, ...}}
-    if (me.mpc && me.mpc.code === 0 && me.mpc.data && me.mpc.data.registered) {
+    // MPC — {registered, walletAddress, email, ...}
+    if (me.mpc && me.mpc.registered) {
       activeCount++;
-      setDashRow("mpc", "active", "Free", "Wallet: " + fmtAddr(me.mpc.data.walletAddress));
+      setDashRow("mpc", "active", "Free", "Wallet: " + fmtAddr(me.mpc.walletAddress));
     } else {
       setDashRow("mpc", "inactive", "—", "Activate in MPC tab");
     }
 
-    // WaaS — {code:0, data:{status, planName, apiKey, ...}}
-    if (me.waas && me.waas.code === 0 && me.waas.data && me.waas.data.status === "active") {
+    // WaaS — {status, planName, apiKey, ...}
+    if (me.waas && me.waas.status === "active") {
       activeCount++;
-      waasPlan = me.waas.data.planName || "Starter";
-      var keySnippet = me.waas.data.apiKey ? me.waas.data.apiKey.slice(0, 14) + "…" : "—";
+      waasPlan = me.waas.planName || "Starter";
+      var keySnippet = me.waas.apiKey ? me.waas.apiKey.slice(0, 14) + "…" : "—";
       setDashRow("waas", "active", waasPlan, "API Key: " + keySnippet);
     } else {
       setDashRow("waas", "inactive", "—", "Activate in WaaS tab");
     }
 
-    // Vault — {code:0, data:{enabled, count}}
-    if (me.safe && me.safe.code === 0 && me.safe.data && me.safe.data.count > 0) {
+    // Vault — {enabled, count}
+    if (me.safe && me.safe.count > 0) {
       activeCount++;
-      setDashRow("safe", "active", "Free", me.safe.data.count + " safe(s)");
+      setDashRow("safe", "active", "Free", me.safe.count + " safe(s)");
     } else {
       setDashRow("safe", "inactive", "—", "Create in Vault tab");
     }
 
-    // DC — {code:0, data:{planId, planName, currentUsage, monthlyQuota, ...}}
+    // DC — {planId, planName, currentUsage, monthlyQuota, ...}
+    // auth: 'none' because afetch always sends x-wallet-address header
     try {
-      var dcResp = await afetch("/api/v2/data/usage", { auth: "wallet" });
-      if (dcResp && dcResp.code === 0 && dcResp.data) {
+      var dcResp = await afetch("/api/v2/data/usage", { auth: "none" });
+      if (dcResp && dcResp.planId) {
         activeCount++;
-        dcPlanName = dcResp.data.planName || "Data Free";
+        dcPlanName = dcResp.planName || "Data Free";
         setDashRow("dc", "active", dcPlanName,
-          (dcResp.data.currentUsage || 0) + "/" + (dcResp.data.monthlyQuota || 0) + " calls");
+          (dcResp.currentUsage || 0) + "/" + (dcResp.monthlyQuota || 0) + " calls");
 
         document.getElementById("dash-usage").innerHTML =
           '<table class="data-table"><thead><tr><th>Service</th><th>Plan</th><th>Used</th><th>Quota</th></tr></thead><tbody>' +
-          '<tr><td>📡 Data Center</td><td>' + dcPlanName + '</td><td>' + (dcResp.data.currentUsage || 0) + '</td><td>' + (dcResp.data.monthlyQuota || 0) + '</td></tr>' +
+          '<tr><td>📡 Data Center</td><td>' + dcPlanName + '</td><td>' + (dcResp.currentUsage || 0) + '</td><td>' + (dcResp.monthlyQuota || 0) + '</td></tr>' +
           '<tr><td>🔑 MPC</td><td>Free</td><td>1 wallet</td><td>5 wallets</td></tr>' +
           '<tr><td>🏦 WaaS</td><td>' + waasPlan + '</td><td>1 tenant</td><td>—</td></tr>' +
           '</tbody></table>';
@@ -76,7 +78,6 @@ async function ncDash() {
     document.getElementById("dash-dc-plan").textContent = dcPlanName;
     document.getElementById("dash-waas-plan").textContent = waasPlan;
 
-    // Topbar dot
     var dotEl = document.getElementById("topbar-wallet-dot");
     if (dotEl) dotEl.className = "topbar-wallet-dot connected";
 

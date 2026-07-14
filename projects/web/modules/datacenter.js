@@ -12,7 +12,6 @@ let dcEventsPageToken = null;
 
 // ─── Init ────────────────────────────────────────────────────────────
 async function dcInit() {
-  // Load chain list for filter
   const chains = ['sepolia', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'bsc', 'base'];
   const sel = document.getElementById('dc-filter-chain');
   if (sel) {
@@ -20,20 +19,19 @@ async function dcInit() {
       chains.map(c => `<option value="${c}">${c[0].toUpperCase()+c.slice(1)}</option>`).join('');
   }
 
-  // Check if user has an active Data Center plan
+  // afetch() already unwraps .data — field access is direct
+  // auth: 'none' avoids MetaMask popup; afetch always sends x-wallet-address header
   try {
-    const usage = await afetch('/api/v2/data/usage', { method: 'GET', auth: 'wallet' });
-    var ud = usage && usage.data ? usage.data : usage;
-    if (ud && ud.planId) {
-      dcPlan = { id: ud.planId, name: ud.planName };
-      dcUsage = ud;
+    const usage = await afetch('/api/v2/data/usage', { method: 'GET', auth: 'none' });
+    if (usage && usage.planId) {
+      dcPlan = { id: usage.planId, name: usage.planName };
+      dcUsage = usage;
       await dcLoadDashboard();
       return;
     }
   } catch (e) {
     console.log('dcInit: no plan');
   }
-  // Show intro page
   const introEl = document.getElementById('dc-intro');
   const dashEl = document.getElementById('dc-dash');
   if (introEl) { introEl.style.display = 'block'; }
@@ -56,10 +54,9 @@ async function dcSubscribe(planId) {
       body: JSON.stringify({ planId }),
     });
     
-    var r = resp && resp.data ? resp.data : resp;
-    if (r && r.planId) {
-      dcPlan = { id: r.planId, name: r.planName };
-      dcUsage = { dcApiKey: r.dcApiKey, dcApiKeyObscured: obscureKey(r.dcApiKey), planName: r.planName, monthlyQuota: r.monthlyQuota || 10000, currentUsage: r.currentUsage || 0, dailyBreakdown: [] };
+    if (resp && resp.planId) {
+      dcPlan = { id: resp.planId, name: resp.planName };
+      dcUsage = { dcApiKey: resp.dcApiKey, dcApiKeyObscured: obscureKey(resp.dcApiKey), planName: resp.planName, monthlyQuota: resp.monthlyQuota || 10000, currentUsage: resp.currentUsage || 0, dailyBreakdown: [] };
       showToast('Data plan activated!', 'success');
       await dcLoadDashboard();
     } else {
@@ -72,43 +69,35 @@ async function dcSubscribe(planId) {
 
 // ─── Load Dashboard ──────────────────────────────────────────────────
 async function dcLoadDashboard() {
-  
   const introEl = document.getElementById('dc-intro');
   const dashEl = document.getElementById('dc-dash');
 
   try {
     const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
-    const resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(wallet)}`, { auth: 'wallet' });
-    var r = resp && resp.data ? resp.data : resp;
+    const resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(wallet)}`, { auth: 'none' });
 
-    if (r && r.planId) {
-      dcUsage = r;
-      dcPlan = { id: r.planId, name: r.planName };
+    if (resp && resp.planId) {
+      dcUsage = resp;
+      dcPlan = { id: resp.planId, name: resp.planName };
       
-      // Show dashboard
       if (introEl) introEl.style.display = 'none';
       if (dashEl) dashEl.style.display = 'block';
 
-      // Populate info cards
       setHtml('dc-plan-name', dcPlan.name);
       setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
       setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
 
-      // Determine active chains
       const planChains = { data_free: ['Sepolia'], data_pro: ['All 7 chains'], data_enterprise: ['All 7 chains + custom'] };
       setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
 
-      // API Key
       const apiKey = dcUsage?.dcApiKey || '—';
       const keyInput = document.getElementById('dc-api-key');
       if (keyInput) keyInput.value = apiKey;
     } else {
-      // No plan — show intro
       if (introEl) introEl.style.display = 'block';
       if (dashEl) dashEl.style.display = 'none';
     }
   } catch (e) {
-    // Show intro on error
     if (introEl) introEl.style.display = 'block';
     if (dashEl) dashEl.style.display = 'none';
   }
@@ -131,7 +120,7 @@ async function dcQueryEvents(pageToken) {
   if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px">Loading...</td></tr>';
 
   try {
-    const resp = await afetch('/api/v2/data/events?' + params.toString());
+    const resp = await afetch('/api/v2/data/events?' + params.toString(), { auth: 'none' });
     if (!resp || resp.code !== 0) {
       if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--binance-text-tertiary,#5e6673);text-align:center;padding:24px">No results</td></tr>';
       return;
@@ -162,7 +151,6 @@ async function dcQueryEvents(pageToken) {
       }).join('');
     }
 
-    // Pager
     const pager = document.getElementById('dc-explorer-pager');
     if (pager) {
       pager.innerHTML = next_page_token
@@ -191,10 +179,6 @@ function dcSwitchTab(sub) {
   const panel = document.getElementById('sub-' + sub);
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.add('active');
-
-  if (sub === 'dc-explorer' && !dcEventsPageToken && document.getElementById('dc-events-tbody')?.innerHTML.includes('Enter filters')) {
-    // Don't auto-search; wait for user
-  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -208,12 +192,8 @@ function setHtml(id, html) {
   if (el) el.innerHTML = html;
 }
 
-// ─── Register module loader in core.js ───────────────────────────────
+// ─── Register module loader ──────────────────────────────────────────
 (function registerDC() {
-  // Hook into infrax module system
-  // Registered via core.js loaders map
-
-  // Hook tab clicks in DC dash
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('#dc-dash .tab-btn');
     if (btn) {
