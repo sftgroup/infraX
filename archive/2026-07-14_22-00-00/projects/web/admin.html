@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraX Admin — SaaS WaaS Console</title>
+<style>
+:root {
+  --brand-primary: #FCD535; --brand-secondary: #F0B90B;
+  --brand-gradient: #FCD535;
+  --surface-bg: #0B0E11; --surface-card: #1E2329;
+  --surface-hover: #2B3139; --surface-input: #2B3139;
+  --text-primary: #EAECEF; --text-secondary: #848E9C;
+  --text-tertiary: #5E6673; --text-brand: #FCD535;
+  --success: #0ECB81; --warning: #F0B90B; --error: #F6465D; --info: #848E9C;
+  --border: #2B3139; --radius-sm: 6px; --radius-md: 6px; --radius-lg: 6px; --radius-xl: 6px; --radius-full: 9999px;
+  --sidebar-w: 240px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--surface-bg); color: var(--text-primary); display:flex; min-height:100vh; }
+
+/* Sidebar */
+.sidebar { width:var(--sidebar-w); height:100vh; position:fixed; left:0; top:0; background:rgba(17,17,34,0.80); backdrop-filter:blur(20px); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:20px 16px; z-index:50; }
+.sidebar-logo { display:flex; align-items:center; gap:10px; font-size:18px; font-weight:700; padding:8px 12px; margin-bottom:24px; }
+.sidebar-logo-icon { width:32px; height:32px; background:var(--brand-primary); border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:800; color:white; }
+.sidebar-section { font-size:10px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:1px; padding:16px 12px 6px; }
+.sidebar-nav { flex:1; display:flex; flex-direction:column; gap:2px; overflow-y:auto; }
+.sidebar-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-md); font-size:13px; font-weight:500; color:var(--text-secondary); transition:all 0.15s; cursor:pointer; border:none; background:none; width:100%; text-align:left; }
+.sidebar-item:hover { background:var(--surface-hover); color:var(--text-primary); }
+.sidebar-item.active { background:rgba(252,213,53,0.08); color:var(--brand-primary); }
+.sidebar-badge { margin-left:auto; padding:2px 8px; border-radius:var(--radius-full); font-size:10px; font-weight:600; }
+.sidebar-badge.warn { background:rgba(251,191,36,0.15); color:var(--warning); }
+.sidebar-badge.new { background:rgba(252,213,53,0.08); color:var(--brand-primary); }
+.sidebar-divider { height:1px; background:var(--border); margin:8px 0; }
+.sidebar-footer { padding-top:12px; border-top:1px solid var(--border); }
+.sidebar-addr { font-family: 'SF Mono', 'Fira Code', monospace; font-size:10px; color:var(--text-tertiary); padding:6px 12px; word-break:break-all; }
+
+/* Main */
+.main { margin-left:var(--sidebar-w); flex:1; padding:28px 36px; max-width:calc(100vw - var(--sidebar-w)); }
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:28px; }
+.topbar-left h1 { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+.topbar-left .role-tag { display:inline-block; margin-top:2px; padding:2px 10px; background:rgba(252,213,53,0.08); border-radius:var(--radius-full); font-size:11px; color:var(--brand-primary); font-weight:500; }
+.topbar-actions { display:flex; gap:10px; align-items:center; }
+.btn { padding:9px 20px; border-radius:var(--radius-full); font-size:13px; font-weight:600; cursor:pointer; border:none; display:inline-flex; align-items:center; gap:6px; transition:all 0.15s; }
+.btn-primary { background:var(--brand-primary); color:white; }
+.btn-primary:hover { box-shadow:none; }
+.btn-outline { background:transparent; color:var(--text-primary); border:1px solid var(--border); }
+.btn-outline:hover { border-color:var(--brand-primary); }
+.btn-sm { padding:6px 14px; font-size:11px; }
+.btn-sm.danger { background:transparent; border:1px solid var(--error); color:var(--error); }
+
+/* KPI Cards */
+.kpi-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:16px; margin-bottom:28px; }
+.kpi-card { background:var(--surface-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; position:relative; overflow:hidden; }
+.kpi-card::after { content:''; position:absolute; top:0; right:0; width:60px; height:60px; background:radial-gradient(circle, rgba(252,213,53,0.06) 0%, transparent 70%); pointer-events:none; }
+.kpi-label { font-size:11px; color:var(--text-tertiary); text-transform:uppercase; font-weight:600; letter-spacing:0.5px; margin-bottom:6px; }
+.kpi-value { font-size:28px; font-weight:800; letter-spacing:-0.5px; }
+.kpi-trend { font-size:11px; font-weight:600; display:flex; align-items:center; gap:2px; margin-top:4px; }
+.kpi-trend.up { color:var(--success); }
+.kpi-trend.down { color:var(--error); }
+.kpi-trend.neutral { color:var(--text-tertiary); }
+
+/* 2-col Layout */
+.layout-2col { display:grid; grid-template-columns:2fr 1fr; gap:20px; }
+
+/* Panel */
+.panel { background:var(--surface-card); border:1px solid var(--border); border-radius:var(--radius-lg); }
+.panel-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); }
+.panel-title { font-size:14px; font-weight:600; }
+.panel-action { font-size:12px; color:var(--brand-primary); cursor:pointer; }
+.panel-body { padding:16px 20px; }
+
+/* Tenant Table */
+.tenant-table { width:100%; }
+.tenant-row { display:grid; grid-template-columns:1.5fr 1fr 0.8fr 1fr 0.6fr 80px; padding:12px 0; border-bottom:1px solid var(--border); align-items:center; font-size:13px; }
+.tenant-row:last-child { border-bottom:none; }
+.tenant-row.header { font-size:10px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px; padding-bottom:10px; }
+.tenant-name { font-weight:600; display:flex; align-items:center; gap:8px; }
+.tenant-avatar { width:28px; height:28px; background:var(--brand-primary); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:white; }
+.tenant-key { font-family: 'SF Mono', 'Fira Code', monospace; font-size:11px; color:var(--text-tertiary); }
+.tenant-status { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:var(--radius-full); font-size:10px; font-weight:600; }
+.tenant-status.active { background:rgba(52,211,153,0.10); color:var(--success); }
+.tenant-status.suspended { background:rgba(248,113,113,0.10); color:var(--error); }
+.tenant-actions { display:flex; gap:4px; }
+
+/* Risk Alerts */
+.alert-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.alert-item:last-child { border-bottom:none; }
+.alert-icon { width:28px; height:28px; border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.alert-icon.high { background:rgba(248,113,113,0.12); }
+.alert-icon.medium { background:rgba(251,191,36,0.12); }
+.alert-title { font-weight:600; }
+.alert-desc { color:var(--text-secondary); margin-top:2px; }
+.alert-time { font-size:10px; color:var(--text-tertiary); margin-top:2px; }
+
+/* Activity Feed */
+.feed-item { display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.feed-item:last-child { border-bottom:none; }
+.feed-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+.feed-dot.deposit { background:var(--success); }
+.feed-dot.withdraw { background:var(--warning); }
+.feed-dot.system { background:var(--brand-primary); }
+.feed-info { flex:1; min-width:0; }
+.feed-title { font-weight:500; }
+.feed-meta { color:var(--text-tertiary); margin-top:2px; font-family: 'SF Mono', 'Fira Code', monospace; font-size:10px; }
+.feed-amount { text-align:right; font-weight:600; font-family: 'SF Mono', 'Fira Code', monospace; font-size:11px; }
+
+/* Chart placeholder */
+.chart-area { height:200px; display:flex; align-items:flex-end; gap:4px; padding:10px 0; }
+.chart-bar { flex:1; background:var(--brand-primary); border-radius:var(--radius-sm) var(--radius-sm) 0 0; opacity:0.8; transition:opacity 0.2s; }
+.chart-bar:hover { opacity:1; }
+
+/* Modal styles */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:200; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal { background:var(--surface-card); border:1px solid var(--border); border-radius:var(--radius-xl); padding:28px; width:480px; max-width:90vw; }
+.modal h3 { font-size:18px; font-weight:700; margin-bottom:6px; }
+.modal p { font-size:13px; color:var(--text-secondary); margin-bottom:20px; }
+.form-group { margin-bottom:16px; }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+.form-input { width:100%; padding:12px 14px; background:var(--surface-input); border:1px solid var(--border); border-radius:var(--radius-md); color:var(--text-primary); font-size:13px; font-family: 'SF Mono', 'Fira Code', monospace; outline:none; }
+.form-input:focus { border-color:var(--brand-primary); }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+@media (max-width:1200px) { .kpi-grid { grid-template-columns:repeat(3,1fr); } .layout-2col { grid-template-columns:1fr; } }
+@media (max-width:768px) { .sidebar { display:none; } .main { margin-left:0; padding:16px; max-width:100vw; } .kpi-grid { grid-template-columns:repeat(2,1fr); } }
+
+/* Tab Switcher */
+.tab-bar { display:flex; gap:0; margin-bottom:20px; border-bottom:1px solid var(--border); }
+.tab { padding:10px 20px; font-size:13px; font-weight:500; color:var(--text-secondary); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; }
+.tab:hover { color:var(--text-primary); }
+.tab.active { color:var(--brand-primary); border-bottom-color:var(--brand-primary); }
+</style>
+<script>
+/* InfraX i18n v1.0 — shared translation library */
+;(function() {
+  'use strict';
+  var I18N = window.I18N = {};
+
+  // ── Translation Tables ──
+  I18N.zh = {
+    // ── Nav bar ──
+    "wallet": "钱包",
+    "wallets": "钱包管理",
+    "non_custodial": "🦊 非托管钱包",
+    "mpc_wallet": "🔐 MPC 钱包",
+    "waas_b2b": "🏢 WaaS B2B",
+    "safe_vault": "🛡️ Safe Vault 多签",
+    "payment": "💳 支付",
+    "disconnect": "↩ 断开连接",
+    // ── Modules ──
+    "non_custodial_wallet": "非托管钱包",
+    "waas_b2b_service": "WaaS · B2B 钱包即服务",
+    "sepolia": "Sepolia",
+    // ── WaaS tabs ──
+    "overview": "概览",
+    "tokens": "代币",
+    "addresses": "地址",
+    "sweep": "归集",
+    "withdrawals": "提币",
+    "api_sdk": "API & SDK",
+    // ── WaaS Overview ──
+    "status": "状态",
+    "active": "● 活跃",
+    "tenant": "租户",
+    "plan": "方案",
+    "tenant_id": "租户 ID",
+    "deposit_pool": "充值池",
+    "processed_pending": "已处理 / 待处理",
+    "quick_actions": "🚀 快捷操作",
+    "quick_actions_desc": "使用上方标签页管理代币、创建地址、配置自动归集并监控提币。API 密钥在 API & SDK 选项卡中。",
+    // ── WaaS Tokens ──
+    "add_token_contract": "添加代币合约",
+    "contract_address": "合约地址",
+    "symbol": "代币符号",
+    "chain": "链",
+    "decimals": "精度",
+    "add_token": "+ 添加代币",
+    "configured_tokens": "已配置代币",
+    "no_tokens_configured": "未配置代币",
+    "no_tokens_desc": "使用上方表单添加要追踪的 ERC-20 代币。",
+    // ── WaaS Addresses ──
+    "create_deposit_address": "创建充值地址",
+    "external_user_id": "外部用户 ID",
+    "user_id": "用户 ID",
+    "create": "+ 创建",
+    "addr_chain": "链",
+    "addr_desc": "每个地址按用户 ID + 链唯一。充值自动检测并归集到主钱包。",
+    "no_addresses": "未创建地址",
+    "no_addresses_desc": "使用上方表单为 B 端用户创建充值地址。",
+    "destination_address": "目标地址",
+    // ── WaaS Sweep ──
+    "sweep_destination": "归集目标地址",
+    "sweep_desc": "所有用户的充值余额都会被收集到此地址。这是您的永久收款钱包 — 设置一次，随时更新。",
+    "sweep_persist": "此地址跨会话持久保存。所有归集操作都会发送至此地址，直到您更改。",
+    "save": "💾 保存",
+    "sweep_schedule": "归集计划",
+    "frequency": "频率",
+    "manual_only": "仅手动",
+    "every_1h": "每小时",
+    "every_6h": "每 6 小时",
+    "every_12h": "每 12 小时",
+    "every_24h": "每 24 小时",
+    "min_balance_eth": "最低余额 (ETH)",
+    "token": "代币",
+    "all_tokens": "所有代币",
+    "sweep_rules": "• 仅当所有地址总余额 ≥ 最低阈值时触发<br>• 计划归集自动运行。您也可以随时手动触发。",
+    "manual_sweep": "手动归集",
+    "manual_sweep_desc": "立即触发归集到上方已保存的目标地址。",
+    "trigger_now": "⚡ 立即归集",
+    "flow": "🔄 流程",
+    "deposits_step": "充值",
+    "deposits_step_desc": "用户地址",
+    "sweep_step": "归集",
+    "sweep_step_desc": "自动收集",
+    "withdrawals_step": "提币",
+    "withdrawals_step_desc": "向外转账",
+    // ── WaaS Withdrawals ──
+    "withdrawal_rules": "提币规则",
+    "auto_execute_below_eth": "自动执行下限 (ETH)",
+    "require_review_above_eth": "需审核上限 (ETH)",
+    "callback_url": "回调 URL",
+    "save_rules": "💾 保存规则",
+    "wd_rules_desc": "B 端通过 API 提交到的提币请求。按规则评估：",
+    "wd_auto_execute": "自动执行",
+    "wd_auto_execute_desc": "金额 ≤ 阈值 且 热钱包余额充足 → 发送回调",
+    "wd_review_queue": "审核队列",
+    "wd_review_queue_desc": "金额 > 阈值 → 出现下方供人工审批",
+    "wd_insufficient": "余额不足",
+    "wd_insufficient_desc": "已批准但热钱包余额不足 → 下方显示充值提示",
+    "hot_wallet": "热钱包",
+    "hot_wallet_status": "热钱包状态",
+    "address": "地址",
+    "eth_balance": "ETH 余额",
+    "balance": "余额",
+    "no_withdrawal_requests": "无提币请求",
+    "no_withdrawal_requests_desc": "B 端推送的提币请求将在此显示以供审核。",
+    "pending_review": "⏳ 待审核",
+    "insufficient": "💰 余额不足",
+    "completed": "✅ 已完成",
+    "rejected": "❌ 已拒绝",
+    "approve": "✓",
+    "reject": "✕",
+    "retry": "↻ 重试",
+    // ── WaaS API & SDK ──
+    "api_key_management": "🔑 API 密钥管理",
+    "your_api_key": "您的 API 密钥",
+    "generate_new_key": "🔄 生成新密钥",
+    "rotate_key": "🔁 轮换密钥",
+    "delete": "🗑️ 删除",
+    "generate_hint": "• 生成：不存在时创建新密钥",
+    "rotate_hint": "• 轮换：停用旧密钥并创建新密钥",
+    "api_hint": "• 使用 x-api-key 请求头验证所有 API 调用",
+    "api_reference": "📖 API 参考",
+    // ── WaaS Intro ──
+    "wallet_as_a_service": "钱包即服务",
+    "waas_intro_desc": "为您的用户大规模部署托管钱包。一键 API 调用分配地址、自动归集到您的金库、管理提币 — 全部可编程。",
+    "address_pool": "地址池",
+    "address_pool_sub": "每用户 1 次调用",
+    "auto_sweep": "自动归集",
+    "auto_sweep_sub": "可配置",
+    "api_key": "API 密钥",
+    "api_key_sub": "x-api-key 认证",
+    "free_trial": "🆓 免费试用",
+    "pro": "💼 专业版",
+    "enterprise": "🏭 企业版",
+    "per_month": "每月",
+    "free_trial_sub": "免费试用：3 天 · 10 个地址 · 自动过期。随时升级。",
+    "activate_waas": "🚀 激活 WaaS",
+    "selected": "已选",
+    // ── Dashboard ──
+    "dashboard": "仪表盘",
+    "send": "发送",
+    "receive": "接收",
+    "history": "历史",
+    "nft": "NFT",
+    "settings": "设置",
+    // ── Landing ──
+    infrax_subtitle": "Web3 钱包，极致简化",
+    "launch_app": "🚀 启动应用",
+    // ── Connect ──
+    "connect_wallet": "连接钱包",
+    "step_1": "步骤 1",
+    "connect_metamask": "🦊 连接 MetaMask",
+    "connect_desc": "使用 MetaMask 或任意 Web3 钱包签名登录。您的钱包地址即您的身份。",
+    "connect_wallet_addr": "钱包地址 → 您的用户 ID",
+    "connect_no_email": "无需邮箱，无需密码",
+    "back_to_home": "← 返回首页",
+    // ── Admin ──
+    "admin_dashboard": "管理后台",
+    // ── MPC ──
+    "mpc_multi_wallet": "多钱包管理",
+    // ── Safe ──
+    "safe_vault_title": "Safe Vault 多签保险库",
+    // ── Payment ──
+    "payment_title": "支付模块",
+    // ── Generic ──
+    "loading": "加载中...",
+    "no_data": "暂无数据",
+    "error": "错误",
+    "success": "成功",
+    "cancel": "取消",
+    "confirm": "确认",
+    "search": "搜索",
+    "filter": "筛选",
+    "all": "全部",
+    "none": "无",
+    "copy": "复制",
+    "copied": "已复制",
+    "more": "更多",
+    "less": "收起",
+    "back": "返回",
+    "next": "下一步",
+    "prev": "上一步",
+    "submit": "提交",
+    "reset": "重置",
+    "export": "导出",
+    "import": "导入",
+    "refresh": "刷新",
+    "close": "关闭",
+    "open": "打开",
+    "edit": "编辑",
+    "remove": "移除",
+    "add": "添加",
+    "update": "更新",
+    "create2": "创建",
+    "save2": "保存",
+    "delete2": "删除",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "yes": "是",
+    "no": "否",
+    "on": "开",
+    "off": "关",
+    "days": "天",
+    "hours": "小时",
+    "minutes": "分钟",
+    "seconds": "秒",
+    "addresses_short": "地址",
+    "chains": "链",
+    "tokens_short": "代币",
+    "nfts": "NFT",
+    "network": "网络",
+    "amount": "金额",
+    "usd_value": "美元价值",
+  };
+
+  I18N.en = {}; // English is the default (keys match English text)
+  // We auto-fill en by using keys as values
+  for (var k in I18N.zh) {
+    if (I18N.zh.hasOwnProperty(k)) {
+      I18N.en[k] = k.replace(/^.*? /, ''); // strip leading emoji prefix
+    }
+  }
+
+  // ── Current Language ──
+  var lang = localStorage.getItem('px_lang') || 'zh';
+  I18N.setLang = function(l) {
+    lang = l;
+    localStorage.setItem('px_lang', l);
+    document.documentElement.lang = l;
+    document.documentElement.setAttribute('data-lang', l);
+    I18N.scan();
+    // Update toggle button
+    var btns = document.querySelectorAll('.i18n-toggle');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].textContent = lang === 'zh' ? '\uD83C\uDDEC\uD83C\uDDE7 EN' : '\uD83C\uDDFA\uD83C\uDDF8 \u4E2D\u6587';
+    }
+  };
+  I18N.getLang = function() { return lang; };
+  I18N.t = function(key) {
+    var tbl = lang === 'zh' ? I18N.zh : I18N.en;
+    return tbl[key] || key;
+  };
+
+  // ── DOM Scanner ──
+  I18N.scan = function(root) {
+    root = root || document.body;
+    var tbl = lang === 'zh' ? I18N.zh : I18N.en;
+    var els = root.querySelectorAll ? root.querySelectorAll('[data-i18n]') : [];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var key = el.getAttribute('data-i18n');
+      if (key && tbl[key] != null) {
+        el.textContent = tbl[key];
+      }
+    }
+    // Also scan data-i18n-placeholder
+    els = root.querySelectorAll ? root.querySelectorAll('[data-i18n-placeholder]') : [];
+    for (var j = 0; j < els.length; j++) {
+      var e2 = els[j];
+      var pk = e2.getAttribute('data-i18n-placeholder');
+      if (pk && tbl[pk] != null) {
+        e2.placeholder = tbl[pk];
+      }
+    }
+    // data-i18n-title
+    els = root.querySelectorAll ? root.querySelectorAll('[data-i18n-title]') : [];
+    for (var k2 = 0; k2 < els.length; k2++) {
+      var e3 = els[k2];
+      var tk = e3.getAttribute('data-i18n-title');
+      if (tk && tbl[tk] != null) {
+        e3.title = tbl[tk];
+      }
+    }
+  };
+
+  // ── Auto-init ──
+  document.addEventListener('DOMContentLoaded', function() {
+    document.documentElement.lang = lang;
+    document.documentElement.setAttribute('data-lang', lang);
+    I18N.scan();
+  });
+})();
+
+</script>
+
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo"><div class="sidebar-logo-icon">⚡</div>InfraX Admin</div>
+  <div class="sidebar-section">Overview</div>
+  <nav class="sidebar-nav">
+    <button class="sidebar-item active"><span>📊</span> Dashboard</button>
+    <button class="sidebar-item"><span>🏢</span> Tenants</button>
+    <button class="sidebar-item"><span>💰</span> Transactions</button>
+    <button class="sidebar-item"><span>🛡️</span> Risk Center</button>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">Operations</div>
+    <button class="sidebar-item"><span>📋</span> Webhook Events</button>
+    <button class="sidebar-item"><span>📤</span> Sweep Queue</button>
+    <button class="sidebar-item"><span>⚙️</span> Settings</button>
+    <button class="sidebar-item"><span>📄</span> Audit Logs</button>
+  </nav>
+  <div class="sidebar-footer">
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 12px;"><div style="width:6px;height:6px;background:var(--success);border-radius:50%;"></div><span style="font-size:11px;color:var(--text-secondary);">Sepolia · Admin</span></div>
+    <div class="sidebar-addr">admin@btclayer.xyz</div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main">
+  <button class="i18n-toggle" onclick="I18N.setLang(I18N.getLang()==='zh'?'en':'zh')" style="background:var(--card-bg);border:1px solid var(--border-subtle);border-radius:8px;padding:6px 12px;margin-left:10px;font-size:12px;cursor:pointer;color:var(--text-secondary);white-space:nowrap">🇬🇧 EN</button><div class="topbar">
+    <div class="topbar-left">
+      <h1>Admin Console</h1>
+      <span class="role-tag">Platform Operator</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-outline">📅 Last 30 Days</button>
+      <button class="btn btn-primary" onclick="document.getElementById('addTenantModal').classList.add('open')">+ New Tenant</button>
+    </div>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Total Tenants</div>
+      <div class="kpi-value" id="kpi-total-tenants">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Users</div>
+      <div class="kpi-value" id="kpi-active-users">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Daily Volume</div>
+      <div class="kpi-value" id="kpi-daily-volume">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Addresses</div>
+      <div class="kpi-value" id="kpi-total-addresses">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Gas Sponsored</div>
+      <div class="kpi-value" id="kpi-gas-sponsored">—</div>
+    </div>
+  </div>
+
+  <!-- 2-col Layout -->
+  <div class="layout-2col">
+    <!-- Left: Tenant List + Chart -->
+    <div>
+      <!-- Tenants Panel -->
+      <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title">🏢 Tenant Accounts</span>
+          <span class="panel-action">View All →</span>
+        </div>
+        <div class="panel-body" id="tenant-tbody">
+          <div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading tenant data…</div>
+        </div>
+      </div>
+
+      <!-- Daily Flow Chart -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">📈 Daily Transaction Volume</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:10px;display:flex;align-items:center;gap:4px;color:var(--text-tertiary);"><span style="width:8px;height:8px;background:var(--success);border-radius:2px;"></span> In</span>
+            <span style="font-size:10px;display:flex;align-items:center;gap:4px;color:var(--text-tertiary);"><span style="width:8px;height:8px;background:var(--brand-primary);border-radius:2px;"></span> Out</span>
+          </div>
+        </div>
+        <div class="panel-body" id="dashboard-chart" style="min-height:200px;">
+          <div style="padding:40px;text-align:center;color:var(--text-tertiary);">Loading chart data…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Risk + Activity -->
+    <div>
+      <!-- Risk Center -->
+      <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title">🛡️ Risk Alerts</span>
+          <span class="panel-action" onclick="location.href='/admin-risk.html'">View All →</span>
+        </div>
+        <div class="panel-body" id="dashboard-risks">
+          <div style="padding:16px;text-align:center;color:var(--text-tertiary);">Loading risk alerts…</div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">🔄 Recent Activity</span>
+          <span class="panel-action" onclick="location.href='/admin-audit.html'">View All →</span>
+        </div>
+        <div class="panel-body" id="dashboard-activity">
+          <div style="padding:16px;text-align:center;color:var(--text-tertiary);">Loading activity…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Add Tenant Modal -->
+<div class="modal-overlay" id="addTenantModal">
+  <div class="modal">
+    <h3>Create New Tenant</h3>
+    <p>Set up a new SaaS tenant with isolated address pool and API credentials.</p>
+    <div class="form-group">
+      <label class="form-label">Company Name</label>
+      <input class="form-input" type="text" placeholder="e.g. Acme Corp" style="font-family: inherit;">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Admin Email</label>
+      <input class="form-input" type="email" placeholder="admin@acme.com" style="font-family: inherit;">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Webhook URL</label>
+      <input class="form-input" type="url" placeholder="https://api.acme.com/infrax/webhook">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Sweep Threshold (ETH)</label>
+      <input class="form-input" type="text" value="0.1">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="this.closest('.modal-overlay').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary">Create Tenant</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// === Admin Dashboard API Integration (v3) ===
+var API_BASE = '';
+var ADMIN_USER = 'admin';
+var ADMIN_PASS = 'admin123';
+var adminToken = null;
+
+async function adminLogin() {
+  if (adminToken) return adminToken;
+  try {
+    var resp = await fetch(API_BASE + '/api/v2/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: ADMIN_USER, password: ADMIN_PASS })
+    });
+    var json = await resp.json();
+    if (json.code !== 0) throw new Error(json.message);
+    adminToken = json.data.accessToken;
+    setTimeout(function() { adminToken = null; }, 23 * 3600 * 1000);
+    return adminToken;
+  } catch (err) {
+    console.error('Admin login failed:', err);
+    return null;
+  }
+}
+
+async function adminFetch(path) {
+  var token = await adminLogin();
+  if (!token) throw new Error('Not authenticated');
+  var resp = await fetch(API_BASE + path, {
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+  });
+  var json = await resp.json();
+  if (json.code !== 0) throw new Error(json.message);
+  return json.data;
+}
+
+async function loadAdminDashboard() {
+  try {
+    var summaryP = adminFetch('/api/v2/dashboard/summary');
+    var tenantsP = adminFetch('/api/v2/saas/tenants');
+    var summary = await summaryP;
+    var tenants = await tenantsP;
+
+    // Update KPIs
+    var elTenants = document.getElementById('kpi-total-tenants');
+    var elUsers = document.getElementById('kpi-active-users');
+    var elVolume = document.getElementById('kpi-daily-volume');
+    var elAddr = document.getElementById('kpi-total-addresses');
+    var elGas = document.getElementById('kpi-gas-sponsored');
+
+    if (elTenants) elTenants.textContent = (tenants.total || 0).toString();
+    if (elUsers) elUsers.textContent = (summary.totalUsers || 0).toLocaleString();
+    if (elVolume) elVolume.textContent = '$' + ((summary.todayDeposits || 0)).toFixed(2);
+    if (elAddr) elAddr.textContent = (summary.totalWallets || 0).toLocaleString();
+    if (elGas) elGas.textContent = '$—';
+
+    // Update tenant table - clear old static rows and inject real data
+    var panelBody = document.getElementById('tenant-tbody');
+    if (panelBody && tenants.items) {
+      var headerRow = '<div class="tenant-row header" style="display:grid;grid-template-columns:1fr 1fr 0.7fr 0.7fr 0.7fr 60px;padding:8px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-size:9px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">' +
+        '<div>TENANT</div><div>API KEY</div><div>USERS</div><div>VOLUME (24H)</div><div>STATUS</div><div></div>' +
+      '</div>';
+
+      var rows = '';
+      if (tenants.items.length > 0) {
+        rows = tenants.items.map(function(t) {
+          var initial = t.name.charAt(0).toUpperCase();
+          var avatarColors = ['linear-gradient(135deg,#FCD535,#F0B90B)', 'linear-gradient(135deg,#F59E0B,#FBBF24)', 'linear-gradient(135deg,#0ECB81,#4ADE80)', 'linear-gradient(135deg,#10B981,#34D399)'];
+          var avatarColor = avatarColors[tenants.items.indexOf(t) % avatarColors.length];
+          var statusClass = t.status === 'active' ? 'active' : 'suspended';
+          var statusColor = t.status === 'active' ? 'var(--success)' : 'var(--error)';
+          return '<div class="tenant-row" style="display:grid;grid-template-columns:1fr 1fr 0.7fr 0.7fr 0.7fr 60px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;font-size:12px;">' +
+            '<div class="tenant-name" style="display:flex;align-items:center;gap:8px;font-weight:600;">' +
+              '<div class="tenant-avatar" style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;background:' + avatarColor + ';">' + initial + '</div>' +
+              t.name +
+            '</div>' +
+            '<div class="tenant-key" style="font-family:\'JetBrains Mono\',monospace;font-size:10px;">' + (t.api_key ? t.api_key.slice(0,12)+'...' : '—') + '</div>' +
+            '<div>0</div>' +
+            '<div style="font-weight:600;">$—</div>' +
+            '<div><span class="tenant-status ' + statusClass + '" style="color:' + statusColor + ';font-weight:600;font-size:10px;">● ' + t.status + '</span></div>' +
+            '<div><button onclick="window.location.href=\'/admin-tenants.html?id=' + t.id + '\'" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;">⚙</button></div>' +
+          '</div>';
+        }).join('');
+      } else {
+        rows = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);">No tenants yet. Click "+ New Tenant" to create one.</div>';
+      }
+      panelBody.innerHTML = '<div class="tenant-table">' + headerRow + rows + '</div>';
+    }
+  } catch (err) {
+    console.error('Admin dashboard load error:', err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadAdminDashboard);
+if (document.readyState !== 'loading') { loadAdminDashboard(); }
+</script>
+</body>
+</html>
