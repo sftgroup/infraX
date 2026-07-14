@@ -25,7 +25,6 @@ async function dcInit() {
   if (!addr) {
     var intro = document.getElementById('dc-intro');
     if (intro) {
-      intro.style.display = 'block';
       intro.innerHTML = '<div style="text-align:center;padding:60px">' +
         '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
         '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect your wallet to view Data Center</div>' +
@@ -34,7 +33,6 @@ async function dcInit() {
     return;
   }
 
-  // Pass walletAddress as query param as fallback in case header fails
   try {
     var url = '/api/v2/data/usage?walletAddress=' + encodeURIComponent(addr);
     const usage = await afetch(url, { auth: 'none' });
@@ -47,29 +45,23 @@ async function dcInit() {
   } catch (e) {
     console.log('dcInit error:', e.message);
   }
-  // Show intro
-  var introEl = document.getElementById('dc-intro');
-  var dashEl = document.getElementById('dc-dash');
-  if (introEl) introEl.style.display = 'block';
-  if (dashEl) dashEl.style.display = 'none';
+  // Fallback: show intro
+  var ie = document.getElementById('dc-intro');
+  var de = document.getElementById('dc-dash');
+  if (ie) ie.style.display = 'block';
+  if (de) de.style.display = 'none';
 }
 
 // ─── Subscribe ───────────────────────────────────────────────────────
 async function dcSubscribe(planId) {
   const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
-  if (!wallet) {
-    showToast('Connect wallet first', 'error');
-    return;
-  }
-
+  if (!wallet) { showToast('Connect wallet first', 'error'); return; }
   try {
     const resp = await afetch('/api/v2/data/subscribe', {
-      method: 'POST',
-      auth: 'none',
+      method: 'POST', auth: 'none',
       headers: { 'Content-Type': 'application/json', 'x-wallet-address': wallet },
       body: JSON.stringify({ planId }),
     });
-    
     if (resp && resp.planId) {
       dcPlan = { id: resp.planId, name: resp.planName };
       dcUsage = { dcApiKey: resp.dcApiKey, dcApiKeyObscured: obscureKey(resp.dcApiKey), planName: resp.planName, monthlyQuota: resp.monthlyQuota || 10000, currentUsage: resp.currentUsage || 0, dailyBreakdown: [] };
@@ -78,47 +70,32 @@ async function dcSubscribe(planId) {
     } else {
       showToast('Subscribe failed — please try again', 'error');
     }
-  } catch (e) {
-    showToast('Network error', 'error');
-  }
+  } catch (e) { showToast('Network error', 'error'); }
 }
 
 // ─── Load Dashboard ──────────────────────────────────────────────────
 async function dcLoadDashboard() {
-  var introEl = document.getElementById('dc-intro');
-  var dashEl = document.getElementById('dc-dash');
+  var ie = document.getElementById('dc-intro');
+  var de = document.getElementById('dc-dash');
 
   if (dcUsage && dcPlan) {
-    if (introEl) introEl.style.display = 'none';
-    if (dashEl) dashEl.style.display = 'block';
+    if (ie) ie.style.display = 'none';
+    if (de) de.style.display = 'block';
 
     setHtml('dc-plan-name', dcPlan.name);
     setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
     setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
-
     var planChains = { data_free: ['Sepolia'], data_pro: ['All 7 chains'], data_enterprise: ['All 7 chains + custom'] };
     setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
+    setHtml('dc-chain-count', '1 chain');
+    setHtml('dc-chain-stats', '<div class="chain-stat-row"><span>🟢 Sepolia</span><span style="color:var(--text-muted)">scanning</span></div>');
 
     var apiKey = dcUsage?.dcApiKey || '—';
-    var keyInput = document.getElementById('dc-api-key');
-    if (keyInput) keyInput.value = apiKey;
+    var ki = document.getElementById('dc-api-key');
+    if (ki) ki.value = apiKey;
   } else {
-    if (introEl) introEl.style.display = 'block';
-    if (dashEl) dashEl.style.display = 'none';
-    // Reload usage
-    try {
-      var addr = user().walletAddress || '';
-      var resp = await afetch(`/api/v2/data/usage?walletAddress=${encodeURIComponent(addr)}`, { auth: 'none' });
-      if (resp && resp.planId) {
-        dcUsage = resp;
-        dcPlan = { id: resp.planId, name: resp.planName };
-        if (introEl) introEl.style.display = 'none';
-        if (dashEl) dashEl.style.display = 'block';
-        setHtml('dc-plan-name', dcPlan.name);
-        setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
-        setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
-      }
-    } catch(e) {}
+    if (ie) ie.style.display = 'block';
+    if (de) de.style.display = 'none';
   }
 }
 
@@ -127,54 +104,37 @@ async function dcQueryEvents(pageToken) {
   const chain = document.getElementById('dc-filter-chain')?.value || '';
   const address = document.getElementById('dc-filter-addr')?.value || '';
   const eventType = document.getElementById('dc-filter-type')?.value || '';
-
   const params = new URLSearchParams();
   if (chain) params.set('chain', chain);
   if (address) params.set('address', address);
   if (eventType) params.set('event_type', eventType);
   params.set('page_size', '20');
   if (pageToken) params.set('page_token', pageToken);
-
   const tbody = document.getElementById('dc-events-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px">Loading...</td></tr>';
-
   try {
     const resp = await afetch('/api/v2/data/events?' + params.toString(), { auth: 'none' });
     if (!resp || resp.code !== 0) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--binance-text-tertiary,#5e6673);text-align:center;padding:24px">No results</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>';
       return;
     }
-
     const { data, next_page_token } = resp;
     dcEventsPageToken = next_page_token;
-
     if (!data || data.length === 0) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--binance-text-tertiary,#5e6673);text-align:center;padding:24px">No events found</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No events found</td></tr>';
       return;
     }
-
     if (tbody) {
       tbody.innerHTML = data.map(e => {
-        const shortFrom = (e.from_address || '').slice(0, 10) + '...';
-        const shortTo = (e.to_address || '').slice(0, 10) + '...';
-        const shortTx = (e.tx_hash || '').slice(0, 8) + '...';
-        return `<tr>
-          <td><span class="dc-chain-badge dc-chain-${e.chain}">${e.chain}</span></td>
-          <td>${formatNumber(e.block_number)}</td>
-          <td>${e.event_type}</td>
-          <td><span class="dc-mono">${shortFrom}</span></td>
-          <td><span class="dc-mono">${shortTo}</span></td>
-          <td>${e.amount || '—'} ${e.token_symbol || ''}</td>
-          <td><span class="dc-mono">${shortTx}</span></td>
-        </tr>`;
+        var sf = (e.from_address || '').slice(0, 10) + '...';
+        var st = (e.to_address || '').slice(0, 10) + '...';
+        var sx = (e.tx_hash || '').slice(0, 8) + '...';
+        return `<tr><td><span class="dc-chain-badge dc-chain-${e.chain}">${e.chain}</span></td><td>${formatNumber(e.block_number)}</td><td>${e.event_type}</td><td><span class="dc-mono">${sf}</span></td><td><span class="dc-mono">${st}</span></td><td>${e.amount || '—'} ${e.token_symbol || ''}</td><td><span class="dc-mono">${sx}</span></td></tr>`;
       }).join('');
     }
-
     const pager = document.getElementById('dc-explorer-pager');
     if (pager) {
-      pager.innerHTML = next_page_token
-        ? `<button class="btn btn-sm" onclick="dcQueryEvents('${next_page_token}')">Next Page →</button>`
-        : '<span style="color:var(--binance-text-tertiary,#5e6673);font-size:12px">End of results</span>';
+      pager.innerHTML = next_page_token ? '<button class="btn btn-sm" onclick="dcQueryEvents(\'' + next_page_token + '\')">Next Page →</button>' : '<span style="color:var(--text-muted);font-size:12px">End of results</span>';
     }
   } catch (e) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--binance-red,#F6465D)">Query failed</td></tr>';
@@ -185,39 +145,27 @@ async function dcQueryEvents(pageToken) {
 function dcCopyKey() {
   const input = document.getElementById('dc-api-key');
   if (!input || !input.value || input.value === '—') return;
-  navigator.clipboard.writeText(input.value).then(() => {
-    showToast('API Key copied', 'success');
-  });
+  navigator.clipboard.writeText(input.value).then(() => { showToast('API Key copied', 'success'); });
 }
 
 // ─── Tab Switch ──────────────────────────────────────────────────────
 function dcSwitchTab(sub) {
   document.querySelectorAll('#dc-dash .tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('#dc-dash .sub-panel').forEach(p => p.classList.remove('active'));
-  const btn = document.querySelector(`#dc-dash [data-sub="${sub}"]`);
+  const btn = document.querySelector('#dc-dash [data-sub="' + sub + '"]');
   const panel = document.getElementById('sub-' + sub);
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.add('active');
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
-function formatNumber(n) {
-  if (n == null) return '—';
-  return Number(n).toLocaleString();
-}
+function formatNumber(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+function setHtml(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 
-function setHtml(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = html;
-}
-
-// ─── Register module loader ──────────────────────────────────────────
-(function registerDC() {
+// ─── Register ────────────────────────────────────────────────────────
+(function() {
   document.addEventListener('click', function(e) {
     const btn = e.target.closest('#dc-dash .tab-btn');
-    if (btn) {
-      const sub = btn.getAttribute('data-sub');
-      if (sub) dcSwitchTab(sub);
-    }
+    if (btn) { var s = btn.getAttribute('data-sub'); if (s) dcSwitchTab(s); }
   });
 })();
