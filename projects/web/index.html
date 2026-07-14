@@ -69,64 +69,41 @@
   </div>
 
   <!-- ═══ MODULE 1: NON-CUSTODIAL ═══ -->
+  <!-- ═══ Dashboard — Service Status Overview ═══ -->
   <div class="page active" id="page-noncustodial">
-    <div class="tab-row">
-      <button class="tab-btn active" data-sub="nc-dash">Dashboard</button>
-      <button class="tab-btn" data-sub="nc-receive">Receive</button>
-      <button class="tab-btn" data-sub="nc-settings">Settings</button>
+    <div class="kpi-grid" id="dash-kpi" style="margin-bottom:20px">
+      <div class="kpi"><div class="kpi-label">Wallet</div><div class="kpi-val mono" id="dash-wallet" style="font-size:14px">—</div></div>
+      <div class="kpi"><div class="kpi-label">Active Services</div><div class="kpi-val" id="dash-active-count">—</div></div>
+      <div class="kpi"><div class="kpi-label">DC Plan</div><div class="kpi-val" id="dash-dc-plan">—</div></div>
+      <div class="kpi"><div class="kpi-label">WaaS Plan</div><div class="kpi-val" id="dash-waas-plan">—</div></div>
     </div>
 
-    <!-- Dashboard -->
-    <div class="sub-panel active" id="sub-nc-dash">
-      <div class="big-balance" id="nc-big-balance">$0.00</div>
-      <div class="big-balance-sub" id="nc-big-sub"></div>
-      <div class="stat-row">
-        <div class="stat-chip" id="nc-stat-chains"><b>1</b> chains</div>
-        <div class="stat-chip" id="nc-stat-tokens"><b>0</b> tokens</div>
+    <div class="panel">
+      <div class="panel-header">🔌 Services</div>
+      <div class="panel-body" style="padding:0">
+        <table class="data-table">
+          <thead><tr><th>Service</th><th>Status</th><th>Plan</th><th>Detail</th></tr></thead>
+          <tbody id="dash-services-body">
+            <tr id="dash-row-mpc"><td>🔑 MPC Wallet</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
+            <tr id="dash-row-waas"><td>🏦 WaaS</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-safe"><td>🔐 Multi-Sig Vault</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-dc"><td>📡 Data Center</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-payment"><td>💳 Payment</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+          </tbody>
+        </table>
       </div>
-      <div class="action-bar">
-        <button class="btn btn-secondary" onclick="switchModuleTab('noncustodial','nc-receive')">📥 Receive</button>
-      </div>
-      <div class="kpi-grid" id="nc-kpi"></div>
-      <div class="panel">
-        <div class="panel-header">Assets</div>
-        <div class="panel-body" style="padding:0">
-          <table class="data-table">
-            <thead><tr><th>Token</th><th>Balance</th><th>USD Value</th><th>Network</th></tr></thead>
-            <tbody id="nc-assets-body"><tr><td colspan="4"><div class="empty"><span class="spin"></span></div></td></tr></tbody>
-          </table>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-header">📊 Usage</div>
+      <div class="panel-body">
+        <div id="dash-usage">
+          <div style="text-align:center;padding:20px;color:var(--text-muted)">Connect wallet to view usage</div>
         </div>
-      </div>
-    </div>
-
-    <!-- Receive -->
-    <div class="sub-panel" id="sub-nc-receive">
-      <div class="panel">
-        <div class="panel-header">Receive Funds</div>
-        <div class="panel-body" style="text-align:center">
-          <div style="width:176px;height:176px;background:#fff;border-radius:var(--r-md);padding:8px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center">
-            <canvas id="nc-recv-qr" width="160" height="160" style="width:160px;height:160px;display:none"></canvas>
-            <div style="font-size:13px;color:#ccc;text-align:center" id="nc-recv-qr-fallback">—</div>
-          </div>
-          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">Your Address</div>
-          <div class="addr-pill" style="display:inline-flex;margin-bottom:14px;font-size:13px" id="nc-recv-full">—</div>
-          <div><button class="btn btn-primary" onclick="ncCopyAddr()">📋 Copy Address</button></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings -->
-    <div class="sub-panel" id="sub-nc-settings">
-      <div class="panel">
-        <div class="panel-header">Wallet Settings</div>
-        <div class="panel-body" id="nc-settings-body"><span class="spin"></span></div>
       </div>
     </div>
   </div>
 
-    <!-- ═══════════════════════════════════════════════ -->
-  <!-- MODULE 2: MPC Wallet — Email-based Multi-Wallet  -->
-  <!-- ═══════════════════════════════════════════════ -->
   <div class="page" id="page-mpc">
     <!-- MPC Intro (not activated) -->
     <div id="mpc-intro" style="display:none">
