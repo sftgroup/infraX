@@ -27,11 +27,10 @@ function serveFile(res, filePath) {
   const mime = MIME[ext] || 'application/octet-stream';
   try {
     const data = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control: no-store, no-cache, must-revalidate' });
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store, no-cache, must-revalidate' });
     res.end(data);
   } catch (e) {
     if (e.code === 'ENOENT') {
-      // SPA fallback
       const index = path.join(WEB_DIR, 'index.html');
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(fs.readFileSync(index));
@@ -65,14 +64,12 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const urlPath = url.pathname;
 
-  // Check API proxy routes
   for (const [prefix, target] of Object.entries(API_ROUTES)) {
     if (urlPath.startsWith(prefix)) {
       return proxyRequest(req, res, target);
     }
   }
 
-  // Static file
   let filePath = path.join(WEB_DIR, urlPath === '/' ? 'index.html' : urlPath);
   serveFile(res, filePath);
 });
