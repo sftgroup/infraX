@@ -4,40 +4,64 @@
 async function ncDash() {
   var grid = document.getElementById("nc-kpi"); if (!grid) return;
   var assetBody = document.getElementById("nc-assets-body");
-  grid.innerHTML = "<div class=\"kpi\"><div class=\"kpi-label\">Total Balance</div><div class=\"kpi-val gold\"><div class=\"spin\"></div></div></div>";
+  grid.innerHTML = "<div class=\"kpi\"><div class=\"kpi-label\">Total Balance</div><div class=\"kpi-val gold\"><span id=\"nc-total-native\">—</span> ETH</div></div>";
+
+  var walletAddr = user().walletAddress;
+  var chains = ["sepolia","eth","bsc","base"];
+  var labels = {sepolia:"Sepolia",eth:"Ethereum",bsc:"BSC",base:"Base"};
+  var rows = {};
+  var total = 0;
+  var loaded = 0;
   
-  try {
-    var walletAddr = user().walletAddress;
-    var bal = await afetch("/api/v2/data/balance?address=" + encodeURIComponent(walletAddr));
-    var totalNative = parseFloat(bal.nativeTotal || 0);
-    var w = bal.chainBalances || []; var rows = "";
-    w.forEach(function (c) {
-      var labels = {sepolia:"Sepolia",eth:"Ethereum",bsc:"BSC",base:"Base"};
-      var chainLabel = labels[c.chain] || c.chain;
-      rows += "<tr><td><span style=\"color:var(--gold-light);font-weight:600\">" + chainLabel + "</span></td>" +
-        "<td class=\"mono\">" + parseFloat(c.balance || 0).toFixed(6) + "</td>" +
-        "<td class=\"num\">" + chainLabel + "</td>" +
-        "<td><span class=\"status success\">" + (c.error ? "error" : "live") + "</span></td></tr>";
-    });
+  // Render placeholder rows immediately
+  var html = "";
+  chains.forEach(function(c){ 
+    html += "<tr id=\"nc-row-" + c + "\"><td><span style=\"color:var(--gold-light);font-weight:600\">" + (labels[c]||c) + "</span></td>" +
+      "<td class=\"mono\"><div class=\"spin\"></div></td><td class=\"num\">" + (labels[c]||c) + "</td>" +
+      "<td><span class=\"status\">loading</span></td></tr>";
+  });
+  assetBody.innerHTML = html;
+  document.getElementById("nc-stat-chains").innerHTML = "<b>" + chains.length + "</b> chains";
+  document.getElementById("nc-stat-tokens").innerHTML = "<b>4</b> chains queried";
+  
+  // Update topbar
+  var addrEl = document.getElementById("topbar-wallet-addr");
+  if (addrEl) addrEl.textContent = fmtAddrLong(walletAddr);
 
-    document.getElementById("nc-big-balance").textContent = totalNative > 0 ? totalNative.toFixed(6) + " ETH" : "$0.00";
-    document.getElementById("nc-big-sub").innerHTML = "<span class=\"pos\">All chains</span> · via InfraX DC";
-    document.getElementById("nc-stat-chains").innerHTML = "<b>" + w.length + "</b> chains";
-    document.getElementById("nc-stat-tokens").innerHTML = "<b>4</b> chains queried";
-
-    grid.innerHTML = "";
-    assetBody.innerHTML = rows || "<tr><td colspan=\"4\"><div class=\"empty\"><div class=\"empty-icon\">💰</div><div class=\"empty-text\">No balance detected</div></div></td></tr>";
-
-    var addrEl = document.getElementById("topbar-wallet-addr");
-    if (addrEl) addrEl.textContent = fmtAddrLong(bal.address || walletAddr);
-    var dotEl = document.getElementById("topbar-wallet-dot");
-    if (dotEl) dotEl.className = "topbar-wallet-dot connected";
-  } catch (e) {
-    document.getElementById("nc-big-balance").textContent = "$0.00";
-    document.getElementById("nc-big-sub").innerHTML = "<span style=\"color:var(--error)\">" + e.message + "</span>";
-    assetBody.innerHTML = "<tr><td colspan=\"4\"><div class=\"empty\">Unable to load — DC API unavailable</div></td></tr>";
-  }
+  // Fetch each chain balance individually — render as they arrive
+  chains.forEach(function(c){
+    afetch("/api/v2/data/balance?address=" + encodeURIComponent(walletAddr) + "&chain=" + c)
+      .then(function(d){
+        var bal = (d.chainBalances && d.chainBalances[0]) ? parseFloat(d.chainBalances[0].balance||0) : 0;
+        var err = (d.chainBalances && d.chainBalances[0]) ? d.chainBalances[0].error : null;
+        rows[c] = bal;
+        total += bal;
+        loaded++;
+        
+        // Update row
+        var row = document.getElementById("nc-row-" + c);
+        if (row) {
+          row.innerHTML = "<td><span style=\"color:var(--gold-light);font-weight:600\">" + (labels[c]||c) + "</span></td>" +
+            "<td class=\"mono\">" + bal.toFixed(6) + "</td>" +
+            "<td class=\"num\">" + (labels[c]||c) + "</td>" +
+            "<td><span class=\"status success\">" + (err ? "error" : "live") + "</span></td>";
+        }
+        document.getElementById("nc-total-native").textContent = total.toFixed(6);
+        if (loaded === chains.length) {
+          document.getElementById("nc-big-balance").textContent = total.toFixed(6) + " ETH";
+          document.getElementById("nc-big-sub").innerHTML = "<span class=\"pos\">All chains</span> · via InfraX DC";
+        }
+      })
+      .catch(function(e){
+        loaded++;
+        console.warn("NC balance fetch failed for", c, e.message);
+      });
+  });
 }
+
+
+
+
 
 
 function ncReceiveLoad() {

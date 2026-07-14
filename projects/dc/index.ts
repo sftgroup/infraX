@@ -239,7 +239,9 @@ app.get("/api/v2/data/balance", asyncHandler(async (req: any, res: any) => {
   if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)) {
     return res.json(apiResponse(null, "Invalid address", 1001));
   }
-  const chains = ["sepolia", "eth", "bsc", "base"];
+  const allChains = ["sepolia", "eth", "bsc", "base"];
+  const chainFilter = (req.query.chain || "").toString().toLowerCase();
+  const chains = chainFilter && allChains.includes(chainFilter) ? [chainFilter] : allChains;
   const results = await Promise.all(chains.map(c => getChainBalance(addr, c)));
   const total = results.reduce((s, r) => s + parseFloat(r.balance), 0);
   res.json(apiResponse({
