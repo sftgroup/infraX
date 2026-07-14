@@ -194,3 +194,61 @@ app.listen(PORT, () => {
 });
 
 export default app;
+
+// ═══════════════════════════════════════════════════
+// Balance API — queries RPC via InfraX own endpoints
+// ═══════════════════════════════════════════════════
+const RPC_ENDPOINTS: Record<string, string> = {
+  sepolia: "https://ethereum-sepolia-rpc.publicnode.com",
+  eth:     "https://ethereum-rpc.publicnode.com",
+  bsc:     "https://bsc-dataseed.bnbchain.org",
+  base:    "https://mainnet.base.org",
+};
+
+async function rpcCall(chain: string, method: string, params: any[]): Promise<any> {
+  const url = RPC_ENDPOINTS[chain];
+  if (!url) throw new Error(`No RPC for ${chain}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: controller.signal,
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || "RPC error");
+    return j.result;
+  } finally { clearTimeout(timeout); }
+}
+
+async function getChainBalance(address: string, chain: string) {
+  try {
+    const hex = await rpcCall(chain, "eth_getBalance", [address, "latest"]);
+    const wei = BigInt(hex);
+    const eth = Number(wei) / 1e18;
+    return { chain, balance: eth.toFixed(6) };
+  } catch (e: any) {
+    return { chain, balance: "0", error: e.message };
+  }
+}
+
+app.get("/api/v2/data/balance", asyncHandler(async (req: any, res: any) => {
+  const addr = (req.query.address || req.headers["x-wallet-address"] || "").toString().toLowerCase();
+  if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.json(apiResponse(null, "Invalid address", 1001));
+  }
+  const chains = ["sepolia", "eth", "bsc", "base"];
+  const results = await Promise.all(chains.map(c => getChainBalance(addr, c)));
+  const total = results.reduce((s, r) => s + parseFloat(r.balance), 0);
+  res.json(apiResponse({
+    address: addr,
+    chainBalances: results,
+    totalUsd: "0.00", // token prices later
+    nativeTotal: total.toFixed(6),
+  }));
+}));
+
+// Update docs to include balance endpoint
+const _origDocs = app._router?.stack?.find((s: any) => s.route?.path === "/api/v2/data/docs");

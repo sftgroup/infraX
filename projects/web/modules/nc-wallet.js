@@ -2,45 +2,43 @@
 // NC is a thin dashboard: connect wallet → sign → show balance + module gateways
 
 async function ncDash() {
-  var grid = document.getElementById('nc-kpi'); if (!grid) return;
-  var assetBody = document.getElementById('nc-assets-body');
-  grid.innerHTML = '<div class="kpi"><div class="kpi-label">Total Balance</div><div class="kpi-val gold"><div class="spin"></div></div></div>';
+  var grid = document.getElementById("nc-kpi"); if (!grid) return;
+  var assetBody = document.getElementById("nc-assets-body");
+  grid.innerHTML = "<div class=\"kpi\"><div class=\"kpi-label\">Total Balance</div><div class=\"kpi-val gold\"><div class=\"spin\"></div></div></div>";
   
   try {
-    var bal = await afetch('/api/v2/wallet/balance?nc=true'); var totalNative = 0;
-    var w = bal.chainBalances || []; var totalUSD = 0, totalTokens = 0, rows = '';
+    var walletAddr = user().walletAddress;
+    var bal = await afetch("/api/v2/data/balance?address=" + encodeURIComponent(walletAddr));
+    var totalNative = parseFloat(bal.nativeTotal || 0);
+    var w = bal.chainBalances || []; var rows = "";
     w.forEach(function (c) {
-      (c.balances || []).forEach(function (b) {
-        totalTokens++;
-        totalUSD += parseFloat(b.usd_value || 0); if (b.token === "ETH" || b.token === "sETH") totalNative += parseFloat(b.balance || 0);
-        rows += '<tr><td><span style="color:var(--gold-light);font-weight:600">' + (b.token || 'ETH') + '</span></td>' +
-          '<td class="mono">' + parseFloat(b.balance || 0).toFixed(6) + '</td>' +
-          '<td class="num">' + (b.usd_value ? fmtUSD(b.usd_value) : '—') + '</td>' +
-          '<td><span class="status success">' + (c.chain || 'sepolia') + '</span></td></tr>';
-      });
+      var labels = {sepolia:"Sepolia",eth:"Ethereum",bsc:"BSC",base:"Base"};
+      var chainLabel = labels[c.chain] || c.chain;
+      rows += "<tr><td><span style=\"color:var(--gold-light);font-weight:600\">" + chainLabel + "</span></td>" +
+        "<td class=\"mono\">" + parseFloat(c.balance || 0).toFixed(6) + "</td>" +
+        "<td class=\"num\">" + chainLabel + "</td>" +
+        "<td><span class=\"status success\">" + (c.error ? "error" : "live") + "</span></td></tr>";
     });
 
-    document.getElementById('nc-big-balance').textContent = totalUSD > 0 ? fmtUSD(totalUSD) : (totalNative > 0 ? totalNative.toFixed(6) + ' ETH' : '$0.00');
-    document.getElementById('nc-big-sub').innerHTML = '<span class="pos">All chains</span> \u00b7 ' + totalTokens + ' tokens';
-    document.getElementById('nc-stat-chains').innerHTML = '<b>' + w.length + '</b> chains';
-    document.getElementById('nc-stat-tokens').innerHTML = '<b>' + totalTokens + '</b> tokens';
+    document.getElementById("nc-big-balance").textContent = totalNative > 0 ? totalNative.toFixed(6) + " ETH" : "$0.00";
+    document.getElementById("nc-big-sub").innerHTML = "<span class=\"pos\">All chains</span> · via InfraX DC";
+    document.getElementById("nc-stat-chains").innerHTML = "<b>" + w.length + "</b> chains";
+    document.getElementById("nc-stat-tokens").innerHTML = "<b>4</b> chains queried";
 
-    grid.innerHTML = '';
-    assetBody.innerHTML = rows || '<tr><td colspan="4"><div class="empty"><div class="empty-icon">💰</div><div class="empty-text">No assets yet</div></div></td></tr>';
+    grid.innerHTML = "";
+    assetBody.innerHTML = rows || "<tr><td colspan=\"4\"><div class=\"empty\"><div class=\"empty-icon\">💰</div><div class=\"empty-text\">No balance detected</div></div></td></tr>";
 
-    var addrVal = w[0] && w[0].address ? w[0].address : '';
-    if (addrVal) {
-      var addrEl = document.getElementById('topbar-wallet-addr');
-      if (addrEl) addrEl.textContent = fmtAddrLong(addrVal);
-      var dotEl = document.getElementById('topbar-wallet-dot');
-      if (dotEl) dotEl.className = 'topbar-wallet-dot connected';
-    }
+    var addrEl = document.getElementById("topbar-wallet-addr");
+    if (addrEl) addrEl.textContent = fmtAddrLong(bal.address || walletAddr);
+    var dotEl = document.getElementById("topbar-wallet-dot");
+    if (dotEl) dotEl.className = "topbar-wallet-dot connected";
   } catch (e) {
-    document.getElementById('nc-big-balance').textContent = '$0.00';
-    document.getElementById('nc-big-sub').innerHTML = '<span style="color:var(--error)">' + e.message + '</span>';
-    assetBody.innerHTML = '<tr><td colspan="4"><div class="empty">Unable to load</div></td></tr>';
+    document.getElementById("nc-big-balance").textContent = "$0.00";
+    document.getElementById("nc-big-sub").innerHTML = "<span style=\"color:var(--error)\">" + e.message + "</span>";
+    assetBody.innerHTML = "<tr><td colspan=\"4\"><div class=\"empty\">Unable to load — DC API unavailable</div></td></tr>";
   }
 }
+
 
 function ncReceiveLoad() {
   var addrVal = getOrCreateAddr();
