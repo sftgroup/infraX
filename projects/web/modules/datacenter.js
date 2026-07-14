@@ -10,13 +10,14 @@ let dcPlan = null;
 let dcUsage = null;
 let dcEventsPageToken = null;
 
+const DC_CHAINS = ['Sepolia', 'Ethereum', 'BSC', 'Solana', 'Base'];
+
 // ─── Init ────────────────────────────────────────────────────────────
 async function dcInit() {
-  const chains = ['sepolia', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'bsc', 'base'];
   const sel = document.getElementById('dc-filter-chain');
   if (sel) {
     sel.innerHTML = '<option value="">All Chains</option>' + 
-      chains.map(c => `<option value="${c}">${c[0].toUpperCase()+c.slice(1)}</option>`).join('');
+      DC_CHAINS.map(c => '<option value="' + c.toLowerCase() + '">' + c + '</option>').join('');
   }
 
   var addr = '';
@@ -27,7 +28,7 @@ async function dcInit() {
     if (intro) {
       intro.innerHTML = '<div style="text-align:center;padding:60px">' +
         '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
-        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect your wallet to view Data Center</div>' +
+        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view Data Center</div>' +
         '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a></div>';
     }
     return;
@@ -45,7 +46,6 @@ async function dcInit() {
   } catch (e) {
     console.log('dcInit error:', e.message);
   }
-  // Fallback: show intro
   var ie = document.getElementById('dc-intro');
   var de = document.getElementById('dc-dash');
   if (ie) ie.style.display = 'block';
@@ -85,10 +85,19 @@ async function dcLoadDashboard() {
     setHtml('dc-plan-name', dcPlan.name);
     setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
     setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
-    var planChains = { data_free: ['Sepolia'], data_pro: ['All 7 chains'], data_enterprise: ['All 7 chains + custom'] };
+    var planChains = { data_free: ['Sepolia'], data_pro: ['All 5 chains'], data_enterprise: ['All 5 chains + custom'] };
     setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
-    setHtml('dc-chain-count', '1 chain');
-    setHtml('dc-chain-stats', '<div class="chain-stat-row"><span>🟢 Sepolia</span><span style="color:var(--text-muted)">scanning</span></div>');
+
+    // Chain scan status — show all collector-supported chains
+    setHtml('dc-chain-count', DC_CHAINS.length + ' chains');
+    setHtml('dc-chain-stats',
+      DC_CHAINS.map(function(c) {
+        return '<div class="chain-stat-row">' +
+          '<span>🟢 ' + c + '</span>' +
+          '<span style="color:var(--text-muted)">scanning</span>' +
+          '</div>';
+      }).join('')
+    );
 
     var apiKey = dcUsage?.dcApiKey || '—';
     var ki = document.getElementById('dc-api-key');
@@ -129,7 +138,7 @@ async function dcQueryEvents(pageToken) {
         var sf = (e.from_address || '').slice(0, 10) + '...';
         var st = (e.to_address || '').slice(0, 10) + '...';
         var sx = (e.tx_hash || '').slice(0, 8) + '...';
-        return `<tr><td><span class="dc-chain-badge dc-chain-${e.chain}">${e.chain}</span></td><td>${formatNumber(e.block_number)}</td><td>${e.event_type}</td><td><span class="dc-mono">${sf}</span></td><td><span class="dc-mono">${st}</span></td><td>${e.amount || '—'} ${e.token_symbol || ''}</td><td><span class="dc-mono">${sx}</span></td></tr>`;
+        return '<tr><td><span class="dc-chain-badge dc-chain-' + e.chain + '">' + e.chain + '</span></td><td>' + formatNumber(e.block_number) + '</td><td>' + e.event_type + '</td><td><span class="dc-mono">' + sf + '</span></td><td><span class="dc-mono">' + st + '</span></td><td>' + (e.amount || '—') + ' ' + (e.token_symbol || '') + '</td><td><span class="dc-mono">' + sx + '</span></td></tr>';
       }).join('');
     }
     const pager = document.getElementById('dc-explorer-pager');
@@ -145,13 +154,13 @@ async function dcQueryEvents(pageToken) {
 function dcCopyKey() {
   const input = document.getElementById('dc-api-key');
   if (!input || !input.value || input.value === '—') return;
-  navigator.clipboard.writeText(input.value).then(() => { showToast('API Key copied', 'success'); });
+  navigator.clipboard.writeText(input.value).then(function() { showToast('API Key copied', 'success'); });
 }
 
 // ─── Tab Switch ──────────────────────────────────────────────────────
 function dcSwitchTab(sub) {
-  document.querySelectorAll('#dc-dash .tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('#dc-dash .sub-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#dc-dash .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('#dc-dash .sub-panel').forEach(function(p) { p.classList.remove('active'); });
   const btn = document.querySelector('#dc-dash [data-sub="' + sub + '"]');
   const panel = document.getElementById('sub-' + sub);
   if (btn) btn.classList.add('active');
