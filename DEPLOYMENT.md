@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-07-14 22:45 GMT+8
+> 最后更新: 2026-07-15 00:35 GMT+8 | 版本 `v0.2.0-dashboard-20260715`
 
 ## 生产服务器
 
@@ -12,7 +12,7 @@ Ports:  3000-6100
 Spec:   4C/7.5G/178G
 ```
 
-## 当前运行服务（10 个）
+## 当前运行服务（11 个）
 
 | 服务 | 端口 | DB | 启动命令 | 状态 |
 |------|------|-----|---------|------|
@@ -27,7 +27,6 @@ Spec:   4C/7.5G/178G
 | DC MCP | 3005 | — | `npx tsx dc-index.ts` | 🟢 |
 | Vault MCP | 3006 | — | `npx tsx vault-index.ts` | 🟢 |
 | Web | 6100 | — | `node server.js` | 🟢 |
-| MPC MCP | 3007 | — | ⚫ 未部署（预期） |
 
 ## 目录结构
 
@@ -42,12 +41,65 @@ Spec:   4C/7.5G/178G
 ├── admin/         → Admin :3002
 ├── mcp-server/    → Wallet MCP :3004 / DC MCP :3005 / Vault MCP :3006
 └── web/           → Web :6100
-    ├── server.js         ← Node proxy (零依赖)
-    ├── index.html
-    ├── connect.html
-    ├── landing.html
+    ├── server.js         ← Node proxy (零依赖，Cache-Control: no-store)
+    ├── index.html        ← 主应用 (Dashboard / MPC / WaaS / DC / Safe tabs)
+    ├── connect.html      ← 钱包连接页
+    ├── landing.html      ← 产品落地页
     └── modules/
+        ├── core.js          ← 核心库 (afetch, user, setupNav, showToast)
+        ├── nc-wallet.js     ← Dashboard 仪表盘 (ncDash)
+        ├── datacenter.js    ← Data Center 模块 (dcInit)
+        ├── mpc.js           ← MPC 模块
+        ├── waas.js          ← WaaS 模块 (包含 GasSponsor/开发网)
+        ├── safe.js          ← Safe/Vault 模块
+        └── infrax.css       ← 统一样式
 ```
+
+## Web Proxy 路由 (`server.js`)
+
+```
+/api/v2/data   → :3001 (DC)
+/api/v2/mpc    → :6003
+/api/v2/wallet → :6001
+/api/v2/waas   → :6001
+/api/v2/saas   → :6001
+/api/vault     → :6002
+/api/v2/vault  → :6002
+```
+
+**特性**:
+- 零依赖 Node.js HTTP server
+- `Cache-Control: no-store, no-cache, must-revalidate` 防止 JS 缓存
+- SPA fallback：未知路径返回 `index.html`
+
+## 前端 JS 模块关键契约
+
+### afetch() 行为 🔴
+```javascript
+// core.js 中的 afetch 自动解包后端 {code, data} 响应
+return j.data !== undefined ? j.data : j;
+
+// 所有 afetch 调用方拿到的已经是 data 内层，无需 .code 检查
+const usage = await afetch('/api/v2/data/usage', { auth: 'none' });
+// usage → { planId, planName, monthlyQuota, currentUsage }   ← 不是 { code: 0, data: {...} }
+```
+
+### auth 参数
+| 值 | 行为 | 用途 |
+|----|------|------|
+| `'none'` | 自动带 `x-wallet-address` header，不签名 | 只读查询 |
+| `'wallet'` | 调 `signOnce()` 触发 MetaMask 弹窗 | 写操作（订阅等） |
+
+> ⚠️ `auth: 'wallet'` 不要用于只读查询——会触发 MetaMask 弹窗且要求用户签名
+
+### getMe() 数据格式
+`localStorage.px_user` → `{ walletAddress, connectedAt }`（由 `connect.html` 写入）
+
+Dashboard 从 `getMe()` 并行读取 4 个 API：
+- `afetch('/api/v2/mpc/status')` → `{ registered, email, walletAddress }`
+- `afetch('/api/v2/saas/tenants/my')` → `{ tenantId, name, planId, planName, status }`
+- `afetch('/api/vault/safe/status')` → `{ enabled, count }`
+- `afetch('/api/v2/data/usage')` → `{ planId, planName, monthlyQuota, currentUsage }`
 
 ## 部署流程
 
@@ -67,6 +119,7 @@ ssh MCP-SERVER "cd /opt/mcp/repos/InfraX && git push origin master"
 - 🔴 从 GitHub clone 的 repo 无 raw archive → 需 SSH tar `/opt/mcp/repos/<name>/`
 - 🔴 Git raw-upload 才能走 raw endpoint 下载
 - 🔴 先 curl raw-upload 再 git_push → git_sync
+- 🔴 部署后刷新前端须更新 JS `?v=` 参数（Cache-Control: no-store 是保险）
 
 ## 一键检查
 
@@ -83,7 +136,6 @@ done
 ### WAAS :6001
 ```bash
 cd /opt/pocketx/projects/waas
-# 必须设置 RPC env（否则走默认 1rpc.io 限流）
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
 ETH_RPC_URL=https://ethereum-rpc.publicnode.com \
 BSC_RPC_URL=https://bsc-dataseed.bnbchain.org \
@@ -147,12 +199,12 @@ PORT=3006 nohup npx tsx vault-index.ts > /tmp/vault-mcp.log 2>&1 &
 cd /opt/pocketx/projects/web
 nohup node server.js > /tmp/web.log 2>&1 &
 # server.js 零依赖，自动转发 /api/v2/* 到对应后端
+# Cache-Control: no-store → 强缓存禁用
 ```
 
 ### 按端口杀进程
 ```bash
-fuser -k 6001/tcp   # 或任何端口
-pkill -f "服务关键词"
+fuser -k 6001/tcp
 ```
 
 ## 数据库
@@ -164,7 +216,7 @@ localhost:5432, trust 认证, ubuntu 用户
 | 数据库 | 表数 | 说明 |
 |--------|------|------|
 | pocketx_waas | 17 | 钱包/用户/交易/SaaS |
-| pocketx_vault | 4 | Safe 多签 |
+| pocketx_vault | 4 | Safe 多签（safe_wallets 表名，非 safes） |
 | pocketx_dc | 2 | 订阅 users/tenants |
 | pocketx_mpc | 2 | MPC 钱包/注册 |
 | pocketx_payment | 3 | 支付订单 |
@@ -194,6 +246,20 @@ WALLET_API_URL=http://localhost:6001
 VAULT_API_URL=http://localhost:6002
 DC_API_URL=http://localhost:3001
 ```
+
+## 最近修复备忘 (2026-07-15)
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| DC spinner 一直转 | `dcLoadDashboard` 未清 `dc-chain-stats` | `setHtml('dc-chain-stats', 5链状态)` |
+| DC 只显示 1 条链 | 硬编码 `['Sepolia']` | `DC_CHAINS = ['Sepolia','Ethereum','BSC','Solana','Base']` |
+| 全 ○ Inactive | 误用 `.data` 包装（afetch 已解包） | 直接访问 `me.mpc.registered` 等 |
+| DC tab 永远 "Subscribe" | auth: 'wallet' 触发 MetaMask 弹窗 | 改回 `auth: 'none'` |
+| Vault API 返回 HTML | `/api/vault` 缺代理路由 | 加到 server.js API_ROUTES |
+| JS 缓存用旧文件 | Cache-Control: no-cache 不够 | 改为 `no-store, no-cache, must-revalidate` |
+| WaaS plan 为空 | SQL 缺 `t.plan_id` SELECT | 加 `planId` + `planName` 到返回 |
+| Vault `relation "safes"` 不存在 | 表名实际是 `safe_wallets` | 修正 SQL 查询 |
+| DC 用户查询失败 | users 表为空 + tenants 未关联 | populate users + link via owner_user_id |
 
 ## 负载参考
 
