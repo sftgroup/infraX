@@ -254,7 +254,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
     `);
 
     // Seed default admin user
-    const adminPwHash = require('crypto').createHash('sha256').update(infrax123').digest('hex');
+    const adminPwHash = require('crypto').createHash('sha256').update('infrax123').digest('hex');
     await client.query(
       `INSERT INTO admin_users (id, username, email, password_hash, role)
        VALUES ($1, 'admin', 'admin@infrax.io', $2, 'admin')
