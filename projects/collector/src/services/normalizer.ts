@@ -304,7 +304,7 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
             $14, $15, $16, $17, $18, $19, $20,
             NOW(), NOW()
           )
-          ON CONFLICT (event_id, collected_at) DO UPDATE SET confirmations = EXCLUDED.confirmations`,
+          ON CONFLICT (event_id, collected_at) DO NOTHING`,
           [
             uuidv4(),
             evt.event_id,

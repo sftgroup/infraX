@@ -147,7 +147,7 @@ export class OkxChainOSCollector {
    * Take a full snapshot of tracked tokens
    */
   async takeSnapshot(): Promise<{ tokens: number; errors: number }> {
-    const chains = ['ethereum', 'bsc', 'base', 'solana'];
+    const chains = ['ethereum', 'bsc', 'base'];
     let tokens = 0;
     let errors = 0;
     const collectedAt = new Date();

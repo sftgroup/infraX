@@ -60,6 +60,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_tx_hash ON events (tx_hash);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_collected_at ON events (collected_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_event_id ON events (event_id);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events (event_id, collected_at);`);
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_type_block ON events (chain, event_type, block_number DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_to_chain_block ON events (to_address, chain, block_number DESC);`);

@@ -21,20 +21,15 @@ import { logger } from '../logger';
  *  4. Normalize events → insert into events table
  *  5. Update checkpoint
  *
- * Supports 5 chains: sepolia, ethereum, bsc, base, solana
+ * Supports 5 chains: sepolia, ethereum, bsc, base, oxa
  */
 
-const SCAN_INTERVAL_MS = 10_000; // 10s per cycle
-const BLOCKS_PER_CYCLE = 5;      // Max blocks to scan per cycle per chain (reduced for Infura free tier)
-const CONFIRMATION_OFFSET = 3;   // Scan up to latest - 3 blocks (avoid reorgs)
-
-// Per-chain blocks-per-cycle overrides (solana: 1 slot has ~3k events)
-const BLOCKS_PER_CYCLE_OVERRIDE: Record<string, number> = {
-  solana: 1,   // 1 Solana slot ~= 3,500 SPL events, same order as 5 EVM blocks
-};
+const SCAN_INTERVAL_MS = 10_000;
+const BLOCKS_PER_CYCLE = 5;
+const CONFIRMATION_OFFSET = 3;
 
 // Chains to scan
-const ACTIVE_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'solana', 'oxa'];
+const ACTIVE_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa'];
 
 export class BlockScanner {
   private rpcPool: RpcPoolManager;
@@ -122,7 +117,7 @@ export class BlockScanner {
 
       // 2. Get checkpoint
       const checkpoint = await getCheckpoint(chain, 'block_scanner');
-      const batchSize = BLOCKS_PER_CYCLE_OVERRIDE[chain] ?? BLOCKS_PER_CYCLE;
+      const batchSize = BLOCKS_PER_CYCLE;
       const fromBlock = checkpoint > 0 ? checkpoint + 1 : Math.max(safeLatest - batchSize, 0);
 
       if (fromBlock > safeLatest) {
