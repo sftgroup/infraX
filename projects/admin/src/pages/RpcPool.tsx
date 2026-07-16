@@ -17,8 +17,7 @@ interface RpcEndpoint {
 }
 
 const CHAIN_NAMES: Record<string, string> = {
-  ethereum: 'Ethereum', polygon: 'Polygon', arbitrum: 'Arbitrum',
-  optimism: 'Optimism', bsc: 'BSC', base: 'Base', sepolia: 'Sepolia',
+  ethereum: 'Ethereum', bsc: 'BSC', base: 'Base', sepolia: 'Sepolia',
 };
 const CHAINS = Object.keys(CHAIN_NAMES);
 
@@ -38,9 +37,6 @@ const PROVIDERS: ProviderTemplate[] = [
 
 const CHAIN_ALIAS: Record<string, Record<string, string>> = {
   ethereum:   { default: 'eth-mainnet', infura: 'mainnet', alchemy: 'eth-mainnet', blastapi: 'eth-mainnet', tenderly: 'mainnet', quicknode: 'eth-mainnet' },
-  polygon:    { default: 'polygon-mainnet', infura: 'polygon-mainnet', alchemy: 'polygon-mainnet', blastapi: 'polygon-mainnet' },
-  arbitrum:   { default: 'arbitrum-mainnet', infura: 'arbitrum-mainnet', alchemy: 'arbitrum-mainnet', blastapi: 'arbitrum-mainnet' },
-  optimism:   { default: 'optimism-mainnet', infura: 'optimism-mainnet', alchemy: 'optimism-mainnet', blastapi: 'optimism-mainnet' },
   bsc:        { default: 'bnb-mainnet', alchemy: 'bnb-mainnet', blastapi: 'bsc-mainnet' },
   base:       { default: 'base-mainnet', alchemy: 'base-mainnet', blastapi: 'base-mainnet' },
   sepolia:    { default: 'eth-sepolia', infura: 'sepolia', alchemy: 'eth-sepolia', blastapi: 'eth-sepolia' },

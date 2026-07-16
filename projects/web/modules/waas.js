@@ -339,7 +339,9 @@ async function waasTokens() {
       var sym = t.token_symbol || t.symbol || '—';
       var addr = (t.contract_address || '').slice(0, 8) + '...' + (t.contract_address || '').slice(-6);
       return '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;margin-bottom:8px">' +
-        '<div><div style="font-weight:600">' + sym + ' <span style="font-size:10px;color:var(--warning)">' + (t.chain_id === 1 ? 'ETH' : t.chain_id === 137 ? 'POLYGON' : t.chain_id === 42161 ? 'ARB' : 'SEPOLIA') + '</span></div>' +
+        '<div><div style="font-weight:600">' + sym + ' <span style="font-size:10px;color:var(--warning)">' + (
+          t.chain_id === 1 ? 'ETH' : t.chain_id === 56 ? 'BSC' : t.chain_id === 8453 ? 'BASE' : 'SEPOLIA'
+        ) + '</span></div>' +
         '<div style="font-size:11px;color:var(--text-muted);font-family:monospace">' + (t.contract_address || '') + '</div></div>' +
         '<div style="text-align:right"><div style="font-size:11px;color:var(--text-muted)">Min Sweep</div><div style="font-size:13px;font-weight:600;color:var(--gold-light)">' + (t.min_sweep_amount || '0') + ' ' + sym + '</div></div></div>';
     }).join('');

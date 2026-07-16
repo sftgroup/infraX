@@ -14,7 +14,6 @@ const DC_CHAINS = [
   { name: 'Sepolia', img: '/img/chain-sepolia.svg', color: '#6366f1' },
   { name: 'Ethereum', img: '/img/chain-ethereum.svg', color: '#627eea' },
   { name: 'BSC', img: '/img/chain-bsc.svg', color: '#f0b90b' },
-  { name: 'Solana', img: '/img/chain-solana.svg', color: '#9945ff' },
   { name: 'Base', img: '/img/chain-base.svg', color: '#0052ff' },
   { name: 'OxaChain', img: '/img/chain-oxa.svg', color: '#ff6b35' },
 ];

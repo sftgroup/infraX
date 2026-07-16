@@ -68,10 +68,6 @@ export function buildRpcPoolConfig(): RpcPoolConfig {
       envOr('BASE_RPC_URL', ''),
       envOr('BASE_RPC_URL_2', ''),
     ]),
-    solana: endpointsForChain('solana', [
-      envOr('SOLANA_RPC_URL', process.env.HELIUS_SOLANA_URL || 'https://api.mainnet-beta.solana.com'),
-      envOr('SOLANA_RPC_URL_2', ''),
-    ]),
   });
 }
 

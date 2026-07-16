@@ -265,9 +265,6 @@ function getRpcUrl(chain: string): string {
     ethereum: config.chainRpc?.eth || config.ethRpcUrl || config.sepoliaRpcUrl,
     base: config.chainRpc?.base || config.baseRpcUrl,
     bsc: config.chainRpc?.bsc || config.bscRpcUrl,
-    polygon: config.chainRpc?.polygon,
-    arbitrum: config.chainRpc?.arbitrum,
-    optimism: config.chainRpc?.optimism,
   };
   const url = rpcs[chain.toLowerCase()];
   if (!url) throw Errors.paramError(`Unsupported NC chain: ${chain}`);
@@ -315,7 +312,7 @@ export async function getNCBalance(
   totalUsd: string;
 }> {
   const chains = targetChains || config.supportedChains.filter(c =>
-    ['sepolia', 'eth', 'ethereum', 'base', 'polygon', 'arbitrum', 'optimism'].includes(c)
+    ['sepolia', 'eth', 'ethereum', 'base', 'bsc'].includes(c)
   );
 
   const chainBalances: any[] = [];

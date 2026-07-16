@@ -9,13 +9,12 @@ import { getBinanceCollector } from '../services/binanceFutures';
 const router = Router();
 
 // ── Env-based endpoints (exposed as read-only to the frontend) ──
-const ENV_CHAINS = ['ethereum', 'bsc', 'base', 'sepolia', 'solana'];
+const ENV_CHAINS = ['ethereum', 'bsc', 'base', 'sepolia'];
 const ENV_VARS: Record<string, string[]> = {
-  ethereum:  ['ETH_RPC_URL', 'ETH_RPC_URL_2'],
-  bsc:       ['BSC_RPC_URL', 'BSC_RPC_URL_2'],
-  base:      ['BASE_RPC_URL', 'BASE_RPC_URL_2'],
-  sepolia:   ['SEPOLIA_RPC_URL', 'SEPOLIA_RPC_URL_2'],
-  solana:    ['SOLANA_RPC_URL', 'SOLANA_RPC_URL_2'],
+  ethereum: ['ETH_RPC_URL', 'ETH_RPC_URL_2'],
+  bsc: ['BSC_RPC_URL', 'BSC_RPC_URL_2'],
+  base: ['BASE_RPC_URL', 'BASE_RPC_URL_2'],
+  sepolia: ['SEPOLIA_RPC_URL', 'SEPOLIA_RPC_URL_2'],
 };
 
 function getEnvEndpoints() {

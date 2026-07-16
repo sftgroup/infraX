@@ -40,7 +40,7 @@ export const config = {
   },
 
   // Supported chains
-  supportedChains: (process.env.SUPPORTED_CHAINS || 'eth,polygon,arbitrum,optimism,bsc,base').split(','),
+  supportedChains: (process.env.SUPPORTED_CHAINS || 'eth,bsc,base').split(','),
 
   // Risk control
   risk: {
@@ -105,9 +105,6 @@ export const config = {
     eth: process.env.ETH_RPC_URL || process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',
     base: process.env.BASE_RPC_URL || '',
     bsc: process.env.BSC_RPC_URL || '',
-    polygon: process.env.POLYGON_RPC_URL || '',
-    arbitrum: process.env.ARBITRUM_RPC_URL || '',
-    optimism: process.env.OPTIMISM_RPC_URL || '',
   },
   // SEPOLIA_RPC_URL (legacy compat)
   sepoliaRpcUrl: process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',

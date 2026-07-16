@@ -13,8 +13,8 @@ interface DashboardData {
   okx?: CollectorHealth;
 }
 
-const CHAINS = ['sepolia','ethereum','polygon','arbitrum','optimism','bsc','base'];
-const CHAIN_NAMES: Record<string,string> = { sepolia:'Sepolia', ethereum:'Ethereum', polygon:'Polygon', arbitrum:'Arbitrum', optimism:'Optimism', bsc:'BSC', base:'Base' };
+const CHAINS = ['sepolia','ethereum','bsc','base'];
+const CHAIN_NAMES: Record<string,string> = { sepolia:'Sepolia', ethereum:'Ethereum', bsc:'BSC', base:'Base' };
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);

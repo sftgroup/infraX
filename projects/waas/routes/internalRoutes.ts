@@ -229,7 +229,7 @@ router.get(
   "/rpc-config",
   requireApiKey,
   asyncHandler(async (req, res) => {
-    const chains = ["eth","sepolia","polygon","arbitrum","optimism","bsc","base"];
+    const chains = ["eth","sepolia","bsc","base"];
     const config: Record<string,{rpc:string;chainId:number;explorer:string}> = {};
     for (const c of chains) {
       const envKey = "RPC_URL_" + c.toUpperCase();
@@ -237,14 +237,11 @@ router.get(
       if (!rpc) {
         if (c === "sepolia") rpc = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
         else if (c === "base") rpc = "https://sepolia.base.org";
-        else if (c === "arbitrum") rpc = "https://sepolia-rollup.arbitrum.io/rpc";
-        else if (c === "optimism") rpc = "https://sepolia.optimism.io";
         else if (c === "bsc") rpc = "https://data-seed-prebsc-1-s1.bnbchain.org:8545";
-        else if (c === "polygon") rpc = "https://polygon-amoy.g.alchemy.com/v2/demo";
         else rpc = "https://ethereum-sepolia-rpc.publicnode.com";
       }
-      const chainIds: Record<string,number> = {eth:11155111,sepolia:11155111,polygon:80002,arbitrum:421614,optimism:11155420,bsc:97,base:84532};
-      const explorers: Record<string,string> = {eth:"https://sepolia.etherscan.io",sepolia:"https://sepolia.etherscan.io",polygon:"https://amoy.polygonscan.com",arbitrum:"https://sepolia.arbiscan.io",optimism:"https://sepolia-optimism.etherscan.io",bsc:"https://testnet.bscscan.com",base:"https://sepolia.basescan.org"};
+      const chainIds: Record<string,number> = {eth:11155111,sepolia:11155111,bsc:97,base:84532};
+      const explorers: Record<string,string> = {eth:"https://sepolia.etherscan.io",sepolia:"https://sepolia.etherscan.io",bsc:"https://testnet.bscscan.com",base:"https://sepolia.basescan.org"};
       config[c] = {rpc,chainId:chainIds[c]||0,explorer:explorers[c]||""};
     }
     res.json(apiResponse(config, "Success"));
@@ -260,7 +257,7 @@ router.put(
   asyncHandler(async (req, res) => {
     const { chain, rpc } = req.body;
     if (!chain || !rpc) return res.status(400).json(apiResponse(null, "Missing chain or rpc", 1004));
-    const valid = ["eth","sepolia","polygon","arbitrum","optimism","bsc","base"];
+    const valid = ["eth","sepolia","bsc","base"];
     if (!valid.includes(chain)) return res.status(400).json(apiResponse(null, "Invalid chain: "+chain, 1004));
     const envKey = "RPC_URL_" + chain.toUpperCase();
     process.env[envKey] = rpc;

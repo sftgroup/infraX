@@ -4,3 +4,14 @@ dist/
 logs/
 *.bak
 .env.local
+*.py
+create_release.ps1
+release_body.json
+deploy_remote.sh
+deploy_to_prod.ps1
+setup_ssh_key.ps1
+auto_deploy.ps1
+push_to_github.ps1
+systemd_deploy.py
+systemd_v2.py
+systemd_mcp.py

@@ -397,53 +397,6 @@
       "status": "healthy"
     }
   ],
-  "solana": [
-    {
-      "key": "sol-alchemy-1",
-      "url": "https://solana-mainnet.g.alchemy.com/v2/HsbipfUQKw0a48ENgqlld",
-      "provider": "alchemy",
-      "tier": "free",
-      "rateLimit": {
-        "rpm": 330,
-        "rpd": 300000
-      },
-      "tokens": {
-        "remaining": 300000,
-        "resetAt": 0
-      },
-      "status": "healthy"
-    },
-    {
-      "key": "sol-alchemy-2",
-      "url": "https://solana-mainnet.g.alchemy.com/v2/vbmvVgJClZAv6PLarJb3c",
-      "provider": "alchemy",
-      "tier": "free",
-      "rateLimit": {
-        "rpm": 330,
-        "rpd": 300000
-      },
-      "tokens": {
-        "remaining": 300000,
-        "resetAt": 0
-      },
-      "status": "healthy"
-    },
-    {
-      "key": "sol-public",
-      "url": "https://api.mainnet-beta.solana.com",
-      "provider": "public",
-      "tier": "free",
-      "rateLimit": {
-        "rpm": 60,
-        "rpd": 10000
-      },
-      "tokens": {
-        "remaining": 10000,
-        "resetAt": 0
-      },
-      "status": "healthy"
-    }
-  ],
   "oxa": [
     {
       "key": "oxa-rpc",
