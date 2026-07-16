@@ -68,6 +68,9 @@ export function buildRpcPoolConfig(): RpcPoolConfig {
       envOr('BASE_RPC_URL', ''),
       envOr('BASE_RPC_URL_2', ''),
     ]),
+    oxa: endpointsForChain('oxa', [
+      envOr('OXA_RPC_URL', 'https://rpc-oxa.0xainet.top'),
+    ]),
   });
 }
 
