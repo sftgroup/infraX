@@ -14,7 +14,7 @@ const DATA_PLANS = [
     features: { chains: ['sepolia', 'ethereum', 'polygon', 'arbitrum', 'optimism', 'bsc', 'base'], apiCallsPerMonth: 1000000, dataRetentionHours: -1, realtime: true, support: 'dedicated', customChains: true, sla: '99.9%' } },
 ];
 
-function generateDcApiKey(): string { return infrax_dc_' + crypto.randomBytes(24).toString('hex'); }
+function generateDcApiKey(): string { return 'infrax_dc_' + crypto.randomBytes(24).toString('hex'); }
 function obscureKey(key: string): string { return key && key.length > 16 ? key.slice(0, 14) + '…' + key.slice(-8) : key; }
 
 // ─── Public ───
