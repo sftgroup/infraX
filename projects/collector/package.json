@@ -28,7 +28,8 @@
     "uuid": "^9.0.0",
     "viem": "^2.53.1",
     "winston": "^3.11.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "@solana/web3.js": "^1.90.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
