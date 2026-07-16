@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraX — Web3 Infrastructure Platform</title>
+<style>
+  :root{--brand:#FCD535;--brand-hover:#F0B90B;--bg:#080810;--card:#0f0f1a;--border:#1a1a2e;--text:#cdd6f4;--dim:#7c7c9a;--green:#0ECB81;--red:#F6465D;--blue:#5B9DF5;--purple:#A78BFA}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+  .gradient-bg{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;background:radial-gradient(ellipse 80% 60% at 50% -20%,rgba(252,213,53,.06),transparent),radial-gradient(ellipse 60% 50% at 90% 80%,rgba(167,139,250,.04),transparent)}
+  .container{max-width:1200px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+
+  /* Hero */
+  .hero{padding:100px 0 60px;text-align:center}
+  .hero-badge{display:inline-block;padding:6px 16px;background:rgba(252,213,53,.1);border:1px solid rgba(252,213,53,.2);border-radius:20px;font-size:13px;color:var(--brand);margin-bottom:24px;letter-spacing:.5px}
+  .hero h1{font-size:56px;font-weight:800;line-height:1.15;margin-bottom:20px;letter-spacing:-1px}
+  .hero h1 span{background:linear-gradient(135deg,var(--brand),#f0a000);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p{font-size:18px;color:var(--dim);max-width:640px;margin:0 auto 32px}
+  .hero-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{padding:12px 28px;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all .2s}
+  .btn-primary{background:var(--brand);color:#0B0E11;border:none}
+  .btn-primary:hover{background:var(--brand-hover);transform:translateY(-1px);box-shadow:0 8px 24px rgba(252,213,53,.25)}
+  .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border)}
+  .btn-outline:hover{border-color:var(--brand);color:var(--brand)}
+
+  /* Stats */
+  .stats{display:flex;justify-content:center;gap:60px;padding:40px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+  .stat{text-align:center}
+  .stat-num{font-size:36px;font-weight:800;color:var(--brand)}
+  .stat-label{font-size:13px;color:var(--dim);margin-top:4px}
+
+  /* Section */
+  .section{padding:80px 0}
+  .section-header{text-align:center;margin-bottom:56px}
+  .section-header h2{font-size:36px;font-weight:700;margin-bottom:12px}
+  .section-header p{color:var(--dim);font-size:16px;max-width:500px;margin:0 auto}
+
+  /* Product Grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:20px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;transition:all .25s;position:relative}
+  .card:hover{border-color:rgba(252,213,53,.3);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+  .card-icon{font-size:32px;margin-bottom:16px;display:block}
+  .card h3{font-size:19px;font-weight:700;margin-bottom:10px}
+  .card p{color:var(--dim);font-size:14px;line-height:1.7}
+  .card .tag{display:inline-block;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-top:14px;margin-right:6px}
+  .tag-live{background:rgba(14,203,129,.12);color:var(--green)}
+  .tag-mcp{background:rgba(167,139,250,.12);color:var(--purple)}
+  .tag-api{background:rgba(91,157,245,.12);color:var(--blue)}
+  .card .port{font-size:12px;color:var(--dim);margin-top:12px;font-family:monospace}
+
+  /* Architecture */
+  .arch{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:48px;text-align:center}
+  .arch-layers{display:flex;flex-direction:column;gap:20px;margin-top:32px}
+  .arch-layer{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .arch-label{font-size:12px;font-weight:700;color:var(--brand);min-width:100px;text-align:right;text-transform:uppercase;letter-spacing:1px}
+  .arch-boxes{display:flex;gap:10px;flex-wrap:wrap;flex:1}
+  .arch-box{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;font-weight:600;white-space:nowrap}
+
+  /* MCP row */
+  .mcp-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+  .mcp-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);color:var(--purple)}
+
+  /* CTA */
+  .cta{text-align:center;padding:80px 0 100px}
+  .cta h2{font-size:32px;font-weight:700;margin-bottom:16px}
+  .cta p{color:var(--dim);margin-bottom:28px}
+
+  /* Footer */
+  footer{text-align:center;padding:32px 0;border-top:1px solid var(--border);color:var(--dim);font-size:13px}
+
+  @media(max-width:768px){
+    .hero h1{font-size:36px}
+    .stats{gap:32px;flex-wrap:wrap}
+    .grid{grid-template-columns:1fr}
+    .arch{padding:24px}
+    .arch-layer{flex-direction:column;align-items:flex-start}
+    .arch-label{text-align:left;min-width:auto}
+  }
+</style>
+</head>
+<body>
+<div class="gradient-bg"></div>
+
+<!-- Hero -->
+<section class="hero container">
+  <div class="hero-badge">🚀 v5.0 — Production Ready</div>
+  <h1>One Platform, <span>All of Web3</span></h1>
+  <p>InfraX is the unified infrastructure layer for Web3 applications — from enterprise-grade wallet services to real-time on‑chain data, all accessible through simple APIs and MCP.</p>
+  <div class="hero-actions">
+    <a href="/connect.html" class="btn btn-primary">🚀 Connect Wallet</a>
+  </div>
+</section>
+
+<!-- Stats -->
+<div class="container">
+  <div class="stats">
+    <div class="stat"><div class="stat-num">11</div><div class="stat-label">Services Running</div></div>
+    <div class="stat"><div class="stat-num">5</div><div class="stat-label">Blockchain Networks</div></div>
+    <div class="stat"><div class="stat-num">2.1M+</div><div class="stat-label">On-chain Events</div></div>
+    <div class="stat"><div class="stat-num">4</div><div class="stat-label">MCP Servers</div></div>
+  </div>
+</div>
+
+<!-- Core Products -->
+<div class="section container">
+  <div class="section-header">
+    <h2>Core Products</h2>
+    <p>Six modular services covering every Web3 infrastructure need</p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <span class="card-icon">🦊</span>
+      <h3>WAAS — Wallet as a Service</h3>
+      <p>Enterprise-grade non-custodial wallet infrastructure. Tenant isolation, address pool management, gas fee estimation, and webhook integration — all through a unified REST API.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :6001 · Censorship-free identity layer</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔐</span>
+      <h3>Vault — Multi-Sig Safe</h3>
+      <p>Gas-less threshold signing with configurable N-of-M policies. Supports Safe{Core} chain execution, risk control rules, and hot wallet balance monitoring for institutional custody.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :6002 · Institutional grade security</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🧩</span>
+      <h3>MPC — Distributed Signing</h3>
+      <p>Multi-Party Computation wallet with key shard distribution. No single point of failure — signing keys are split across parties and assembled only at transaction time.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :6003 · Trustless key management</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">📡</span>
+      <h3>Data Center</h3>
+      <p>Real-time on-chain event subscriptions with customizable filters. Support for Ethereum, BSC, Arbitrum, Base, and Polygon — normalized schemas and reliable delivery.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :3001 · Unified event streaming</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">💳</span>
+      <h3>Payment</h3>
+      <p>Subscription management, payment orders, and billing events. Designed for SaaS monetization with Web3-native payment flows and automated invoicing.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :6004 · Web3-native billing</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔍</span>
+      <h3>Collector</h3>
+      <p>High-performance on-chain data ingestion engine. Scans 29 RPC endpoints across 5 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :3008 · 2.1M events indexed</div>
+    </div>
+  </div>
+</div>
+
+<!-- MCP Servers -->
+<div class="section container">
+  <div class="section-header">
+    <h2>AI-Native Integration</h2>
+    <p>Four MCP servers for direct AI Agent ↔ Blockchain interaction</p>
+  </div>
+  <div class="arch">
+    <div class="mcp-row">
+      <div class="mcp-badge">🤖 Wallet MCP</div>
+      <div class="mcp-badge">🏦 Vault MCP</div>
+      <div class="mcp-badge">📊 DC MCP</div>
+      <div class="mcp-badge">🔑 MPC MCP</div>
+    </div>
+    <p style="margin-top:16px;color:var(--dim);font-size:14px">AI agents can create wallets, sign transactions, query on-chain data, and manage multi-sig operations — all through the Model Context Protocol, without writing a single line of blockchain code.</p>
+  </div>
+</div>
+
+<!-- Architecture -->
+<div class="section container">
+  <div class="section-header">
+    <h2>Architecture</h2>
+    <p>How the pieces fit together</p>
+  </div>
+  <div class="arch">
+    <div class="arch-layers">
+      <div class="arch-layer">
+        <div class="arch-label">Frontend</div>
+        <div class="arch-boxes">
+          <div class="arch-box">🌐 Web App :6100</div>
+          <div class="arch-box">⚙ Admin Panel :3002</div>
+          <div class="arch-box">📄 Landing Page</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="arch-label">MCP Servers</div>
+        <div class="arch-boxes">
+          <div class="arch-box">🤖 Wallet :3004</div>
+          <div class="arch-box">🏦 Vault :3006</div>
+          <div class="arch-box">📊 DC :3005</div>
+          <div class="arch-box">🔑 MPC :3007</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="arch-label">Services</div>
+        <div class="arch-boxes">
+          <div class="arch-box">WAAS :6001</div>
+          <div class="arch-box">Vault :6002</div>
+          <div class="arch-box">MPC :6003</div>
+          <div class="arch-box">DC :3001</div>
+          <div class="arch-box">Payment :6004</div>
+          <div class="arch-box">Collector :3008</div>
+        </div>
+      </div>
+      <div class="arch-layer">
+        <div class="arch-label">Data</div>
+        <div class="arch-boxes">
+          <div class="arch-box">🐘 PostgreSQL 16</div>
+          <div class="arch-box">⛓ 5 Chains</div>
+          <div class="arch-box">🔗 29 RPC Endpoints</div>
+          <div class="arch-box">💰 OKX ChainOS</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<div class="cta container">
+  <h2>Ready to build?</h2>
+  <p>Connect your wallet and start building with InfraX infrastructure.</p>
+  <a href="/connect.html" class="btn btn-primary">🚀 Connect Wallet</a>
+</div>
+
+<footer>InfraX v5.0 · Web3 Infrastructure Platform · 2026</footer>
+</body>
+</html>

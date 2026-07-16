@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfraX v5.0</title>
+<link rel="stylesheet" href="/modules/infrax.css?v=1783820000">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+</head>
+<body>
+<!-- Background orbs -->
+<div class="bg-orb bg-orb-1"></div>
+<div class="bg-orb bg-orb-2"></div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ═════════ Sidebar (pure navigation) ═════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="sidebar-logo-icon">⚡</div>
+    <div class="sidebar-logo-text">InfraX</div>
+  </div>
+
+  <div class="nav-section">Wallets</div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-page="noncustodial">
+      <span>🦊</span> Non-Custodial
+    </button>
+    <button class="nav-item" data-page="mpc">
+      <span>🔐</span> MPC Wallet
+    </button>
+    <button class="nav-item" data-page="waas">
+      <span>🏢</span> WaaS
+      <span class="badge">B2B</span>
+    </button>
+    <button class="nav-item" data-page="safe">
+      <span>🛡️</span> Safe Vault
+      <span class="badge">Multi-Sig</span>
+    </button>
+    <button class="nav-item" data-page="datacenter">
+      <span>📡</span> Data Center
+      <span class="badge">API</span>
+    </button>
+  </nav>
+
+  <!-- sidebar-bottom: Disconnect moved to topbar -->
+</aside>
+
+<!-- ═════════ Main Content ═════════ -->
+<div class="main">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title" id="page-title">Non-Custodial Wallet</div>
+      <div class="topbar-chain"><span class="topbar-chain-dot"></span>Sepolia</div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-wallet">
+        <span class="topbar-wallet-dot" id="topbar-wallet-dot"></span>
+        <span id="topbar-wallet-addr"></span>
+      </div>
+      
+      <button class="btn-outline topbar-disconnect-btn" onclick="logout()" title="Disconnect wallet">
+        ↩ Disconnect
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ MODULE 1: NON-CUSTODIAL ═══ -->
+  <div class="page active" id="page-noncustodial">
+    <div class="tab-row">
+      <button class="tab-btn active" data-sub="nc-dash">Dashboard</button>
+      <button class="tab-btn" data-sub="nc-receive">Receive</button>
+      <button class="tab-btn" data-sub="nc-settings">Settings</button>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="sub-panel active" id="sub-nc-dash">
+      <div class="big-balance" id="nc-big-balance">$0.00</div>
+      <div class="big-balance-sub" id="nc-big-sub"></div>
+      <div class="stat-row">
+        <div class="stat-chip" id="nc-stat-chains"><b>1</b> chains</div>
+        <div class="stat-chip" id="nc-stat-tokens"><b>0</b> tokens</div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-secondary" onclick="switchModuleTab('noncustodial','nc-receive')">📥 Receive</button>
+      </div>
+      <div class="kpi-grid" id="nc-kpi"></div>
+      <div class="panel">
+        <div class="panel-header">Assets</div>
+        <div class="panel-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr><th>Token</th><th>Balance</th><th>USD Value</th><th>Network</th></tr></thead>
+            <tbody id="nc-assets-body"><tr><td colspan="4"><div class="empty"><span class="spin"></span></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receive -->
+    <div class="sub-panel" id="sub-nc-receive">
+      <div class="panel">
+        <div class="panel-header">Receive Funds</div>
+        <div class="panel-body" style="text-align:center">
+          <div style="width:176px;height:176px;background:#fff;border-radius:var(--r-md);padding:8px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center">
+            <canvas id="nc-recv-qr" width="160" height="160" style="width:160px;height:160px;display:none"></canvas>
+            <div style="font-size:13px;color:#ccc;text-align:center" id="nc-recv-qr-fallback">—</div>
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px">Your Address</div>
+          <div class="addr-pill" style="display:inline-flex;margin-bottom:14px;font-size:13px" id="nc-recv-full">—</div>
+          <div><button class="btn btn-primary" onclick="ncCopyAddr()">📋 Copy Address</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="sub-panel" id="sub-nc-settings">
+      <div class="panel">
+        <div class="panel-header">Wallet Settings</div>
+        <div class="panel-body" id="nc-settings-body"><span class="spin"></span></div>
+      </div>
+    </div>
+  </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+  <!-- MODULE 2: MPC Wallet — Email-based Multi-Wallet  -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <div class="page" id="page-mpc">
+    <!-- MPC Intro (not activated) -->
+    <div id="mpc-intro" style="display:none">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:48px;margin-bottom:16px">🔐</div>
+        <h2 style="font-size:22px;margin:0 0 8px">MPC Wallet</h2>
+        <p style="color:var(--text-secondary);max-width:480px;margin:0 auto 20px;line-height:1.6">
+          Secure multi-party computation wallet. Your private key is split across multiple parties — no single point of failure. Register with just an email and a verification code.
+        </p>
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px">
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">✉️</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Email Auth</div>
+            <div style="font-size:11px;color:var(--text-muted)">No seed phrase</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">🔀</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Key Sharding</div>
+            <div style="font-size:11px;color:var(--text-muted)">2-of-3 MPC</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">⚡</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Gas Sponsored</div>
+            <div style="font-size:11px;color:var(--text-muted)">Free transactions</div>
+          </div>
+        </div>
+        <div style="margin-bottom:20px">
+          <button class="btn btn-primary" onclick="mpcActivate()" style="padding:12px 32px;font-size:15px">🔐 Enable MPC Wallet</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted)">Free — independent service, no subscription required</p>
+        <div id="mpc-activate-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <!-- MPC Dashboard (activated) -->
+    <div id="mpc-dashboard-area" style="display:none">
+      <div class="tab-row">
+        <button class="tab-btn active" data-sub="mpc-reg">Register</button>
+        <button class="tab-btn" data-sub="mpc-rec">Recover</button>
+        <button class="tab-btn" data-sub="mpc-dash">Dashboard</button>
+        <button class="tab-btn" data-sub="mpc-send">Send</button>
+        <button class="tab-btn" data-sub="mpc-recv">Receive</button>
+      </div>
+      <div class="sub-panel active" id="sub-mpc-reg">
+        <div class="panel">
+          <div class="panel-header">Create MPC Wallet</div>
+          <div class="panel-body">
+            <label>Email</label>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input class="input" id="mpc-reg-email" placeholder="you@email.com" style="flex:1">
+              <button class="btn btn-primary btn-sm" onclick="mpcSendCode()">Send Code</button>
+            </div>
+            <label>Verification Code (dev: 888888)</label>
+            <input class="input" id="mpc-reg-code" placeholder="Send code first" disabled style="margin-bottom:12px">
+            <button class="btn btn-primary" id="mpc-reg-btn" onclick="mpcRegister()" disabled>Create Wallet</button>
+            <div class="result-box" id="mpc-reg-result"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-mpc-rec">
+        <div class="panel">
+          <div class="panel-header">Recover MPC Wallet</div>
+          <div class="panel-body">
+            <label>Email</label>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input class="input" id="mpc-rec-email" placeholder="you@email.com" style="flex:1">
+              <button class="btn btn-primary btn-sm" onclick="mpcRecSendCode()">Send Code</button>
+            </div>
+            <label>Recovery Code</label>
+            <input class="input" id="mpc-rec-code" placeholder="Send code first" disabled style="margin-bottom:12px">
+            <button class="btn btn-primary" id="mpc-rec-btn" onclick="mpcRecover()" disabled>Recover Wallet</button>
+            <div class="result-box" id="mpc-rec-result"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-mpc-dash">
+        <div class="panel">
+          <div class="panel-header">MPC Wallet</div>
+          <div class="panel-body">
+            <div style="margin-bottom:12px"><label>Address</label><div class="addr-pill" style="font-size:14px" id="mpc-bal-addr">—</div></div>
+            <div class="big-balance" id="mpc-bal-val">0 ETH</div>
+            <div class="big-balance-sub" id="mpc-status">🔐 MPC</div>
+            <div class="action-bar">
+              <button class="btn btn-primary" onclick="switchModuleTab('mpc','mpc-send')">📤 Send</button>
+              <button class="btn btn-secondary" onclick="switchModuleTab('mpc','mpc-recv')">📥 Receive</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-mpc-send">
+        <div class="panel">
+          <div class="panel-header">Send from MPC</div>
+          <div class="panel-body">
+            <div style="margin-bottom:14px"><label>From</label><div class="addr-pill" id="mpc-send-from">—</div></div>
+            <div class="form-row">
+              <div><label>To</label><input class="input" id="mpc-send-to" placeholder="0x..."></div>
+              <div><label>Amount (ETH)</label><input class="input" id="mpc-send-amt" placeholder="0.01"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <button class="btn btn-primary" id="mpc-send-btn" onclick="mpcSend()">Send</button>
+              <span class="gas-badge">⚡ Gas Sponsored</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-mpc-recv">
+        <div class="panel">
+          <div class="panel-header">Receive</div>
+          <div class="panel-body" style="text-align:center">
+            <div style="width:216px;height:216px;background:var(--surface-input);border-radius:var(--r-md);padding:8px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+              <canvas id="mpc-recv-qr" width="200" height="200" style="width:200px;height:200px;display:block;margin:0 auto;border-radius:6px;image-rendering:pixelated"></canvas>
+              <div style="font-size:13px;color:#333;word-break:break-all;text-align:center;padding:8px" id="mpc-recv-addr">—</div>
+            </div>
+            <div class="addr-pill" style="display:inline-flex;margin-bottom:14px;font-size:13px" id="mpc-recv-full">—</div>
+            <div><button class="btn btn-primary" onclick="mpcCopyAddr()">📋 Copy Address</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ============================================================ -->
+  <!-- MODULE 3: WaaS — Self-Service B2B Wallet-as-a-Service    -->
+  <!-- ============================================================ -->
+  <div class="page" id="page-waas">
+    <!-- WaaS Intro (not activated) -->
+    <div class="waas-intro" id="waas-intro" style="display:none">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:48px;margin-bottom:16px">🏢</div>
+        <h2 style="font-size:22px;margin:0 0 8px">Wallet-as-a-Service</h2>
+        <p style="color:var(--text-secondary);max-width:560px;margin:0 auto 20px;line-height:1.6">
+          Deploy custodial wallets for your users at scale. One API call to allocate addresses, auto-sweep to your treasury, and manage withdrawals — all programmable.
+        </p>
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px">
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">📍</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Address Pool</div>
+            <div style="font-size:11px;color:var(--text-muted)">1 call per user</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">🧹</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Auto-Sweep</div>
+            <div style="font-size:11px;color:var(--text-muted)">Configurable</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">🔑</div>
+            <div style="font-size:13px;color:var(--text-secondary)">API Key</div>
+            <div style="font-size:11px;color:var(--text-muted)">x-api-key auth</div>
+          </div>
+        </div>
+        <!-- Plan cards -->
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px;flex-wrap:wrap">
+          <div class="plan-card" id="plan-free" style="background:var(--card-bg);border:2px solid var(--success);border-radius:12px;padding:20px 24px;text-align:center;cursor:pointer;min-width:200px" onclick="waasSelectPlan('free')">
+            <div style="font-size:13px;font-weight:600;color:var(--success);margin-bottom:8px">🆓 FREE TRIAL</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">$0</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">3 days</div>
+            <div style="font-size:11px;color:var(--text-muted);line-height:1.6">10 addresses<br>100 API calls/day<br>1 chain</div>
+          </div>
+          <div class="plan-card" id="plan-pro" style="background:var(--card-bg);border:2px solid transparent;border-radius:12px;padding:20px 24px;text-align:center;cursor:pointer;min-width:200px" onclick="waasSelectPlan('pro')">
+            <div style="font-size:13px;font-weight:600;color:var(--text-brand);margin-bottom:8px">💼 PRO</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">$49</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">per month</div>
+            <div style="font-size:11px;color:var(--text-muted);line-height:1.6">1,000 addresses<br>50K API calls/day<br>5 chains<br>Priority support</div>
+          </div>
+          <div class="plan-card" id="plan-enterprise" style="background:var(--card-bg);border:2px solid transparent;border-radius:12px;padding:20px 24px;text-align:center;cursor:pointer;min-width:200px" onclick="waasSelectPlan('enterprise')">
+            <div style="font-size:13px;font-weight:600;color:var(--gold-light);margin-bottom:8px">🏭 ENTERPRISE</div>
+            <div style="font-size:24px;font-weight:700;margin-bottom:4px">$199</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">per month</div>
+            <div style="font-size:11px;color:var(--text-muted);line-height:1.6">Unlimited addresses<br>Unlimited API calls<br>All chains<br>Dedicated support<br>Custom SLA</div>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <span style="font-size:13px;color:var(--text-secondary)">Selected: </span><b id="waas-selected-plan" style="color:var(--success)">Free Trial</b>
+        </div>
+        <div style="margin-bottom:20px">
+          <button class="btn btn-primary" id="waas-activate-btn" onclick="waasActivate()" style="padding:12px 32px;font-size:15px">🚀 Activate WaaS</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted)">Free trial: 3 days · 10 addresses · auto-expires. Upgrade anytime.</p>
+      </div>
+    </div>
+    <!-- WaaS Dashboard (activated) -->
+    <div class="waas-dashboard" id="waas-dashboard" style="display:none">
+      <div class="tab-row">
+        <button class="tab-btn active" data-sub="waas-dash-overview">Overview</button>
+        <button class="tab-btn" data-sub="waas-dash-tokens">Tokens</button>
+        <button class="tab-btn" data-sub="waas-dash-addresses">Addresses</button>
+        <button class="tab-btn" data-sub="waas-dash-sweep">Sweep</button>
+        <button class="tab-btn" data-sub="waas-dash-withdrawals">Withdrawals</button>
+        <button class="tab-btn" data-sub="waas-dash-api">API &amp; SDK</button>
+      </div>
+      <div class="sub-panel active" id="sub-waas-dash-overview">
+
+        <!-- KPI Cards -->
+        <div class="kpi-grid" style="margin-bottom:20px">
+          <div class="kpi-card" style="border-top:3px solid var(--brand)">
+            <div class="kpi-icon" style="font-size:24px">🏢</div>
+            <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Status</div>
+            <div class="kpi-value" style="font-size:26px;font-weight:700" id="waas-ov-status">—</div>
+            <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)" id="waas-ov-plan">Free Trial</div>
+          </div>
+          <div class="kpi-card" style="border-top:3px solid var(--gold-light)">
+            <div class="kpi-icon" style="font-size:24px">🆔</div>
+            <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Tenant ID</div>
+            <div class="kpi-value" style="font-size:18px;font-weight:700" id="waas-ov-tid">—</div>
+            <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Your namespace</div>
+          </div>
+          <div class="kpi-card" style="border-top:3px solid var(--brand-purple)">
+            <div class="kpi-icon" style="font-size:24px">🔑</div>
+            <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Addresses</div>
+            <div class="kpi-value" style="font-size:26px;font-weight:700" id="waas-ov-addr">—</div>
+            <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Allocated via API</div>
+          </div>
+          <div class="kpi-card" style="border-top:3px solid var(--green)">
+            <div class="kpi-icon" style="font-size:24px">📤</div>
+            <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Withdrawals</div>
+            <div class="kpi-value" style="font-size:26px;font-weight:700" id="waas-ov-wd">—</div>
+            <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Processed requests</div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="panel" style="margin-bottom:12px">
+          <div class="panel-header">Quick Start</div>
+          <div class="panel-body" style="display:flex;gap:12px;flex-wrap:wrap">
+            <a href="javascript:void(0)" onclick="switchWaaSTab('waas-dash-tokens')" style="padding:12px 18px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:inherit;min-width:180px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px">🪙 Step 1: Add Tokens</div>
+              <div style="font-size:11px;color:var(--text-dim)">Configure which tokens your B2B users will deposit</div>
+            </a>
+            <a href="javascript:void(0)" onclick="switchWaaSTab('waas-dash-api')" style="padding:12px 18px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:inherit;min-width:180px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px">🔌 Step 2: Get API Key</div>
+              <div style="font-size:11px;color:var(--text-dim)">Generate key and integrate deposit/withdrawal APIs</div>
+            </a>
+            <a href="javascript:void(0)" onclick="switchWaaSTab('waas-dash-sweep')" style="padding:12px 18px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:inherit;min-width:180px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px">📥 Step 3: Set Sweep Target</div>
+              <div style="font-size:11px;color:var(--text-dim)">Auto-collect deposits to your main wallet</div>
+            </a>
+            <a href="javascript:void(0)" onclick="switchWaaSTab('waas-dash-withdrawals')" style="padding:12px 18px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:inherit;min-width:180px">
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px">⚙️ Step 4: Configure Withdrawals</div>
+              <div style="font-size:11px;color:var(--text-dim)">Set rules + callback URL for automated processing</div>
+            </a>
+          </div>
+        </div>
+
+        <!-- Upgrade Plan -->
+        <div class="panel" style="margin-bottom:12px" id="waas-upgrade-panel">
+          <div class="panel-header" style="display:flex;align-items:center;gap:8px"><span>📦 Subscription Plan</span><span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto" id="waas-ov-sub-status">Loading…</span></div>
+          <div class="panel-body">
+            <div style="display:flex;gap:12px;flex-wrap:wrap" id="waas-upgrade-plans">
+              <div style="background:var(--bg-card);border:2px solid var(--success);border-radius:8px;padding:14px 18px;text-align:center;cursor:pointer;min-width:150px" onclick="waasUpgradePlan('free')" id="waas-upgrade-free">
+                <div style="font-size:12px;font-weight:600;color:var(--success);margin-bottom:4px">🆓 Free</div>
+                <div style="font-size:20px;font-weight:700">$0</div>
+                <div style="font-size:10px;color:var(--text-muted)">Basic features</div>
+              </div>
+              <div style="background:var(--bg-card);border:2px solid transparent;border-radius:8px;padding:14px 18px;text-align:center;cursor:pointer;min-width:150px" onclick="waasUpgradePlan('pro')" id="waas-upgrade-pro">
+                <div style="font-size:12px;font-weight:600;color:var(--text-brand);margin-bottom:4px">💼 Pro</div>
+                <div style="font-size:20px;font-weight:700">$49</div>
+                <div style="font-size:10px;color:var(--text-muted)">Advanced features</div>
+              </div>
+              <div style="background:var(--bg-card);border:2px solid transparent;border-radius:8px;padding:14px 18px;text-align:center;cursor:pointer;min-width:150px" onclick="waasUpgradePlan('enterprise')" id="waas-upgrade-enterprise">
+                <div style="font-size:12px;font-weight:600;color:var(--gold-light);margin-bottom:4px">🏭 Enterprise</div>
+                <div style="font-size:20px;font-weight:700">$199</div>
+                <div style="font-size:10px;color:var(--text-muted)">Full platform</div>
+              </div>
+            </div>
+            <div id="waas-upgrade-status" style="margin-top:10px;font-size:12px;color:var(--text-muted)"></div>
+          </div>
+        </div>
+
+
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-header" style="display:flex;align-items:center;gap:8px"><span>🪙 Add Token Contract</span><span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">Multi-chain &bull; multi-token support</span></div>
+          <div class="panel-body">
+            <div class="form-row" style="grid-template-columns:2fr 1fr 1fr 80px;align-items:end;margin-bottom:8px">
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Contract Address</label><input class="input" id="waas-token-addr" placeholder="0x..."></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Symbol</label><input class="input" id="waas-token-symbol" placeholder="USDT"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-token-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="base">Base</option><option value="optimism">Optimism</option></select></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Decimals</label><input class="input" id="waas-token-decimal" value="18" type="number"></div>
+            </div>
+            <button class="btn btn-primary" onclick="waasAddToken()">+ Add Token</button>
+          </div>
+        </div>
+
+        <div id="waas-token-list"><div class="empty"><span class="spin"></span></div></div>
+      </div><div class="sub-panel" id="sub-waas-dash-addresses">
+
+        <div class="panel" style="margin-bottom:12px">
+          <div class="panel-header" style="display:flex;align-items:center;gap:8px"><span>📊 Address Allocation Overview</span><span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">via API only</span></div>
+          <div class="panel-body">
+            <div class="kpi-grid" style="margin-bottom:0" id="waas-addr-stats">
+              <div class="kpi-card" style="border-top:3px solid var(--brand)">
+                <div class="kpi-icon" style="font-size:24px">🔑</div>
+                <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Total Allocated</div>
+                <div class="kpi-value" style="font-size:26px;font-weight:700">—</div>
+                <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Addresses generated</div>
+              </div>
+              <div class="kpi-card" style="border-top:3px solid var(--gold-light)">
+                <div class="kpi-icon" style="font-size:24px">💰</div>
+                <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">With Balance</div>
+                <div class="kpi-value" style="font-size:26px;font-weight:700">—</div>
+                <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Active addresses</div>
+              </div>
+              <div class="kpi-card" style="border-top:3px solid var(--brand-purple)">
+                <div class="kpi-icon" style="font-size:24px">📥</div>
+                <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Swept Total</div>
+                <div class="kpi-value" style="font-size:26px;font-weight:700">—</div>
+                <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Cumulative deposits</div>
+              </div>
+              <div class="kpi-card" style="border-top:3px solid var(--green)">
+                <div class="kpi-icon" style="font-size:24px">📤</div>
+                <div class="kpi-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-dim)">Withdrawn Total</div>
+                <div class="kpi-value" style="font-size:26px;font-weight:700">—</div>
+                <div class="kpi-sub" style="font-size:11px;color:var(--text-muted)">Processed withdrawals</div>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:10px">💡 Addresses are allocated via API. Use <code style="background:var(--bg-card);padding:2px 6px;border-radius:4px;font-size:11px">POST /api/v2/saas/address</code> to request new deposit addresses for your end users.</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:12px">
+          <div class="panel-header">+ Allocate New Address</div>
+          <div class="panel-body">
+            <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 80px auto;align-items:end">
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">External User ID</label><input class="input" id="waas-addr-userid" placeholder="user-001"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-addr-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="base">Base</option><option value="optimism">Optimism</option></select></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Label (optional)</label><input class="input" id="waas-addr-label" placeholder="main-wallet"></div>
+              <button class="btn btn-primary" onclick="waasAllocateAddress()" style="padding:10px 16px;white-space:nowrap">Allocate</button>
+            </div>
+          </div>
+        </div>
+        <div id="waas-addr-list"><div class="empty"><span class="spin"></span></div></div>
+      </div><div class="sub-panel" id="sub-waas-dash-sweep">
+
+        <div class="panel" style="margin-bottom:12px">
+          <div class="panel-header" style="display:flex;align-items:center;gap:10px"><span>📥 Sweep Destinations</span><span style="font-size:11px;font-weight:400;color:var(--text-muted)">per chain / per address</span></div>
+          <div class="panel-body">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Deposits from allocated addresses are auto-collected to their respective destination. Add one per chain.</div>
+            <div id="waas-sweep-targets" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              <div style="text-align:center;padding:20px;font-size:12px;color:var(--text-muted)">Loading targets...</div>
+            </div>
+            <div class="form-row" style="grid-template-columns:2fr 1fr auto auto;align-items:end;border-top:1px solid var(--border);padding-top:12px">
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Target Address</label><input class="input" id="waas-sweep-addr" placeholder="0x..." style="margin-bottom:0"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-sweep-chain" style="margin-bottom:0"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="base">Base</option><option value="optimism">Optimism</option></select></div>
+              <button class="btn btn-primary" onclick="waasSaveSweepSingle()" style="white-space:nowrap;height:38px">Save</button>
+              <button class="btn btn-outline" onclick="waasAddSweepTarget()" style="white-space:nowrap;height:38px">+ Add More</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sweep History -->
+        <div class="panel">
+          <div class="panel-header">Sweep Log</div>
+          <div class="panel-body" id="waas-sweep-log" style="padding:0"><div style="text-align:center;padding:30px;font-size:13px;color:var(--text-muted)">📋 Sweep log will appear here after first sweep operation</div></div>
+        </div>
+      </div><div class="sub-panel" id="sub-waas-dash-withdrawals">
+
+        <!-- Withdrawal Rules -->
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-header">Withdrawal Rules</div>
+          <div class="panel-body">
+            <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr 2fr auto auto;align-items:end">
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-wd-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="base">Base</option><option value="optimism">Optimism</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Token</label><select class="input" id="waas-wd-token"><option value="">— Add tokens in Tokens tab —</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Auto-Exec Below</label><input class="input" id="waas-auto-threshold" value="0.1" type="number" step="0.01"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Require Review Above</label><input class="input" id="waas-manual-threshold" value="1.0" type="number" step="0.01"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Callback URL</label><input class="input" id="waas-wd-webhook" placeholder="https://your.app/callback" style="margin-bottom:0"></div>
+              <button class="btn btn-primary" onclick="waasSaveWithdrawRules()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">Save</button><button class="btn btn-outline" onclick="waasAddWithdrawRule()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">+ Add</button>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:12px;line-height:1.8">
+              Requests via API — evaluated against rules:<br>
+              <span style="color:var(--success)">Auto</span>: amount &le; threshold + hot wallet has funds → auto-execute + callback<br>
+              <span style="color:var(--text-brand)">Review</span>: amount &gt; threshold → appears below for manual approval<br>
+              <span style="color:var(--warning)">Insufficient</span>: approved but hot wallet too low → deposit prompt below
+            </div>
+          </div>
+        </div>
+
+        <!-- Hot Wallet -->
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-header" style="display:flex;align-items:center;gap:8px">
+            <span>📦 Hot Wallet</span>
+            <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">Deposit gas + tokens to enable auto-withdrawal</span>
+          </div>
+          <div class="panel-body" id="waas-hotwallets" style="padding:12px 16px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <button class="btn" style="padding:6px 14px;font-size:12px;background:var(--success);color:#fff;border:none;border-radius:6px" onclick="window.generateHotWallet()">🪙 Create Hot Wallet</button>
+              <span style="font-size:11px;color:var(--text-muted)">Sepolia Testnet</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px">Waiting for wallet data...</div>
+          </div>
+        </div>
+
+        <!-- Queue -->
+        <div class="panel">
+          <div class="panel-header" style="display:flex;align-items:center;gap:10px"><span>📤 Withdrawal Queue</span><span id="waas-wd-stats" style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto"></span></div>
+          <div class="panel-body" id="waas-wd-queue" style="padding:0">
+            <div class="empty"><span class="spin"></span></div>
+          </div>
+        </div>
+      </div><div class="sub-panel" id="sub-waas-dash-api">
+
+        <!-- API Key -->
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-header">API Key Management</div>
+          <div class="panel-body">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:14px 16px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px">
+              <span style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">Your Key</span>
+              <code style="font-size:13px;font-family:SF Mono,Fira Code,monospace" id="waas-api-key-display">—</code>
+            </div>
+            
+            <div style="margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <label style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px">IP Whitelist</label>
+                <span style="font-size:10px;color:var(--text-muted)">Optional — restrict key to trusted IPs</span>
+              </div>
+              <input class="input" id="waas-api-ips" placeholder="1.2.3.4, 5.6.7.0/24" style="font-size:13px">
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary btn-sm" onclick="waasGenerateApiKey()">Generate New Key</button>
+              <button class="btn btn-outline btn-sm" onclick="waasRotateApiKey()">Rotate Key</button>
+              <button class="btn btn-outline btn-sm" onclick="waasDeleteApiKey()" style="color:var(--danger);border-color:var(--danger)">Delete</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.7">
+              <b>Generate</b> creates a new key · <b>Rotate</b> deactivates old and creates new · <b>Delete</b> removes immediately
+            </div>
+          </div>
+        </div>
+
+        <!-- API Reference -->
+        <div class="panel">
+          <div class="panel-header">API Reference — Base URL: <code style="font-size:12px">{{BASE}}</code></div>
+          <div class="panel-body">
+
+            <!-- POST /address -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--success)">POST</span>
+                <code style="font-size:14px;font-weight:600">/api/v2/saas/address</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Allocate a deposit address for your end user. Returns unique address per externalUserId + chain. Wallet generated via HD derivation — private keys stay secure.</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Request</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0 0 12px;overflow-x:auto">curl -X POST {{BASE}}/api/v2/saas/address \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_KEY" \
+  -d '{"externalUserId":"user_001","chain":"sepolia"}'</pre>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Response 200</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">{"address":"0xAbC...123","externalUserId":"user_001","chain":"sepolia","createdAt":"..."}</pre>
+            </div>
+
+            <!-- GET /addresses -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(59,130,246,0.15);color:#3b82f6">GET</span>
+                <code style="font-size:14px;font-weight:600">/api/v2/saas/addresses</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">List all allocated addresses with balances and status. Supports pagination and chain filtering.</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0 0 12px;overflow-x:auto">curl {{BASE}}/api/v2/saas/addresses?chain=sepolia&amp;limit=50&amp;offset=0 \
+  -H "x-api-key: YOUR_KEY"</pre>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Response 200</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">{"items":[{"address":"0x...","externalUserId":"user_001","chain":"sepolia","balance":"1.5","tokenSymbol":"ETH"}],"total":150}</pre>
+            </div>
+
+            <!-- GET /balances -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(59,130,246,0.15);color:#3b82f6">GET</span>
+                <code style="font-size:14px;font-weight:600">/api/v2/saas/balances</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Aggregated balance summary across all deposit addresses, grouped by token and chain.</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0 0 12px;overflow-x:auto">curl {{BASE}}/api/v2/saas/balances \
+  -H "x-api-key: YOUR_KEY"</pre>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Response 200</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">{"balances":[{"token":"ETH","chain":"sepolia","total":"12.5","addressCount":45},{"token":"USDT","chain":"sepolia","total":"5000","addressCount":20}]}</pre>
+            </div>
+
+            <!-- POST /withdraw -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(234,179,8,0.15);color:var(--warning)">POST</span>
+                <code style="font-size:14px;font-weight:600">/api/v2/saas/withdraw</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Submit a withdrawal request. Evaluated against your auto/review rules. We execute and callback with result.</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0 0 12px;overflow-x:auto">curl -X POST {{BASE}}/api/v2/saas/withdraw \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: YOUR_KEY" \
+  -d '{"toAddress":"0x...","token":"USDT","amount":"100","chain":"sepolia","externalUserId":"user_001"}'</pre>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Response 202</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">{"withdrawalId":"wd_...","status":"pending_review","message":"Submitted for review"}</pre>
+            </div>
+
+            <!-- GET /withdrawals -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:4px;background:rgba(59,130,246,0.15);color:#3b82f6">GET</span>
+                <code style="font-size:14px;font-weight:600">/api/v2/saas/withdrawals</code>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Query withdrawal history with status, tx hashes, and callback delivery status.</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0 0 12px;overflow-x:auto">curl {{BASE}}/api/v2/saas/withdrawals?status=confirmed&amp;limit=20 \
+  -H "x-api-key: YOUR_KEY"</pre>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600">Response 200</div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">{"items":[{"id":"wd_...","status":"confirmed","txHash":"0x...","callbackStatus":"delivered","amount":"100","token":"USDT","toAddress":"0x...","createdAt":"..."}],"total":42}</pre>
+            </div>
+
+            <!-- Callback Convention -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px">
+              <div style="font-size:14px;font-weight:600;margin-bottom:10px">📡 Callback Convention</div>
+              <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;line-height:1.8">
+                We POST withdrawal status updates to your <code style="font-size:11px">callback_url</code> (configured in Withdrawal Rules).<br>
+                <b>Signature</b>: HMAC-SHA256 of JSON body with your <code style="font-size:11px">api_secret</code> → <code style="font-size:11px">X-InfraX-Signature</code> header.<br>
+                <b>Retry</b>: Up to 5 retries at 10s/30s/1min/5min/15min intervals. Check <code style="font-size:11px">callbackStatus</code> field in withdrawals API.<br>
+                <b>Idempotency</b>: Same <code style="font-size:11px">withdrawal_id</code> may be delivered multiple times — deduplicate on your end.
+              </div>
+              <pre style="background:var(--bg-card);padding:14px 16px;border-radius:6px;font-size:11px;margin:0;overflow-x:auto">POST https://your.app/callback
+Headers:
+  Content-Type: application/json
+  X-InfraX-Signature: sha256=abc123...
+  X-InfraX-Event: withdrawal.update
+Body:
+{
+  "event": "withdrawal.update",
+  "withdrawal_id": "wd_...",
+  "status": "confirmed|failed|approved|rejected",
+  "to_address": "0x...",
+  "from_address": "0x...",
+  "token": "USDT",
+  "token_symbol": "USDT",
+  "amount": "100",
+  "tx_hash": "0x...",
+  "fail_reason": null,
+  "timestamp": "2026-07-03T12:00:00.000Z"
+}</pre>
+            </div>
+
+            <!-- Authentication -->
+            <div style="padding:16px;border:1px solid var(--border);border-radius:8px">
+              <div style="font-size:14px;font-weight:600;margin-bottom:10px">🔐 Authentication</div>
+              <div style="font-size:12px;color:var(--text-dim);line-height:1.8">
+                All API requests require <code style="font-size:11px">x-api-key</code> header. Generate your key above.<br>
+                All amounts are in the token's smallest unit (e.g. wei for ETH, raw for USDT based on decimals).<br>
+                Rate limit: 100 requests/minute per key. WebSocket events available in beta — contact us for access.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="page" id="page-safe">
+    <!-- Safe Intro (not activated) -->
+    <div id="safe-intro" class="hidden">
+      <div class="intro-hero">
+        <div class="intro-icon">🛡️</div>
+        <h2 class="intro-title">Safe Vault</h2>
+        <p class="intro-desc">
+          Multi-signature vaults powered by Safe{Core} protocol. Create shared wallets with M-of-N approval — no single person can move funds alone. Perfect for teams, DAOs, and shared treasuries.
+        </p>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🔐</div>
+            <div class="feature-label">Multi-Sig</div>
+            <div class="feature-sub">M-of-N approval</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🤝</div>
+            <div class="feature-label">Shared Control</div>
+            <div class="feature-sub">Team treasury</div>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📜</div>
+            <div class="feature-label">On-Chain Proposals</div>
+            <div class="feature-sub">Transparent voting</div>
+          </div>
+        </div>
+        <div class="pricing-row">
+          <div class="pricing-card pricing-active">
+            <div class="pricing-tier pricing-tier-start">🆓 STARTER</div>
+            <div class="pricing-price">$0</div>
+            <div class="pricing-period">first 3 vaults free</div>
+            <div class="pricing-details">Multi-sig wallets<br>Proposal system<br>Sepolia testnet</div>
+          </div>
+          <div class="pricing-card">
+            <div class="pricing-tier pricing-tier-pro">💼 GROWTH</div>
+            <div class="pricing-price">$5</div>
+            <div class="pricing-period">per vault / month</div>
+            <div class="pricing-details">After 3 free vaults<br>Unlimited owners<br>Priority deployment</div>
+          </div>
+        </div>
+        <div class="intro-cta">
+          <button class="btn btn-primary btn-xl" onclick="safeActivateIntro()">🛡️ Enable Safe Vault</button>
+        </div>
+        <p class="intro-footnote">First 3 vaults free. $5/vault/month after. Cancel anytime.</p>
+      </div>
+    </div>
+    <!-- Safe Dashboard (activated) -->
+    <div id="safe-dashboard-area" class="hidden">
+      <div class="tab-row">
+        <button class="tab-btn active" data-sub="safe-owned">My Created</button>
+        <button class="tab-btn" data-sub="safe-participating">My Participating</button>
+        <button class="tab-btn" data-sub="safe-create-fm">Create</button>
+        <button class="tab-btn" data-sub="safe-propose-fm">Propose</button>
+      </div>
+      <div class="sub-panel active" id="sub-safe-owned">
+        <div id="safe-owned-list"><div class="empty"><span class="spin"></span></div></div>
+      </div>
+      <div class="sub-panel" id="sub-safe-participating">
+        <div id="safe-participating-list"><div class="empty"><span class="spin"></span></div></div>
+      </div>
+      <div class="sub-panel" id="sub-safe-create-fm">
+        <div class="panel">
+          <div class="panel-header">Create Safe Vault</div>
+          <div class="panel-body">
+            <div class="form-row">
+              <div class="form-group"><label>Wallet Name</label><input class="input" id="safe-name" placeholder="My Vault"></div>
+              <div class="form-group"><label>Threshold (M-of-N)</label><input class="input" id="safe-threshold" value="2" type="number" min="1"></div>
+            </div>
+            <label>Owner Addresses (comma-separated)</label>
+            <input class="input mb-sm" id="safe-owners" placeholder="0xAlice...,0xBob...,0xCarol...">
+            <button class="btn btn-primary" id="safe-create-btn" onclick="safeCreate()">Deploy Safe</button>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-safe-propose-fm">
+        <div class="panel">
+          <div class="panel-header">Propose Transaction</div>
+          <div class="panel-body">
+            <label>Safe Address</label>
+            <input class="input mb-sm" id="safe-propose-addr" placeholder="0xsafe...">
+            <div class="form-row">
+              <div class="form-group"><label>To</label><input class="input" id="safe-propose-to" placeholder="0x..."></div>
+              <div class="form-group"><label>Amount (ETH)</label><input class="input" id="safe-propose-amt" placeholder="0.01"></div>
+            </div>
+            <button class="btn btn-primary" id="safe-propose-btn" onclick="safePropose()">Propose</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ============================================================ -->
+  <!-- MODULE 5: Payment — B2B2C Unified Payment                  -->
+  <!-- ============================================================ -->
+  <div class="page" id="page-payment">
+    <!-- Payment Intro (not activated) -->
+    <div id="payment-intro" style="display:none">
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:48px;margin-bottom:16px">💳</div>
+        <h2 style="font-size:22px;margin:0 0 8px">Unified Payment</h2>
+        <p style="color:var(--text-secondary);max-width:520px;margin:0 auto 20px;line-height:1.6">
+          Accept payments from your users with three flexible methods — credit card via Stripe, direct wallet transfer, or QR code scan with any external wallet.
+        </p>
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px">
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">💳</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Stripe</div>
+            <div style="font-size:11px;color:var(--text-muted)">Visa / MC / UnionPay</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">🔐</div>
+            <div style="font-size:13px;color:var(--text-secondary)">Wallet Pay</div>
+            <div style="font-size:11px;color:var(--text-muted)">MPC / Non-Custodial</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">📱</div>
+            <div style="font-size:13px;color:var(--text-secondary)">QR Scan</div>
+            <div style="font-size:11px;color:var(--text-muted)">MetaMask / OKX / any</div>
+          </div>
+          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
+            <div style="font-size:24px;margin-bottom:4px">⚡</div>
+            <div style="font-size:13px;color:var(--text-secondary)">x402 Protocol</div>
+            <div style="font-size:11px;color:var(--text-muted)">HTTP 402 · AI-Agent Pay</div>
+          </div>
+        </div>
+        <div style="margin-bottom:20px">
+          <button class="btn btn-primary" onclick="paymentEnable()" style="padding:12px 32px;font-size:15px">💳 Enable Payment Module</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted)">2.9% + $0.30 Stripe fee. Gas fee applies for on-chain payments.</p>
+      </div>
+    </div>
+    <!-- Payment Dashboard (activated) -->
+    <div id="payment-dashboard-area" style="display:none">
+      <div class="tab-row">
+        <button class="tab-btn active" data-sub="pay-create">Create Order</button>
+        <button class="tab-btn" data-sub="pay-history">Order History</button>
+        <button class="tab-btn" data-sub="pay-methods">Payment Methods</button>
+      </div>
+      <!-- Create Order -->
+      <div class="sub-panel active" id="sub-pay-create">
+        <div class="panel">
+          <div class="panel-header">Create Payment Order</div>
+          <div class="panel-body">
+            <div class="form-row">
+              <div><label>Amount (USD)</label><input class="input" id="pay-amount" placeholder="49.00" type="number" step="0.01"></div>
+              <div><label>Payment Method</label>
+                <select class="input" id="pay-method" onchange="paymentMethodChange()">
+                  <option value="stripe">💳 Credit Card (Stripe)</option>
+                  <option value="wallet">🔐 Connected Wallet</option>
+                  <option value="qr">📱 QR Scan</option>
+                  <option value="x402">⚡ x402 Protocol</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div><label>Description</label><input class="input" id="pay-desc" placeholder="WaaS Pro Subscription"></div>
+              <div><label>Chain (on-chain)</label><input class="input" id="pay-chain" value="sepolia" disabled></div>
+            </div>
+            <button class="btn btn-primary" id="pay-create-btn" onclick="paymentCreateOrder()">Create Order</button>
+            <div id="pay-result" style="margin-top:16px"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Order History -->
+      <div class="sub-panel" id="sub-pay-history">
+        <div id="pay-history-list"><div class="empty"><span class="spin"></span></div></div>
+      </div>
+      <!-- Payment Methods Info -->
+      <div class="sub-panel" id="sub-pay-methods">
+        <div id="pay-methods-info"><span class="spin"></span></div>
+      </div>
+    </div>
+  </div>  <div class="page" id="page-datacenter">
+    <div id="dc-intro" class="waas-intro" style="display:none">
+      <div class="waas-intro-hero"><div class="waas-intro-icon">📡</div><h2>Data Center — On-Chain API</h2><p>Query standardized on-chain event data across 7 chains via simple REST API.</p></div>
+      <div class="waas-feature-row">
+        <div class="waas-feature"><div class="waas-feature-icon">🌐</div><div class="waas-feature-title">7 Chains</div><div class="waas-feature-sub">ETH,Polygon,Arbitrum,Optimism,BSC,Base,Sepolia</div></div>
+        <div class="waas-feature"><div class="waas-feature-icon">🔄</div><div class="waas-feature-title">Real-time</div><div class="waas-feature-sub">10s scan,3-block confirm</div></div>
+        <div class="waas-feature"><div class="waas-feature-icon">📊</div><div class="waas-feature-title">Normalized</div><div class="waas-feature-sub">Unified event schema</div></div>
+        <div class="waas-feature"><div class="waas-feature-icon">📡</div><div class="waas-feature-title">Simple API</div><div class="waas-feature-sub">Cursor pagination</div></div>
+      </div>
+      <div class="waas-plan-row">
+        <div class="waas-plan" id="dc-plan-free" onclick="dcSubscribe('data_free')" style="border-color:var(--brand)">
+          <div class="waas-plan-badge">Free</div>
+          <div class="waas-plan-name">🆓 Data Free</div>
+          <div class="waas-plan-price">$0</div><div class="waas-plan-period">/mo</div>
+          <div class="waas-plan-features">Sepolia only<br>10,000 calls/mo<br>24h retention</div>
+          <button class="btn btn-primary" style="margin-top:12px;width:100%">Get Started</button>
+        </div>
+        <div class="waas-plan waas-plan-pro" id="dc-plan-pro" onclick="dcSubscribe('data_pro')">
+          <div class="waas-plan-badge">Popular</div>
+          <div class="waas-plan-name">📡 Data Pro</div>
+          <div class="waas-plan-price">$29</div><div class="waas-plan-period">/mo</div>
+          <div class="waas-plan-features">All 7 chains<br>100,000 calls/mo<br>72h retention</div>
+          <button class="btn btn-primary" style="margin-top:12px;width:100%">Subscribe</button>
+        </div>
+        <div class="waas-plan" id="dc-plan-enterprise" onclick="dcSubscribe('data_enterprise')">
+          <div class="waas-plan-badge">Enterprise</div>
+          <div class="waas-plan-name">🏭 Enterprise</div>
+          <div class="waas-plan-price">$99</div><div class="waas-plan-period">/mo</div>
+          <div class="waas-plan-features">All chains + custom<br>1,000,000 calls/mo<br>Unlimited retention</div>
+          <button class="btn btn-primary" style="margin-top:12px;width:100%">Subscribe</button>
+        </div>
+      </div>
+      <div class="waas-selected-row" style="text-align:center"><span>Selected:</span> <b id="dc-selected-plan" style="color:var(--brand)">Data Free</b></div>
+      <div style="text-align:center;margin-bottom:20px"><button class="btn btn-primary btn-lg" style="padding:14px 40px;font-size:15px" id="dc-activate-btn" onclick="dcSubscribe('data_free')">🚀 Activate Data Center</button></div>
+      <p class="waas-intro-note" style="text-align:center">Free tier: Sepolia testnet · 10K calls · 24h retention. Upgrade anytime.</p>
+    </div>
+    <div id="dc-dash" style="display:none">
+      <div class="tab-row">
+        <button class="tab-btn active" data-sub="dc-overview">📊 Overview</button>
+        <button class="tab-btn" data-sub="dc-apikey">🔑 API Key</button>
+        <button class="tab-btn" data-sub="dc-docs">📖 API Docs</button>
+        <button class="tab-btn" data-sub="dc-explorer">🔍 Explorer</button>
+      </div>
+      <div class="sub-panel active" id="sub-dc-overview">
+        <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
+          <div class="kpi">
+            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">⚡</div>
+            <div class="kpi-label">Plan</div>
+            <div class="kpi-val gold" id="dc-plan-name" style="font-size:20px;font-weight:700">—</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">📡</div>
+            <div class="kpi-label">API Calls</div>
+            <div class="kpi-val" id="dc-usage-count" style="font-size:20px;font-weight:700">—</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🎯</div>
+            <div class="kpi-label">Monthly Quota</div>
+            <div class="kpi-val" id="dc-quota" style="font-size:20px;font-weight:700">—</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🌐</div>
+            <div class="kpi-label">Active Chains</div>
+            <div class="kpi-val" id="dc-chains" style="font-size:20px;font-weight:700">—</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span style="margin-right:8px">🔗</span> Chain Scan Status
+            <span class="stat-chip" id="dc-chain-count" style="margin-left:auto">0 chains</span>
+          </div>
+          <div class="panel-body" id="dc-chain-stats">
+            <div class="empty" style="padding:32px 0"><span class="spin"></span> Connecting to collector...</div>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-dc-apikey">
+        <div class="panel">
+          <div class="panel-header">🔑 Your API Key</div>
+          <div class="panel-body">
+            <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">Use this key in the <code>x-dc-api-key</code> header for all Data Center API requests.</p>
+            <div class="input-group" style="max-width:600px">
+              <input type="text" id="dc-api-key" readonly class="input mono" style="font-size:12px" value="—">
+              <button class="btn btn-secondary" onclick="dcCopyKey()">📋 Copy</button>
+            </div>
+            <p style="color:var(--text-tertiary);font-size:12px;margin-top:8px">Independent Data Center API Key — generated per plan.</p>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-dc-docs">
+        <div class="panel">
+          <div class="panel-header">🔐 Authentication</div>
+          <div class="panel-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">All API requests require the <code>x-dc-api-key</code> header:</p>
+            <div class="code-block"><pre>curl -H "x-dc-api-key: YOUR_KEY" \
+  https://infrax.app/api/v2/data/events?chain=sepolia</pre></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">📋 GET /events — Query On-Chain Events</div>
+          <div class="panel-body">
+            <table class="info-table">
+              <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              <tr><td><code>chain</code></td><td>string</td><td>sepolia, ethereum, polygon, arbitrum, optimism, bsc, base</td></tr>
+              <tr><td><code>address</code></td><td>string</td><td>Filter by from/to address</td></tr>
+              <tr><td><code>contract</code></td><td>string</td><td>Filter by contract</td></tr>
+              <tr><td><code>event_type</code></td><td>string</td><td>transfer</td></tr>
+              <tr><td><code>from_block</code></td><td>number</td><td>Block range start</td></tr>
+              <tr><td><code>to_block</code></td><td>number</td><td>Block range end</td></tr>
+              <tr><td><code>page_size</code></td><td>number</td><td>Results per page (max 500)</td></tr>
+              <tr><td><code>page_token</code></td><td>string</td><td>Cursor for next page</td></tr>
+            </table>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">📊 GET /stats — Chain Statistics</div>
+          <div class="panel-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">Returns event counts, latest blocks, and unique txs per chain.</p>
+            <div class="code-block"><pre>GET /api/v2/data/stats
+→ { chains: [{chain, event_count, latest_block, unique_tx}], storage: {totalRows, chains} }</pre></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">📚 Full API Documentation</div>
+          <div class="panel-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin:0">Complete API reference, SDK examples, and integration guides available on GitHub:</p>
+            <p style="margin:10px 0 0"><a href="https://github.com/sftgroup/infraX" target="_blank" style="color:var(--link,#3b82f6);font-weight:600;text-decoration:none">🔗 github.com/sftgroup/infraX</a></p>
+          </div>
+        </div>
+      </div>
+      <div class="sub-panel" id="sub-dc-explorer">
+        <div class="panel">
+          <div class="panel-header">🔎 Event Explorer</div>
+          <div class="panel-body">
+            <div class="filter-row">
+              <select id="dc-filter-chain" class="select" style="width:150px"></select>
+              <input type="text" id="dc-filter-addr" class="input" placeholder="Address (0x...)" style="width:360px">
+              <select id="dc-filter-type" class="select" style="width:140px"><option value="">All Types</option><option value="transfer">Transfer</option></select>
+              <button class="btn btn-primary" onclick="dcQueryEvents()">🔍 Search</button>
+            </div>
+            <div style="overflow-x:auto;margin-top:16px">
+              <table class="data-table" style="width:100%">
+                <thead><tr><th>Chain</th><th>Block</th><th>Type</th><th>From</th><th>To</th><th>Amount</th><th>TX</th></tr></thead>
+                <tbody id="dc-events-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-tertiary)">Enter filters above and click Search</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="dc-explorer-pager" style="display:flex;justify-content:center;gap:8px;margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+
+  </div>
+
+<script src="/modules/core.js?v=1783820000"></script>
+<script src="/modules/payment.js?v=1783731217"></script>
+<script src="/modules/nc-wallet.js?v=1783734859"></script>
+<script src="/modules/mpc-wallet.js?v=1783734639"></script>
+<script src="/modules/waas.js?v=1783731217"></script>
+<script src="/modules/safe.js?v=1783731217"></script>
+<script src="/modules/waas-extras.js?v=1783731217"></script>
+<script src="/modules/exports.js?v=1783731217"></script>
+  <script src="/modules/datacenter.js?v=1783820000"></script>
+
+</body>
+</html>

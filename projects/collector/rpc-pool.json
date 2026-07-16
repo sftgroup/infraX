@@ -1,0 +1,464 @@
+{
+  "sepolia": [
+    {
+      "key": "sepolia-tenderly",
+      "url": "https://sepolia.gateway.tenderly.co",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "sepolia-publicnode",
+      "url": "https://ethereum-sepolia-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "sepolia-sepoliaorg",
+      "url": "https://rpc.sepolia.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "sepolia-drpc",
+      "url": "https://sepolia.drpc.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "ethereum": [
+    {
+      "key": "eth-infura-1",
+      "url": "https://mainnet.infura.io/v3/00caef27cb1f48c69e29c69410225994",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "eth-infura-2",
+      "url": "https://mainnet.infura.io/v3/dfa9570b4e5e45a5ad42214ef78bf509",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "eth-publicnode",
+      "url": "https://ethereum-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "eth-llamarpc",
+      "url": "https://eth.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "eth-ankr",
+      "url": "https://rpc.ankr.com/eth",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "bsc": [
+    {
+      "key": "bsc-infura-1",
+      "url": "https://bsc-mainnet.infura.io/v3/6533af1da2b743a9b79cb9733e034217",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-infura-2",
+      "url": "https://bsc-mainnet.infura.io/v3/63ee183a3afa43208e99d6f3f1e7c5fb",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-infura-3",
+      "url": "https://bsc-mainnet.infura.io/v3/dccbab5dddd7405c80e0c03b0131842c",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-infura-4",
+      "url": "https://bsc-mainnet.infura.io/v3/b796e5f036a244528b674418e661e478",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-infura-5",
+      "url": "https://bsc-mainnet.infura.io/v3/fc84058a0aa449649d86a610cae8dc07",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-infura-6",
+      "url": "https://bsc-mainnet.infura.io/v3/620ecfba33b8432c870930a8551f7027",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-publicnode",
+      "url": "https://bsc-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-llamarpc",
+      "url": "https://binance.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-ankr",
+      "url": "https://rpc.ankr.com/bsc",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-dataseed",
+      "url": "https://bsc-dataseed.bnbchain.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-dataseed1",
+      "url": "https://bsc-dataseed1.bnbchain.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "bsc-dataseed2",
+      "url": "https://bsc-dataseed2.bnbchain.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "base": [
+    {
+      "key": "base-infura-1",
+      "url": "https://base-mainnet.infura.io/v3/42f2b9c4bcd3427fb49f67d85027a4d9",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "base-infura-2",
+      "url": "https://base-mainnet.infura.io/v3/bea964c89f39441abe373f9d70235bae",
+      "provider": "infura",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 300,
+        "rpd": 100000
+      },
+      "tokens": {
+        "remaining": 100000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "base-publicnode",
+      "url": "https://base-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "base-llamarpc",
+      "url": "https://base.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "base-official",
+      "url": "https://mainnet.base.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "solana": [
+    {
+      "key": "sol-alchemy-1",
+      "url": "https://solana-mainnet.g.alchemy.com/v2/HsbipfUQKw0a48ENgqlld",
+      "provider": "alchemy",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 330,
+        "rpd": 300000
+      },
+      "tokens": {
+        "remaining": 300000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "sol-alchemy-2",
+      "url": "https://solana-mainnet.g.alchemy.com/v2/vbmvVgJClZAv6PLarJb3c",
+      "provider": "alchemy",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 330,
+        "rpd": 300000
+      },
+      "tokens": {
+        "remaining": 300000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "sol-public",
+      "url": "https://api.mainnet-beta.solana.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "oxa": [
+    {
+      "key": "oxa-rpc",
+      "url": "https://rpc-oxa.0xainet.top",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ]
+}
