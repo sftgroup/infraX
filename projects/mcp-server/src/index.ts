@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: true }));
 
-const WAAS = process.env.WAAS_URL || 'http://localhost:6001';
+const WAAS = process.env.WAAS_URL || process.env.WALLET_API_URL || 'http://localhost:9109';
 const API_KEY = process.env.WAAS_KEY || process.env.WAAS_API_KEY || 'dev-cwallet-key';
 const PORT = parseInt(process.env.PORT || '3004', 10);
 

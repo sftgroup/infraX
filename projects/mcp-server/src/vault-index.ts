@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: true }));
 
-const VAULT = process.env.VAULT_URL || 'http://localhost:6002';
+const VAULT = process.env.VAULT_URL || process.env.VAULT_API_URL || 'http://localhost:9107';
 const PORT = parseInt(process.env.PORT || '3006', 10);
 
 async function vt(path: string, opts?: { method?: string; body?: any }) {

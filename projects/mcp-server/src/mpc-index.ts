@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: true }));
 
-const MPC = process.env.MPC_URL || 'http://localhost:6003';
+const MPC = process.env.MPC_URL || process.env.MPC_API_URL || 'http://localhost:9104';
 const PORT = parseInt(process.env.PORT || '3007', 10);
 
 async function mpc(path: string, opts?: { method?: string; body?: any }) {

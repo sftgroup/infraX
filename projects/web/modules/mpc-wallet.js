@@ -24,7 +24,7 @@ async function mpcInit() {
 
 async function mpcActivate() {
   var email = user().walletAddress + "@mpc.infrax.local";
-  var code = "888888";
+  var code = ""; // user must enter code after send-code
   try {
     showToast("Activating MPC Wallet...", "info");
     await afetch("/api/v2/mpc/send-code", { auth: "none", method: "POST", body: { email: email } });
@@ -49,10 +49,10 @@ async function mpcSendCode() {
   if (!mpcEmail) return showToast('Enter email', 'error');
   try {
     await afetch('/api/v2/mpc/send-code', { auth: 'none', method: 'POST', body: { email: mpcEmail } });
-    showToast('Code sent (test mode: 888888)', 'success');
+    showToast('Code sent - check server logs', 'info');
     var codeInput = document.getElementById('mpc-reg-code');
     var createBtn = document.getElementById('mpc-reg-btn');
-    codeInput.disabled = false; codeInput.placeholder = '888888';
+    codeInput.disabled = false; codeInput.placeholder = 'Enter 6-digit code'; codeInput.focus();
     createBtn.disabled = false;
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -81,10 +81,10 @@ async function mpcRecSendCode() {
   if (!mpcEmail) return showToast('Enter email', 'error');
   try {
     await afetch('/api/v2/mpc/send-code', { auth: 'none', method: 'POST', body: { email: mpcEmail } });
-    showToast('Code sent (test mode: 888888)', 'success');
+    showToast('Code sent - check server logs', 'info');
     var codeInput = document.getElementById('mpc-rec-code');
     var recoverBtn = document.getElementById('mpc-rec-btn');
-    codeInput.disabled = false; codeInput.placeholder = '888888';
+    codeInput.disabled = false; codeInput.placeholder = 'Enter 6-digit code'; codeInput.focus();
     recoverBtn.disabled = false;
   } catch (e) { showToast(e.message, 'error'); }
 }

@@ -4,7 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { z } from "zod";
 
-const DC_URL = process.env.DC_URL || "http://localhost:3001";
+const DC_URL = process.env.DC_URL || process.env.DC_API_URL || "http://localhost:9102";
 
 async function dc(path: string, options: RequestInit = {}) {
   const r = await fetch(`${DC_URL}${path}`, {

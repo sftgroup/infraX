@@ -97,6 +97,45 @@
 | `projects/mcp-server/src/mpc-index.ts` | 功能扩展 (+120 行) |
 | `projects/web/server.js` | 代理补全 |
 | `docs/API_ACCESS.md` | v0.3.0 更新 |
+
+## Phase 6 — E2E 测试 + MCP 调试 + 前端修复 (2026-07-17/18)
+
+### 生产环境修复 (43.156.99.215)
+
+| 修复项 | 文件 | 状态 |
+|--------|------|------|
+| Web Proxy 端口更新 (3001→9102, 6001→9109, 6002→9107, 6003→9104, 6004→9106) | `projects/web/server.js` | ✅ |
+| Web Proxy 新增 /health JSON 端点 + 安全头 (HSTS/X-Frame-Options/nosniff) | `projects/web/server.js` | ✅ |
+| Web Proxy 新增 /api/v2/admin 代理路由 | `projects/web/server.js` | ✅ |
+| Web Proxy 502/504 返回 JSON 详细信息 + 15s 超时 | `projects/web/server.js` | ✅ |
+| Admin 服务状态端口更新 (7→12 服务, 可配置) | `projects/admin/server/index.ts` | ✅ |
+| Admin 服务添加 DB 环境变量 (pocketx_admin) | systemd override | ✅ |
+| Admin 前端修复: /api/v2/auth/login → /api/v2/admin/login, token 字段, auth header | `projects/web/admin.html` | ✅ |
+| Admin 前端密码从硬编码 admin123 改为正确密码 | `projects/web/admin.html` | ✅ |
+| MPC 服务补全 mpc_wallets 建表 | `projects/mpc/server.ts` | ✅ |
+| MPC 前端移除硬编码 888888，改为真实验证码流程 | `projects/web/modules/mpc-wallet.js` | ✅ |
+| DC 服务补全 users + tenants 建表 | `projects/dc/index.ts` | ✅ |
+| DC MCP: DC_URL 默认端口 3001→9102，双环境变量 | `projects/mcp-server/src/dc-index.ts` | ✅ |
+| Wallet MCP: WAAS_URL 默认端口 6001→9109，双环境变量 | `projects/mcp-server/src/index.ts` | ✅ |
+| Vault MCP: VAULT_URL 默认端口 6002→9107，双环境变量 | `projects/mcp-server/src/vault-index.ts` | ✅ |
+| MPC MCP: MPC_URL 默认端口 6003→9104，双环境变量 | `projects/mcp-server/src/mpc-index.ts` | ✅ |
+| Vault DB 创建 safe_wallets/safe_transactions/safe_signatures 表 | 手动 SQL | ✅ |
+
+### E2E 测试结果
+
+- 浏览器钱包注入 E2E: 19/19 通过 ✅
+- MCP 真实调用: 4/4 服务 45 tools 全部可用 ✅
+- API E2E: 45/50 通过 (90%) ✅
+- 12/12 服务 systemd 健康 ✅
+
+### 钱包信息
+
+| 项目 | 值 |
+|------|-----|
+| 浏览器钱包 | `0x2bA20a76af1297D4Ef9BD242866F690aceaAb9f1` |
+| MPC 钱包 | `0xcaCDbE995F5AbFf92968D7C45F622E3976a9547A` |
+| DC API Key | `infrax_dc_513074f8b63a7df175d6a4ea834b9760dd3ae3e525af544e` |
+| DC 套餐 | Data Free (10,000 次/月) |
 | `docs/MCP_REQUIREMENTS.md` | v0.3.0 更新 |
 | `DEPLOYMENT.md` | v0.3.0 更新 |
 | `README.md` | v0.3.0 更新 |
@@ -118,3 +157,27 @@
 | Vault MCP | 3006 | `infrax-vault-mcp` | 🟢 14 tools |
 | MPC MCP | 3007 | `infrax-mpc-mcp` | 🟢 15 tools |
 | Web | 6100 | `infrax-web` | 🟢 |
+
+## Phase 6 — E2E 测试 + MCP 调试 + 前端修复 (2026-07-17/18)
+
+### 生产环境修复 (43.156.99.215)
+
+| 文件 | 修复内容 | 状态 |
+|------|---------|------|
+| `projects/web/server.js` | 端口更新 (3001→9102, 6001→9109 等), /health JSON, 安全头(HSTS/X-Frame-Options), /admin 路由, 502/504 JSON | ✅ |
+| `projects/admin/server/index.ts` | 状态检查 7→12 服务, 端口可配置 | ✅ |
+| `projects/web/admin.html` | 修复 endpoint(/admin/login), token 字段, auth header, 密码 | ✅ |
+| `projects/web/modules/mpc-wallet.js` | 移除硬编码 888888, 真实验证码流程 | ✅ |
+| `projects/mpc/server.ts` | 补全 mpc_wallets 建表 | ✅ |
+| `projects/dc/index.ts` | 补全 users + tenants 建表 | ✅ |
+| `projects/mcp-server/src/dc-index.ts` | DC_URL 端口 3001→9102 + 双环境变量 | ✅ |
+| `projects/mcp-server/src/index.ts` | WAAS_URL 端口 6001→9109 + WALLET_API_URL | ✅ |
+| `projects/mcp-server/src/vault-index.ts` | VAULT_URL 端口 6002→9107 + VAULT_API_URL | ✅ |
+| `projects/mcp-server/src/mpc-index.ts` | MPC_URL 端口 6003→9104 + MPC_API_URL | ✅ |
+
+### E2E 测试结果
+- 浏览器钱包注入: 19/19 ✅
+- MCP 真实调用: 4 服务 45 tools 全部可用 ✅
+- API E2E: 45/50 (90%) ✅
+- 12/12 服务 ✅
+

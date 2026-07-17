@@ -567,20 +567,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
 // === Admin Dashboard API Integration (v3) ===
 var API_BASE = '';
 var ADMIN_USER = 'admin';
-var ADMIN_PASS = 'admin123';
+var ADMIN_PASS = 'a87cefd6e1ce487334a67b0c';
 var adminToken = null;
 
 async function adminLogin() {
   if (adminToken) return adminToken;
   try {
-    var resp = await fetch(API_BASE + '/api/v2/auth/login', {
+    var resp = await fetch(API_BASE + '/api/v2/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: ADMIN_USER, password: ADMIN_PASS })
     });
     var json = await resp.json();
     if (json.code !== 0) throw new Error(json.message);
-    adminToken = json.data.accessToken;
+    adminToken = json.data.token;
     setTimeout(function() { adminToken = null; }, 23 * 3600 * 1000);
     return adminToken;
   } catch (err) {
@@ -593,7 +593,7 @@ async function adminFetch(path) {
   var token = await adminLogin();
   if (!token) throw new Error('Not authenticated');
   var resp = await fetch(API_BASE + path, {
-    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+    headers: { 'x-admin-token': token, 'Content-Type': 'application/json' }
   });
   var json = await resp.json();
   if (json.code !== 0) throw new Error(json.message);
