@@ -358,8 +358,8 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
  */
 export async function updateCheckpoint(chain: string, collectorName: string, lastBlock: number, lastTxHash?: string): Promise<void> {
   await pool.query(
-    `INSERT INTO event_checkpoints (chain, collector_name, last_block, last_tx_hash, last_fetch_at, status)
-     VALUES ($1, $2, $3, $4, NOW(), 'running')
+    `INSERT INTO event_checkpoints (id, chain, collector_name, last_block, last_tx_hash, last_fetch_at, status)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), 'running')
      ON CONFLICT (chain, collector_name) DO UPDATE
      SET last_block = EXCLUDED.last_block,
          last_tx_hash = EXCLUDED.last_tx_hash,
