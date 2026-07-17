@@ -135,13 +135,18 @@ app.patch('/api/v2/admin/rpc/:id', requireAdmin, asyncHandler(async (req: any, r
 // ─── Service Status (check all module health endpoints) ───
 app.get('/api/v2/admin/status', requireAdmin, asyncHandler(async (_req: any, res: any) => {
   const services = [
-    { name: 'waas', port: 6001 },
-    { name: 'dc', port: 3001 },
-    { name: 'vault', port: 6002 },
-    { name: 'mpc', port: 6003 },
-    { name: 'payment', port: 6004 },
-    { name: 'admin', port: 3002 },
-    { name: 'web', port: 6100 },
+    { name: 'collector',  port: parseInt(process.env.COLLECTOR_PORT  || '9101', 10) },
+    { name: 'waas',       port: parseInt(process.env.WAAS_PORT       || '9109', 10) },
+    { name: 'dc',         port: parseInt(process.env.DC_PORT         || '9102', 10) },
+    { name: 'vault',      port: parseInt(process.env.VAULT_PORT      || '9107', 10) },
+    { name: 'mpc',        port: parseInt(process.env.MPC_PORT        || '9104', 10) },
+    { name: 'payment',    port: parseInt(process.env.PAYMENT_PORT    || '9106', 10) },
+    { name: 'admin',      port: parseInt(process.env.ADMIN_PORT      || '9100', 10) },
+    { name: 'web',        port: parseInt(process.env.WEB_PORT        || '9111', 10) },
+    { name: 'wallet-mcp', port: parseInt(process.env.WALLET_MCP_PORT || '9110', 10) },
+    { name: 'dc-mcp',     port: parseInt(process.env.DC_MCP_PORT     || '9103', 10) },
+    { name: 'vault-mcp',  port: parseInt(process.env.VAULT_MCP_PORT  || '9108', 10) },
+    { name: 'mpc-mcp',    port: parseInt(process.env.MPC_MCP_PORT    || '9105', 10) },
   ];
   const statuses = await Promise.all(services.map(async s => {
     const path = s.path || '/health';
