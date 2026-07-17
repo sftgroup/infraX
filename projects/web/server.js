@@ -3,7 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 6100;
+const PORT = process.env.PORT || 6100;
 const WEB_DIR = __dirname;
 
 const API_ROUTES = {

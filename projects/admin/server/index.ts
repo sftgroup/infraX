@@ -374,7 +374,7 @@ app.get('/api/v2/admin/okx/health', requireAdmin, asyncHandler(async (_req: any,
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-admin', uptime: process.uptime() }));
 
 // ─── SPA fallback ───
-app.get('*', (_req, res) => {
+app.get('/{*splat}', (_req, res) => {
   res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
 });
 

@@ -1,79 +1,93 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-07-17 | 版本 `v0.3.0-20260717`
+> 最后更新: 2026-07-17 | 版本 `v0.3.1-20260717`
 
 ## 生产服务器
 
-```
-Host:   43.156.46.187
-User:   ubuntu
-Pass:   Asdf1234!
-Ports:  3000-6100
-Spec:   4C/7.5G/178G
+| 项目 | 旧服务器 | 新服务器 |
+|------|---------|---------|
+| Host | ~~43.156.46.187~~ | **43.156.99.215** |
+| User | ubuntu | ubuntu |
+| SSH | 直连 | 通过跳板机 `129.226.203.60` |
+| Ports | 3000-6100 | **9100-9111** |
+| Spec | 4C/7.5G/178G | 4C/8G |
+
+```bash
+# SSH 连接（需要跳板）
+ssh -J ubuntu@129.226.203.60 ubuntu@43.156.99.215
 ```
 
-## 当前运行服务（12 个）
+## 当前运行服务（12 个 systemd）
 
-| 服务 | 端口 | DB | 启动命令 | 状态 |
-|------|------|-----|---------|------|
-| WAAS | 6001 | pocketx_waas | `npx tsx index.ts` | 🟢 |
-| Vault | 6002 | pocketx_vault | `npx tsx server.ts` | 🟢 |
-| DC | 3001 | pocketx_dc + pocketx_collector | `npx tsx index.ts` | 🟢 |
-| MPC | 6003 | pocketx_mpc | `npx tsx server.ts` | 🟢 |
-| Payment | 6004 | pocketx_payment | `npx tsx server.ts` | 🟢 |
-| Collector | 3008 | pocketx_collector | `npx tsx src/index.ts` | 🟢 |
-| Admin | 3002 | 跨 7 DB | `npx tsx server/index.ts` | 🟢 |
-| Wallet MCP | 3004 | — | `npx tsx index.ts` | 🟢 |
-| DC MCP | 3005 | — | `npx tsx dc-index.ts` | 🟢 |
-| Vault MCP | 3006 | — | `npx tsx vault-index.ts` | 🟢 |
-| MPC MCP | 3007 | — | `npx tsx mpc-index.ts` | 🟢 |
-| Web | 6100 | — | `node server.js` | 🟢 |
+| 服务 | 端口 | DB | 启动 | 状态 |
+|------|------|-----|------|------|
+| Admin | 9100 | 跨 7 DB | `systemctl start infrax-admin` | 🟢 |
+| Collector | 9101 | pocketx_collector | `systemctl start infrax-collector` | 🟢 |
+| DC | 9102 | pocketx_dc + pocketx_collector | `systemctl start infrax-dc` | 🟢 |
+| DC MCP | 9103 | — | `systemctl start infrax-dc-mcp` | 🟢 |
+| MPC | 9104 | pocketx_mpc | `systemctl start infrax-mpc` | 🟢 |
+| MPC MCP | 9105 | — | `systemctl start infrax-mpc-mcp` | 🟢 |
+| Payment | 9106 | pocketx_payment | `systemctl start infrax-payment` | 🟢 |
+| Vault | 9107 | pocketx_vault | `systemctl start infrax-vault` | 🟢 |
+| Vault MCP | 9108 | — | `systemctl start infrax-vault-mcp` | 🟢 |
+| WAAS | 9109 | pocketx_waas | `systemctl start infrax-waas` | 🟢 |
+| Wallet MCP | 9110 | — | `systemctl start infrax-wallet-mcp` | 🟢 |
+| Web | 9111 | — | `systemctl start infrax-web` | 🟢 |
 
 ## 目录结构
 
 ```
-/opt/pocketx/projects/
-├── waas/          → WAAS :6001
-├── vault/         → Vault :6002
-├── mpc/           → MPC :6003
-├── dc/            → DC :3001
-├── payment/       → Payment :6004
-├── collector/     → Collector :3008
-├── admin/         → Admin :3002
-├── mcp-server/    → Wallet MCP :3004 / DC MCP :3005 / Vault MCP :3006
-└── web/           → Web :6100
-    ├── server.js         ← Node proxy (零依赖，Cache-Control: no-store)
-    ├── index.html        ← 主应用 (Dashboard / MPC / WaaS / DC / Safe tabs)
-    ├── connect.html      ← 钱包连接页
-    ├── landing.html      ← 产品落地页
-    ├── img/              ← 链 Logo SVG (chain-*.svg × 6，含 OxaChain)
+/opt/infraX/projects/
+├── admin/         → Admin :9100  (Express 5 SPA + REST API)
+├── collector/     → Collector :9101  (5 链区块扫描)
+├── dc/            → DC :9102  (数据中心 API)
+├── mcp-server/    → 4 个 MCP Server (dc/mpc/vault/wallet)
+├── mpc/           → MPC :9104  (多方计算钱包)
+├── payment/       → Payment :9106
+├── sdk/           → infrax-dk npm 包 (TypeScript SDK，非运行时服务)
+├── vault/         → Vault :9107  (Safe 多签)
+├── waas/          → WAAS :9109  (钱包即服务)
+└── web/           → Web :9111  (SPA + Landing Page)
+    ├── server.js          ← Node proxy (路由到后端 API)
+    ├── index.html         ← 主应用
+    ├── landing.html       ← 产品落地页
+    ├── connect.html       ← 钱包连接页
+    ├── admin.html         ← Admin 面板入口
+    ├── img/               ← 链 Logo SVG (chain-*.svg × 6)
     └── modules/
-        ├── core.js          ← 核心库 (afetch, user, setupNav, showToast)
-        ├── nc-wallet.js     ← Dashboard 仪表盘 (ncDash)
-        ├── datacenter.js    ← Data Center 模块 (dcInit, DC_CHAINS 6链)
-        ├── mpc.js           ← MPC 模块
-        ├── waas.js          ← WaaS 模块 (包含 GasSponsor/开发网)
-        ├── waas-extras.js   ← WaaS 工具函数 (按钮回调等)
-        ├── safe.js          ← Safe/Vault 模块
-        └── infrax.css       ← 统一样式（全平台字体 1.26x 放大）
+        ├── core.js        ← 核心库 (afetch, user, setupNav, showToast)
+        ├── nc-wallet.js   ← Dashboard 仪表盘
+        ├── datacenter.js  ← Data Center 模块
+        ├── mpc.js         ← MPC 模块
+        ├── waas.js        ← WaaS 模块
+        ├── waas-extras.js ← WaaS 工具函数
+        ├── safe.js        ← Safe/Vault 模块
+        ├── exports.js     ← 导出模块
+        └── infrax.css     ← 统一样式
+```
 
 ## Web Proxy 路由 (`server.js`)
 
 ```
-/api/v2/data   → :3001 (DC)
-/api/v2/mpc    → :6003
-/api/v2/wallet → :6001
-/api/v2/waas   → :6001
-/api/v2/saas   → :6001
-/api/vault     → :6002
-/api/v2/vault  → :6002
-/api/v2/payment → :6004
+/api/v2/data    → :9102 (DC)
+/api/v2/mpc     → :9104
+/api/v2/wallet  → :9109
+/api/v2/waas    → :9109
+/api/v2/saas    → :9109
+/api/vault      → :9107
+/api/v2/vault   → :9107
+/api/v2/payment → :9106
+/api/v2/admin   → :9100
 ```
 
-**特性**:
-- 零依赖 Node.js HTTP server
-- `Cache-Control: no-store, no-cache, must-revalidate` 防止 JS 缓存
-- SPA fallback：未知路径返回 `index.html`
+## 防火墙端口
+
+| 端口 | 服务 | 对外 |
+|------|------|------|
+| **9111** | Web / Landing Page | **必须开放** |
+| **9100** | Admin 面板 | **建议开放** |
+| 9103/9105/9108/9110 | MCP 服务 | 外部 AI Agent 调用时开放 |
+| 9101/9102/9104/9106/9107/9109 | 后端 API | 仅内部调用 |
 
 ## 支持的区块链
 
@@ -81,203 +95,72 @@ Spec:   4C/7.5G/178G
 |---|-----------|----------|-----|
 | Sepolia | `sepolia` | 11155111 | publicnode |
 | Ethereum | `eth` / `ethereum` | 1 | publicnode |
-| BSC | `bsc` | 56 | dataseed |
-| Solana | `solana` | — | alchemy |
+| BSC | `bsc` | 56 | dataseed (12 端点 via rpc-pool.json + env) |
 | Base | `base` | 8453 | mainnet.base.org |
 | **OxaChain** | `oxa` | 19505 | **rpc-oxa.0xainet.top** |
 
-> OxaChain: Clique PoA, 2s blocks, gas=OXA, server=43.156.99.215, HTTPS+LE
+> Collector 5 链扫描：sepolia / ethereum / bsc / base / oxa
+> RPC Pool: `rpc-pool.json` 静态基线 + env 环境变量 + DB `admin_rpc_config` 三层合并
 
-## 前端 JS 模块关键契约
+## systemd 管理
 
-### afetch() 行为 🔴
-```javascript
-// core.js 中的 afetch 自动解包后端 {code, data} 响应
-return j.data !== undefined ? j.data : j;
-
-// 所有 afetch 调用方拿到的已经是 data 内层，无需 .code 检查
-const usage = await afetch('/api/v2/data/usage', { auth: 'none' });
-// usage → { planId, planName, monthlyQuota, currentUsage }   ← 不是 { code: 0, data: {...} }
-```
-
-### auth 参数
-| 值 | 行为 | 用途 |
-|----|------|------|
-| `'none'` | 自动带 `x-wallet-address` header，不签名 | 只读查询 |
-| `'wallet'` | 调 `signOnce()` 触发 MetaMask 弹窗 | 写操作（订阅等） |
-
-> ⚠️ `auth: 'wallet'` 不要用于只读查询——会触发 MetaMask 弹窗且要求用户签名
-
-### getMe() 数据格式
-`localStorage.px_user` → `{ walletAddress, connectedAt }`（由 `connect.html` 写入）
-
-Dashboard 从 `getMe()` 并行读取 4 个 API：
-- `afetch('/api/v2/mpc/status')` → `{ registered, email, walletAddress }`
-- `afetch('/api/v2/saas/tenants/my')` → `{ tenantId, name, planId, planName, status }`
-- `afetch('/api/vault/safe/status')` → `{ enabled, count }`
-- `afetch('/api/v2/data/usage')` → `{ planId, planName, monthlyQuota, currentUsage }`
-
-### CSS 关键类
-
-| 类名 | 组件 | 备注 |
-|------|------|------|
-| `.nav-item` | 侧边导航 | `white-space:nowrap` 防换行 |
-| `.chain-card` | DC 链卡片 | 6 网格，hover 上浮 |
-| `.chain-card-icon` | 链 Logo | 40×40，内含 36×36 SVG img |
-| `.waas-quickstart` | WaaS 步骤卡 | flex 横向排列 |
-| `.waas-qs-card` | 步骤卡片 | 带编号 badge + hover 动效 |
-| `.waas-qs-step` | 步骤数字 | 彩色圆形（蓝→金→紫→绿） |
-
-## 部署流程
-
-```
-本地改代码 → git push → git sync (GitHub) → SSH scp 到服务器 → 重启
-```
-
-或通过 raw-upload 方式：
-```
-tar czf /tmp/infrax.tar.gz --exclude=node_modules --exclude=.next .
-curl --data-binary @/tmp/infrax.tar.gz http://43.156.46.187:3088/raw-upload/InfraX
-```
-
-### 代码同步铁律
-- 🔴 不在生产服务器直接改源码
-- 🔴 先 curl raw-upload 再 git_push → git_sync
-- 🔴 部署后刷新前端须更新 JS `?v=` 参数
-
-## 一键检查
-
+### 一键检查
 ```bash
-ssh 43.156.46.187
-for p in 6001 6002 6003 6004 3001 3002 3004 3005 3006 3007 3008 6100; do
-  curl -s --max-time 2 http://localhost:$p/health 2>/dev/null \
-    && echo ":$p OK" || echo ":$p DOWN"
+sudo systemctl --no-pager list-units 'infrax-*' --all
+```
+
+### 逐个管理
+```bash
+sudo systemctl start infrax-collector
+sudo systemctl stop infrax-collector
+sudo systemctl restart infrax-collector
+sudo systemctl status infrax-collector
+sudo journalctl -u infrax-collector -f   # 实时日志
+sudo journalctl -u infrax-collector --since '5 min ago'
+```
+
+### 全部重启
+```bash
+for s in infrax-collector infrax-admin infrax-dc infrax-dc-mcp infrax-mpc infrax-mpc-mcp infrax-payment infrax-vault infrax-vault-mcp infrax-waas infrax-wallet-mcp infrax-web; do
+  sudo systemctl restart $s
 done
 ```
 
-## 逐服务管理
-
-### Collector :3008
+### Collector Override 配置
 ```bash
-cd /opt/pocketx/projects/collector
-PORT=3008 nohup npx tsx src/index.ts > /tmp/collector.log 2>&1 &
-```
+# /etc/systemd/system/infrax-collector.service.d/okx.conf
+Environment="OKX_CHAINOS_API_KEY=..."
+Environment="OKX_CHAINOS_API_SECRET=..."
+Environment="OKX_CHAINOS_API_PASSPHRASE=..."
 
-### WAAS :6001
-```bash
-cd /opt/pocketx/projects/waas
-SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
-ETH_RPC_URL=https://ethereum-rpc.publicnode.com \
-BSC_RPC_URL=https://bsc-dataseed.bnbchain.org \
-BASE_RPC_URL=https://mainnet.base.org \
-SUPPORTED_CHAINS=sepolia,eth,bsc,base,oxa \
-PORT=6001 \
-  nohup npx tsx index.ts > /tmp/waas.log 2>&1 &
-```
-
-### Vault :6002
-```bash
-cd /opt/pocketx/projects/vault
-PORT=6002 nohup npx tsx server.ts > /tmp/vault.log 2>&1 &
-```
-
-### DC :3001
-```bash
-cd /opt/pocketx/projects/dc
-PORT=3001 nohup npx tsx index.ts > /tmp/dc.log 2>&1 &
-```
-
-### MPC :6003
-```bash
-cd /opt/pocketx/projects/mpc
-MPC_ENCRYPTION_SECRET=<32-byte-hex-secret> \
-MPC_AGENT_TX_LIMIT_ETH=0.1 \
-SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
-ETH_RPC_URL=https://ethereum-rpc.publicnode.com \
-BSC_RPC_URL=https://bsc-dataseed.bnbchain.org \
-BASE_RPC_URL=https://mainnet.base.org \
-OXA_RPC_URL=https://rpc-oxa.0xainet.top \
-PORT=6003 \
-  nohup npx tsx server.ts > /tmp/mpc.log 2>&1 &
-```
-
-### Payment :6004
-```bash
-cd /opt/pocketx/projects/payment
-PORT=6004 nohup npx tsx server.ts > /tmp/payment.log 2>&1 &
-```
-
-### Admin :3002
-```bash
-cd /opt/pocketx/projects/admin
-PORT=3002 nohup npx tsx server/index.ts > /tmp/admin.log 2>&1 &
-```
-
-### MCP Servers
-```bash
-# Wallet MCP :3004
-cd /opt/pocketx/projects/mcp-server
-PORT=3004 nohup npx tsx index.ts > /tmp/wallet-mcp.log 2>&1 &
-
-# DC MCP :3005
-PORT=3005 nohup npx tsx dc-index.ts > /tmp/dc-mcp.log 2>&1 &
-
-# Vault MCP :3006
-PORT=3006 nohup npx tsx vault-index.ts > /tmp/vault-mcp.log 2>&1 &
-
-# MPC MCP :3007
-PORT=3007 MPC_URL=http://localhost:6003 nohup npx tsx mpc-index.ts > /tmp/mpc-mcp.log 2>&1 &
-```
-
-### Web :6100
-```bash
-cd /opt/pocketx/projects/web
-nohup node server.js > /tmp/web.log 2>&1 &
-```
-
-### 按端口杀进程
-```bash
-fuser -k 6001/tcp
+# /etc/systemd/system/infrax-collector.service.d/oxa.conf
+Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
 ```
 
 ## 数据库
 
 ```
-localhost:5432, trust 认证, ubuntu 用户
+localhost:5432, postgres:postgres
 ```
 
 | 数据库 | 表数 | 说明 |
 |--------|------|------|
+| pocketx_collector | 10+ | 事件 + checkpoint + OKX + Binance |
 | pocketx_waas | 17 | 钱包/用户/交易/SaaS |
-| pocketx_vault | 4 | Safe 多签（safe_wallets 表名，非 safes） |
-| pocketx_dc | 2 | 订阅 users/tenants |
-| pocketx_mpc | 2 | MPC 钱包/注册 |
-| pocketx_payment | 3 | 支付订单 |
-| pocketx_admin | 3 | 管理后台 |
-| pocketx_collector | 10 | 事件采集 + OKX + Binance |
+| pocketx_vault | 4 | Safe 多签 |
+| pocketx_dc | 2 | 订阅 |
+| pocketx_mpc | 2 | MPC 钱包 |
+| pocketx_payment | 3 | 支付 |
+| pocketx_admin | 3 | 管理 |
 
 ## 环境变量关键项
 
-### WAAS (.env)
-```
-SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-ETH_RPC_URL=https://ethereum-rpc.publicnode.com
-BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
-BASE_RPC_URL=https://mainnet.base.org
-SUPPORTED_CHAINS=sepolia,eth,bsc,base,oxa
-PORT=6001
-DATABASE_URL=postgresql://ubuntu@localhost:5432/pocketx_waas
-```
+所有服务通过 systemd unit 文件注入环境变量，详见 `deploy_infrax.sh`。
 
-### DC (自动双池，无需额外配置)
-- `DATABASE_URL` → pocketx_dc (users/tenants)
-- `COLLECTOR_DB_URL` → pocketx_collector (events, 默认同 localhost)
-
-### MPC (v0.3.0 Agent Wallet)
+### Collector
 ```bash
-DATABASE_URL=postgresql://ubuntu@localhost:5432/pocketx_mpc
-MPC_ENCRYPTION_SECRET=<generated-32-byte-hex>   # 🔴 必填，不设则拒绝启动
-MPC_AGENT_TX_LIMIT_ETH=0.1                       # Agent 单笔转账上限（ETH）
+PORT=9101
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_collector
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ETH_RPC_URL=https://ethereum-rpc.publicnode.com
 BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
@@ -285,20 +168,59 @@ BASE_RPC_URL=https://mainnet.base.org
 OXA_RPC_URL=https://rpc-oxa.0xainet.top
 ```
 
-### Admin (v0.3.0 安全加固)
+### Admin
 ```bash
-ADMIN_PASS=<strong-password>   # 🔴 必填，不设则拒绝启动
+PORT=9100
+ADMIN_PASS=<required>   # 不设拒绝启动
 ADMIN_USER=admin
 ```
 
-### MCP Servers (通过 HTTP 调后端 API)
+### MPC
 ```bash
-WALLET_API_URL=http://localhost:6001
-VAULT_API_URL=http://localhost:6002
-DC_API_URL=http://localhost:3001
+PORT=9104
+MPC_ENCRYPTION_SECRET=<32-byte-hex>  # 必填
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_mpc
+```
+
+### MCP Servers
+```bash
+WALLET_API_URL=http://localhost:9109
+VAULT_API_URL=http://localhost:9107
+DC_API_URL=http://localhost:9102
+MPC_URL=http://localhost:9104
+```
+
+## 部署流程
+
+```
+本地改代码 → git push → 服务器 git pull → systemctl restart
+```
+
+```bash
+# 在服务器上
+cd /opt/infraX
+git pull origin master
+# 如有新增依赖
+for d in admin collector dc mcp-server mpc payment vault waas web; do
+  cd /opt/infraX/projects/$d && npm install 2>/dev/null || true
+done
+# 重启变更的服务
+sudo systemctl restart infrax-admin
 ```
 
 ## 修复备忘
+
+### v0.3.1 新服务器部署 + Express 5 修复 (2026-07-17)
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| 新服务器 SSH 超时 | 防火墙限制外部直连 | 跳板机 `129.226.203.60` |
+| git clone 后语法错误 | `core.autocrlf` 导致单引号丢失 | `git config core.autocrlf false` + reset |
+| Admin 反复 crash | Express 5 `path-to-regexp` v8 不支持 `'*'` | `app.get('*'` → `app.get('/{*splat}'` |
+| Collector BSC 仅 2 端点 | rpc-pool.json 未被加载 | 新增 `loadStaticPoolConfig()` 三层合并 |
+| Oxa 无 checkpoint | `UPDATE` 新链无行静默失败 | `INSERT...ON CONFLICT DO UPDATE` |
+| Web 端口冲突 | `server.js` 硬编码 6100 | `process.env.PORT \|\| 6100` |
+| payment/waas 缺依赖 | 项目无 package.json | `npm init -y` + `npm i express pg cors` |
 
 ### v0.3.0 MPC Agent Wallet + 安全加固 (2026-07-17)
 | 问题 | 根因 | 修复 |
@@ -315,39 +237,31 @@ DC_API_URL=http://localhost:3001
 ### v0.2.3 OxaChain 集成 (2026-07-15)
 | 问题 | 根因 | 修复 | Commit |
 |------|------|------|--------|
-| OxaChain RPC SSL 不可用 | HTTP 无 SSL，钱包拒绝 | HTTPS + Let's Encrypt 证书，非 CF 代理 | `2858c50` |
+| OxaChain RPC SSL 不可用 | HTTP 无 SSL，钱包拒绝 | HTTPS + Let's Encrypt 证书 | `2858c50` |
 | 生产 → Git 漏 20 文件 | server/git 不同步 | 全量补全 + `.gitignore` | `6a72ff0` `2156c57` |
 | 无统一接入文档 | 分散在 MCP_REQUIREMENTS + SDK 源码 | `docs/API_ACCESS.md` 三合一 | `7aa3572` |
 
-### v0.2.2 UI 美化 (2026-07-15)
-| 问题 | 根因 | 修复 | Commit |
-|------|------|------|--------|
-| 全平台字体太小 | 基础 14px 偏小 | 两轮乘法：1.15×1.10≈1.26x，body 14→18px | `5a8bd25` `06009cd` |
-| WaaS Overview 一直转 | `#waas-token-list` spinner 无人清除 | `waasLoadOverview()` 末尾加 `waasTokens()` | `7230d3d` |
-| Safe Vault 换行 | 字体放大后 `nav-item` 宽度不够 | `white-space:nowrap` | `b552552` |
-| DC 链卡片 emoji 丑 | emoji 图标不专业 | 5 条链本地 SVG logo | `e6d7af9` `8ad3eea` `80e6fdf` |
-| WaaS Quick Start 简陋 | 纯文字链接 | 编号步骤卡 (4 色 badge) | `ae1a2fd` |
+## 健康检查
 
-### v0.2.1 DC 5链 + 卡片UI (2026-07-15)
-| 问题 | 根因 | 修复 |
-|------|------|------|
-| DC spinner 一直转 | `dcLoadDashboard` 未清 `dc-chain-stats` | `setHtml('dc-chain-stats', 5链状态)` |
-| DC 只显示 1 条链 | 硬编码 | `DC_CHAINS` 常量 5 链 |
-| 全 ○ Inactive | 误用 `.data` 包装 | 直接访问字段 |
-| DC tab 永远 "Subscribe" | auth: 'wallet' 触发 MetaMask | `auth: 'none'` |
-| Vault API 返回 HTML | `/api/vault` 缺代理 | 加 proxy 路由 |
+```bash
+# 全部服务
+for port in 9100 9101 9102 9103 9104 9105 9106 9107 9108 9109 9110 9111; do
+  curl -s --max-time 2 http://localhost:$port/health 2>/dev/null \
+    && echo ":$port OK" || echo ":$port DOWN"
+done
 
-### v0.2.0 Dashboard 重构 (2026-07-15)
-| 问题 | 根因 | 修复 |
-|------|------|------|
-| WaaS plan 为空 | SQL 缺 `t.plan_id` | 加 planId + planName |
-| Vault `relation "safes"` | 表名 `safe_wallets` | 修正 SQL |
-| DC 用户查询失败 | users 表空 | populate + JOIN |
+# Collector 扫描状态
+sudo journalctl -u infrax-collector --no-pager -n 20 | grep scanner
+
+# DB checkpoint
+sudo -u postgres psql -d pocketx_collector -c \
+  "SELECT chain, collector_name, last_block, status FROM event_checkpoints ORDER BY chain;"
+```
 
 ## 负载参考
 
 ```
-正常: CPU idle 90%+, 内存 1.5-2G / 7.5G
-Collector: ~19% CPU (6 链扫描正常)
-已清理: Chrome headless ×4 + docker-bench-security.sh
+新服务器 (43.156.99.215): CPU idle 90%+, 内存 ~1.5G / 8G
+Collector: 5 链扫描 (sepolia/ethereum/bsc/base/oxa)，每链 ~17% CPU
+已知问题: OKX ChainOS API 404（遗留），BSC 部分端点限流
 ```
