@@ -83,6 +83,7 @@ export class BlockScanner {
    * Schedule periodic scan for a chain
    */
   private scheduleScan(chain: string): void {
+    console.log(`[scanner] Scheduling scan for ${chain}`);
     const timer = setInterval(() => {
       this.scanChain(chain);
     }, SCAN_INTERVAL_MS);
@@ -91,7 +92,7 @@ export class BlockScanner {
     this.scanTimers.set(chain, timer);
 
     // Initial scan after 3s (let the system settle)
-    setTimeout(() => this.scanChain(chain), 3000).unref?.();
+    setTimeout(() => { console.log(`[scanner] Initial scan firing for ${chain}`); this.scanChain(chain); }, 3000).unref?.();
   }
 
   /**
