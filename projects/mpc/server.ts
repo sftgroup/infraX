@@ -162,6 +162,26 @@ const ERC20_APPROVE_ABI = [
 
 (async () => {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS mpc_wallets (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      email_verified BOOLEAN DEFAULT false,
+      wallet_address TEXT,
+      encrypted_shard TEXT NOT NULL,
+      shard_count INTEGER DEFAULT 1,
+      total_shards INTEGER DEFAULT 3,
+      connected_wallet_address TEXT,
+      status TEXT DEFAULT 'active',
+      recovered_at TIMESTAMPTZ,
+      recovery_count INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_mpc_wallets_email ON mpc_wallets(email);
+    CREATE INDEX IF NOT EXISTS idx_mpc_wallets_status ON mpc_wallets(status);
+    CREATE INDEX IF NOT EXISTS idx_mpc_wallets_address ON mpc_wallets(wallet_address);
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS mpc_agent_logs (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,
@@ -174,7 +194,7 @@ const ERC20_APPROVE_ABI = [
     CREATE INDEX IF NOT EXISTS idx_mpc_agent_logs_email ON mpc_agent_logs(email);
     CREATE INDEX IF NOT EXISTS idx_mpc_agent_logs_created ON mpc_agent_logs(created_at);
   `);
-})().catch(e => console.error('[MPC] Agent logs table init error:', e.message));
+})().catch(e => console.error('[MPC] Table init error:', e.message));
 
 // ─── Health ───
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-mpc', uptime: process.uptime() }));

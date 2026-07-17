@@ -33,6 +33,42 @@ function apiResponse(data: any = null, message = 'success', code = 0) {
   return { code, message, data };
 }
 
+// ─── Init tables on startup ───
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        wallet_address TEXT NOT NULL UNIQUE,
+        role TEXT DEFAULT 'user',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tenants (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        owner_user_id INTEGER REFERENCES users(id),
+        data_plan_id TEXT,
+        api_key TEXT,
+        api_secret_hash TEXT,
+        dc_api_key TEXT,
+        dc_api_key_created_at TIMESTAMPTZ,
+        status TEXT DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_tenants_owner ON tenants(owner_user_id);
+      CREATE INDEX IF NOT EXISTS idx_tenants_dc_key ON tenants(dc_api_key);
+    `);
+    console.log('[DC] Tables initialized successfully');
+  } catch (e: any) {
+    console.error('[DC] Table init error:', e.message);
+  }
+})();
+
 // ─── Data Plans ───
 const DATA_PLANS = [
   { id: 'data_free', name: 'Data Free', price: 0, billingCycle: 'monthly',
