@@ -31,15 +31,17 @@ export interface RpcPoolConfig {
 }
 
 /**
- * Build RPC pool config from env vars.
+ * Build RPC pool config.
  *
- * Priority:
- *   1. INFRAX_RPC_POOL env var (JSON string of RpcEndpoint[])
- *   2. Per-chain env vars (SEPOLIA_RPC_URL, ETH_RPC_URL, etc.)
- *   3. Built-in defaults (public RPC fallbacks)
+ * Priority (lowest → highest):
+ *   1. rpc-pool.json static baseline (12+ endpoints per chain)
+ *   2. Per-chain env vars (SEPOLIA_RPC_URL, ETH_RPC_URL, etc.) — override/add
+ *   3. INFRAX_RPC_POOL env var (JSON) — full override
+ *
+ * DB endpoints (mergeDbEndpoints) run separately and take top priority.
  */
 export function buildRpcPoolConfig(): RpcPoolConfig {
-  // Try env-var pool first (for programmatic configuration)
+  // Try env-var pool first (for full programmatic override)
   const envPool = process.env.INFRAX_RPC_POOL;
   if (envPool) {
     try {
@@ -50,28 +52,75 @@ export function buildRpcPoolConfig(): RpcPoolConfig {
     }
   }
 
-  // Per-chain configs from env vars
-  return normalizeConfig({
-    sepolia: endpointsForChain('sepolia', [
-      envOr('SEPOLIA_RPC_URL', 'https://1rpc.io/sepolia'),
-      envOr('SEPOLIA_RPC_URL_2', 'https://sepolia.drpc.org'),
-    ]),
-    ethereum: endpointsForChain('ethereum', [
-      envOr('ETH_RPC_URL', process.env.INFURA_ETH_URL || ''),
-      envOr('ETH_RPC_URL_2', ''),
-    ]),
-    bsc: endpointsForChain('bsc', [
-      envOr('BSC_RPC_URL', ''),
-      envOr('BSC_RPC_URL_2', ''),
-    ]),
-    base: endpointsForChain('base', [
-      envOr('BASE_RPC_URL', ''),
-      envOr('BASE_RPC_URL_2', ''),
-    ]),
-    oxa: endpointsForChain('oxa', [
-      envOr('OXA_RPC_URL', 'https://rpc-oxa.0xainet.top'),
-    ]),
-  });
+  // Load static baseline from rpc-pool.json
+  const base = loadStaticPoolConfig();
+
+  // Merge per-chain env vars into the baseline (env vars override same-key endpoints)
+  mergeEnvEndpoints(base, 'sepolia', [
+    envOr('SEPOLIA_RPC_URL', ''),
+    envOr('SEPOLIA_RPC_URL_2', ''),
+  ]);
+  mergeEnvEndpoints(base, 'ethereum', [
+    envOr('ETH_RPC_URL', ''),
+    envOr('ETH_RPC_URL_2', ''),
+  ]);
+  mergeEnvEndpoints(base, 'bsc', [
+    envOr('BSC_RPC_URL', ''),
+    envOr('BSC_RPC_URL_2', ''),
+  ]);
+  mergeEnvEndpoints(base, 'base', [
+    envOr('BASE_RPC_URL', ''),
+    envOr('BASE_RPC_URL_2', ''),
+  ]);
+  mergeEnvEndpoints(base, 'oxa', [
+    envOr('OXA_RPC_URL', ''),
+  ]);
+
+  return normalizeConfig(base);
+}
+
+/**
+ * Load static endpoint baseline from rpc-pool.json.
+ */
+function loadStaticPoolConfig(): RpcPoolConfig {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const poolPath = path.resolve(__dirname, '../../rpc-pool.json');
+    if (fs.existsSync(poolPath)) {
+      const raw = fs.readFileSync(poolPath, 'utf-8');
+      const parsed = JSON.parse(raw) as RpcPoolConfig;
+      // Filter to only our active chains
+      const activeChains = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa'];
+      const filtered: RpcPoolConfig = {};
+      for (const chain of activeChains) {
+        if (parsed[chain]) filtered[chain] = parsed[chain];
+      }
+      console.log(`[rpc-pool] Loaded static baseline from rpc-pool.json: ${Object.values(filtered).reduce((s, eps) => s + eps.length, 0)} endpoints`);
+      return filtered;
+    }
+  } catch (e: any) {
+    console.warn(`[rpc-pool] Failed to load rpc-pool.json: ${e.message}`);
+  }
+  return {};
+}
+
+/**
+ * Merge env-provided URLs into the config. Env URLs with non-empty values are
+ * added as new endpoints or override the first matching endpoint by key prefix.
+ */
+function mergeEnvEndpoints(config: RpcPoolConfig, chain: string, urls: string[]): void {
+  const validUrls = urls.filter(u => u.length > 0);
+  if (validUrls.length === 0) return;
+  if (!config[chain]) config[chain] = [];
+  for (const url of validUrls) {
+    // Check if a similar URL already exists (avoid exact duplicates)
+    const exists = config[chain].some(e => e.url === url);
+    if (!exists) {
+      const key = `${chain}-env-${config[chain].length}`;
+      config[chain].push(createEndpoint(key, url, detectProvider(url)));
+    }
+  }
 }
 
 /**
@@ -113,12 +162,6 @@ export async function mergeDbEndpoints(config: RpcPoolConfig): Promise<void> {
 
 function envOr(key: string, fallback: string): string {
   return process.env[key] || fallback;
-}
-
-function endpointsForChain(chain: string, urls: string[]): RpcEndpoint[] {
-  return urls
-    .filter((url) => url.length > 0)
-    .map((url, i) => createEndpoint(`${chain}-${i + 1}`, url, detectProvider(url)));
 }
 
 function detectProvider(url: string): string {
