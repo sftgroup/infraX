@@ -121,7 +121,13 @@ export class BlockScanner {
       const batchSize = BLOCKS_PER_CYCLE;
       const fromBlock = checkpoint > 0 ? checkpoint + 1 : Math.max(safeLatest - batchSize, 0);
 
+      // DEBUG: trace oxa scan path
+      if (chain === 'oxa') {
+        console.log(`[scanner:oxa] latestBlock=${latestBlock} safeLatest=${safeLatest} checkpoint=${checkpoint} fromBlock=${fromBlock} activeEps=${activeEps.length}`);
+      }
+
       if (fromBlock > safeLatest) {
+        if (chain === 'oxa') console.log(`[scanner:oxa] skipping - fromBlock > safeLatest`);
         state.scanning = false;
         return; // Nothing new to scan
       }
