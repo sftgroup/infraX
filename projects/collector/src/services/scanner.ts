@@ -83,7 +83,6 @@ export class BlockScanner {
    * Schedule periodic scan for a chain
    */
   private scheduleScan(chain: string): void {
-    console.log(`[scanner] Scheduling scan for ${chain}`);
     const timer = setInterval(() => {
       this.scanChain(chain);
     }, SCAN_INTERVAL_MS);
@@ -92,7 +91,7 @@ export class BlockScanner {
     this.scanTimers.set(chain, timer);
 
     // Initial scan after 3s (let the system settle)
-    setTimeout(() => { console.log(`[scanner] Initial scan firing for ${chain}`); this.scanChain(chain); }, 3000).unref?.();
+    setTimeout(() => this.scanChain(chain), 3000).unref?.();
   }
 
   /**
@@ -121,13 +120,7 @@ export class BlockScanner {
       const batchSize = BLOCKS_PER_CYCLE;
       const fromBlock = checkpoint > 0 ? checkpoint + 1 : Math.max(safeLatest - batchSize, 0);
 
-      // DEBUG: trace oxa scan path
-      if (chain === 'oxa') {
-        console.log(`[scanner:oxa] latestBlock=${latestBlock} safeLatest=${safeLatest} checkpoint=${checkpoint} fromBlock=${fromBlock} activeEps=${activeEps.length}`);
-      }
-
       if (fromBlock > safeLatest) {
-        if (chain === 'oxa') console.log(`[scanner:oxa] skipping - fromBlock > safeLatest`);
         state.scanning = false;
         return; // Nothing new to scan
       }
