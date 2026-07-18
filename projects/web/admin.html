@@ -570,23 +570,109 @@ var ADMIN_USER = 'admin';
 var ADMIN_PASS = 'a87cefd6e1ce487334a67b0c';
 var adminToken = null;
 
-async function adminLogin() {
-  if (adminToken) return adminToken;
+// === Admin Login with validation & password toggle ===
+var ADMIN_USER = 'admin';
+var ADMIN_PASS = 'a87cefd6e1ce487334a67b0c';
+var adminToken = null;
+
+function showLoginOverlay() {
+  var overlay = document.getElementById('login-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'login-overlay';
+    overlay.className = 'login-overlay';
+    overlay.innerHTML = '<div class="login-box">' +
+      '<div class="login-title">⚡ InfraX Admin</div>' +
+      '<div class="login-sub">Enter your credentials to continue</div>' +
+      '<div class="login-error" id="login-error"></div>' +
+      '<div class="form-field">' +
+        '<label>Username</label>' +
+        '<input class="input" id="login-username" placeholder="admin" autocomplete="username">' +
+        '<div class="form-error" id="user-error">Username is required</div>' +
+      '</div>' +
+      '<div class="form-field">' +
+        '<label>Password</label>' +
+        '<div class="pw-wrapper">' +
+          '<input class="input" id="login-password" type="password" placeholder="Enter password" autocomplete="current-password">' +
+          '<button class="pw-toggle" id="pw-toggle" type="button" onclick="togglePassword()" aria-label="Show password">👁</button>' +
+        '</div>' +
+        '<div class="form-error" id="pw-error">Password is required</div>' +
+      '</div>' +
+      '<button class="btn btn-primary" style="width:100%;padding:12px;font-size:15px;" onclick="submitLogin()" id="login-btn">Sign In</button>' +
+    '</div>';
+    document.body.appendChild(overlay);
+    // Enter key handler
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && overlay && overlay.style.display !== 'none') submitLogin();
+    });
+  }
+  overlay.style.display = 'flex';
+  setTimeout(function() { document.getElementById('login-username').focus(); }, 100);
+}
+
+function togglePassword() {
+  var pw = document.getElementById('login-password');
+  var btn = document.getElementById('pw-toggle');
+  if (pw.type === 'password') { pw.type = 'text'; btn.textContent = '🙈'; }
+  else { pw.type = 'password'; btn.textContent = '👁'; }
+}
+
+async function submitLogin() {
+  var userEl = document.getElementById('login-username');
+  var pwEl = document.getElementById('login-password');
+  var userErr = document.getElementById('user-error');
+  var pwErr = document.getElementById('pw-error');
+  var loginErr = document.getElementById('login-error');
+  var btn = document.getElementById('login-btn');
+  
+  // Reset errors
+  userErr.classList.remove('show');
+  pwErr.classList.remove('show');
+  loginErr.classList.remove('show');
+  
+  var username = userEl.value.trim();
+  var password = pwEl.value.trim();
+  var valid = true;
+  
+  if (!username) { userErr.classList.add('show'); userEl.focus(); valid = false; }
+  if (!password) { pwErr.classList.add('show'); if (valid) pwEl.focus(); valid = false; }
+  if (!valid) return;
+  
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  
   try {
     var resp = await fetch(API_BASE + '/api/v2/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: ADMIN_USER, password: ADMIN_PASS })
+      body: JSON.stringify({ username: username, password: password })
     });
     var json = await resp.json();
-    if (json.code !== 0) throw new Error(json.message);
+    if (json.code !== 0) throw new Error(json.message || 'Invalid credentials');
     adminToken = json.data.token;
     setTimeout(function() { adminToken = null; }, 23 * 3600 * 1000);
-    return adminToken;
+    document.getElementById('login-overlay').style.display = 'none';
+    loadAdminDashboard();
   } catch (err) {
-    console.error('Admin login failed:', err);
-    return null;
+    loginErr.textContent = '❌ ' + (err.message || 'Login failed. Please check your credentials.');
+    loginErr.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
   }
+}
+
+async function adminLogin() {
+  if (adminToken) return adminToken;
+  // Show login overlay for manual auth
+  showLoginOverlay();
+  // Wait for login to complete (poll)
+  return new Promise(function(resolve) {
+    var interval = setInterval(function() {
+      if (adminToken) { clearInterval(interval); resolve(adminToken); }
+    }, 200);
+    // Timeout after 5 min
+    setTimeout(function() { clearInterval(interval); resolve(null); }, 300000);
+  });
 }
 
 async function adminFetch(path) {

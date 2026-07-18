@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>InfraX — Web3 Infrastructure Platform</title>
+<link rel="stylesheet" href="/modules/infrax.css">
 <style>
   :root{--brand:#FCD535;--brand-hover:#F0B90B;--bg:#080810;--card:#0f0f1a;--border:#1a1a2e;--text:#cdd6f4;--dim:#7c7c9a;--green:#0ECB81;--red:#F6465D;--blue:#5B9DF5;--purple:#A78BFA}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -89,14 +90,16 @@
   <h1>One Platform, <span>All of Web3</span></h1>
   <p>InfraX is the unified infrastructure layer for Web3 applications — from enterprise-grade wallet services to real‑time on‑chain data. Integrate via REST API, TypeScript SDK, or MCP for AI agents.</p>
   <div class="hero-actions">
-    <a href="/connect.html" class="btn btn-primary">🚀 Connect Wallet</a>
+    <a href="/connect.html" class="btn btn-primary">🚀 Launch App</a>
+    <a href="#core-products" class="btn btn-outline">📖 Explore Products</a>
+    <a href="https://github.com/sftgroup/infraX" class="btn btn-outline" target="_blank">⭐ GitHub</a>
   </div>
 </section>
 
 <!-- Stats -->
 <div class="container">
   <div class="stats">
-    <div class="stat"><div class="stat-num">11</div><div class="stat-label">Services Running</div></div>
+    <div class="stat"><div class="stat-num">12</div><div class="stat-label">Services Running</div></div>
     <div class="stat"><div class="stat-num">5</div><div class="stat-label">Blockchain Networks</div></div>
     <div class="stat"><div class="stat-num">2.1M+</div><div class="stat-label">On-chain Events</div></div>
     <div class="stat"><div class="stat-num">4</div><div class="stat-label">MCP Servers</div></div>
@@ -104,6 +107,7 @@
 </div>
 
 <!-- Core Products -->
+<div id="core-products">
 <div class="section container">
   <div class="section-header">
     <h2>Core Products</h2>
@@ -115,42 +119,42 @@
       <h3>WAAS — Wallet as a Service</h3>
       <p>Enterprise-grade non-custodial wallet infrastructure. Tenant isolation, address pool management, gas fee estimation, and webhook integration — all through a unified REST API.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :6001 · Censorship-free identity layer</div>
+      <div class="port">Port :9109 · Censorship-free identity layer</div>
     </div>
     <div class="card">
       <span class="card-icon">🔐</span>
       <h3>Vault — Multi-Sig Safe</h3>
       <p>Gas-less threshold signing with configurable N-of-M policies. Supports Safe{Core} chain execution, risk control rules, and hot wallet balance monitoring for institutional custody.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :6002 · Institutional grade security</div>
+      <div class="port">Port :9107 · Institutional grade security</div>
     </div>
     <div class="card">
       <span class="card-icon">🧩</span>
       <h3>MPC — Distributed Signing</h3>
       <p>Multi-Party Computation wallet with key shard distribution. No single point of failure — signing keys are split across parties and assembled only at transaction time.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :6003 · Trustless key management</div>
+      <div class="port">Port :9104 · Trustless key management</div>
     </div>
     <div class="card">
       <span class="card-icon">📡</span>
       <h3>Data Center</h3>
       <p>Real-time on-chain event subscriptions with customizable filters. Support for Ethereum, BSC, Sepolia, Base, and OxaChain — normalized schemas and reliable delivery.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :3001 · Unified event streaming</div>
+      <div class="port">Port :9102 · Unified event streaming</div>
     </div>
     <div class="card">
       <span class="card-icon">💳</span>
       <h3>Payment</h3>
       <p>Subscription management, payment orders, and billing events. Designed for SaaS monetization with Web3-native payment flows and automated invoicing.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :6004 · Web3-native billing</div>
+      <div class="port">Port :9106 · Web3-native billing</div>
     </div>
     <div class="card">
       <span class="card-icon">🔍</span>
       <h3>Collector</h3>
       <p>High-performance on-chain data ingestion engine. Scans 29 RPC endpoints across 5 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :3008 · 2.1M events indexed</div>
+      <div class="port">Port :9101 · 2.1M events indexed</div>
     </div>
   </div>
 </div>
@@ -167,28 +171,28 @@
       <h3>Wallet MCP</h3>
       <p>AI agents create & manage wallets. Generate addresses, sign transactions, query balances — all via MCP tools.</p>
       <span class="tag tag-mcp">MCP</span>
-      <div class="port">:3004 · SSE & stdio transport</div>
+      <div class="port">:9110 · SSE & stdio transport</div>
     </div>
     <div class="card">
       <span class="card-icon">🏦</span>
       <h3>Vault MCP</h3>
       <p>Multi-sig operations for AI. Propose, approve, execute Safe transactions with threshold policies.</p>
       <span class="tag tag-mcp">MCP</span>
-      <div class="port">:3006 · Integrated risk control</div>
+      <div class="port">:9108 · Integrated risk control</div>
     </div>
     <div class="card">
       <span class="card-icon">📊</span>
       <h3>DC MCP</h3>
       <p>On-chain data at AI's fingertips. Query events, subscribe to logs, retrieve real-time chain state.</p>
       <span class="tag tag-mcp">MCP</span>
-      <div class="port">:3005 · 5 chains supported</div>
+      <div class="port">:9103 · 5 chains supported</div>
     </div>
     <div class="card">
       <span class="card-icon">🧩</span>
       <h3>MPC MCP</h3>
       <p>Distributed key signing via MCP. Register key shards, coordinate signing sessions across parties.</p>
       <span class="tag tag-mcp">MCP</span>
-      <div class="port">:3007 · Threshold signing</div>
+      <div class="port">:9105 · Threshold signing</div>
     </div>
   </div>
 </div>
@@ -250,29 +254,29 @@
       <div class="arch-layer">
         <div class="arch-label">Frontend</div>
         <div class="arch-boxes">
-          <div class="arch-box">🌐 Web App :6100</div>
-          <div class="arch-box">⚙ Admin Panel :3002</div>
+          <div class="arch-box">🌐 Web App :9111</div>
+          <div class="arch-box">⚙ Admin Panel :9100</div>
           <div class="arch-box">📄 Landing Page</div>
         </div>
       </div>
       <div class="arch-layer">
         <div class="arch-label">MCP Servers</div>
         <div class="arch-boxes">
-          <div class="arch-box">🤖 Wallet :3004</div>
-          <div class="arch-box">🏦 Vault :3006</div>
-          <div class="arch-box">📊 DC :3005</div>
-          <div class="arch-box">🔑 MPC :3007</div>
+          <div class="arch-box">🤖 Wallet :9110</div>
+          <div class="arch-box">🏦 Vault :9108</div>
+          <div class="arch-box">📊 DC :9103</div>
+          <div class="arch-box">🔑 MPC :9105</div>
         </div>
       </div>
       <div class="arch-layer">
         <div class="arch-label">Services</div>
         <div class="arch-boxes">
-          <div class="arch-box">WAAS :6001</div>
-          <div class="arch-box">Vault :6002</div>
-          <div class="arch-box">MPC :6003</div>
-          <div class="arch-box">DC :3001</div>
-          <div class="arch-box">Payment :6004</div>
-          <div class="arch-box">Collector :3008</div>
+          <div class="arch-box">WAAS :9109</div>
+          <div class="arch-box">Vault :9107</div>
+          <div class="arch-box">MPC :9104</div>
+          <div class="arch-box">DC :9102</div>
+          <div class="arch-box">Payment :9106</div>
+          <div class="arch-box">Collector :9101</div>
         </div>
       </div>
       <div class="arch-layer">

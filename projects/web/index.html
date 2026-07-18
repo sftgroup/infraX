@@ -13,6 +13,10 @@
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
+<!-- Mobile hamburger menu -->
+<button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
 <!-- Toast container -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -998,5 +1002,12 @@ Body:
 <script src="/modules/exports.js?v=1783731217"></script>
   <script src="/modules/datacenter.js?v=1784050860"></script>
 
+
+<script>
+function toggleSidebar(){
+  var s=document.querySelector('.sidebar'), o=document.getElementById('sidebar-overlay');
+  s.classList.toggle('open'); o.classList.toggle('show');
+}
+</script>
 </body>
 </html>
