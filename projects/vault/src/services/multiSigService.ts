@@ -300,10 +300,12 @@ export async function createSafe(params: {
     // Fall through — store as pending, can retry later
   }
 
+  // Format owners array for PostgreSQL text[]: {"addr1","addr2",...}
+  var pgOwners = '{' + owners.map(function(o) { return '"' + o + '"'; }).join(',') + '}';
   await pool.query(
     `INSERT INTO safe_wallets (id, user_id, chain_id, safe_address, owners, threshold, name, status, salt_nonce)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [safeId, userId, chainId, actualAddress, JSON.stringify(owners), threshold, name || null, status, saltNonce.toString()]
+    [safeId, userId, chainId, actualAddress, pgOwners, threshold, name || null, status, saltNonce.toString()]
   );
 
   return {
