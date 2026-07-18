@@ -1,6 +1,6 @@
 # InfraX 接入文档 — API / MCP / SDK
 
-> 版本 `v0.3.0-20260717` | 最后更新 2026-07-17 | 生产: `129.226.203.60`
+> 版本 `v0.3.2-20260718` | 最后更新 2026-07-17 | 生产: `43.156.99.215`
 
 ## 概述
 
@@ -19,14 +19,14 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 └────────────┬────────────────────┬─────────────────┘
              │                    │
         ┌────▼────┐         ┌─────▼──────┐
-        │ Web :6100│         │ MCP Servers │
-        │ (proxy) │         │ :3004~:3007 │
+        │ Web :9111│         │ MCP Servers │
+        │ (proxy) │         │ :9110~:9105 │
         └────┬────┘         └─────┬──────┘
              │                    │
     ┌────────┼────────┬───────────┼──────────┐
     ▼        ▼        ▼           ▼          ▼
   WAAS    Vault     DC          MPC      Collector
-  :6001   :6002    :3001        :6003     :3008
+  :9109   :9107    :9102        :9104     :9101
 ```
 
 ## 一、REST API
@@ -35,7 +35,7 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 
 ```
 Base URL:  https://api.pocketx.ai
-           http://129.226.203.60:6100/api
+           http://43.156.99.215:9111/api
 ```
 
 ### 认证
@@ -48,7 +48,7 @@ Base URL:  https://api.pocketx.ai
 
 ### 端点总览
 
-#### 🔐 MPC — 密钥分片钱包 + Agent Wallet (`:6003`)
+#### 🔐 MPC — 密钥分片钱包 + Agent Wallet (`:9104`)
 
 ##### 钱包管理
 
@@ -94,7 +94,7 @@ Base URL:  https://api.pocketx.ai
 > `POST /api/v2/mpc/contract-write` Body: `{ "token": "...", "contractAddress": "0xD...", "abi": [...], "method": "approve", "args": ["0xS...", "1000000"] }`
 > 自动 `staticCall` 模拟 → 模拟通过 → 签名广播
 
-#### 💰 WAAS — 钱包即服务 (`:6001`)
+#### 💰 WAAS — 钱包即服务 (`:9109`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -115,7 +115,7 @@ Base URL:  https://api.pocketx.ai
 > Response 格式: `{ "code": 0, "data": { ... } }`
 > 租户激活后每请求须带 `x-api-key` header
 
-#### 🏦 Vault — 多签保险库 (`:6002`)
+#### 🏦 Vault — 多签保险库 (`:9107`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -132,7 +132,7 @@ Base URL:  https://api.pocketx.ai
 
 > Safe 创建: `{ "signers": ["0x..."], "threshold": 2, "chain": "sepolia" }`
 
-#### 📡 Data Center — 链上数据 (`:3001`)
+#### 📡 Data Center — 链上数据 (`:9102`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -148,7 +148,7 @@ Base URL:  https://api.pocketx.ai
 
 > 事件查询: `GET /api/v2/data/events?chain=sepolia&address=0x...&event_type=Transfer&limit=100`
 
-#### 💳 Payment — 支付引擎 (`:6004`)
+#### 💳 Payment — 支付引擎 (`:9106`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -166,10 +166,10 @@ Base URL:  https://api.pocketx.ai
 
 | MCP Server | 端口 | 工具数 | 覆盖模块 |
 |------------|------|--------|---------|
-| Wallet MCP | `:3004` | 10 | WaaS 钱包/支付 |
-| DC MCP | `:3005` | 7 | 数据查询/价格 |
-| Vault MCP | `:3006` | 14 | Safe 多签/风控 |
-| MPC MCP | `:3007` | 15 | MPC Agent Wallet |
+| Wallet MCP | `:9110` | 10 | WaaS 钱包/支付 |
+| DC MCP | `:9103` | 7 | 数据查询/价格 |
+| Vault MCP | `:9108` | 14 | Safe 多签/风控 |
+| MPC MCP | `:9105` | 15 | MPC Agent Wallet |
 
 ### 配置（OpenClaw / Claude Desktop）
 
@@ -177,16 +177,16 @@ Base URL:  https://api.pocketx.ai
 {
   "mcpServers": {
     "pocketx-wallet": {
-      "url": "http://129.226.203.60:3004/mcp/sse"
+      "url": "http://43.156.99.215:9110/mcp/sse"
     },
     "pocketx-dc": {
-      "url": "http://129.226.203.60:3005/mcp/message"
+      "url": "http://43.156.99.215:9103/mcp/message"
     },
     "pocketx-vault": {
-      "url": "http://129.226.203.60:3006/mcp/sse"
+      "url": "http://43.156.99.215:9108/mcp/sse"
     },
     "pocketx-mpc": {
-      "url": "http://129.226.203.60:3007/mcp/sse"
+      "url": "http://43.156.99.215:9105/mcp/sse"
     }
   }
 }
@@ -194,7 +194,7 @@ Base URL:  https://api.pocketx.ai
 
 ### 工具速查
 
-#### Wallet MCP (`:3004`) — 10 tools
+#### Wallet MCP (`:9110`) — 10 tools
 
 | Tool | 描述 | 主要参数 |
 |------|------|---------|
@@ -209,7 +209,7 @@ Base URL:  https://api.pocketx.ai
 | `payment_status` | 支付状态 | paymentId |
 | `x402_pay` | x402 自动支付 | recipient, amount |
 
-#### DC MCP (`:3005`) — 7 tools
+#### DC MCP (`:9103`) — 7 tools
 
 | Tool | 描述 | 主要参数 |
 |------|------|---------|
@@ -221,7 +221,7 @@ Base URL:  https://api.pocketx.ai
 | `dc_chains` | 链列表 | — |
 | `dc_price` | 实时价格（Binance） | symbol（如 ETH, BTC） |
 
-#### Vault MCP (`:3006`) — 14 tools
+#### Vault MCP (`:9108`) — 14 tools
 
 | Tool | 描述 | 主要参数 |
 |------|------|---------|
@@ -239,7 +239,7 @@ Base URL:  https://api.pocketx.ai
 | `vault_status` | 服务状态 | walletAddress |
 | `vault_risk_check` | 风控检查 | to, amount |
 
-#### MPC MCP (`:3007`) — 15 tools (v0.3.0)
+#### MPC MCP (`:9105`) — 15 tools (v0.3.0)
 
 | Tool | 描述 | 主要参数 |
 |------|------|---------|
@@ -362,13 +362,13 @@ if (r.code === 0) {
 
 | SDK 模块 | 对应后端 | 方法数 |
 |---------|---------|--------|
-| `.mpc` | MPC :6003 | 12（sendCode/register/recover/status/createWallet + Agent 7） |
-| `.wallet` | WAAS :6001 | 7（balance/send/simulate/rpc/sweep/txStatus/health） |
-| `.saas` | WAAS :6001 | 13（CRUD tenants, API keys, usage, stats） |
-| `.sub` | WAAS :6001 | 4（plans/current/subscribe/cancel） |
-| `.vault` / `.safe` | Vault :6002 | 12（CRUD safes, tx lifecycle, risk） |
-| `.dc` | DC :3001 | 6（events/stats/checkpoints/tokens/chains/plans） |
-| `.payment` | Payment :6004 | 4（create/status/confirm/x402） |
+| `.mpc` | MPC :9104 | 12（sendCode/register/recover/status/createWallet + Agent 7） |
+| `.wallet` | WAAS :9109 | 7（balance/send/simulate/rpc/sweep/txStatus/health） |
+| `.saas` | WAAS :9109 | 13（CRUD tenants, API keys, usage, stats） |
+| `.sub` | WAAS :9109 | 4（plans/current/subscribe/cancel） |
+| `.vault` / `.safe` | Vault :9107 | 12（CRUD safes, tx lifecycle, risk） |
+| `.dc` | DC :9102 | 6（events/stats/checkpoints/tokens/chains/plans） |
+| `.payment` | Payment :9106 | 4（create/status/confirm/x402） |
 
 ---
 
@@ -408,18 +408,18 @@ if (r.code === 0) {
 
 ```bash
 # 健康检查
-curl http://129.226.203.60:6001/health  # WAAS
-curl http://129.226.203.60:6002/health  # Vault
-curl http://129.226.203.60:3001/health  # DC
-curl http://129.226.203.60:3004/health  # Wallet MCP
-curl http://129.226.203.60:3005/health  # DC MCP
-curl http://129.226.203.60:3006/health  # Vault MCP
+curl http://43.156.99.215:9109/health  # WAAS
+curl http://43.156.99.215:9107/health  # Vault
+curl http://43.156.99.215:9102/health  # DC
+curl http://43.156.99.215:9110/health  # Wallet MCP
+curl http://43.156.99.215:9103/health  # DC MCP
+curl http://43.156.99.215:9108/health  # Vault MCP
 
 # MPC 发验证码
-curl -X POST http://129.226.203.60:6100/api/v2/mpc/send-code \
+curl -X POST http://43.156.99.215:9111/api/v2/mpc/send-code \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com"}'
 
 # DC 事件查询
-curl "http://129.226.203.60:6100/api/v2/data/events?chain=sepolia&limit=5"
+curl "http://43.156.99.215:9111/api/v2/data/events?chain=sepolia&limit=5"
 ```

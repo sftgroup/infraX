@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-07-17 | 版本 `v0.3.1-20260717`
+> 最后更新: 2026-07-18 | 版本 `v0.3.2-20260718`
 
 ## 生产服务器
 
@@ -265,3 +265,14 @@ sudo -u postgres psql -d pocketx_collector -c \
 Collector: 5 链扫描 (sepolia/ethereum/bsc/base/oxa)，每链 ~17% CPU
 已知问题: OKX ChainOS API 404（遗留），BSC 部分端点限流
 ```
+
+### v0.3.2 E2E 测试 + MCP 调试 (2026-07-18)
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| Web Proxy /health 返回 HTML | server.js 无 /health 路由 | 新增 JSON 格式 /health + 安全头 |
+| Proxy 路由 404 | 硬编码端口 3001/6001-6004 | 改为可配置 env 变量，默认 9100-9111 |
+| Admin 前端登录失败 | endpoint/token/auth header 错误 | 修复 /api/v2/admin/login + 正确密码 |
+| MPC 前端仍用 888888 | mpc-wallet.js 硬编码 | 改为真实验证码流程, 发码→用户输入→注册 |
+| MCP 4 服务环境变量不匹配 | dc-index.ts用DC_URL, service设DC_API_URL | 双重env支持: DC_URL/DC_API_URL + 默认端口更新 |
+| Vault 缺 safe_* 表 | server.ts 未调用 initDatabase() | 手动建表 + future: 启动时自动初始化 |
+| MPC/DC Vault 缺 DB 建表 | server.ts 启动时未 CREATE TABLE | mpc_wallets/users/tenants 补全 |
