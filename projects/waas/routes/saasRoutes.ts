@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler, apiResponse } from '../utils/helpers';
 import { authenticate, requireAdmin, requireTenantApiKey } from '../middleware/auth';
+import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../models/database';
 import { config } from '../config';
 import * as tenantService from '../services/tenantService';
@@ -622,4 +623,64 @@ router.post('/tenants/:tenantId/hot-wallet', asyncHandler(async (req, res) => {
   res.json(apiResponse(wallet, 'Hot wallet generated'));
 }) );
 
+// ═══════════════════════════════════════════════
+// Tenant Tokens
+// ═══════════════════════════════════════════════
+
+router.get('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+  const { tenantId } = req.params;
+  const result = await pool.query(
+    'SELECT id, symbol, name, decimals, contract_address, chain_id, token_type, min_sweep_amount FROM tokens WHERE tenant_id = $1 ORDER BY created_at DESC',
+    [tenantId]
+  );
+  res.json(apiResponse({ items: result.rows }));
+}));
+
+router.post('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+  const { tenantId } = req.params;
+  const { chainId, tokenSymbol, contractAddress, decimals, minSweepAmount } = req.body || {};
+  if (!tokenSymbol || !contractAddress) {
+    return res.status(400).json(apiResponse(null, 'tokenSymbol and contractAddress required', 1001));
+  }
+  const id = uuidv4();
+  const chainIdStr = String(chainId || 11155111);
+  await pool.query(
+    `INSERT INTO tokens (id, symbol, name, decimals, contract_address, chain_id, token_type, tenant_id, min_sweep_amount)
+     VALUES ($1, $2, $3, $4, $5, $6, 'erc20', $7, $8)`,
+    [id, tokenSymbol, tokenSymbol, decimals || 18, contractAddress, chainIdStr, tenantId, String(minSweepAmount || '0')]
+  );
+  res.json(apiResponse({ id, symbol: tokenSymbol, contractAddress, chainId: chainIdStr }));
+}));
+
+
+// ═══════════════════════════════════════════════
+// Tenant Tokens
+// ═══════════════════════════════════════════════
+
+router.get('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+  const { tenantId } = req.params;
+  const result = await pool.query(
+    'SELECT id, symbol, name, decimals, contract_address, chain_id, token_type, min_sweep_amount FROM tokens WHERE tenant_id = $1 ORDER BY created_at DESC',
+    [tenantId]
+  );
+  res.json(apiResponse({ items: result.rows }));
+}));
+
+router.post('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+  const { tenantId } = req.params;
+  const { chainId, tokenSymbol, contractAddress, decimals, minSweepAmount } = req.body || {};
+  if (!tokenSymbol || !contractAddress) {
+    return res.status(400).json(apiResponse(null, 'tokenSymbol and contractAddress required', 1001));
+  }
+  const id = uuidv4();
+  const chainIdStr = String(chainId || 11155111);
+  await pool.query(
+    `INSERT INTO tokens (id, symbol, name, decimals, contract_address, chain_id, token_type, tenant_id, min_sweep_amount)
+     VALUES ($1, $2, $3, $4, $5, $6, 'erc20', $7, $8)`,
+    [id, tokenSymbol, tokenSymbol, decimals || 18, contractAddress, chainIdStr, tenantId, String(minSweepAmount || '0')]
+  );
+  res.json(apiResponse({ id, symbol: tokenSymbol, contractAddress, chainId: chainIdStr }));
+}));
+
 export default router;
+
