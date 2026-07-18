@@ -325,17 +325,17 @@ function waasLoadOverview(t) {
 }
 
 async function waasTokens() {
-
+  var listEl = document.getElementById('waas-tokens-list');
+  if (!listEl) return;
   if (!waasActiveTenantId) { 
-    document.getElementById('waas-tokens-list').innerHTML = '<div class="empty">Activate WaaS first</div>'; 
+    listEl.innerHTML = '<div class="empty">Activate WaaS first</div>'; 
     return; 
   }
   try {
     var d = await waasFetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/tokens');
     var tokens = d.items || d.data || d || [];
-    var el = document.getElementById('waas-tokens-list');
-    if (!tokens.length) { el.innerHTML = '<div class="empty" style="padding:32px 24px;text-align:center"><div style="font-size:40px;margin-bottom:14px;opacity:0.8">&#x1fa99;</div><div class="empty-text">No Tokens Configured</div><div class="empty-sub" style="font-size:12px;color:var(--text-dim);line-height:1.6;max-width:420px;margin:6px auto 0">Use the form above to add ERC-20 tokens. Deposits for unlisted tokens are ignored during sweep.</div></div>'; return; }
-    el.innerHTML = tokens.map(function(t) {
+    if (!tokens.length) { listEl.innerHTML = '<div class="empty" style="padding:32px 24px;text-align:center"><div style="font-size:40px;margin-bottom:14px;opacity:0.8">&#x1fa99;</div><div class="empty-text">No Tokens Configured</div><div class="empty-sub" style="font-size:12px;color:var(--text-dim);line-height:1.6;max-width:420px;margin:6px auto 0">Use the form above to add ERC-20 tokens. Deposits for unlisted tokens are ignored during sweep.</div></div>'; return; }
+    listEl.innerHTML = tokens.map(function(t) {
       var sym = t.token_symbol || t.symbol || '—';
       var addr = (t.contract_address || '').slice(0, 8) + '...' + (t.contract_address || '').slice(-6);
       return '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;margin-bottom:8px">' +
