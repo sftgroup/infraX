@@ -350,9 +350,9 @@ async function waasTokens() {
 
 async function waasAddToken() {
   if (!waasActiveTenantId) return showToast('Activate WaaS first', 'error');
-  var contract = document.getElementById('waas-token-contract').value.trim();
+  var contract = document.getElementById('waas-token-addr').value.trim();
   var symbol = document.getElementById('waas-token-symbol').value.trim();
-  var decimals = parseInt(document.getElementById('waas-token-decimals').value) || 18;
+  var decimals = parseInt(document.getElementById('waas-token-decimal').value) || 18;
   if (!contract || !symbol) return showToast('Contract + symbol required', 'error');
   try {
     await waasFetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/tokens', {
@@ -391,7 +391,7 @@ function waasAddressLoad() {
 
 async function waasAddressCreate() {
   if (!waasActiveTenantId) return showToast('Activate WaaS first', 'error');
-  var uid = document.getElementById('waas-addr-uid').value.trim();
+  var uid = document.getElementById('waas-addr-userid').value.trim();
   var chain = document.getElementById('waas-addr-chain').value;
   if (!uid) return showToast('Enter external user ID', 'error');
   try {
