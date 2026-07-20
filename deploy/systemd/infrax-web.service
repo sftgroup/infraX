@@ -1,0 +1,18 @@
+[Unit]
+Description=InfraX infrax-web
+After=network.target infrax-mpc.service infrax-waas.service infrax-vault.service infrax-dc.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/web
+Environment="PORT=9111"
+Environment="MPC_ENCRYPTION_SECRET=2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a2443e30a3bf8097b352a4"
+Environment="ADMIN_PASS=a87cefd6e1ce487334a67b0c"
+Environment="ADMIN_USER=admin"
+ExecStart=node server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

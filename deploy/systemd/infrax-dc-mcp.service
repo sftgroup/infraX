@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX infrax-dc-mcp
+After=network.target infrax-mpc.service infrax-waas.service infrax-vault.service infrax-dc.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/mcp-server
+Environment="PORT=9103"
+Environment="MPC_ENCRYPTION_SECRET=2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a2443e30a3bf8097b352a4"
+Environment="ADMIN_PASS=a87cefd6e1ce487334a67b0c"
+Environment="ADMIN_USER=admin"
+Environment="DC_API_URL=http://localhost:9102"
+ExecStart=/opt/infraX/projects/mcp-server/node_modules/.bin/tsx src/dc-index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

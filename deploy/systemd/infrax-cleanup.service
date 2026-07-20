@@ -1,0 +1,10 @@
+[Unit]
+Description=InfraX Data Retention Cleanup (5 days)
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/infrax-cleanup.sh
+StandardOutput=journal
+StandardError=journal

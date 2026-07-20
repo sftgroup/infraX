@@ -1,0 +1,4 @@
+[Service]
+Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
+Environment="BSC_RPC_URL=https://bsc-dataseed.bnbchain.org"
+Environment="BSC_RPC_URL_2=https://bsc-dataseed1.bnbchain.org"

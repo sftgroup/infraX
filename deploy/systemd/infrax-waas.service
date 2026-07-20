@@ -1,0 +1,25 @@
+[Unit]
+Description=InfraX infrax-waas
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/waas
+Environment="MPC_ENCRYPTION_SECRET=2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a2443e30a3bf8097b352a4"
+Environment="ADMIN_PASS=a87cefd6e1ce487334a67b0c"
+Environment="ADMIN_USER=admin"
+Environment="SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com"
+Environment="ETH_RPC_URL=https://ethereum-rpc.publicnode.com"
+Environment="BSC_RPC_URL=https://bsc-dataseed.bnbchain.org"
+Environment="BASE_RPC_URL=https://mainnet.base.org"
+Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
+Environment="PORT=9109"
+Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_waas"
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/waas/node_modules/.bin:$PATH"
+ExecStart=/usr/bin/tsx index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

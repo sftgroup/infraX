@@ -1,0 +1,2 @@
+[Service]
+Environment="BLOCK_SCAN_INTERVAL_MS=0"

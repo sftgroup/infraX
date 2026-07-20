@@ -15,3 +15,6 @@ push_to_github.ps1
 systemd_deploy.py
 systemd_v2.py
 systemd_mcp.py
+
+# Sensitive deploy overrides (use .template versions)
+deploy/overrides/collector-okx.conf

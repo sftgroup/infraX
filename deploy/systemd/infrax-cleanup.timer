@@ -1,0 +1,9 @@
+[Unit]
+Description=InfraX Data Retention Cleanup Timer (daily at 3:00 AM)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
