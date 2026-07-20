@@ -222,7 +222,7 @@ document.addEventListener('click', function (e) {
   if (subEl) subEl.classList.add('active');
   var subLoaders = {
     'nc-dash': ncDash, 'nc-send': ncSendLoad, 'nc-receive': ncReceiveLoad, 'nc-history': function () { histPage = 1; ncHistory(); },
-    'nc-nft': ncNFT, 'nc-settings': ncSettings,
+    'nc-nft': function() {}, 'nc-settings': function() {},
     'mpc-reg': mpcReg, 'mpc-rec': mpcRec, 'mpc-dash': mpcDash, 'mpc-send': mpcSendLoad, 'mpc-recv': mpcReceiveLoad,
     'waas-dash-overview': waasLoadOverviewWithState, 'waas-dash-tokens': waasTokens, 'waas-dash-addresses': waasAddresses,
     'waas-dash-sweep': waasSweep, 'waas-dash-withdrawals': waasWithdrawals, 'waas-dash-api': waasApiTab,

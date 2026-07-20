@@ -65,7 +65,15 @@ async function mpcRegister() {
     mpcActivated = true; clearMe();
     var r = document.getElementById('mpc-reg-result'); r.className = 'result-box show success';
     r.innerHTML = '<div class="title" style="color:var(--success)">✅ Wallet Created</div><div class="mono" style="color:var(--gold-light)">' + d.walletAddress + '</div><div class="card-sub">Use email to recover anytime</div>';
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) {
+    if (e.message && e.message.indexOf('already registered') !== -1) {
+      showToast('Email already registered — switch to Recover tab', 'warning');
+      document.querySelector('#page-mpc .tab-btn[data-sub="mpc-rec"]').click();
+      document.getElementById('mpc-rec-email').value = mpcEmail;
+    } else {
+      showToast(e.message, 'error');
+    }
+  }
   finally { btn.classList.remove('btn-loading'); }
 }
 
@@ -98,6 +106,10 @@ async function mpcRecover() {
     var r = document.getElementById('mpc-rec-result'); r.className = 'result-box show';
     r.style.borderColor = 'var(--warning)';
     r.innerHTML = '<div class="title" style="color:var(--success)">🔓 Wallet Recovered</div><div class="mono" style="color:var(--gold-light)">' + d.walletAddress + '</div><div class="card-sub">Your MPC wallet signing capability has been restored</div>';
+    // Auto-switch to Dashboard after 1.5s
+    setTimeout(function() {
+      document.querySelector('#page-mpc .tab-btn[data-sub="mpc-dash"]').click();
+    }, 1500);
   } catch (e) { showToast(e.message, 'error'); }
   finally { btn.classList.remove('btn-loading'); }
 }
