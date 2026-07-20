@@ -102,8 +102,21 @@ async function requireDcApiKey(req: any, res: any, next: any): Promise<void> {
 
 // ─── Subscription Endpoints (no auth) ───
 
+// Supported chains list
+const SUPPORTED_CHAINS = [
+  { name: 'sepolia', chainId: 11155111, type: 'evm', network: 'testnet', rpc: 'https://ethereum-sepolia-rpc.publicnode.com' },
+  { name: 'ethereum', chainId: 1, type: 'evm', network: 'mainnet', rpc: 'https://ethereum-rpc.publicnode.com' },
+  { name: 'bsc', chainId: 56, type: 'evm', network: 'mainnet', rpc: 'https://bsc-dataseed.bnbchain.org' },
+  { name: 'base', chainId: 8453, type: 'evm', network: 'l2', rpc: 'https://mainnet.base.org' },
+  { name: 'oxa', chainId: 19505, type: 'evm', network: 'l1', rpc: 'https://rpc-oxa.0xainet.top' },
+];
+
 app.get('/api/v2/data/plans', asyncHandler(async (_req: any, res: any) => {
   res.json(apiResponse(DATA_PLANS));
+}));
+
+app.get('/api/v2/data/chains', asyncHandler(async (_req: any, res: any) => {
+  res.json(apiResponse(SUPPORTED_CHAINS));
 }));
 
 app.post('/api/v2/data/subscribe', asyncHandler(async (req: any, res: any) => {

@@ -106,7 +106,8 @@ async function start(): Promise<void> {
       });
     });
 
-    // Block scanner — every 12s (matching Eth block time)
+    // Block scanner — only if interval configured (>0)
+    if (config.blockScanner.intervalMs > 0) {
     const scanInterval = setInterval(async () => {
       try {
         const result = await scanAllChains();
@@ -120,6 +121,9 @@ async function start(): Promise<void> {
 
     if (typeof scanInterval === 'object' && 'unref' in scanInterval) {
       scanInterval.unref();
+    }
+    } else {
+      logger.info('Block scanner disabled (BLOCK_SCAN_INTERVAL_MS=0)');
     }
 
   } catch (err: any) {

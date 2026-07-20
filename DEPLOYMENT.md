@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-07-18 | 版本 `v0.3.2-20260718`
+> 最后更新: 2026-07-20 | 版本 `v0.3.3-20260720`
 
 ## 生产服务器
 
@@ -10,7 +10,7 @@
 | User | ubuntu | ubuntu |
 | SSH | 直连 | 通过跳板机 `129.226.203.60` |
 | Ports | 3000-6100 | **9100-9111** |
-| Spec | 4C/7.5G/178G | 4C/8G |
+| Spec | 4C/7.5G/178G | 4C/8G + **200G 数据盘 (/dev/vdb)** |
 
 ```bash
 # SSH 连接（需要跳板）
@@ -33,6 +33,7 @@ ssh -J ubuntu@129.226.203.60 ubuntu@43.156.99.215
 | WAAS | 9109 | pocketx_waas | `systemctl start infrax-waas` | 🟢 |
 | Wallet MCP | 9110 | — | `systemctl start infrax-wallet-mcp` | 🟢 |
 | Web | 9111 | — | `systemctl start infrax-web` | 🟢 |
+| Cleanup | — | pocketx_collector | `systemctl start infrax-cleanup` | 🟢 (timer) |
 
 ## 目录结构
 
@@ -106,7 +107,11 @@ ssh -J ubuntu@129.226.203.60 ubuntu@43.156.99.215
 
 ### 一键检查
 ```bash
+# 所有服务
 sudo systemctl --no-pager list-units 'infrax-*' --all
+
+# 清理 timer 状态
+sudo systemctl list-timers --all | grep infrax
 ```
 
 ### 逐个管理
@@ -152,6 +157,108 @@ localhost:5432, postgres:postgres
 | pocketx_mpc | 2 | MPC 钱包 |
 | pocketx_payment | 3 | 支付 |
 | pocketx_admin | 3 | 管理 |
+
+## 数据盘挂载
+
+200G 数据盘用于存储 PostgreSQL 数据库，避免系统盘被占满：
+
+```bash
+# 查看磁盘
+lsblk
+
+# 格式化（仅首次）
+sudo mkfs.ext4 /dev/vdb
+
+# 挂载
+sudo mkdir -p /mnt/pgdata
+sudo mount /dev/vdb /mnt/pgdata
+
+# 持久化挂载（/etc/fstab）
+echo '/dev/vdb /mnt/pgdata ext4 defaults 0 2' | sudo tee -a /etc/fstab
+
+# 迁移 PostgreSQL 数据目录
+sudo systemctl stop postgresql
+sudo rsync -av /var/lib/postgresql/ /mnt/pgdata/
+sudo mv /var/lib/postgresql /var/lib/postgresql.bak
+sudo ln -s /mnt/pgdata /var/lib/postgresql
+sudo systemctl start postgresql
+```
+
+确认挂载：
+```bash
+df -h /mnt/pgdata
+# Filesystem      Size  Used Avail Use% Mounted on
+# /dev/vdb        196G   XXG  XXXG  XX%  /mnt/pgdata
+```
+
+## 数据保留策略（5 天）
+
+通过 systemd timer 每日凌晨 3:00 自动清理 5 天前的历史数据，确保数据库不占用过多磁盘空间。
+
+### 清理脚本：`/opt/infrax-cleanup.sh`
+
+| 表 | 清理条件 | 说明 |
+|---|---------|------|
+| `events` | `collected_at < 5 days` | Collector 链上事件 |
+| `payment_events` | `created_at < 5 days` | 支付事件 |
+| `okx_token_snapshots` | `collected_at < 5 days` | OKX 代币快照 |
+| `binance_futures_prices` | `bucket < 5 days` | Binance 合约价格 |
+| 最后执行 `VACUUM ANALYZE events` | — | 回收磁盘空间 |
+
+### 部署清理服务
+
+```bash
+# 复制脚本
+sudo cp infrax-cleanup.sh /opt/infrax-cleanup.sh
+sudo chmod +x /opt/infrax-cleanup.sh
+
+# 创建 systemd service
+sudo tee /etc/systemd/system/infrax-cleanup.service << 'EOF'
+[Unit]
+Description=InfraX Data Retention Cleanup (5 days)
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/infrax-cleanup.sh
+StandardOutput=journal
+StandardError=journal
+EOF
+
+# 创建 systemd timer（每日凌晨 3:00）
+sudo tee /etc/systemd/system/infrax-cleanup.timer << 'EOF'
+[Unit]
+Description=InfraX Data Retention Cleanup Timer (daily at 3:00 AM)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# 启用并启动
+sudo systemctl daemon-reload
+sudo systemctl enable --now infrax-cleanup.timer
+```
+
+### 手动触发与监控
+
+```bash
+# 查看 timer 状态
+sudo systemctl status infrax-cleanup.timer
+
+# 手动执行一次清理
+sudo systemctl start infrax-cleanup.service
+
+# 查看清理日志
+sudo tail -20 /var/log/infrax-cleanup.log
+
+# 查看 timer 下次触发时间
+sudo systemctl list-timers --all | grep infrax
+```
 
 ## 环境变量关键项
 
@@ -209,6 +316,14 @@ sudo systemctl restart infrax-admin
 ```
 
 ## 修复备忘
+
+### v0.3.3 数据盘挂载 + 数据 5 天清理 (2026-07-20)
+
+| 项目 | 说明 |
+|------|------|
+| 200G 数据盘 | `/dev/vdb` → `/mnt/pgdata`，PostgreSQL 数据迁移到新盘 |
+| 数据保留策略 | systemd timer 每日清理 5 天前数据（events/payment_events/okx_token_snapshots/binance_futures_prices） |
+| 清理服务 | `infrax-cleanup.service` + `infrax-cleanup.timer`（每日凌晨 3:00） |
 
 ### v0.3.1 新服务器部署 + Express 5 修复 (2026-07-17)
 

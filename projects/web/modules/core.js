@@ -86,7 +86,7 @@ async function afetch(url, opts) {
     return j.data !== undefined ? j.data : j;
   } catch(e) {
     if (opts.method && opts.method !== 'GET') throw e;
-    console.warn('afetch fallback for ' + url + ':', e.message);
+    console.error('afetch error for ' + url + ':', e.message);
     return afetchMock(url);
   }
 }
@@ -109,8 +109,13 @@ async function getMe() {
     if (results[2].status === 'fulfilled' && results[2].value) waas = results[2].value;
     if (results[3].status === 'fulfilled' && results[3].value) tokens = results[3].value;
   } catch(e) {}
-  _me = { mpc: mpc, safe: safe, waas: waas, customTokens: tokens || [] };
-  return _me;
+  // Only cache if we got at least some real data; otherwise allow retry
+  if (mpc !== null || safe !== null || waas !== null || tokens.length > 0) {
+    _me = { mpc: mpc, safe: safe, waas: waas, customTokens: tokens || [] };
+  } else {
+    _me = null; // don't cache empty results — allow retry on next call
+  }
+  return _me || { mpc: null, safe: null, waas: null, customTokens: [] };
 }
 function clearMe() { _me = null; }
 
