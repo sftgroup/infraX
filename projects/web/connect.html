@@ -44,6 +44,7 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; }
 .glow-right { background: var(--brand); right: -100px; bottom: -50px; }
 .logo { font-size: 40px; margin-bottom: 12px; display: block; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 </head>
 <body>
 <div class="glow glow-left"></div>
@@ -54,15 +55,28 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; }
   <h1>InfraX</h1>
   <p class="sub">Connect your wallet to access all features</p>
 
-  <button class="btn btn-primary" id="connect-btn" onclick="connectWallet()">
-    <span style="font-size:16px">🦊</span> Connect MetaMask
-  </button>
+  <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:8px">
+    <button class="tab-btn active" style="flex:1;padding:8px;background:var(--dark-700);border:none;color:var(--brand);border-radius:4px;cursor:pointer;font-size:13px;font-weight:600" onclick="switchTab('metamask')">🦊 MetaMask</button>
+    <button class="tab-btn" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--dark-400);border-radius:4px;cursor:pointer;font-size:13px;font-weight:600" onclick="switchTab('privkey')">🔑 Private Key</button>
+  </div>
+
+  <div id="tab-metamask">
+    <button class="btn btn-primary" id="connect-btn" onclick="connectMetaMask()">
+      <span style="font-size:16px">🦊</span> Connect MetaMask
+    </button>
+    <p style="font-size:11px;color:var(--dark-400);margin-top:16px">
+      No wallet? Get <a href="https://metamask.io" target="_blank" style="color:var(--brand)">MetaMask</a>
+    </p>
+  </div>
+
+  <div id="tab-privkey" style="display:none">
+    <input type="password" id="privkey-input" class="input" placeholder="Enter private key (0x...)" style="width:100%;margin-bottom:12px;padding:10px 12px;background:var(--dark-700);border:1px solid var(--border);border-radius:4px;color:#EAECEF;font-size:13px;font-family:monospace">
+    <button class="btn btn-primary" id="privkey-btn" onclick="connectPrivateKey()">
+      <span style="font-size:16px">🔑</span> Connect with Private Key
+    </button>
+  </div>
 
   <div class="error" id="error"></div>
-
-  <p style="font-size:11px;color:var(--dark-400);margin-top:20px">
-    No wallet? Get <a href="https://metamask.io" target="_blank" style="color:var(--brand)">MetaMask</a>
-  </p>
 </div>
 
 <script>
@@ -72,7 +86,24 @@ function showError(msg) {
   document.getElementById('error').textContent = msg;
 }
 
-async function connectWallet() {
+function switchTab(tab) {
+  document.getElementById('error').textContent = '';
+  var tabs = document.querySelectorAll('.tab-btn');
+  if (tab === 'metamask') {
+    tabs[0].style.background = 'var(--dark-700)'; tabs[0].style.border = 'none'; tabs[0].style.color = 'var(--brand)';
+    tabs[1].style.background = 'transparent'; tabs[1].style.border = '1px solid var(--border)'; tabs[1].style.color = 'var(--dark-400)';
+    document.getElementById('tab-metamask').style.display = 'block';
+    document.getElementById('tab-privkey').style.display = 'none';
+  } else {
+    tabs[1].style.background = 'var(--dark-700)'; tabs[1].style.border = 'none'; tabs[1].style.color = 'var(--brand)';
+    tabs[0].style.background = 'transparent'; tabs[0].style.border = '1px solid var(--border)'; tabs[0].style.color = 'var(--dark-400)';
+    document.getElementById('tab-metamask').style.display = 'none';
+    document.getElementById('tab-privkey').style.display = 'block';
+    document.getElementById('privkey-input').focus();
+  }
+}
+
+async function connectMetaMask() {
   document.getElementById('error').textContent = '';
   var btn = document.getElementById('connect-btn');
   btn.disabled = true;
@@ -122,13 +153,58 @@ async function connectWallet() {
   }
 }
 
+async function connectPrivateKey() {
+  document.getElementById('error').textContent = '';
+  var btn = document.getElementById('privkey-btn');
+  var pk = document.getElementById('privkey-input').value.trim();
+  if (!pk) return showError('Please enter a private key');
+  if (!pk.startsWith('0x')) pk = '0x' + pk;
+  if (pk.length !== 66) return showError('Invalid private key length');
+
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+
+  try {
+    var wallet = new ethers.Wallet(pk);
+    var address = wallet.address.toLowerCase();
+    var ts = Date.now().toString();
+    var sig = await wallet.signMessage('InfraX auth: ' + ts);
+
+    var r = await fetch(API + '/api/v2/wallet/balance', {
+      headers: {
+        'x-wallet-address': address,
+        'x-wallet-signature': sig,
+        'x-wallet-timestamp': ts
+      }
+    });
+
+    if (!r.ok && r.status !== 401) {
+      var j = await r.json().catch(() => ({}));
+      if (j.code && j.code > 0) throw new Error(j.message || 'Connection failed');
+    }
+
+    localStorage.setItem('px_sig', sig);
+    localStorage.setItem('px_ts', ts);
+    localStorage.setItem('px_sig_addr', address);
+    localStorage.setItem('px_user', JSON.stringify({
+      walletAddress: address,
+      connectedAt: Date.now()
+    }));
+
+    window.location.href = '/index.html';
+
+  } catch (e) {
+    showError(e.message || 'Connection failed. Please try again.');
+    btn.disabled = false;
+    btn.textContent = '🔑 Connect with Private Key';
+  }
+}
+
 (function() {
   try {
     var u = JSON.parse(localStorage.getItem('px_user') || '{}');
     if (u.walletAddress) {
-      if (window.ethereum && window.ethereum.selectedAddress) {
-        window.location.href = '/index.html';
-      }
+      window.location.href = '/index.html';
     }
   } catch(e) {}
 })();
