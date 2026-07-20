@@ -23,27 +23,19 @@ async function mpcInit() {
 }
 
 async function mpcActivate() {
-  // Switch to register form so user can enter verification code
+  // Switch to register form — user fills in email and receives verification code
   document.getElementById("mpc-intro").style.display = "none";
   document.getElementById("mpc-dashboard-area").style.display = "block";
-  // Pre-fill email and auto-send code
-  mpcEmail = user().walletAddress + "@mpc.infrax.local";
-  document.getElementById("mpc-reg-email").value = mpcEmail;
+  // Clear email field, let user fill it in
+  document.getElementById("mpc-reg-email").value = "";
+  // Activate Register tab
   var tabs = document.querySelectorAll('#page-mpc .tab-btn');
   tabs.forEach(function(t) { t.classList.remove('active'); });
   document.querySelector('#page-mpc .tab-btn[data-sub="mpc-reg"]').classList.add('active');
   var panels = document.querySelectorAll('#mpc-dashboard-area .sub-panel');
   panels.forEach(function(p) { p.classList.remove('active'); });
   document.getElementById('sub-mpc-reg').classList.add('active');
-  // Auto-send verification code
-  try {
-    await afetch('/api/v2/mpc/send-code', { auth: 'none', method: 'POST', body: { email: mpcEmail } });
-    showToast('Code sent — check server logs', 'info');
-    var codeInput = document.getElementById('mpc-reg-code');
-    var createBtn = document.getElementById('mpc-reg-btn');
-    codeInput.disabled = false; codeInput.placeholder = 'Enter 6-digit code'; codeInput.focus();
-    createBtn.disabled = false;
-  } catch (e) { showToast(e.message, 'error'); }
+  document.getElementById('mpc-reg-email').focus();
 }
 
 // ── Register ──
