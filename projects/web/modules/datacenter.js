@@ -137,7 +137,9 @@ async function dcQueryEvents(pageToken) {
   const tbody = document.getElementById('dc-events-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px">Loading...</td></tr>';
   try {
-    const resp = await afetch('/api/v2/data/events?' + params.toString(), { auth: 'none' });
+    const headers = {};
+    if (dcUsage && dcUsage.dcApiKey) headers['x-dc-api-key'] = dcUsage.dcApiKey;
+    const resp = await afetch('/api/v2/data/events?' + params.toString(), { auth: 'none', headers: headers });
     if (!resp || resp.code !== 0) {
       if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>';
       return;
