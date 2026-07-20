@@ -484,8 +484,8 @@
           <div class="panel-header">Withdrawal Rules</div>
           <div class="panel-body">
             <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr 2fr auto auto;align-items:end">
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-wd-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Token</label><select class="input" id="waas-wd-token"><option value="">— Add tokens in Tokens tab —</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Auto-Exec Below</label><input class="input" id="waas-auto-threshold" value="0.1" type="number" step="0.01"></div>
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Require Review Above</label><input class="input" id="waas-manual-threshold" value="1.0" type="number" step="0.01"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-wd-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Token</label><select class="input" id="waas-wd-token"><option value="">— Add tokens in Tokens tab —</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Auto-Exec Below</label><input class="input" id="waas-auto-threshold" value="0.1" type="text" inputmode="decimal" step="0.01"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Require Review Above</label><input class="input" id="waas-manual-threshold" value="1.0" type="text" inputmode="decimal" step="0.01"></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Callback URL</label><input class="input" id="waas-wd-webhook" placeholder="https://your.app/callback" style="margin-bottom:0"></div>
               <button class="btn btn-primary" onclick="waasSaveWithdrawRules()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">Save</button><button class="btn btn-outline" onclick="waasAddWithdrawRule()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">+ Add</button>
             </div>
@@ -811,7 +811,7 @@ Body:
           <div class="panel-header">Create Payment Order</div>
           <div class="panel-body">
             <div class="form-row">
-              <div><label>Amount (USD)</label><input class="input" id="pay-amount" placeholder="49.00" type="number" step="0.01"></div>
+              <div><label>Amount (USD)</label><input class="input" id="pay-amount" placeholder="49.00" type="text" inputmode="decimal" step="0.01"></div>
               <div><label>Payment Method</label>
                 <select class="input" id="pay-method" onchange="paymentMethodChange()">
                   <option value="stripe">💳 Credit Card (Stripe)</option>
