@@ -15,7 +15,16 @@ async function mpcInit() {
   if (mpcActivated) {
     document.getElementById("mpc-intro").style.display = "none";
     document.getElementById("mpc-dashboard-area").style.display = "block";
-    if (document.getElementById('sub-mpc-dash').classList.contains('active')) mpcDash();
+    // Auto-switch to Dashboard tab for already-activated users
+    var tabs = document.querySelectorAll('#page-mpc .tab-btn');
+    tabs.forEach(function(t) { t.classList.remove('active'); });
+    var dashTab = document.querySelector('#page-mpc .tab-btn[data-sub="mpc-dash"]');
+    if (dashTab) dashTab.classList.add('active');
+    var panels = document.querySelectorAll('#mpc-dashboard-area .sub-panel');
+    panels.forEach(function(p) { p.classList.remove('active'); });
+    var dashPanel = document.getElementById('sub-mpc-dash');
+    if (dashPanel) dashPanel.classList.add('active');
+    mpcDash();
   } else {
     document.getElementById("mpc-intro").style.display = "block";
     document.getElementById("mpc-dashboard-area").style.display = "none";

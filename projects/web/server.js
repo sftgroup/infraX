@@ -61,14 +61,15 @@ function serveFile(res, filePath) {
   try {
     const data = fs.readFileSync(filePath);
     applySecurityHeaders(res);
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store, no-cache, must-revalidate' });
+    res.writeHead(200, { 'Content-Type': mime, 'Content-Length': data.length, 'Cache-Control': 'no-store, no-cache, must-revalidate' });
     res.end(data);
   } catch (e) {
     if (e.code === 'ENOENT') {
       const index = path.join(WEB_DIR, 'index.html');
+      const indexData = fs.readFileSync(index);
       applySecurityHeaders(res);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(fs.readFileSync(index));
+      res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': indexData.length });
+      res.end(indexData);
     } else {
       res.writeHead(500);
       res.end('500 Internal Server Error');

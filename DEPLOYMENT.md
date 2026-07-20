@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-07-20 | 版本 `v0.3.3-20260720`
+> 最后更新: 2026-07-21 | 版本 `v0.3.4-20260721`
 
 ## 生产服务器
 
@@ -316,6 +316,19 @@ sudo systemctl restart infrax-admin
 ```
 
 ## 修复备忘
+
+### v0.3.4 浏览器E2E测试 + 6项Bug修复 (2026-07-21)
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| nc-wallet.js 浏览器报 `ERR_INCOMPLETE_CHUNKED_ENCODING` | `server.js` `writeHead()` 未设 `Content-Length`，Node.js 使用 chunked 传输 + keep-alive 导致 chunk 流中断 | `writeHead` 显式添加 `Content-Length: data.length` |
+| Dashboard 初始登录后页面空白骨架 | `core.js` 的 `ncDash` 仅绑定在 nav 点击事件上，页面初始加载从不触发 loader | 新增 `initActivePage()`，页面加载完成后自动触发当前 active 页面的 loader |
+| 已激活 MPC 用户看到的是 Register 注册表单 | `mpc-wallet.js` 检测到已激活后显示了 dashboard-area，但 HTML 默认 active 子标签是 `mpc-reg` | 已激活时自动切换到 Dashboard 子标签并调用 `mpcDash()` |
+| Safe Vault 列表报 `userId required` | `vault/server.ts` `/safe/owned` 只接受 `x-user-id` header，前端 `afetch` 只传 `x-wallet-address`，与同文件 `safe/status` 不一致 | `/safe/owned` 和 `/safe/participating` 添加 `x-wallet-address` 作为 fallback |
+| Payment 创建订单点击无响应 | `payment.js` 请求体字段名 `paymentMethod` 但后端 destructure `method`，字段名不匹配 | 前端字段名改为 `method` |
+| WaaS 地址分配点击无响应 | `waas.js` 请求体缺少 `tenantId`，API 返回 `Missing required fields: tenantId` | 请求体添加 `tenantId: waasActiveTenantId` |
+
+**测试覆盖**: 真实浏览器操作（Playwright + Chromium）验证 Landing → 私钥登录 → Dashboard → MPC/WaaS/Safe/DC/Payment 全部用户路径 + Admin 后台。
 
 ### v0.3.3 数据盘挂载 + 数据 5 天清理 (2026-07-20)
 

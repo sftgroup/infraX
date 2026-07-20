@@ -89,18 +89,18 @@ app.get('/api/vault/safe/list', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse({ items: safes }));
 }));
 
-// GET /api/vault/safe/owned — FIXED: requires userId auth
+// GET /api/vault/safe/owned — uses x-wallet-address or x-user-id
 app.get('/api/vault/safe/owned', asyncHandler(async (req: any, res: any) => {
-  const userId = req.query.userId as string || req.headers['x-user-id'] as string;
-  if (!userId) return res.status(400).json(apiResponse(null, 'userId required (query param or x-user-id header)', 1001));
+  const userId = req.query.userId as string || req.headers['x-user-id'] as string || (req.headers['x-wallet-address'] as string);
+  if (!userId) return res.status(400).json(apiResponse(null, 'userId required (query param or x-user-id/x-wallet-address header)', 1001));
   const safes = await multiSigService.listSafes(userId);
   res.json(apiResponse({ items: safes }));
 }));
 
-// GET /api/vault/safe/participating — FIXED: requires userId auth
+// GET /api/vault/safe/participating — uses x-wallet-address or x-user-id
 app.get('/api/vault/safe/participating', asyncHandler(async (req: any, res: any) => {
-  const userId = req.query.userId as string || req.headers['x-user-id'] as string;
-  if (!userId) return res.status(400).json(apiResponse(null, 'userId required (query param or x-user-id header)', 1001));
+  const userId = req.query.userId as string || req.headers['x-user-id'] as string || (req.headers['x-wallet-address'] as string);
+  if (!userId) return res.status(400).json(apiResponse(null, 'userId required (query param or x-user-id/x-wallet-address header)', 1001));
   const safes = await multiSigService.listSafes(userId);
   res.json(apiResponse({ items: safes }));
 }));

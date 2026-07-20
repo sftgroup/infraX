@@ -202,10 +202,19 @@ function setupNav() {
   });
 }
 
+function initActivePage() {
+  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, payment: paymentInit };
+  var activePage = document.querySelector('.page.active');
+  if (!activePage) return;
+  var pageId = activePage.id.replace('page-', '');
+  if (loaders[pageId]) { try { loaders[pageId](); } catch(e) { console.error('Init loader failed:', pageId, e); } }
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', setupNav);
+  document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); });
 } else {
   setupNav();
+  setTimeout(initActivePage, 50);
 }
 
 // Tab clicks

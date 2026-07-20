@@ -40,7 +40,7 @@ async function paymentCreateOrder() {
   try {
     var d = await afetch(url, {
       method: 'POST',
-      body: { amount: amount, description: desc, paymentMethod: method, chain: chain }
+      body: { amount: amount, method: method, description: desc, chain: chain }
     });
     var html = '<div class="panel"><div class="panel-header">Order Created</div><div class="panel-body">' +
       '<div style="margin-bottom:8px">Order ID: <code>' + d.orderId + '</code></div>' +

@@ -397,7 +397,7 @@ async function waasAddressCreate() {
   try {
     var d = await waasFetch('/api/v2/saas/address', {
       method: 'POST',
-      body: { externalUserId: uid, chain: chain }
+      body: { tenantId: waasActiveTenantId, externalUserId: uid, chain: chain }
     });
     showToast('Address created: ' + (d.address || '').slice(0, 12) + '...', 'success');
     waasAddressLoad();
