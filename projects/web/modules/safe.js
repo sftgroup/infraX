@@ -87,7 +87,7 @@ function safeCreate() {
   if (threshold > owners.length) return showToast('Threshold must be <= owner count', 'error');
   var btn = document.getElementById('safe-create-btn');
   btn.classList.add('btn-loading');
-  afetch('/api/vault/safe/create', { method: 'POST', body: { chainId: parseInt(document.getElementById('waas-token-chain').value) || 11155111, owners: owners, threshold: threshold, name: name } })
+  afetch('/api/vault/safe/create', { method: 'POST', body: { chainId: 11155111, owners: owners, threshold: threshold, name: name } })
     .then(function(d) { showToast('Safe deployed: ' + (d.address || '').slice(0, 12) + '...', 'success'); safeLoadOwned(); })
     .catch(function(e) { showToast(e.message, 'error'); })
     .finally(function() { btn.classList.remove('btn-loading'); });
