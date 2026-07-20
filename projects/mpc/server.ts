@@ -203,7 +203,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-mpc
 app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
   const { email } = req.body;
   if (!email) return res.status(400).json(apiResponse(null, 'email required', 1001));
-  const code = crypto.randomInt(100000, 999999).toString();
+  const code = '888888'; // dev fixed code — no email sending yet
   storeCode(email, code);
   console.log(`[MPC] Code for ${email}: ${code}`);
   res.json(apiResponse({ message: 'Code sent' }));
