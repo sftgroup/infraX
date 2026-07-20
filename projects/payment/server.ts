@@ -170,6 +170,30 @@ app.post('/api/v2/payment/x402/pay', asyncHandler(async (req: any, res: any) => 
   }, 'x402 payment processed'));
 }));
 
+// POST /api/v2/payment/create-order — Create payment order
+app.post('/api/v2/payment/create-order', asyncHandler(async (req: any, res: any) => {
+  const { amount, method, description, chain } = req.body;
+  const walletAddr = (req.headers['x-wallet-address'] as string) || 'unknown';
+  const id = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO payment_orders (id, user_id, plan_id, amount, currency, method, status, wallet_address, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [id, walletAddr, 'custom', parseFloat(amount) || 0, 'USD', method || 'unknown', 'pending', walletAddr, JSON.stringify({ description: description || null }) ]
+  );
+  res.json(apiResponse({ orderId: id, amount, method, status: 'pending' }, 'Order created'));
+}));
+
+// GET /api/v2/payment/orders — List user orders
+app.get('/api/v2/payment/orders', asyncHandler(async (req: any, res: any) => {
+  const walletAddr = (req.headers['x-wallet-address'] as string) || req.query.walletAddress || 'unknown';
+  const r = await pool.query(
+    `SELECT id, plan_id, amount, currency, method, status, wallet_address, metadata, created_at
+     FROM payment_orders WHERE wallet_address = $1 ORDER BY created_at DESC LIMIT 50`,
+    [walletAddr]
+  );
+  res.json(apiResponse({ orders: r.rows, total: r.rows.length }));
+}));
+
 // ─── Start ───
 const PORT = parseInt(process.env.PORT || '6004', 10);
 app.listen(PORT, () => console.log(`Payment API running on port ${PORT}`));
