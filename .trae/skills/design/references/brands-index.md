@@ -1,0 +1,18 @@
+- hp: consumer electronics, blue-on-white
+- meta: social platform, blue gradient
+- ibm: enterprise, IBM Plex mono
+- bmw: automotive, dark luxury
+- uber: transportation, black-and-white duet
+- playstation: gaming, three-surface marketing
+- cal: scheduling, minimal calm
+- lamborghini: automotive, aggressive dark
+- bugatti: automotive, extreme luxury
+- composio: devtools, terminal green
+- opencode.ai: AI, neon accent
+- runwayml: creative AI, editorial
+- mintlify: documentation, clean
+- clickhouse: analytics, data-dense
+- linear: project management, refined dark
+- vercel: platform, geometric
+- stripe: fintech, blue gradient
+- figma: design tool, purple
