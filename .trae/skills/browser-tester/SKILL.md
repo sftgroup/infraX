@@ -1,43 +1,208 @@
 ---
 name: "browser-tester"
-description: "Browser automation and E2E testing for InfraX Web3 platform. Uses playwright-cli (page ops) + chrome-devtools-mcp (deep DevTools). Invoke when user asks to test InfraX pages, run E2E flows, debug frontend, or inspect network/console."
+description: "Three-tier browser testing stack for InfraX: playwright-cli (fast daily testing), @playwright/mcp (AI agent MCP integration), chrome-devtools-mcp (performance debugging). Invoke for any browser testing, E2E flows, or frontend debugging."
 allowed-tools: Bash(playwright-cli:*) Bash(npx:*) Bash(chrome-devtools-mcp:*)
 ---
 
-# InfraX Browser Tester
+# InfraX Browser Tester — 三层浏览器测试栈
 
-Combines **playwright-cli** (page automation) and **chrome-devtools-mcp** (DevTools deep inspection) for browser-based testing of the InfraX platform.
+## 工具选择决策树
 
-## Quick start
-
-```bash
-# Launch browser and navigate to InfraX
-playwright-cli open http://43.156.99.215:9111
-
-# Take snapshot to see page structure
-playwright-cli snapshot
-
-# Click elements by ref (from snapshot)
-playwright-cli click e15
-
-# Run JavaScript in page
-playwright-cli eval "document.title"
-
-# Close browser
-playwright-cli close
+```
+你要做什么？
+│
+├─ 日常快速测试 / 页面快照 / 简单交互
+│  → playwright-cli  （快、省 token、无 MCP 开销）
+│
+├─ AI Agent 集成 / MCP 协议 / 结构化页面操作
+│  → @playwright/mcp  （MCP 服务器、accessibility 快照）
+│
+└─ 性能排查 / 网络分析 / Core Web Vitals
+   → chrome-devtools-mcp  （DevTools 深度检查）
 ```
 
-## Installed tools
+---
 
-| Tool | Location | Purpose |
-|------|----------|---------|
-| `playwright-cli` | global | Page automation (click, type, snapshot, eval) |
-| `chrome-devtools-mcp` | global (npx) | DevTools deep inspection (network, console, performance) |
-| Chromium | `/root/.cache/ms-playwright/chromium-1232` | Browser engine |
+## 三层工具对照
 
-## InfraX test config
+| | playwright-cli | @playwright/mcp | chrome-devtools-mcp |
+|---|---|---|---|
+| **定位** | 日常测试 | MCP 集成 | 性能排查 |
+| **安装** | `npm i -g @playwright/cli` | `npm i -g @playwright/mcp` | `npm i -g chrome-devtools-mcp` |
+| **启动** | `playwright-cli open` | `npx @playwright/mcp` | `npx chrome-devtools-mcp` |
+| **协议** | CLI 命令 | MCP (stdio/SSE) | MCP (stdio) |
+| **浏览器** | Chromium/Firefox/WebKit | Chromium/Firefox/WebKit | Chrome/Chromium |
+| **快照方式** | YAML 文本 | Accessibility tree | 截图 + DOM |
+| **网络检查** | `requests` / `request N` | `browser_network_requests` | 完整 HAR |
+| **性能分析** | 基础 | 无 | Core Web Vitals + Tracing |
+| **代码执行** | `eval` + `run-code` | `browser_run_code` | JS Console |
+| **Token 消耗** | 低 | 中 | 高 |
+| **适用场景** | 快速回归测试 | AI 自动化工作流 | 深度性能排障 |
 
-### URLs
+---
+
+## 一、playwright-cli — 日常快速测试
+
+**何时用**: 快速打开页面、点几下、截个快照、检查 console。不需要 MCP 服务器。
+
+### 安装验证
+
+```bash
+playwright-cli --version
+# 已安装: global | 浏览器: /root/.cache/ms-playwright/chromium-1232
+```
+
+### 常用命令速查
+
+```bash
+# 生命周期
+playwright-cli open http://43.156.99.215:9111/index.html
+playwright-cli close
+playwright-cli close-all
+
+# 页面交互
+playwright-cli snapshot                      # 获取页面 ref 列表
+playwright-cli click e15                     # 点击 ref
+playwright-cli fill e7 "value" --submit      # 填表提交
+playwright-cli type "search text"            # 键盘输入
+playwright-cli find "Sign in"                # 搜索快照文本
+
+# JS 执行
+playwright-cli eval "document.title"
+playwright-cli eval "el => el.textContent" e5
+playwright-cli run-code "async page => { return await page.title(); }"
+
+# 检查
+playwright-cli console                       # 所有 console 消息
+playwright-cli console warning               # 仅 warning+
+playwright-cli requests                      # 网络请求列表
+playwright-cli request 5                     # 第 5 个请求详情
+
+# 截图
+playwright-cli screenshot                    # 全页
+playwright-cli screenshot e15                # 元素
+
+# 标签页
+playwright-cli tab-new http://...
+playwright-cli tab-list
+playwright-cli tab-select 0
+
+# 存储
+playwright-cli state-save auth.json
+playwright-cli state-load auth.json
+playwright-cli localstorage-set token abc123
+```
+
+---
+
+## 二、@playwright/mcp — AI Agent MCP 集成
+
+**何时用**: 需要 AI Agent 通过 MCP 协议控制浏览器。提供结构化 accessibility 快照（非截图），LLM 可以直接理解页面结构。
+
+### MCP 客户端配置
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
+```
+
+### InfraX 专用启动参数
+
+```bash
+# Headless 模式（服务器环境）
+npx @playwright/mcp@latest \
+  --headless \
+  --no-sandbox \
+  --viewport-size=1280x720 \
+  --browser=chrome \
+  --isolated \
+  --console-level=warning \
+  --timeout-action=10000
+
+# Headed 模式（本地调试，有显示器）
+npx @playwright/mcp@latest \
+  --browser=chrome \
+  --viewport-size=1280x720
+
+# 持久化会话（保存登录状态）
+npx @playwright/mcp@latest \
+  --browser=chrome \
+  --save-session \
+  --output-dir=/tmp/infrax-mcp-sessions
+
+# 连接已有浏览器
+npx @playwright/mcp@latest \
+  --cdp-endpoint=http://localhost:9222
+```
+
+### 关键工具
+
+| MCP Tool | 功能 |
+|----------|------|
+| `browser_navigate` | 导航到 URL |
+| `browser_snapshot` | 获取 accessibility 快照 |
+| `browser_click` | 点击元素 (by ref) |
+| `browser_type` | 键盘输入 |
+| `browser_fill_form` | 批量填表 |
+| `browser_take_screenshot` | 截图 |
+| `browser_console_messages` | 读取 console |
+| `browser_network_requests` | 网络请求 |
+| `browser_run_code` | 执行 Playwright 代码 |
+| `browser_tabs` | 标签页管理 |
+| `browser_evaluate` | JavaScript 求值 |
+
+---
+
+## 三、chrome-devtools-mcp — 性能排查
+
+**何时用**: 页面加载慢、JS 内存泄漏、网络请求异常、Core Web Vitals 不达标。需要 Chrome DevTools 的完整能力。
+
+### InfraX 专用启动参数
+
+```bash
+# 性能排查模式
+npx chrome-devtools-mcp@latest \
+  --headless \
+  --chrome-arg='--no-sandbox' \
+  --chrome-arg='--disable-setuid-sandbox' \
+  --viewport=1280x720 \
+  --isolated \
+  --logFile=/tmp/infrax-cdt-mcp.log
+
+# 连接已有 Chrome
+npx chrome-devtools-mcp@latest \
+  --browserUrl=http://localhost:9222
+
+# 性能 + 截图优化
+npx chrome-devtools-mcp@latest \
+  --headless \
+  --viewport=1280x720 \
+  --screenshot-format=jpeg \
+  --screenshot-quality=80
+```
+
+### 核心能力
+
+| 类别 | 工具 |
+|------|------|
+| **网络** | 请求/响应头体、时序瀑布图、HAR 导出 |
+| **性能** | Core Web Vitals (LCP/FID/CLS)、JS Profiling、Tracing |
+| **DOM** | 元素检查、样式计算、CSS 覆盖 |
+| **Console** | 完整日志 + 堆栈 |
+| **截图** | 全页/元素/Jpeg 压缩 |
+| **内存** | 堆快照、内存时间线 |
+
+---
+
+## InfraX 测试配置
+
+### 目标 URL
 
 ```
 Production:   http://43.156.99.215:9111
@@ -47,7 +212,7 @@ Admin:        http://43.156.99.215:9111/admin-login.html
 Dashboard:    http://43.156.99.215:9111/index.html
 ```
 
-### Test wallet (Private Key)
+### 测试钱包
 
 ```
 EOA:       0x2ba20a76af1297d4ef9bd242866f690aceaab9f1
@@ -55,204 +220,87 @@ PK:        0xb1eb7c5b3ad9ea36d62e744c4bd07dfb99b0605c2675faaaf8f9c4121ecd8644
 MPC Addr:  0xA39fDC3396e74979045C961484FaFe014Aa4B579
 ```
 
-### Admin credentials
+### Admin
 
 ```
 Username:  admin
 Password:  a87cefd6e1ce487334a67b0c
 ```
 
-## playwright-cli — Page automation
+---
 
-### Lifecycle
+## E2E 测试流程
+
+### Flow 1: 私钥登录 (playwright-cli)
 
 ```bash
-# Open browser
-playwright-cli open
-playwright-cli open http://43.156.99.215:9111
-
-# Profile-based (persistent sessions)
-playwright-cli open --persistent
-playwright-cli open --profile=/tmp/infrax-profile
-
-# Close
+playwright-cli open http://43.156.99.215:9111/index.html
+sleep 3
+playwright-cli snapshot
+playwright-cli find "Private Key"
+# 根据快照 ref 操作...
 playwright-cli close
-playwright-cli close-all
 ```
 
-### Page interaction
+### Flow 2: 模块遍历 (playwright-cli)
 
 ```bash
-playwright-cli goto http://43.156.99.215:9111/connect.html
-playwright-cli snapshot                      # get page refs
-playwright-cli click e15                     # click by ref
-playwright-cli click "#btn"                  # click by CSS selector
-playwright-cli type "text"                   # type into focused input
-playwright-cli fill e7 "value" --submit      # fill & submit
-playwright-cli select e9 "option-value"      # select dropdown
-playwright-cli snapshot --filename=after.yml # save snapshot
-playwright-cli find "Sign in"                # search snapshot text
-playwright-cli eval "document.title"         # run JS
-playwright-cli eval "el => el.textContent" e5
-```
-
-### Navigation + Tabs
-
-```bash
-playwright-cli go-back
-playwright-cli reload
-playwright-cli tab-new http://43.156.99.215:9111/admin.html
-playwright-cli tab-list
-playwright-cli tab-select 0
-playwright-cli tab-close 1
-```
-
-### State management
-
-```bash
-playwright-cli state-save auth.json
-playwright-cli state-load auth.json
-playwright-cli cookie-list
-playwright-cli cookie-set token abc123
-playwright-cli localstorage-set key value
-playwright-cli localstorage-get key
-```
-
-### DevTools (lightweight)
-
-```bash
-playwright-cli console               # all console messages
-playwright-cli console warning       # filter by level
-playwright-cli requests              # network requests
-playwright-cli request 5             # details of request #5
-playwright-cli screenshot            # full page screenshot
-playwright-cli screenshot e15        # element screenshot
-```
-
-## chrome-devtools-mcp — Deep inspection
-
-### Launch as MCP server
-
-```bash
-# Headless, no sandbox (for server env)
-npx chrome-devtools-mcp@latest \
-  --headless \
-  --chrome-arg='--no-sandbox' \
-  --chrome-arg='--disable-setuid-sandbox' \
-  --viewport=1280x720 \
-  --isolated
-```
-
-### Key capabilities
-
-| Category | Feature |
-|----------|---------|
-| Network | Full request/response headers, bodies, timing |
-| Console | All console messages with stack traces |
-| Performance | Core Web Vitals, JS profiling, traces |
-| Screenshots | Full page and element screenshots |
-| Elements | DOM inspection, style debugging |
-| Navigation | Page load tracking, redirect chains |
-
-### Tips for InfraX testing
-
-- Use `--isolated` for clean sessions (no cached state contamination)
-- Use `--viewport=1280x720` for consistent screenshots
-- Combine with playwright-cli `console` + `requests` for quick checks
-- For deep network analysis, use chrome-devtools-mcp's network tools
-
-## InfraX E2E test flows
-
-### Flow 1: Private Key login → Dashboard
-
-```bash
-# Open connect page
 playwright-cli open http://43.156.99.215:9111/index.html
-playwright-cli snapshot
-
-# Switch to Private Key tab, enter key, connect
-playwright-cli click <private-key-tab-ref>
-playwright-cli fill <input-ref> "0xb1eb7c5b3ad9ea36d62e744c4bd07dfb99b0605c2675faaaf8f9c4121ecd8644" --submit
-playwright-cli snapshot  # should show Dashboard
-```
-
-### Flow 2: Module navigation
-
-```bash
-playwright-cli click <mpc-nav-ref>     # MPC Wallet
-playwright-cli snapshot
-playwright-cli click <waas-nav-ref>    # WaaS B2B
-playwright-cli snapshot
-playwright-cli click <safe-nav-ref>    # Safe Vault
-playwright-cli snapshot
-playwright-cli click <dc-nav-ref>      # Data Center
-playwright-cli snapshot
-playwright-cli click <pay-nav-ref>     # Payment
-playwright-cli snapshot
-```
-
-### Flow 3: Admin login
-
-```bash
-playwright-cli tab-new http://43.156.99.215:9111/admin-login.html
-playwright-cli fill <username-ref> "admin"
-playwright-cli fill <password-ref> "a87cefd6e1ce487334a67b0c" --submit
-playwright-cli snapshot  # should show Admin Dashboard
-```
-
-### Flow 4: Debug with console + network
-
-```bash
-playwright-cli open --persistent
-# login and navigate...
-playwright-cli console
-playwright-cli requests
-playwright-cli eval "document.querySelectorAll('.error').length"
-```
-
-## Wrapper scripts
-
-### `test-login.sh`
-
-```bash
-#!/bin/bash
-# Quick login test with playwright-cli
-playwright-cli open http://43.156.99.215:9111/index.html
-sleep 2
-playwright-cli snapshot
-```
-
-### `test-all-modules.sh`
-
-```bash
-#!/bin/bash
-# Navigate all 5 modules and snapshot each
-MODULES=("nc" "mpc" "waas" "safe" "dc" "pay")
-for mod in "${MODULES[@]}"; do
-  playwright-cli click "[data-page='${mod}']"
-  playwright-cli snapshot --filename="snapshot-${mod}.yml"
+sleep 3
+for mod in mpc waas safe dc pay; do
+  playwright-cli click "[data-page='$mod']"
+  sleep 1
+  playwright-cli snapshot --filename="snap-${mod}.yml"
 done
+playwright-cli close
 ```
 
-## Environment
+### Flow 3: MCP Agent 自动化 (@playwright/mcp)
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `INFRAX_URL` | `http://43.156.99.215:9111` | Target InfraX instance |
-| `INFRAX_PK` | `0xb1eb7c5...cd8644` | Test wallet private key |
-| `ADMIN_PASS` | from systemd env | Admin password |
+```
+# AI Agent 通过 MCP 协议发送:
+browser_navigate → http://43.156.99.215:9111/index.html
+browser_snapshot → 获取页面结构
+browser_click → Private Key tab
+browser_type → 输入私钥
+browser_click → Connect 按钮
+browser_snapshot → 验证 Dashboard 渲染
+```
 
-## Known limitations
+### Flow 4: 性能排查 (chrome-devtools-mcp)
 
-- MetaMask popups cannot be automated (requires real wallet interaction)
-- Headless mode may behave differently for Web3 wallet connections
-- Safe Vault deployment requires blockchain signature — not fully automatable
-- Sandbox environment (`--no-sandbox`) required on server
+```bash
+# 启动 MCP，Agent 连接后:
+# 1. navigate to InfraX
+# 2. take_screenshot
+# 3. performance_start_trace
+# 4. 用户操作...
+# 5. performance_stop_trace
+# 6. 分析 LCP / FID / CLS
+```
 
-## References
+---
 
-- `test-reports/INFRAX_TEST_P7_USER_JOURNEYS.md` — full E2E test scenarios
-- `test-reports/INFRAX_TEST_P1_ONBOARDING.md` — onboarding flow
-- `test-reports/E2E_TEST_REPORT.md` — historical test results
-- `~/.claude/skills/playwright-cli/SKILL.md` — full playwright-cli reference
-- `~/.claude/skills/playwright-cli/references/` — detailed sub-topics
+## 环境变量
+
+| 变量 | 默认值 | 用途 |
+|------|--------|------|
+| `INFRAX_URL` | `http://43.156.99.215:9111` | 测试目标 |
+| `INFRAX_PK` | `0xb1eb7c5...cd8644` | 测试私钥 |
+| `ADMIN_PASS` | `a87cefd6e1ce487334a67b0c` | Admin 密码 |
+
+## 已知限制
+
+- MetaMask 弹窗无法自动确认（需真实钱包）
+- Headless 模式 Web3 连接行为可能有差异
+- Safe Vault 部署需区块链签名 — 无法完全自动化
+- chrome-devtools-mcp 仅支持 Chrome/Chromium
+
+## 参考文件
+
+- `test-reports/INFRAX_TEST_P7_USER_JOURNEYS.md` — E2E 场景
+- `test-reports/E2E_TEST_REPORT.md` — 历史结果
+- `projects/web/test/browser-test.sh` — 快捷 wrapper
+- `~/.claude/skills/playwright-cli/` — playwright-cli 完整文档
+- https://github.com/microsoft/playwright-mcp — @playwright/mcp 源码
+- https://github.com/ChromeDevTools/chrome-devtools-mcp — chrome-devtools-mcp
