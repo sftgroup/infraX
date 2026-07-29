@@ -1,0 +1,2969 @@
+{
+  "project": {
+    "name": "InfraX — Web3 Infrastructure Platform",
+    "description": "Web3 基础设施 Monorepo：MPC 多方计算钱包、WaaS B2B 钱包即服务、Safe 多签保险库、链上数据中心、支付引擎(x402)、5 链区块扫描器(Collector)、AI Agent MCP 协议接入、TypeScript SDK。12 个 systemd 微服务、7 个 PostgreSQL 数据库、40+ 张表",
+    "languages": [
+      "TypeScript",
+      "JavaScript",
+      "HTML",
+      "CSS",
+      "Python",
+      "Shell"
+    ],
+    "frameworks": [
+      "Express 5",
+      "React",
+      "TailwindCSS",
+      "PostgreSQL",
+      "Safe{Core}",
+      "tree-sitter",
+      "Playwright"
+    ],
+    "analyzedAt": "2026-07-27T18:46:18.654551+00:00",
+    "gitCommitHash": "7c40027"
+  },
+  "nodes": [
+    {
+      "id": "project:infrax",
+      "type": "project",
+      "name": "InfraX — Web3 基础设施平台",
+      "summary": "Monorepo 项目，10 个子项目，12 个 systemd 服务，7 个 PostgreSQL 数据库。支持 Sepolia/Ethereum/BSC/Base/OxaChain 5 条链。",
+      "tags": [
+        "web3",
+        "infrastructure",
+        "monorepo",
+        "typescript",
+        "postgresql"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:web",
+      "type": "service",
+      "name": "WEB — 前端 SPA + API 代理",
+      "summary": "端口 9111 | 数据库: 无 | JavaScript/HTML",
+      "tags": [
+        "web",
+        "service"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "service:admin",
+      "type": "service",
+      "name": "ADMIN — 管理后台 (Express 5)",
+      "summary": "端口 9100 | 数据库: pocketx_admin | TypeScript",
+      "tags": [
+        "admin",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:collector",
+      "type": "service",
+      "name": "COLLECTOR — 5 链区块扫描器",
+      "summary": "端口 9101 | 数据库: pocketx_collector | TypeScript",
+      "tags": [
+        "collector",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:dc",
+      "type": "service",
+      "name": "DC — 数据中心 API",
+      "summary": "端口 9102 | 数据库: pocketx_dc | TypeScript",
+      "tags": [
+        "dc",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:mpc",
+      "type": "service",
+      "name": "MPC — MPC 多方计算钱包",
+      "summary": "端口 9104 | 数据库: pocketx_mpc | TypeScript",
+      "tags": [
+        "mpc",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:payment",
+      "type": "service",
+      "name": "PAYMENT — 支付引擎 + x402",
+      "summary": "端口 9106 | 数据库: pocketx_payment | TypeScript",
+      "tags": [
+        "payment",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:vault",
+      "type": "service",
+      "name": "VAULT — Safe 多签保险库",
+      "summary": "端口 9107 | 数据库: pocketx_vault | TypeScript",
+      "tags": [
+        "vault",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:waas",
+      "type": "service",
+      "name": "WAAS — WaaS 钱包即服务",
+      "summary": "端口 9109 | 数据库: pocketx_waas | TypeScript",
+      "tags": [
+        "waas",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:mcp-server",
+      "type": "service",
+      "name": "MCP-SERVER — 4 个 MCP 协议服务",
+      "summary": "端口 9103-9110 | 数据库: 无 | TypeScript",
+      "tags": [
+        "mcp-server",
+        "service"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "service:sdk",
+      "type": "service",
+      "name": "SDK — infrax-dk TypeScript SDK",
+      "summary": "端口 None | 数据库: 无 | TypeScript",
+      "tags": [
+        "sdk",
+        "service"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:.trae",
+      "type": "module",
+      "name": ".trae",
+      "filePath": ".trae",
+      "summary": "9 文件, 1210 行 | 语言: markdown",
+      "tags": [
+        "markdown",
+        ".trae"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:root",
+      "type": "module",
+      "name": "root",
+      "filePath": "root",
+      "summary": "1623 文件, 280251 行 | 语言: unknown, wallet, json, conf, html, shell, javascript, typescript, service, markdown, timer, css, config, template",
+      "tags": [
+        "unknown",
+        "wallet",
+        "json",
+        "conf",
+        "html",
+        "shell",
+        "javascript",
+        "typescript",
+        "service",
+        "markdown",
+        "timer",
+        "css",
+        "config",
+        "template",
+        "root"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "module:docs",
+      "type": "module",
+      "name": "docs",
+      "filePath": "docs",
+      "summary": "2 文件, 606 行 | 语言: markdown",
+      "tags": [
+        "markdown",
+        "docs"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:admin:index.html",
+      "type": "module",
+      "name": "admin/index.html",
+      "filePath": "projects/admin/index.html",
+      "summary": "1 文件, 21 行 | 语言: html",
+      "tags": [
+        "html",
+        "admin"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:admin:package.json",
+      "type": "module",
+      "name": "admin/package.json",
+      "filePath": "projects/admin/package.json",
+      "summary": "1 文件, 33 行 | 语言: json",
+      "tags": [
+        "json",
+        "admin"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:admin:server",
+      "type": "module",
+      "name": "admin/server",
+      "filePath": "projects/admin/server",
+      "summary": "2 文件, 404 行 | 语言: json, typescript",
+      "tags": [
+        "json",
+        "typescript",
+        "admin"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:admin:src",
+      "type": "module",
+      "name": "admin/src",
+      "filePath": "projects/admin/src",
+      "summary": "21 文件, 1948 行 | 语言: typescript, css",
+      "tags": [
+        "typescript",
+        "css",
+        "admin"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:admin:tsconfig.json",
+      "type": "module",
+      "name": "admin/tsconfig.json",
+      "filePath": "projects/admin/tsconfig.json",
+      "summary": "1 文件, 16 行 | 语言: json",
+      "tags": [
+        "json",
+        "admin"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:admin:vite.config.ts",
+      "type": "module",
+      "name": "admin/vite.config.ts",
+      "filePath": "projects/admin/vite.config.ts",
+      "summary": "1 文件, 9 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "admin"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:.env",
+      "type": "module",
+      "name": "collector/.env",
+      "filePath": "projects/collector/.env",
+      "summary": "1 文件, 38 行 | 语言: config",
+      "tags": [
+        "config",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:.env.production",
+      "type": "module",
+      "name": "collector/.env.production",
+      "filePath": "projects/collector/.env.production",
+      "summary": "1 文件, 38 行 | 语言: config",
+      "tags": [
+        "config",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:package.json",
+      "type": "module",
+      "name": "collector/package.json",
+      "filePath": "projects/collector/package.json",
+      "summary": "1 文件, 52 行 | 语言: json",
+      "tags": [
+        "json",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "collector/pnpm-workspace.yaml",
+      "filePath": "projects/collector/pnpm-workspace.yaml",
+      "summary": "1 文件, 4 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:rpc-pool.json",
+      "type": "module",
+      "name": "collector/rpc-pool.json",
+      "filePath": "projects/collector/rpc-pool.json",
+      "summary": "1 文件, 416 行 | 语言: json",
+      "tags": [
+        "json",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:collector:sdk",
+      "type": "module",
+      "name": "collector/sdk",
+      "filePath": "projects/collector/sdk",
+      "summary": "2 文件, 726 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "collector"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:collector:src",
+      "type": "module",
+      "name": "collector/src",
+      "filePath": "projects/collector/src",
+      "summary": "24 文件, 4091 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "collector"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:collector:tsconfig.json",
+      "type": "module",
+      "name": "collector/tsconfig.json",
+      "filePath": "projects/collector/tsconfig.json",
+      "summary": "1 文件, 19 行 | 语言: json",
+      "tags": [
+        "json",
+        "collector"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:dc:index.ts",
+      "type": "module",
+      "name": "dc/index.ts",
+      "filePath": "projects/dc/index.ts",
+      "summary": "1 文件, 306 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "dc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:dc:package.json",
+      "type": "module",
+      "name": "dc/package.json",
+      "filePath": "projects/dc/package.json",
+      "summary": "1 文件, 15 行 | 语言: json",
+      "tags": [
+        "json",
+        "dc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:dc:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "dc/pnpm-workspace.yaml",
+      "filePath": "projects/dc/pnpm-workspace.yaml",
+      "summary": "1 文件, 2 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "dc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mcp-server:package.json",
+      "type": "module",
+      "name": "mcp-server/package.json",
+      "filePath": "projects/mcp-server/package.json",
+      "summary": "1 文件, 20 行 | 语言: json",
+      "tags": [
+        "json",
+        "mcp-server"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mcp-server:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "mcp-server/pnpm-workspace.yaml",
+      "filePath": "projects/mcp-server/pnpm-workspace.yaml",
+      "summary": "1 文件, 2 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "mcp-server"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mcp-server:src",
+      "type": "module",
+      "name": "mcp-server/src",
+      "filePath": "projects/mcp-server/src",
+      "summary": "4 文件, 775 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "mcp-server"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:mcp-server:tsconfig.json",
+      "type": "module",
+      "name": "mcp-server/tsconfig.json",
+      "filePath": "projects/mcp-server/tsconfig.json",
+      "summary": "1 文件, 12 行 | 语言: json",
+      "tags": [
+        "json",
+        "mcp-server"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mpc:package.json",
+      "type": "module",
+      "name": "mpc/package.json",
+      "filePath": "projects/mpc/package.json",
+      "summary": "1 文件, 17 行 | 语言: json",
+      "tags": [
+        "json",
+        "mpc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mpc:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "mpc/pnpm-workspace.yaml",
+      "filePath": "projects/mpc/pnpm-workspace.yaml",
+      "summary": "1 文件, 2 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "mpc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:mpc:server.ts",
+      "type": "module",
+      "name": "mpc/server.ts",
+      "filePath": "projects/mpc/server.ts",
+      "summary": "1 文件, 559 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "mpc"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:payment:package.json",
+      "type": "module",
+      "name": "payment/package.json",
+      "filePath": "projects/payment/package.json",
+      "summary": "1 文件, 24 行 | 语言: json",
+      "tags": [
+        "json",
+        "payment"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:payment:server.ts",
+      "type": "module",
+      "name": "payment/server.ts",
+      "filePath": "projects/payment/server.ts",
+      "summary": "1 文件, 199 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "payment"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:payment:src",
+      "type": "module",
+      "name": "payment/src",
+      "filePath": "projects/payment/src",
+      "summary": "3 文件, 729 行 | 语言: unknown, typescript",
+      "tags": [
+        "unknown",
+        "typescript",
+        "payment"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:sdk:package.json",
+      "type": "module",
+      "name": "sdk/package.json",
+      "filePath": "projects/sdk/package.json",
+      "summary": "1 文件, 15 行 | 语言: json",
+      "tags": [
+        "json",
+        "sdk"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:sdk:src",
+      "type": "module",
+      "name": "sdk/src",
+      "filePath": "projects/sdk/src",
+      "summary": "1 文件, 263 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "sdk"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:sdk:tsconfig.json",
+      "type": "module",
+      "name": "sdk/tsconfig.json",
+      "filePath": "projects/sdk/tsconfig.json",
+      "summary": "1 文件, 16 行 | 语言: json",
+      "tags": [
+        "json",
+        "sdk"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:vault:package.json",
+      "type": "module",
+      "name": "vault/package.json",
+      "filePath": "projects/vault/package.json",
+      "summary": "1 文件, 20 行 | 语言: json",
+      "tags": [
+        "json",
+        "vault"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:vault:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "vault/pnpm-workspace.yaml",
+      "filePath": "projects/vault/pnpm-workspace.yaml",
+      "summary": "1 文件, 2 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "vault"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:vault:server.ts",
+      "type": "module",
+      "name": "vault/server.ts",
+      "filePath": "projects/vault/server.ts",
+      "summary": "1 文件, 192 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "vault"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:vault:src",
+      "type": "module",
+      "name": "vault/src",
+      "filePath": "projects/vault/src",
+      "summary": "9 文件, 2167 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "vault"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:waas:.env",
+      "type": "module",
+      "name": "waas/.env",
+      "filePath": "projects/waas/.env",
+      "summary": "1 文件, 6 行 | 语言: config",
+      "tags": [
+        "config",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:config",
+      "type": "module",
+      "name": "waas/config",
+      "filePath": "projects/waas/config",
+      "summary": "1 文件, 132 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:index.ts",
+      "type": "module",
+      "name": "waas/index.ts",
+      "filePath": "projects/waas/index.ts",
+      "summary": "1 文件, 148 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:logger.ts",
+      "type": "module",
+      "name": "waas/logger.ts",
+      "filePath": "projects/waas/logger.ts",
+      "summary": "1 文件, 27 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:middleware",
+      "type": "module",
+      "name": "waas/middleware",
+      "filePath": "projects/waas/middleware",
+      "summary": "5 文件, 320 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:models",
+      "type": "module",
+      "name": "waas/models",
+      "filePath": "projects/waas/models",
+      "summary": "1 文件, 388 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:package.json",
+      "type": "module",
+      "name": "waas/package.json",
+      "filePath": "projects/waas/package.json",
+      "summary": "1 文件, 30 行 | 语言: json",
+      "tags": [
+        "json",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:pnpm-workspace.yaml",
+      "type": "module",
+      "name": "waas/pnpm-workspace.yaml",
+      "filePath": "projects/waas/pnpm-workspace.yaml",
+      "summary": "1 文件, 2 行 | 语言: yaml",
+      "tags": [
+        "yaml",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:waas:routes",
+      "type": "module",
+      "name": "waas/routes",
+      "filePath": "projects/waas/routes",
+      "summary": "12 文件, 2703 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:waas:services",
+      "type": "module",
+      "name": "waas/services",
+      "filePath": "projects/waas/services",
+      "summary": "16 文件, 4129 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:waas:utils",
+      "type": "module",
+      "name": "waas/utils",
+      "filePath": "projects/waas/utils",
+      "summary": "3 文件, 140 行 | 语言: typescript",
+      "tags": [
+        "typescript",
+        "waas"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:admin-login.html",
+      "type": "module",
+      "name": "web/admin-login.html",
+      "filePath": "projects/web/admin-login.html",
+      "summary": "1 文件, 255 行 | 语言: html",
+      "tags": [
+        "html",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:admin.html",
+      "type": "module",
+      "name": "web/admin.html",
+      "filePath": "projects/web/admin.html",
+      "summary": "1 文件, 655 行 | 语言: html",
+      "tags": [
+        "html",
+        "web"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:web:connect.html",
+      "type": "module",
+      "name": "web/connect.html",
+      "filePath": "projects/web/connect.html",
+      "summary": "1 文件, 213 行 | 语言: html",
+      "tags": [
+        "html",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:index.html",
+      "type": "module",
+      "name": "web/index.html",
+      "filePath": "projects/web/index.html",
+      "summary": "1 文件, 1016 行 | 语言: html",
+      "tags": [
+        "html",
+        "web"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:web:landing.html",
+      "type": "module",
+      "name": "web/landing.html",
+      "filePath": "projects/web/landing.html",
+      "summary": "1 文件, 304 行 | 语言: html",
+      "tags": [
+        "html",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:modules",
+      "type": "module",
+      "name": "web/modules",
+      "filePath": "projects/web/modules",
+      "summary": "10 文件, 2168 行 | 语言: css, javascript",
+      "tags": [
+        "css",
+        "javascript",
+        "web"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "module:web:server.js",
+      "type": "module",
+      "name": "web/server.js",
+      "filePath": "projects/web/server.js",
+      "summary": "1 文件, 148 行 | 语言: javascript",
+      "tags": [
+        "javascript",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:server.mjs",
+      "type": "module",
+      "name": "web/server.mjs",
+      "filePath": "projects/web/server.mjs",
+      "summary": "1 文件, 79 行 | 语言: javascript",
+      "tags": [
+        "javascript",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:web:test",
+      "type": "module",
+      "name": "web/test",
+      "filePath": "projects/web/test",
+      "summary": "2 文件, 341 行 | 语言: shell",
+      "tags": [
+        "shell",
+        "web"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "module:test-reports",
+      "type": "module",
+      "name": "test-reports",
+      "filePath": "test-reports",
+      "summary": "12 文件, 4580 行 | 语言: markdown, shell, javascript",
+      "tags": [
+        "markdown",
+        "shell",
+        "javascript",
+        "test-reports"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/server.js",
+      "type": "file",
+      "name": "Web 代理服务器",
+      "filePath": "projects/web/server.js",
+      "summary": "零依赖 Node HTTP server，静态文件 + API 反向代理",
+      "tags": [
+        "web",
+        "server.js"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/web/modules/core.js",
+      "type": "file",
+      "name": "前端核心库",
+      "filePath": "projects/web/modules/core.js",
+      "summary": "afetch, user, signOnce, setupNav, showToast",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/nc-wallet.js",
+      "type": "file",
+      "name": "Dashboard 仪表盘",
+      "filePath": "projects/web/modules/nc-wallet.js",
+      "summary": "Non-Custodial Wallet dashboard (ncDash)",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/mpc-wallet.js",
+      "type": "file",
+      "name": "MPC 钱包模块",
+      "filePath": "projects/web/modules/mpc-wallet.js",
+      "summary": "MPC 注册/恢复/Dashboard/发送/接收",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/waas.js",
+      "type": "file",
+      "name": "WaaS 模块",
+      "filePath": "projects/web/modules/waas.js",
+      "summary": "B2B 钱包即服务 (租户/Token/地址/归集/提现)",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/safe.js",
+      "type": "file",
+      "name": "Safe 保险库模块",
+      "filePath": "projects/web/modules/safe.js",
+      "summary": "多签 Safe 创建/提案/签名/执行",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/datacenter.js",
+      "type": "file",
+      "name": "Data Center 模块",
+      "filePath": "projects/web/modules/datacenter.js",
+      "summary": "链上数据查询/订阅/Explorer",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/modules/payment.js",
+      "type": "file",
+      "name": "Payment 模块",
+      "filePath": "projects/web/modules/payment.js",
+      "summary": "支付订单创建 + 历史查询",
+      "tags": [
+        "web",
+        "modules"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/index.html",
+      "type": "file",
+      "name": "主应用页面",
+      "filePath": "projects/web/index.html",
+      "summary": "InfraX SPA 主页面",
+      "tags": [
+        "web",
+        "index.html"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/web/connect.html",
+      "type": "file",
+      "name": "钱包连接页",
+      "filePath": "projects/web/connect.html",
+      "summary": "MetaMask + Private Key 登录",
+      "tags": [
+        "web",
+        "connect.html"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/landing.html",
+      "type": "file",
+      "name": "产品落地页",
+      "filePath": "projects/web/landing.html",
+      "summary": "InfraX 产品介绍页",
+      "tags": [
+        "web",
+        "landing.html"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/admin-login.html",
+      "type": "file",
+      "name": "Admin 登录页",
+      "filePath": "projects/web/admin-login.html",
+      "summary": "管理后台登录",
+      "tags": [
+        "web",
+        "admin-login.html"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/web/admin.html",
+      "type": "file",
+      "name": "Admin 面板",
+      "filePath": "projects/web/admin.html",
+      "summary": "管理后台 SPA",
+      "tags": [
+        "web",
+        "admin.html"
+      ],
+      "complexity": "medium"
+    },
+    {
+      "id": "file:projects/vault/server.ts",
+      "type": "file",
+      "name": "Vault 服务入口",
+      "filePath": "projects/vault/server.ts",
+      "summary": "Safe 多签 + 风险规则 + Safe{Core} 集成",
+      "tags": [
+        "vault",
+        "server.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/waas/index.ts",
+      "type": "file",
+      "name": "WaaS 服务入口",
+      "filePath": "projects/waas/index.ts",
+      "summary": "钱包/租户/SaaS/B2B API",
+      "tags": [
+        "waas",
+        "index.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/payment/server.ts",
+      "type": "file",
+      "name": "Payment 服务入口",
+      "filePath": "projects/payment/server.ts",
+      "summary": "支付引擎 + x402 HTTP 402 协议",
+      "tags": [
+        "payment",
+        "server.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/dc/index.ts",
+      "type": "file",
+      "name": "DC 服务入口",
+      "filePath": "projects/dc/index.ts",
+      "summary": "数据中心 + 事件查询 + 订阅管理",
+      "tags": [
+        "dc",
+        "index.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/mpc/index.ts",
+      "type": "file",
+      "name": "MPC 服务入口",
+      "filePath": "projects/mpc/index.ts",
+      "summary": "MPC 多方计算 + Agent 签名",
+      "tags": [
+        "mpc",
+        "index.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/admin/index.ts",
+      "type": "file",
+      "name": "Admin 服务入口",
+      "filePath": "projects/admin/index.ts",
+      "summary": "管理后台 API (跨 7 DB)",
+      "tags": [
+        "admin",
+        "index.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "file:projects/collector/index.ts",
+      "type": "file",
+      "name": "Collector 服务入口",
+      "filePath": "projects/collector/index.ts",
+      "summary": "5 链区块事件扫描 + 价格采集",
+      "tags": [
+        "collector",
+        "index.ts"
+      ],
+      "complexity": "high"
+    },
+    {
+      "id": "resource:db:pocketx_admin",
+      "type": "resource",
+      "name": "pocketx_admin",
+      "summary": "PostgreSQL 数据库 — admin 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_collector",
+      "type": "resource",
+      "name": "pocketx_collector",
+      "summary": "PostgreSQL 数据库 — collector 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_dc",
+      "type": "resource",
+      "name": "pocketx_dc",
+      "summary": "PostgreSQL 数据库 — dc 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_mpc",
+      "type": "resource",
+      "name": "pocketx_mpc",
+      "summary": "PostgreSQL 数据库 — mpc 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_payment",
+      "type": "resource",
+      "name": "pocketx_payment",
+      "summary": "PostgreSQL 数据库 — payment 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_vault",
+      "type": "resource",
+      "name": "pocketx_vault",
+      "summary": "PostgreSQL 数据库 — vault 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:db:pocketx_waas",
+      "type": "resource",
+      "name": "pocketx_waas",
+      "summary": "PostgreSQL 数据库 — waas 服务",
+      "tags": [
+        "database",
+        "postgresql"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:chain:sepolia",
+      "type": "resource",
+      "name": "Sepolia (Chain ID: 11155111)",
+      "summary": "支持的区块链 — Chain ID 11155111",
+      "tags": [
+        "blockchain",
+        "sepolia"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:chain:ethereum",
+      "type": "resource",
+      "name": "Ethereum (Chain ID: 1)",
+      "summary": "支持的区块链 — Chain ID 1",
+      "tags": [
+        "blockchain",
+        "ethereum"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:chain:bsc",
+      "type": "resource",
+      "name": "Bsc (Chain ID: 56)",
+      "summary": "支持的区块链 — Chain ID 56",
+      "tags": [
+        "blockchain",
+        "bsc"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:chain:base",
+      "type": "resource",
+      "name": "Base (Chain ID: 8453)",
+      "summary": "支持的区块链 — Chain ID 8453",
+      "tags": [
+        "blockchain",
+        "base"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "resource:chain:oxa",
+      "type": "resource",
+      "name": "Oxa (Chain ID: 19505)",
+      "summary": "支持的区块链 — Chain ID 19505",
+      "tags": [
+        "blockchain",
+        "oxa"
+      ],
+      "complexity": "low"
+    },
+    {
+      "id": "file:projects/admin/server/index.ts",
+      "type": "file",
+      "name": "Admin 后端入口",
+      "filePath": "projects/admin/server/index.ts",
+      "summary": "Express 5 管理后台 API 服务器。跨 7 个 PostgreSQL 数据库聚合查询。提供 20+ 个管理端点：仪表盘、收入分析、API 用量、租户/交易/RPC/Webhook/风控/审计管理。8 小时会话过期",
+      "tags": [
+        "admin",
+        "express",
+        "postgresql",
+        "api"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/collector/src/index.ts",
+      "type": "file",
+      "name": "Collector 服务入口",
+      "filePath": "projects/collector/src/index.ts",
+      "summary": "5 链区块事件扫描器入口。启动时自动执行：数据库迁移 → HTTP 服务器 → BlockScanner → DataCleaner → Binance 合约价格 → OKX ChainOS 代币数据",
+      "tags": [
+        "collector",
+        "blockchain",
+        "scanner",
+        "express"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/collector/src/services/scanner.ts",
+      "type": "file",
+      "name": "区块扫描器",
+      "filePath": "projects/collector/src/services/scanner.ts",
+      "summary": "多链区块事件扫描引擎。使用 ethers.js 监听多个 RPC 端点，解析合约事件并写入数据库",
+      "tags": [
+        "collector",
+        "blockchain",
+        "scanner",
+        "ethers"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/collector/src/services/rpcPool.ts",
+      "type": "file",
+      "name": "RPC 连接池",
+      "filePath": "projects/collector/src/services/rpcPool.ts",
+      "summary": "RPC 端点连接池管理。三层合并：静态 JSON 配置 + 环境变量 + 数据库动态配置。支持故障切换和负载均衡",
+      "tags": [
+        "collector",
+        "rpc",
+        "connection-pool"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/collector/src/services/relayer.ts",
+      "type": "file",
+      "name": "中继服务",
+      "filePath": "projects/collector/src/services/relayer.ts",
+      "summary": "跨链事件中继服务。将从链上扫描到的事件转发到 DC 数据中心服务",
+      "tags": [
+        "collector",
+        "relayer",
+        "events"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/collector/src/services/eventBus.ts",
+      "type": "file",
+      "name": "事件总线",
+      "filePath": "projects/collector/src/services/eventBus.ts",
+      "summary": "WebSocket 事件总线。实时推送区块事件到订阅者，支持多频道和重连机制",
+      "tags": [
+        "collector",
+        "websocket",
+        "events",
+        "realtime"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/collector/src/services/cleaner.ts",
+      "type": "file",
+      "name": "数据清理器",
+      "filePath": "projects/collector/src/services/cleaner.ts",
+      "summary": "自动清理 5 天前的链上事件数据。执行 VACUUM ANALYZE 回收数据库空间",
+      "tags": [
+        "collector",
+        "cleanup",
+        "database"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:projects/collector/src/services/binanceFutures.ts",
+      "type": "file",
+      "name": "Binance 合约价格",
+      "filePath": "projects/collector/src/services/binanceFutures.ts",
+      "summary": "Binance 合约市场数据采集器。定时获取永续合约价格、资金费率、持仓量等数据",
+      "tags": [
+        "collector",
+        "binance",
+        "prices",
+        "market-data"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/collector/src/services/okxChainOS.ts",
+      "type": "file",
+      "name": "OKX ChainOS 代币数据",
+      "filePath": "projects/collector/src/services/okxChainOS.ts",
+      "summary": "OKX ChainOS 代币数据采集器。从 OKX API 获取多链代币快照数据",
+      "tags": [
+        "collector",
+        "okx",
+        "tokens",
+        "market-data"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/mpc/server.ts",
+      "type": "file",
+      "name": "MPC 服务入口",
+      "filePath": "projects/mpc/server.ts",
+      "summary": "MPC 多方计算钱包服务。邮箱验证注册/恢复，AES-256-GCM 加密分片存储，支持 EIP-191/EIP-712 签名、交易发送（限 0.1 ETH）、合约读写。30 分钟会话 TTL",
+      "tags": [
+        "mpc",
+        "wallet",
+        "encryption",
+        "express"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/vault/src/services/multiSigService.ts",
+      "type": "file",
+      "name": "多签服务",
+      "filePath": "projects/vault/src/services/multiSigService.ts",
+      "summary": "Safe 多签核心业务逻辑。管理钱包创建、owner 更新、交易提议/确认/执行/重试。集成 Safe{Core} SDK",
+      "tags": [
+        "vault",
+        "multisig",
+        "safe-core"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/vault/src/services/riskService.ts",
+      "type": "file",
+      "name": "风控服务",
+      "filePath": "projects/vault/src/services/riskService.ts",
+      "summary": "Vault 风控规则引擎。检查交易风险、管理黑白名单、限制转账金额和频率",
+      "tags": [
+        "vault",
+        "risk",
+        "compliance"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/walletRoutes.ts",
+      "type": "file",
+      "name": "钱包路由",
+      "filePath": "projects/waas/routes/walletRoutes.ts",
+      "summary": "钱包操作路由。创建/导入钱包、查询余额/地址/交易/代币/NFT/自定义代币",
+      "tags": [
+        "waas",
+        "wallet",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/txRoutes.ts",
+      "type": "file",
+      "name": "交易路由",
+      "filePath": "projects/waas/routes/txRoutes.ts",
+      "summary": "交易处理路由。发送、估算 Gas、查询状态、批量交易、待处理交易管理、确认/拒绝",
+      "tags": [
+        "waas",
+        "transactions",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/authRoutes.ts",
+      "type": "file",
+      "name": "认证路由",
+      "filePath": "projects/waas/routes/authRoutes.ts",
+      "summary": "用户认证路由。登录、设置支付密码、查询支付密码状态",
+      "tags": [
+        "waas",
+        "auth",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/saasRoutes.ts",
+      "type": "file",
+      "name": "SaaS 路由",
+      "filePath": "projects/waas/routes/saasRoutes.ts",
+      "summary": "SaaS B2B 租户路由。租户 CRUD、地址分配、提现、归集、余额/交易/API Key 管理",
+      "tags": [
+        "waas",
+        "saas",
+        "routes"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/routes/eventRoutes.ts",
+      "type": "file",
+      "name": "事件路由",
+      "filePath": "projects/waas/routes/eventRoutes.ts",
+      "summary": "实时事件路由。SSE (Server-Sent Events) 推送和 Webhook 事件回调",
+      "tags": [
+        "waas",
+        "events",
+        "routes",
+        "sse",
+        "webhook"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/internalRoutes.ts",
+      "type": "file",
+      "name": "内部路由",
+      "filePath": "projects/waas/routes/internalRoutes.ts",
+      "summary": "内部服务路由。余额查询、交易状态、健康检查、Gas 估算、发送交易、RPC 配置、归集",
+      "tags": [
+        "waas",
+        "internal",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/dashboardRoutes.ts",
+      "type": "file",
+      "name": "仪表盘路由",
+      "filePath": "projects/waas/routes/dashboardRoutes.ts",
+      "summary": "WaaS 仪表盘统计路由。提供用户/交易/收入等运营数据",
+      "tags": [
+        "waas",
+        "dashboard",
+        "routes"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:projects/waas/routes/subscriptionRoutes.ts",
+      "type": "file",
+      "name": "订阅路由",
+      "filePath": "projects/waas/routes/subscriptionRoutes.ts",
+      "summary": "订阅管理路由。查看套餐、订阅、取消订阅",
+      "tags": [
+        "waas",
+        "subscription",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/dataSubscriptionRoutes.ts",
+      "type": "file",
+      "name": "DC 订阅路由",
+      "filePath": "projects/waas/routes/dataSubscriptionRoutes.ts",
+      "summary": "Data Center 数据订阅路由。管理链上数据订阅计划",
+      "tags": [
+        "waas",
+        "dc",
+        "subscription",
+        "routes"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/routes/riskRoutes.ts",
+      "type": "file",
+      "name": "风控路由",
+      "filePath": "projects/waas/routes/riskRoutes.ts",
+      "summary": "风控规则路由。查询/管理风控限额和黑名单",
+      "tags": [
+        "waas",
+        "risk",
+        "routes"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:projects/waas/services/walletService.ts",
+      "type": "file",
+      "name": "钱包服务",
+      "filePath": "projects/waas/services/walletService.ts",
+      "summary": "钱包核心服务。托管钱包创建/导入、HD 钱包派生、地址管理、余额查询、代币管理",
+      "tags": [
+        "waas",
+        "wallet",
+        "service"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/services/txService.ts",
+      "type": "file",
+      "name": "交易服务",
+      "filePath": "projects/waas/services/txService.ts",
+      "summary": "交易处理引擎。签名、发送、Gas 估算、批量交易、pending 管理、确认/拒绝",
+      "tags": [
+        "waas",
+        "transactions",
+        "service"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/services/authService.ts",
+      "type": "file",
+      "name": "认证服务",
+      "filePath": "projects/waas/services/authService.ts",
+      "summary": "多策略认证引擎。EIP-191 钱包签名、HMAC-SHA256 JWT、API Key SHA256 哈希比对、CWallet 签名验证",
+      "tags": [
+        "waas",
+        "auth",
+        "security"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/services/tenantService.ts",
+      "type": "file",
+      "name": "租户服务",
+      "filePath": "projects/waas/services/tenantService.ts",
+      "summary": "B2B 租户管理服务。租户 CRUD、API Key 管理、限流配置",
+      "tags": [
+        "waas",
+        "tenant",
+        "b2b"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/services/saasService.ts",
+      "type": "file",
+      "name": "SaaS 服务",
+      "filePath": "projects/waas/services/saasService.ts",
+      "summary": "SaaS B2B 核心业务。地址池管理、资金归集、提现处理、租户余额查询",
+      "tags": [
+        "waas",
+        "saas",
+        "b2b"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/services/sigStrategyService.ts",
+      "type": "file",
+      "name": "签名策略服务",
+      "filePath": "projects/waas/services/sigStrategyService.ts",
+      "summary": "多签名策略引擎。支持不同交易类型的签名策略配置和执行",
+      "tags": [
+        "waas",
+        "signature",
+        "strategy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/services/webhookService.ts",
+      "type": "file",
+      "name": "Webhook 服务",
+      "filePath": "projects/waas/services/webhookService.ts",
+      "summary": "Webhook 事件发布 + SSE (Server-Sent Events) 实时推送。管理回调重试和事件队列",
+      "tags": [
+        "waas",
+        "webhook",
+        "sse",
+        "events"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/services/riskService.ts",
+      "type": "file",
+      "name": "风控服务",
+      "filePath": "projects/waas/services/riskService.ts",
+      "summary": "风控规则引擎。交易限额检查、地址黑白名单、风险评分",
+      "tags": [
+        "waas",
+        "risk",
+        "compliance"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/services/hdWalletService.ts",
+      "type": "file",
+      "name": "HD 钱包服务",
+      "filePath": "projects/waas/services/hdWalletService.ts",
+      "summary": "HD (Hierarchical Deterministic) 钱包服务。BIP32/BIP44 层级确定性钱包派生",
+      "tags": [
+        "waas",
+        "hd-wallet",
+        "bip32",
+        "bip44"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:projects/waas/services/mpcService.ts",
+      "type": "file",
+      "name": "MPC 钱包服务",
+      "filePath": "projects/waas/services/mpcService.ts",
+      "summary": "MPC 钱包集成服务。通过 HTTP 调用 mpc 服务的 MPC 钱包操作 API",
+      "tags": [
+        "waas",
+        "mpc",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/services/encryptionService.ts",
+      "type": "file",
+      "name": "加密服务",
+      "filePath": "projects/waas/services/encryptionService.ts",
+      "summary": "数据加密解密服务。AES-256-GCM 加密，安全的密钥管理和密钥派生",
+      "tags": [
+        "waas",
+        "encryption",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/waas/models/database.ts",
+      "type": "file",
+      "name": "WaaS 数据库模型",
+      "filePath": "projects/waas/models/database.ts",
+      "summary": "WaaS 数据库表初始化。17+ 张表：users/custodial_wallets/transactions/tenants/address_pool/sweep_records/safe_wallets/risk_rules/webhook_events/api_keys/tokens/chains/fee_configs/subscriptions 等",
+      "tags": [
+        "waas",
+        "database",
+        "schema"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/mcp-server/src/index.ts",
+      "type": "file",
+      "name": "Wallet MCP Server",
+      "filePath": "projects/mcp-server/src/index.ts",
+      "summary": "Wallet MCP 协议服务器。7 个 tools: wallet_balance/send/simulate/rpc/health/sweep/status + 3 个 payment tools: create/status/x402_pay",
+      "tags": [
+        "mcp",
+        "wallet",
+        "ai-agent"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/mcp-server/src/dc-index.ts",
+      "type": "file",
+      "name": "DC MCP Server",
+      "filePath": "projects/mcp-server/src/dc-index.ts",
+      "summary": "DC MCP 协议服务器。7 个 tools: dc_events/stats/checkpoints/plans/tokens/chains/price。使用 @modelcontextprotocol/sdk v1 + Zod 验证",
+      "tags": [
+        "mcp",
+        "dc",
+        "ai-agent",
+        "zod"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/mcp-server/src/vault-index.ts",
+      "type": "file",
+      "name": "Vault MCP Server",
+      "filePath": "projects/mcp-server/src/vault-index.ts",
+      "summary": "Vault MCP 协议服务器。12 个 tools: vault_dashboard/safes/safe_info/create_safe/update_owners/create_tx/confirm_tx/execute_tx/retry/execute_ready/sync/risk_check",
+      "tags": [
+        "mcp",
+        "vault",
+        "ai-agent"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/mcp-server/src/mpc-index.ts",
+      "type": "file",
+      "name": "MPC MCP Server",
+      "filePath": "projects/mcp-server/src/mpc-index.ts",
+      "summary": "MPC MCP 协议服务器。15 个 tools: mpc_send_code/register/recover/status/create_wallet/session_unlock/lock/status/balance/sign_message/sign_typed_data/send_transaction/contract_read/write/gas_estimate",
+      "tags": [
+        "mcp",
+        "mpc",
+        "ai-agent"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:projects/sdk/src/index.ts",
+      "type": "file",
+      "name": "SDK 入口",
+      "filePath": "projects/sdk/src/index.ts",
+      "summary": "infrax-dk TypeScript SDK。统一 HTTP 客户端，8 个 API 模块：wallet/safe/payment/saas/sub/dc/vault/mpc。支持 API Key 和 DC API Key 认证",
+      "tags": [
+        "sdk",
+        "api-client",
+        "typescript"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:deploy/infrax.service",
+      "type": "config",
+      "name": "infrax systemd 服务",
+      "filePath": "deploy/infrax.service",
+      "summary": "systemd 服务单元。定义所有 12 个微服务的启动配置和环境变量",
+      "tags": [
+        "deploy",
+        "systemd",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/collector.service",
+      "type": "config",
+      "name": "collector systemd 服务",
+      "filePath": "deploy/collector.service",
+      "summary": "Collector 服务 systemd 单元。端口 9101，运行 `node src/index.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "collector"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/payment.service",
+      "type": "config",
+      "name": "payment systemd 服务",
+      "filePath": "deploy/payment.service",
+      "summary": "Payment 服务 systemd 单元。端口 9106，运行 `npx tsx server.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "payment"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/vault.service",
+      "type": "config",
+      "name": "vault systemd 服务",
+      "filePath": "deploy/vault.service",
+      "summary": "Vault 服务 systemd 单元。端口 9107，运行 `npx tsx server.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "vault"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/waas.service",
+      "type": "config",
+      "name": "waas systemd 服务",
+      "filePath": "deploy/waas.service",
+      "summary": "WaaS 服务 systemd 单元。端口 9109，运行 `npx tsx index.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "waas"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/mpc.service",
+      "type": "config",
+      "name": "mpc systemd 服务",
+      "filePath": "deploy/mpc.service",
+      "summary": "MPC 服务 systemd 单元。端口 9104，运行 `npx tsx server.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "mpc"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/dc.service",
+      "type": "config",
+      "name": "dc systemd 服务",
+      "filePath": "deploy/dc.service",
+      "summary": "DC 服务 systemd 单元。端口 9102，运行 `npx tsx index.ts`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "dc"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/web.service",
+      "type": "config",
+      "name": "web systemd 服务",
+      "filePath": "deploy/web.service",
+      "summary": "Web 前端 systemd 单元。端口 9111，运行 `node server.js`",
+      "tags": [
+        "deploy",
+        "systemd",
+        "web"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/mcp-server.service",
+      "type": "config",
+      "name": "mcp-server systemd 服务",
+      "filePath": "deploy/mcp-server.service",
+      "summary": "MCP Server systemd 单元。运行多个 MCP 服务器实例",
+      "tags": [
+        "deploy",
+        "systemd",
+        "mcp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/infrax-cleanup.service",
+      "type": "config",
+      "name": "数据清理 systemd 服务",
+      "filePath": "deploy/infrax-cleanup.service",
+      "summary": "数据清理服务。删除 5 天前的 events/payment_events/okx_token_snapshots/binance_futures_prices",
+      "tags": [
+        "deploy",
+        "cleanup",
+        "systemd"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:deploy/infrax-cleanup.timer",
+      "type": "config",
+      "name": "数据清理定时器",
+      "filePath": "deploy/infrax-cleanup.timer",
+      "summary": "数据清理 systemd timer。每日凌晨 3:00 触发清理服务",
+      "tags": [
+        "deploy",
+        "cleanup",
+        "timer"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "project:infrax",
+      "target": "service:web",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:admin",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:collector",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:dc",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:mpc",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:payment",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:vault",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:waas",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:mcp-server",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:sdk",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "service:admin",
+      "target": "resource:db:pocketx_admin",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:db:pocketx_collector",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:dc",
+      "target": "resource:db:pocketx_dc",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:mpc",
+      "target": "resource:db:pocketx_mpc",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:payment",
+      "target": "resource:db:pocketx_payment",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:vault",
+      "target": "resource:db:pocketx_vault",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:waas",
+      "target": "resource:db:pocketx_waas",
+      "type": "depends_on",
+      "weight": 5
+    },
+    {
+      "source": "service:web",
+      "target": "service:dc",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/data"
+    },
+    {
+      "source": "service:web",
+      "target": "service:mpc",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/mpc"
+    },
+    {
+      "source": "service:web",
+      "target": "service:waas",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/wallet"
+    },
+    {
+      "source": "service:web",
+      "target": "service:waas",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/waas"
+    },
+    {
+      "source": "service:web",
+      "target": "service:waas",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/saas"
+    },
+    {
+      "source": "service:web",
+      "target": "service:vault",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/vault"
+    },
+    {
+      "source": "service:web",
+      "target": "service:vault",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/vault"
+    },
+    {
+      "source": "service:web",
+      "target": "service:payment",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/payment"
+    },
+    {
+      "source": "service:web",
+      "target": "service:admin",
+      "type": "routes",
+      "weight": 8,
+      "label": "/api/v2/admin"
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/core.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/nc-wallet.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/mpc-wallet.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/waas.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/safe.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/datacenter.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "file:projects/web/index.html",
+      "target": "file:projects/web/modules/payment.js",
+      "type": "imports",
+      "weight": 6
+    },
+    {
+      "source": "project:infrax",
+      "target": "resource:chain:sepolia",
+      "type": "supports",
+      "weight": 2
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:chain:sepolia",
+      "type": "scans",
+      "weight": 5
+    },
+    {
+      "source": "project:infrax",
+      "target": "resource:chain:ethereum",
+      "type": "supports",
+      "weight": 2
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:chain:ethereum",
+      "type": "scans",
+      "weight": 5
+    },
+    {
+      "source": "project:infrax",
+      "target": "resource:chain:bsc",
+      "type": "supports",
+      "weight": 2
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:chain:bsc",
+      "type": "scans",
+      "weight": 5
+    },
+    {
+      "source": "project:infrax",
+      "target": "resource:chain:base",
+      "type": "supports",
+      "weight": 2
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:chain:base",
+      "type": "scans",
+      "weight": 5
+    },
+    {
+      "source": "project:infrax",
+      "target": "resource:chain:oxa",
+      "type": "supports",
+      "weight": 2
+    },
+    {
+      "source": "service:collector",
+      "target": "resource:chain:oxa",
+      "type": "scans",
+      "weight": 5
+    },
+    {
+      "source": "service:collector",
+      "target": "service:dc",
+      "type": "writes_to",
+      "weight": 4
+    },
+    {
+      "source": "service:payment",
+      "target": "service:waas",
+      "type": "interacts_with",
+      "weight": 4
+    },
+    {
+      "source": "service:mpc",
+      "target": "service:vault",
+      "type": "interacts_with",
+      "weight": 4
+    },
+    {
+      "source": "service:sdk",
+      "target": "service:waas",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "service:sdk",
+      "target": "service:mpc",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "service:sdk",
+      "target": "service:vault",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "service:sdk",
+      "target": "service:dc",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "service:sdk",
+      "target": "service:payment",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "service:dc",
+      "type": "wraps",
+      "weight": 4
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "service:mpc",
+      "type": "wraps",
+      "weight": 4
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "service:vault",
+      "type": "wraps",
+      "weight": 4
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "service:waas",
+      "type": "wraps",
+      "weight": 4
+    },
+    {
+      "source": "service:payment",
+      "target": "service:waas",
+      "type": "depends_on",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/scanner.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/rpcPool.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/relayer.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/eventBus.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/cleaner.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/binanceFutures.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/collector/src/index.ts",
+      "target": "file:projects/collector/src/services/okxChainOS.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "service:collector",
+      "target": "file:projects/collector/src/index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "file:projects/mcp-server/src/index.ts",
+      "target": "service:waas",
+      "type": "wraps",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/mcp-server/src/dc-index.ts",
+      "target": "service:dc",
+      "type": "wraps",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/mcp-server/src/vault-index.ts",
+      "target": "service:vault",
+      "type": "wraps",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/mcp-server/src/mpc-index.ts",
+      "target": "service:mpc",
+      "type": "wraps",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/admin/server/index.ts",
+      "target": "service:admin",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/dc/index.ts",
+      "target": "service:dc",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/mpc/server.ts",
+      "target": "service:mpc",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/payment/server.ts",
+      "target": "service:payment",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/vault/server.ts",
+      "target": "service:vault",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/vault/server.ts",
+      "target": "file:projects/vault/src/services/multiSigService.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/vault/server.ts",
+      "target": "file:projects/vault/src/services/riskService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/index.ts",
+      "target": "service:waas",
+      "type": "implements",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/routes/authRoutes.ts",
+      "target": "file:projects/waas/services/authService.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/waas/routes/walletRoutes.ts",
+      "target": "file:projects/waas/services/walletService.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/waas/routes/txRoutes.ts",
+      "target": "file:projects/waas/services/txService.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/waas/routes/saasRoutes.ts",
+      "target": "file:projects/waas/services/saasService.ts",
+      "type": "calls",
+      "weight": 5
+    },
+    {
+      "source": "file:projects/waas/routes/saasRoutes.ts",
+      "target": "file:projects/waas/services/tenantService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/routes/dashboardRoutes.ts",
+      "target": "file:projects/waas/services/walletService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/waas/routes/internalRoutes.ts",
+      "target": "file:projects/waas/services/walletService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/waas/routes/internalRoutes.ts",
+      "target": "file:projects/waas/services/txService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/waas/routes/riskRoutes.ts",
+      "target": "file:projects/waas/services/riskService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/routes/eventRoutes.ts",
+      "target": "file:projects/waas/services/webhookService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/services/txService.ts",
+      "target": "file:projects/waas/services/sigStrategyService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/services/txService.ts",
+      "target": "file:projects/waas/services/riskService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/waas/services/walletService.ts",
+      "target": "file:projects/waas/services/hdWalletService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/services/walletService.ts",
+      "target": "file:projects/waas/services/encryptionService.ts",
+      "type": "calls",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/waas/services/saasService.ts",
+      "target": "file:projects/waas/services/webhookService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/waas/services/saasService.ts",
+      "target": "file:projects/waas/services/riskService.ts",
+      "type": "calls",
+      "weight": 3
+    },
+    {
+      "source": "file:projects/sdk/src/index.ts",
+      "target": "service:waas",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/sdk/src/index.ts",
+      "target": "service:mpc",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/sdk/src/index.ts",
+      "target": "service:vault",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/sdk/src/index.ts",
+      "target": "service:dc",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "file:projects/sdk/src/index.ts",
+      "target": "service:payment",
+      "type": "provides_client_for",
+      "weight": 4
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/infrax.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/collector.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/payment.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/vault.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/waas.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/mpc.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/dc.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/web.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/mcp-server.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/infrax-cleanup.service",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "project:infrax",
+      "target": "config:deploy/infrax-cleanup.timer",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/routes/walletRoutes.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/routes/txRoutes.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/routes/authRoutes.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/routes/saasRoutes.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/services/walletService.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/services/txService.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:waas",
+      "target": "file:projects/waas/models/database.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "file:projects/mcp-server/src/index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "file:projects/mcp-server/src/dc-index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "file:projects/mcp-server/src/vault-index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:mcp-server",
+      "target": "file:projects/mcp-server/src/mpc-index.ts",
+      "type": "contains",
+      "weight": 1
+    },
+    {
+      "source": "service:collector",
+      "target": "file:projects/collector/src/index.ts",
+      "type": "contains",
+      "weight": 1
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:frontend",
+      "name": "前端 (Frontend)",
+      "description": "SPA + Landing Page + Admin UI — 纯 JavaScript/HTML/CSS，由 web server.js 代理。包含 6 个核心模块：Dashboard/MPC 钱包/WaaS/Safe 保险库/Data Center/Payment",
+      "nodeIds": [
+        "file:projects/web/index.html",
+        "file:projects/web/connect.html",
+        "file:projects/web/landing.html",
+        "file:projects/web/admin.html",
+        "file:projects/web/admin-login.html",
+        "file:projects/web/modules/core.js",
+        "file:projects/web/modules/nc-wallet.js",
+        "file:projects/web/modules/mpc-wallet.js",
+        "file:projects/web/modules/waas.js",
+        "file:projects/web/modules/safe.js",
+        "file:projects/web/modules/datacenter.js",
+        "file:projects/web/modules/payment.js"
+      ]
+    },
+    {
+      "id": "layer:proxy",
+      "name": "API 代理 (Proxy)",
+      "description": "web server.js — 零依赖 HTTP 代理服务器，路由前端请求到后端 8 个微服务。端口 9111。支持路由: /api/v2/admin|data|mpc|wallet|waas|saas|payment|vault",
+      "nodeIds": [
+        "file:projects/web/server.js",
+        "service:web"
+      ]
+    },
+    {
+      "id": "layer:admin",
+      "name": "管理后台 (Admin Panel)",
+      "description": "Express 5 后端 + React 前端 — 跨 7 个数据库聚合查询。提供仪表盘/收入分析/API 用量/租户管理/交易管理/Webhooks/RPC 配置/风控/审计/OKX 数据管道等管理功能。端口 9100",
+      "nodeIds": [
+        "service:admin",
+        "file:projects/admin/server/index.ts",
+        "file:projects/admin/index.ts"
+      ]
+    },
+    {
+      "id": "layer:collector",
+      "name": "区块扫描 (Collector)",
+      "description": "5 链区块事件扫描器 + 市场数据采集。支持 Sepolia/Ethereum/BSC/Base/OxaChain。包含 RPC 连接池、事件总线(WebSocket)、数据清理器、Binance 合约价格、OKX ChainOS 数据。端口 9101",
+      "nodeIds": [
+        "service:collector",
+        "file:projects/collector/src/index.ts",
+        "file:projects/collector/src/services/scanner.ts",
+        "file:projects/collector/src/services/rpcPool.ts",
+        "file:projects/collector/src/services/relayer.ts",
+        "file:projects/collector/src/services/eventBus.ts",
+        "file:projects/collector/src/services/cleaner.ts",
+        "file:projects/collector/src/services/binanceFutures.ts",
+        "file:projects/collector/src/services/okxChainOS.ts",
+        "file:projects/collector/index.ts"
+      ]
+    },
+    {
+      "id": "layer:dc",
+      "name": "数据中心 (Data Center)",
+      "description": "链上事件查询 + 订阅管理 + 跨链余额查询。跨库读取 pocketx_collector.events。提供 REST API。端口 9102",
+      "nodeIds": [
+        "service:dc",
+        "file:projects/dc/index.ts"
+      ]
+    },
+    {
+      "id": "layer:mpc",
+      "name": "MPC 钱包 (Multi-Party Computation)",
+      "description": "基于邮箱的 MPC 多方计算钱包。支持 EOA 创建/恢复/签名/交易。AES-256-GCM 加密分片存储。支持 5 链。端口 9104",
+      "nodeIds": [
+        "service:mpc",
+        "file:projects/mpc/server.ts",
+        "file:projects/mpc/index.ts"
+      ]
+    },
+    {
+      "id": "layer:payment",
+      "name": "支付引擎 (Payment Engine)",
+      "description": "支付引擎 + x402 HTTP 402 协议支付。支持订单创建/状态查询/x402 支付。端口 9106",
+      "nodeIds": [
+        "service:payment",
+        "file:projects/payment/server.ts"
+      ]
+    },
+    {
+      "id": "layer:vault",
+      "name": "Safe 多签保险库 (Vault)",
+      "description": "基于 Safe{Core} 协议的多签保险库。创建/提案/签名/执行/同步/风控检查。集成 Safe{Core} SDK。端口 9107",
+      "nodeIds": [
+        "service:vault",
+        "file:projects/vault/server.ts",
+        "file:projects/vault/src/services/multiSigService.ts",
+        "file:projects/vault/src/services/riskService.ts"
+      ]
+    },
+    {
+      "id": "layer:waas",
+      "name": "WaaS 钱包即服务",
+      "description": "最核心服务 — 钱包即服务 B2B 平台。包含 11 个路由模块、16 个服务、17+ 张数据库表。支持托管钱包/HD 钱包/租户管理/归集/提现/风控/Webhook/订阅/SaaS/DC 订阅。端口 9109",
+      "nodeIds": [
+        "service:waas",
+        "file:projects/waas/index.ts",
+        "file:projects/waas/routes/walletRoutes.ts",
+        "file:projects/waas/routes/txRoutes.ts",
+        "file:projects/waas/routes/authRoutes.ts",
+        "file:projects/waas/routes/saasRoutes.ts",
+        "file:projects/waas/routes/dashboardRoutes.ts",
+        "file:projects/waas/routes/subscriptionRoutes.ts",
+        "file:projects/waas/routes/dataSubscriptionRoutes.ts",
+        "file:projects/waas/routes/eventRoutes.ts",
+        "file:projects/waas/routes/internalRoutes.ts",
+        "file:projects/waas/routes/riskRoutes.ts",
+        "file:projects/waas/services/walletService.ts",
+        "file:projects/waas/services/txService.ts",
+        "file:projects/waas/services/authService.ts",
+        "file:projects/waas/services/tenantService.ts",
+        "file:projects/waas/services/saasService.ts",
+        "file:projects/waas/services/sigStrategyService.ts",
+        "file:projects/waas/services/webhookService.ts",
+        "file:projects/waas/services/riskService.ts",
+        "file:projects/waas/services/hdWalletService.ts",
+        "file:projects/waas/services/mpcService.ts",
+        "file:projects/waas/services/encryptionService.ts",
+        "file:projects/waas/models/database.ts"
+      ]
+    },
+    {
+      "id": "layer:mcp",
+      "name": "MCP 协议层 (MCP Servers)",
+      "description": "4 个 MCP Server (Wallet/DC/Vault/MPC)，基于 @modelcontextprotocol/sdk，通过 JSON-RPC 协议供 AI Agent 调用。共 41 个 tools",
+      "nodeIds": [
+        "service:mcp-server",
+        "file:projects/mcp-server/src/index.ts",
+        "file:projects/mcp-server/src/dc-index.ts",
+        "file:projects/mcp-server/src/vault-index.ts",
+        "file:projects/mcp-server/src/mpc-index.ts"
+      ]
+    },
+    {
+      "id": "layer:sdk",
+      "name": "SDK 层 (infrax-dk)",
+      "description": "TypeScript SDK 包 (infrax-dk v0.1.0)，提供 8 个 API 模块的统一 HTTP 客户端：wallet/safe/payment/saas/sub/dc/vault/mpc",
+      "nodeIds": [
+        "service:sdk",
+        "file:projects/sdk/src/index.ts"
+      ]
+    },
+    {
+      "id": "layer:database",
+      "name": "数据层 (Database)",
+      "description": "7 个 PostgreSQL 数据库，总计 40+ 张表。数据通过 systemd timer 每日凌晨自动清理 5 天前的数据",
+      "nodeIds": [
+        "resource:db:pocketx_admin",
+        "resource:db:pocketx_collector",
+        "resource:db:pocketx_dc",
+        "resource:db:pocketx_mpc",
+        "resource:db:pocketx_payment",
+        "resource:db:pocketx_vault",
+        "resource:db:pocketx_waas"
+      ]
+    },
+    {
+      "id": "layer:blockchain",
+      "name": "区块链层 (Blockchain)",
+      "description": "5 条支持的公链: Sepolia (11155111) / Ethereum (1) / BSC (56) / Base (8453) / OxaChain (19505)",
+      "nodeIds": [
+        "resource:chain:sepolia",
+        "resource:chain:ethereum",
+        "resource:chain:bsc",
+        "resource:chain:base",
+        "resource:chain:oxa"
+      ]
+    },
+    {
+      "id": "layer:infrastructure",
+      "name": "基础设施 (Infrastructure)",
+      "description": "12 个 systemd 微服务 + nginx 反向代理 + systemd timer 数据清理 + 部署脚本",
+      "nodeIds": [
+        "config:deploy/infrax.service",
+        "config:deploy/collector.service",
+        "config:deploy/payment.service",
+        "config:deploy/vault.service",
+        "config:deploy/waas.service",
+        "config:deploy/mpc.service",
+        "config:deploy/dc.service",
+        "config:deploy/web.service",
+        "config:deploy/mcp-server.service",
+        "config:deploy/infrax-cleanup.service",
+        "config:deploy/infrax-cleanup.timer"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "项目概览",
+      "description": "InfraX 是一个 Web3 基础设施 Monorepo，包含 10 个子项目、12 个运行中的 systemd 服务、7 个 PostgreSQL 数据库。支持 MPC 钱包、WaaS B2B 服务、Safe 多签保险库、链上数据中心、支付引擎和 AI Agent MCP 协议",
+      "nodeIds": [
+        "project:infrax"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "前端与代理",
+      "description": "纯 JavaScript/HTML SPA，通过零依赖 HTTP 代理服务器 (web server.js) 路由到后端微服务。端口 9111。包含 6 个前端模块",
+      "nodeIds": [
+        "service:web",
+        "file:projects/web/server.js",
+        "file:projects/web/index.html",
+        "file:projects/web/modules/core.js"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "管理后台 (Admin Panel)",
+      "description": "Express 5 管理后台，跨 7 个数据库提供聚合仪表盘、收入分析、API 用量、租户/交易/RPC/Webhook/风控/审计管理。端口 9100",
+      "nodeIds": [
+        "service:admin",
+        "file:projects/admin/server/index.ts",
+        "file:projects/web/admin.html",
+        "file:projects/web/admin-login.html"
+      ]
+    },
+    {
+      "order": 4,
+      "title": "区块扫描 (Collector)",
+      "description": "5 链区块事件扫描器。支持 Sepolia/Ethereum/BSC/Base/OxaChain。包含 RPC 连接池、事件总线、Binance 合约价格、OKX ChainOS 代币数据。端口 9101",
+      "nodeIds": [
+        "service:collector",
+        "file:projects/collector/src/index.ts",
+        "file:projects/collector/src/services/scanner.ts",
+        "file:projects/collector/src/services/rpcPool.ts"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "数据中心 (Data Center)",
+      "description": "链上事件查询 + 订阅管理 + 跨链余额查询。跨库读取 collector.events。端口 9102",
+      "nodeIds": [
+        "service:dc",
+        "file:projects/dc/index.ts",
+        "resource:db:pocketx_dc"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "MPC 钱包 (Multi-Party Computation)",
+      "description": "邮箱验证的 MPC 多方计算钱包。AES-256-GCM 加密分片，支持 EIP-191/712 签名、交易发送、合约读写。30 分钟会话。端口 9104",
+      "nodeIds": [
+        "service:mpc",
+        "file:projects/mpc/server.ts",
+        "file:projects/web/modules/mpc-wallet.js"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "WaaS B2B 钱包即服务 (核心)",
+      "description": "最核心的微服务。11 个路由模块、16 个服务、17+ 张数据库表。提供托管钱包/HD 钱包/租户管理/归集/提现/风控/Webhook/SaaS。端口 9109",
+      "nodeIds": [
+        "service:waas",
+        "file:projects/waas/index.ts",
+        "file:projects/waas/services/walletService.ts",
+        "file:projects/waas/services/txService.ts",
+        "file:projects/waas/services/authService.ts",
+        "file:projects/waas/models/database.ts",
+        "file:projects/web/modules/waas.js"
+      ]
+    },
+    {
+      "order": 8,
+      "title": "Safe 多签保险库 (Vault)",
+      "description": "基于 Safe{Core} 协议的多签保险库。创建/提案/签名/执行/重试/同步/风控检查。端口 9107",
+      "nodeIds": [
+        "service:vault",
+        "file:projects/vault/server.ts",
+        "file:projects/vault/src/services/multiSigService.ts",
+        "file:projects/web/modules/safe.js"
+      ]
+    },
+    {
+      "order": 9,
+      "title": "支付引擎 (Payment)",
+      "description": "支付引擎 + x402 HTTP 402 协议支付。订单创建/确认/查询。端口 9106",
+      "nodeIds": [
+        "service:payment",
+        "file:projects/payment/server.ts",
+        "file:projects/web/modules/payment.js"
+      ]
+    },
+    {
+      "order": 10,
+      "title": "MCP AI Agent 协议层",
+      "description": "4 个 MCP Server (Wallet/DC/Vault/MPC)，提供 41 个 AI Agent tools。基于 @modelcontextprotocol/sdk，通过 MCP JSON-RPC 协议供 AI Agent 调用后端服务",
+      "nodeIds": [
+        "service:mcp-server",
+        "file:projects/mcp-server/src/index.ts",
+        "file:projects/mcp-server/src/dc-index.ts",
+        "file:projects/mcp-server/src/vault-index.ts",
+        "file:projects/mcp-server/src/mpc-index.ts"
+      ]
+    },
+    {
+      "order": 11,
+      "title": "SDK (infrax-dk)",
+      "description": "TypeScript SDK 包 (infrax-dk v0.1.0)，8 个 API 模块的统一 HTTP 客户端：wallet/safe/payment/saas/sub/dc/vault/mpc",
+      "nodeIds": [
+        "service:sdk",
+        "file:projects/sdk/src/index.ts"
+      ]
+    },
+    {
+      "order": 12,
+      "title": "数据层与基础设施",
+      "description": "7 个 PostgreSQL 数据库 (40+ 张表)、5 条支持的公链、12 个 systemd 服务、nginx 反向代理、每日凌晨 3:00 自动清理 5 天前数据",
+      "nodeIds": [
+        "resource:db:pocketx_admin",
+        "resource:db:pocketx_collector",
+        "resource:db:pocketx_waas",
+        "resource:db:pocketx_vault",
+        "resource:db:pocketx_mpc",
+        "resource:db:pocketx_payment",
+        "resource:db:pocketx_dc",
+        "resource:chain:sepolia",
+        "resource:chain:ethereum",
+        "resource:chain:bsc",
+        "resource:chain:base",
+        "resource:chain:oxa",
+        "config:deploy/infrax-cleanup.timer"
+      ]
+    }
+  ]
+}
