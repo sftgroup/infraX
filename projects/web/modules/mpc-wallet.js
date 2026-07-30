@@ -146,19 +146,91 @@ async function mpcDash() {
 
 // ── Send ──
 
+// mpcSendState tracks the two-step send flow: 'idle' → 'awaiting_code' → 'sending'
+var mpcSendState = 'idle';
+
 function mpcSendLoad() {
   document.getElementById('mpc-send-from').textContent = mpcCurrentAddr ? fmtAddrLong(mpcCurrentAddr) : '—';
+  // Reset send form
+  mpcSendState = 'idle';
+  document.getElementById('mpc-send-code-row').style.display = 'none';
+  document.getElementById('mpc-send-code').value = '';
+  document.getElementById('mpc-send-to').value = '';
+  document.getElementById('mpc-send-amt').value = '';
+  document.getElementById('mpc-send-btn').textContent = 'Send';
 }
 
 async function mpcSend() {
   var to = document.getElementById('mpc-send-to').value.trim();
   var amt = document.getElementById('mpc-send-amt').value.trim();
   var btn = document.getElementById('mpc-send-btn');
+
   if (!to || !amt) return showToast('Fill all fields', 'error');
-  btn.classList.add('btn-loading');
-  try { await afetch('/api/v2/tx/send', { method: 'POST', body: { to: to, value: amt, chain: activeChain } }); showToast('Transaction sent ⚡ Gas sponsored', 'success'); }
-  catch (e) { showToast(e.message, 'error'); }
-  finally { btn.classList.remove('btn-loading'); }
+  if (!mpcCurrentEmail) return showToast('MPC wallet not set up — Register or Recover first', 'error');
+
+  // ── Step 1: Request verification code ──
+  if (mpcSendState === 'idle') {
+    btn.classList.add('btn-loading');
+    btn.textContent = 'Requesting code...';
+    try {
+      await afetch('/api/v2/mpc/send-code', { auth: 'none', method: 'POST', body: { email: mpcCurrentEmail } });
+      mpcSendState = 'awaiting_code';
+      document.getElementById('mpc-send-code-row').style.display = 'block';
+      document.getElementById('mpc-send-code').focus();
+      btn.textContent = 'Verify & Send';
+      showToast('Code sent — check server logs (dev: 888888)', 'info');
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      btn.classList.remove('btn-loading');
+    }
+    return;
+  }
+
+  // ── Step 2: Verify code → unlock session → send tx → lock session ──
+  if (mpcSendState === 'awaiting_code') {
+    var code = document.getElementById('mpc-send-code').value.trim();
+    if (!code) return showToast('Enter verification code', 'error');
+
+    btn.classList.add('btn-loading');
+    btn.textContent = 'Sending...';
+    var token = null;
+
+    try {
+      // 2a. Unlock MPC session
+      var unlockResp = await afetch('/api/v2/mpc/session/unlock', {
+        auth: 'none', method: 'POST',
+        body: { email: mpcCurrentEmail, code: code }
+      });
+      token = unlockResp.token;
+      if (!token) throw new Error('No session token received');
+
+      // 2b. Send transaction through MPC
+      var txResp = await afetch('/api/v2/mpc/send-transaction', {
+        auth: 'none', method: 'POST',
+        body: { token: token, to: to, amount: amt, chain: activeChain }
+      });
+
+      showToast('Transaction sent ⚡ ' + (txResp.txHash ? fmtAddrLong(txResp.txHash) : 'OK'), 'success');
+
+      // Reset form
+      mpcSendState = 'idle';
+      document.getElementById('mpc-send-code-row').style.display = 'none';
+      document.getElementById('mpc-send-code').value = '';
+      document.getElementById('mpc-send-to').value = '';
+      document.getElementById('mpc-send-amt').value = '';
+      btn.textContent = 'Send';
+
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      // 2c. Always lock session after attempt
+      if (token) {
+        try { await afetch('/api/v2/mpc/session/lock', { auth: 'none', method: 'POST', body: { token: token } }); } catch (_) {}
+      }
+      btn.classList.remove('btn-loading');
+    }
+  }
 }
 
 // ── Receive ──

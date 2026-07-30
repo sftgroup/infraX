@@ -29,33 +29,55 @@ const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
 
-function deriveKey(email: string): Buffer {
+function deriveKey(email: string, salt: string): Buffer {
   const serverSecret = process.env.MPC_ENCRYPTION_SECRET;
   if (!serverSecret || serverSecret === 'mpc-dev-secret-change-in-production') {
     throw new Error('MPC_ENCRYPTION_SECRET is not set. Server refused to start.');
   }
-  return crypto.pbkdf2Sync(email.toLowerCase() + serverSecret, 'mpc-salt', 100000, 32, 'sha256');
+  return crypto.pbkdf2Sync(email.toLowerCase() + serverSecret, salt, 100000, 32, 'sha256');
 }
 
+const PBKDF2_SALT_LENGTH = 32; // 256-bit random salt per user
+
 function encryptShard(shard: string, email: string): string {
-  const key = deriveKey(email);
+  const salt = crypto.randomBytes(PBKDF2_SALT_LENGTH).toString('hex');
+  const key = deriveKey(email, salt);
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
   let encrypted = cipher.update(shard, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const authTag = cipher.getAuthTag();
-  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+  return salt + ':' + iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
 }
 
 function decryptShard(encryptedData: string, email: string): string {
-  const key = deriveKey(email);
   const parts = encryptedData.split(':');
-  if (parts.length !== 3) throw new Error('Invalid encrypted shard format');
-  const iv = Buffer.from(parts[0], 'hex');
-  const authTag = Buffer.from(parts[1], 'hex');
+
+  let salt: string;
+  let iv: Buffer;
+  let authTag: Buffer;
+  let ciphertext: string;
+
+  if (parts.length === 4) {
+    // New format: salt:iv:authTag:ciphertext
+    salt = parts[0];
+    iv = Buffer.from(parts[1], 'hex');
+    authTag = Buffer.from(parts[2], 'hex');
+    ciphertext = parts[3];
+  } else if (parts.length === 3) {
+    // Legacy format (pre-salt): iv:authTag:ciphertext — fallback to hardcoded salt
+    salt = 'mpc-salt';
+    iv = Buffer.from(parts[0], 'hex');
+    authTag = Buffer.from(parts[1], 'hex');
+    ciphertext = parts[2];
+  } else {
+    throw new Error('Invalid encrypted shard format');
+  }
+
+  const key = deriveKey(email, salt);
   const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
   decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(parts[2], 'hex', 'utf8');
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
   decrypted += decipher.final('utf8');
   return decrypted;
 }

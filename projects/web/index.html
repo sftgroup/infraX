@@ -207,7 +207,13 @@
               <div><label>To</label><input class="input" id="mpc-send-to" placeholder="0x..."></div>
               <div><label>Amount (ETH)</label><input class="input" id="mpc-send-amt" placeholder="0.01"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
+            <div style="margin-top:12px">
+              <div style="display:none" id="mpc-send-code-row">
+                <label>Verification Code</label>
+                <input class="input" id="mpc-send-code" placeholder="Enter 6-digit code" maxlength="6" style="width:180px">
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
               <button class="btn btn-primary" id="mpc-send-btn" onclick="mpcSend()">Send</button>
               <span class="gas-badge">⚡ Gas Sponsored</span>
             </div>
