@@ -1,6 +1,47 @@
-# InfraX — 品牌化 MCP & Skill 产品需求文档
+# InfraX — 品牌化 MCP & Skill 产品需求文档 v1.1
 
-> 版本: v1.0-draft | 日期: 2026-07-30 | 状态: 待审阅 | 作者: Wayne (team1)
+> 版本: v1.1 | 日期: 2026-07-30 | 状态: 待审阅 | 作者: Wayne (team1)
+>
+> **v1.1 更新**: 对齐现有代码库 — MCP 48 tools / SDK `infrax-dk` v0.1.0 / 12 systemd 服务
+
+---
+
+## 0. 现有资产盘点（不复读造轮子）
+
+### 0.1 MCP Server（4个，48 tools）
+
+| MCP | 端口 | 文件 | Tools | 实现方式 |
+|------|:---:|------|:---:|------|
+| **Wallet MCP** | 9110 | `mcp-server/src/index.ts` | 10 | 手写 JSON-RPC handler |
+| **DC MCP** | 9103 | `mcp-server/src/dc-index.ts` | 7 | **官方 MCP SDK** (`@modelcontextprotocol/sdk`) |
+| **MPC MCP** | 9105 | `mcp-server/src/mpc-index.ts` | 15 | 手写 JSON-RPC handler |
+| **Vault MCP** | 9108 | `mcp-server/src/vault-index.ts` | 13 | 手写 JSON-RPC handler |
+
+> ⚠️ **技术债**: 3/4 用同一套手写 handler 模版，仅 DC 用官方 SDK。新增 hub-index.ts 应统一用官方 SDK。
+
+### 0.2 SDK（已发布 npm）
+
+- 包名: `infrax-dk` v0.1.0
+- 位置: `projects/sdk/src/index.ts`（~750 行）
+- 7 个模块: Wallet/Safe/Payment/SaaS/DC/Vault/MPC
+- 使用方式: `new InfraX({ baseUrl, apiKey })`
+
+### 0.3 后端服务（12个 systemd）
+
+| 服务 | 端口 | DB |
+|------|:---:|-----|
+| infrax-waas | 9109 | pocketx_waas (17表) |
+| infrax-vault | 9107 | pocketx_vault (4表) |
+| infrax-dc | 9102 | pocketx_dc + pocketx_collector |
+| infrax-mpc | 9104 | pocketx_mpc (2表) |
+| infrax-payment | 9106 | pocketx_payment (3表) |
+| infrax-collector | 9101 | pocketx_collector (10+表) |
+| infrax-admin | 9100 | pocketx_admin + 跨7DB |
+| infrax-web | 9111 | — (SPA + proxy) |
+| infrax-dc-mcp | 9103 | — |
+| infrax-mpc-mcp | 9105 | — |
+| infrax-vault-mcp | 9108 | — |
+| infrax-wallet-mcp | 9110 | — |
 
 ---
 
@@ -8,527 +49,367 @@
 
 ### 1.1 产品背景
 
-InfraX 是一个 Web3 基础设施平台（当前 v0.3.2，sftgroup/infrax），已覆盖 5 条链（Sepolia/Ethereum/BSC/Base/OxaChain），提供 12 个微服务模块，包括 WAAS（钱包即服务）、Vault（Safe 多签）、DC（数据中心）、MPC（多方计算钱包）、Payment（x402 支付引擎）等。已具备 REST API / MCP / JS SDK 三种接入方式，4 个 MCP Server 提供 45 个 Agent tools。
+InfraX v0.3.2，12 微服务，5 链覆盖，REST/MCP/SDK 三接入。48 个 MCP tools + `infrax-dk` npm 包 + ClawHub Skill 已有雏形。
 
-当前痛点：
-- 品牌化不足，InfraX 在市场层面缺乏独立的身份标识
-- MCP tools 散落在 4 个 Server 中，AI Agent 调用不够直观
-- 数据中心事件查询粒度粗，Agent 难以精确获取细分数据
-- MPC 钱包基于邮件验证码，安全性不足，缺少 Agent/API 直接链上操作能力
+**当前瓶颈**:
+1. MCP 散落 4 端口，无法作为统一品牌发布
+2. DC 数据无分类标签，Agent 查不到 "Uniswap Sepolia 最近的 Swap"
+3. MPC 钱包基于邮件验证码，不符合 TEE 安全标准
 
 ### 1.2 产品目标
 
-| 目标 | 描述 | 优先级 |
-|------|------|:---:|
-| **品牌 MCP 发布** | 将 InfraX 作为独立品牌 MCP 提交到主流 MCP 市场，同时发布配套 SkillHub Skill | P0 |
-| **数据强化与细分** | DC 数据中心从粗粒度事件查询升级为细分类别/标签化数据，Agent 可一行调用拿到精确结果 | P0 |
-| **MPC TEE 钱包** | MPC 钱包升级为 TEE（Trusted Execution Environment）安全架构，支持 Agent/API 调用执行链上操作（转账/Swap/合约） | P0 |
-| **统一 OpenAPI 规范** | 发布标准 OpenAPI 3.1 文档，支撑 MCP 市场和开发者集成 | P1 |
-| **去中心化 MCP 节点** | 支持第三方运行 InfraX MCP 节点，形成去中心化 MCP 网络 | P2 |
-
-### 1.3 系统范围
-
-#### 新增组件
-
-| 组件 | 说明 | 技术选型 |
-|------|------|----------|
-| **InfraX MCP Hub** | 统一品牌 MCP Server，聚合 4 个现有 MCP 的能力为单一入口 | Node.js + MCP SDK |
-| **InfraX Skill** | ClawHub/SkillHub 上的可安装 Skill 包，一键接入 InfraX MCP | SkillHub 规范 |
-| **Data API v3** | 细分事件查询 API，支持分类/标签/聚合/时序/分页 | Express TS + PostgreSQL |
-| **DC MCP v2** | 重新设计 DC MCP tools，每个 tool 对应一个细分数据维度 | MCP SDK |
-| **TEE Wallet Service** | TEE 环境下的密钥生成/签名/交易服务 | Intel SGX / AWS Nitro Enclave |
-| **TEE MCP** | TEE 钱包的 MCP 接口，Agent 可调用链上操作 | MCP + TEE attestation |
-
-#### 修改组件
-
-| 组件 | 改动 |
-|------|------|
-| DC | 新增事件分类表、标签表、聚合查询视图 |
-| MPC | 废弃邮件验证码，迁移到 TEE 架构 |
-| Web Proxy | 新增 /api/v3/data/* 路由，新增 OpenAPI spec 静态文件 |
-| Admin | 新增 MCP 市场发布管理、TEE 钱包配置管理 |
+| # | 目标 | 优先级 | 基于现有 |
+|:---:|------|:---:|------|
+| 1 | **MCP Hub 统一入口** — 新增 `hub-index.ts`，聚合成单一品牌 MCP Server | P0 | `mcp-server/` 已有 4 个 index |
+| 2 | **DC 数据分类升级** — `dc-index.ts` 扩展 → v2，支持 category/label 过滤 | P0 | `dc-index.ts` 已有 7 tools |
+| 3 | **MPC → TEE 钱包** — `mpc-index.ts` 重构，签名切 TEE Enclave | P0 | `mpc-index.ts` 已有 15 tools |
+| 4 | **SkillHub 发布** — SKILL.md + MCP config，引用 `infrax-dk` | P0 | SDK 已发布 npm |
+| 5 | **OpenAPI 3.1** — 自动生成 spec，提交 MCP 市场 | P1 | 现有 REST API |
+| 6 | **去中心化 MCP 节点** — 第三方可部署 InfraX MCP node | P2 | systemd 部署已有 |
 
 ---
 
-## 2. UML 用例模型
+## 2. MCP Hub 统一入口设计（P0）
 
-### 2.1 系统用例图
+### 2.1 策略：新增 hub-index.ts，不改现有 4 个
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          InfraX MCP & Skill 系统                          │
-└──────────────────────────────────────────────────────────────────────────┘
-
-        ┌─────────┐                          ┌───────────┐
-        │ AI Agent │                          │ 开发者     │
-        └────┬─────┘                          └─────┬─────┘
-             │                                      │
-    ┌────────┼──────────────────────────────────────┼────────┐
-    │        │            InfraX 系统                │         │
-    │  ┌─────▼──────────────────┐                   │         │
-    │  │ UC-01 通过MCP查询链上数据│                   │         │
-    │  └────────────────────────┘                   │         │
-    │  ┌────────────────────────┐                   │         │
-    │  │ UC-02 通过MCP执行链上操作│                   │         │
-    │  └────────────────────────┘                   │         │
-    │  ┌────────────────────────┐    ┌──────────────▼───────┐ │
-    │  │ UC-03 安装Skill一键接入 │    │ UC-06 查看OpenAPI文档│ │
-    │  └────────────────────────┘    └──────────────────────┘ │
-    │  ┌────────────────────────┐    ┌──────────────────────┐ │
-    │  │ UC-04 创建TEE钱包并操作 │    │ UC-07 浏览MCP市场     │ │
-    │  └────────────────────────┘    └──────────────────────┘ │
-    │  ┌────────────────────────┐                              │
-    │  │ UC-05 数据订阅与通知    │                              │
-    │  └────────────────────────┘                              │
-    │                                                           │
-    │                            ┌──────────────────────┐       │
-    │                            │ UC-08 管理TEE钱包    │       │
-    │                            └──────────────────────┘       │
-    │                            ┌──────────────────────┐       │
-    │         ┌──────────┐       │ UC-09 管理MCP市场发布 │       │
-    │         │ 管理员   ├──────►└──────────────────────┘       │
-    │         └──────────┘       ┌──────────────────────┐       │
-    │                            │ UC-10 运维去中心化节点│       │
-    │                            └──────────────────────┘       │
-    └───────────────────────────────────────────────────────────┘
+mcp-server/src/
+├── index.ts           ← Wallet MCP (不改)
+├── dc-index.ts        ← DC MCP v2 (扩展)
+├── mpc-index.ts       ← MPC MCP → TEE MCP (重构)
+├── vault-index.ts     ← Vault MCP (不改)
+└── hub-index.ts       ← 🆕 品牌统一入口，聚合 48 tools
 ```
 
-### 2.2 参与者定义
+**hub-index.ts 架构**:
+```
+hub-index.ts (:9120)
+    │
+    ├── 启动时 import 4 个模块的 tool 定义
+    ├── 统一 MCP Server (官方 SDK)
+    ├── /mcp/message → JSON-RPC（聚合所有 tools）
+    ├── /mcp/sse → SSE 流式
+    ├── /openapi.json → 自动生成 OpenAPI 3.1
+    ├── /mcp/.well-known → MCP 市场注册端点
+    └── /health → 健康检查（含 4 子 MCP 状态）
+```
 
-| 参与者 | 描述 |
-|--------|------|
-| **AI Agent** | 通过 MCP 协议调用 InfraX 的 AI 代理（如 Claude、GPT、DeepSeek 等） |
-| **开发者** | 通过 REST API / JS SDK 接入 InfraX 的应用开发者 |
-| **管理员** | InfraX 平台运维人员 |
+### 2.2 技术实现
 
-### 2.3 用例列表
+```typescript
+// hub-index.ts 伪代码
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-| 编号 | 用例名称 | 参与者 | 优先级 |
-|------|----------|--------|:---:|
-| UC-01 | 通过 MCP 查询链上数据 | AI Agent | P0 |
-| UC-02 | 通过 MCP 执行链上操作 | AI Agent | P0 |
-| UC-03 | 安装 Skill 一键接入 InfraX | AI Agent / 开发者 | P0 |
-| UC-04 | 创建 TEE 钱包并操作 | AI Agent / 开发者 | P0 |
-| UC-05 | 数据订阅与实时通知 | AI Agent / 开发者 | P1 |
-| UC-06 | 查看标准 OpenAPI 文档 | 开发者 | P1 |
-| UC-07 | 浏览 MCP 市场发现 InfraX | AI Agent / 开发者 | P1 |
-| UC-08 | 管理 TEE 钱包配置 | 管理员 | P1 |
-| UC-09 | 管理 MCP 市场发布 | 管理员 | P1 |
-| UC-10 | 运维去中心化 MCP 节点 | 管理员 | P2 |
+const server = new McpServer({
+  name: "infrax",
+  version: "1.0.0",
+  description: "InfraX Web3 Infrastructure MCP — 48+ tools for blockchain data, wallets, multisig, and TEE signing"
+});
+
+// 聚合所有 modules
+await server.registerModule("./dc-index.ts", { prefix: "dc" });
+await server.registerModule("./mpc-index.ts", { prefix: "tee" });  // 改名体现 TEE
+await server.registerModule("./vault-index.ts", { prefix: "vault" });
+await server.registerModule("./index.ts", { prefix: "wallet" });
+```
+
+### 2.3 统一 Tools 列表（48 → 统一前缀）
+
+| 域 | 现有 tools | 统一后前缀 |
+|------|:---:|------|
+| Wallet | 10 | `wallet_*` |
+| DC | 7 → 9（v2 扩展） | `dc_*` |
+| MPC → TEE | 15 | `tee_*` |
+| Vault | 13 | `vault_*` |
+| **合计** | **48** | |
 
 ---
 
-## 3. 详细用例规格说明
+## 3. DC 数据强化（P0）
 
-### UC-01 通过 MCP 查询链上数据
+### 3.1 现状 vs 目标
 
-| 项目 | 内容 |
-|------|------|
-| **用例编号** | UC-01 |
-| **用例名称** | 通过 MCP 查询链上数据 |
-| **参与者** | AI Agent |
-| **前置条件** | 1. AI Agent 已安装 InfraX MCP 或 Skill<br>2. AI Agent 持有有效的 API Key<br>3. MCP Server 运行中 |
-| **后置条件** | Agent 获取到精确的链上数据查询结果 |
-| **优先级** | P0 |
-
-#### 基本事件流
-
-1. AI Agent 通过 MCP 调用 `list_datatools` 了解可用数据维度
-2. AI Agent 选择需要的 tool（如 `dc_events_by_category`、`dc_token_balance`、`dc_transaction_history`）
-3. AI Agent 传入参数（chain、category、address、time_range 等）
-4. MCP Server 解析参数，调用 DC API v3
-5. DC 从 PostgreSQL 查询细分事件数据
-6. DC 返回结构化 JSON
-7. MCP Server 封装为 MCP 协议响应
-8. AI Agent 接收数据并用于对话/分析
-
-#### 备选事件流
-
-- 2a. Agent 未提供必要参数 → MCP 返回参数错误提示及示例
-- 2b. API Key 无效/过期 → MCP 返回 401 Unauthorized
-- 5a. 查询超时 (>5s) → 返回分页提示，建议缩小时间范围
-
-#### 业务规则
-
-- BR-01: 每条 MCP 调用计为 1 次 API 配额消耗
-- BR-02: Free 套餐仅限 Sepolia 数据；Pro/Enterprise 支持全链
-- BR-03: 历史数据保留 90 天（Free）、180 天（Pro）、永久（Enterprise）
-
-#### DC MCP v2 Tools（数据强化后）
-
-| Tool | 描述 | 参数 |
+| 维度 | 现有 `dc-index.ts` (7 tools) | v2 目标 (9 tools) |
 |------|------|------|
-| `dc_list_categories` | 列出可用数据分类和标签 | — |
-| `dc_events` | 按分类+链+地址查询事件 | chain, category, address, from, to, page |
-| `dc_event_detail` | 单笔交易解码详情 | tx_hash |
-| `dc_balance` | 多链多代币余额查询 | chain, address, tokens |
-| `dc_token_info` | 代币详情（价格/lp/holders） | token_address, chain |
-| `dc_stats` | 24h 聚合统计 | chain, stat_type |
-| `dc_subscribe` | 创建事件订阅 | chain, category, filters, webhook |
-| `dc_my_subscriptions` | 查看我的订阅 | — |
-| `dc_unsubscribe` | 取消订阅 | subscription_id |
+| 事件查询 | `dc_events`（chain/address/event_type） | **`dc_events`**（新增 category/label 参数） |
+| 统计 | `dc_stats` | **`dc_stats`**（新增分类维度） |
+| 检查点 | `dc_checkpoints` | 保留 |
+| 套餐 | `dc_plans` | 保留 |
+| 代币 | `dc_tokens` | 保留 |
+| 链 | `dc_chains` | 保留 |
+| 价格 | `dc_price` (Binance) | 保留 |
+| 🆕 | — | **`dc_categories`** — 列出所有分类/标签 |
+| 🆕 | — | **`dc_event_detail`** — 单笔交易解码详情 |
 
----
+### 3.2 事件分类体系
 
-### UC-02 通过 MCP 执行链上操作
+#### 一级分类（category_id）
 
-| 项目 | 内容 |
-|------|------|
-| **用例编号** | UC-02 |
-| **用例名称** | 通过 MCP 执行链上操作 |
-| **参与者** | AI Agent |
-| **前置条件** | 1. AI Agent 已安装 InfraX MCP 或 Skill<br>2. AI Agent 关联的 TEE 钱包已创建并充值<br>3. 用户已授权 Agent 操作权限 |
-| **后置条件** | 链上操作被执行，Agent 收到交易 hash |
-| **优先级** | P0 |
+`dex` | `lending` | `nft` | `bridge` | `staking` | `governance` | `transfer` | `contract` | `deploy` | `other`
 
-#### 基本事件流
+#### 二级标签（label_id，按协议）
 
-1. AI Agent 调用 `tee_wallet_balance` 查询钱包余额
-2. AI Agent 确认余额充足后调用具体操作 tool：
-   - `tee_wallet_transfer` — 原生代币转账
-   - `tee_wallet_swap` — DEX 代币兑换
-   - `tee_wallet_contract_write` — 合约调用
-   - `tee_wallet_approve` — ERC20 授权
-3. MCP Server 解析参数，调用 TEE Wallet Service
-4. TEE Wallet Service 验证权限（session token + 限额）
-5. TEE 环境内构建交易并签名
-6. TEE Wallet Service 广播交易到链上
-7. 返回 txHash 给 MCP Server
-8. MCP Server 返回结果给 AI Agent
-
-#### 备选事件流
-
-- 4a. session token 过期 → 引导用户重新解锁 TEE 钱包
-- 4b. 超过单笔限额 → 返回限额错误，提示当前限额
-- 5a. Gas 不足 → 返回 Gas 估算值，提示充值
-- 6a. 交易回滚 → 返回回滚原因
-
-#### 业务规则
-
-- BR-01: 单笔转账默认限额 0.1 ETH/USDC，Pro 可自定义，Enterprise 可解除
-- BR-02: 单日累计限额 1 ETH/USDC（可配置）
-- BR-03: Session token 有效期 30 分钟，超时需重新解锁
-- BR-04: swap 仅支持已列入白名单的 DEX 路由（Uniswap/PancakeSwap 等）
-
-#### TEE 钱包 MCP Tools
-
-| Tool Name | 操作 | 需要Token | 计费 |
-|------|------|:---:|:---:|
-| `tee_create_wallet` | 创建 TEE 钱包 | ❌ | ❌ |
-| `tee_register` | 注册钱包分片 | ❌ | ❌ |
-| `tee_recover` | 恢复钱包 | ❌ | ❌ |
-| `tee_unlock` | 解锁（设置 session） | ❌ | ❌ |
-| `tee_lock` | 锁定钱包 | ✅ | ❌ |
-| `tee_status` | 查询钱包/会话状态 | ✅ | ❌ |
-| `tee_balance` | 查余额（原生+ERC20） | ✅ | ❌ |
-| `tee_transfer` | 转账（ETH/ERC20） | ✅ | ✅ |
-| `tee_swap` | DEX 兑换 | ✅ | ✅ |
-| `tee_approve` | ERC20 授权 | ✅ | ✅ |
-| `tee_contract_read` | 合约只读 | ❌ | ❌ |
-| `tee_contract_write` | 合约写 | ✅ | ✅ |
-| `tee_sign_message` | EIP-191 签名 | ✅ | ❌ |
-| `tee_sign_typed_data` | EIP-712 签名 | ✅ | ❌ |
-| `tee_gas_estimate` | Gas 估算 | ❌ | ❌ |
-| `tee_get_transaction` | 查询交易状态 | ❌ | ❌ |
-
----
-
-### UC-03 安装 Skill 一键接入 InfraX
-
-| 项目 | 内容 |
-|------|------|
-| **用例编号** | UC-03 |
-| **用例名称** | 安装 Skill 一键接入 InfraX |
-| **参与者** | AI Agent / 开发者 |
-| **前置条件** | 1. 用户运行支持 SkillHub 的 AI Agent 框架（如 OpenClaw）<br>2. Agent 可访问互联网 |
-| **后置条件** | Agent 拥有 InfraX MCP 的全部 tools 可用 |
-| **优先级** | P0 |
-
-#### 基本事件流
-
-1. 用户对 Agent 说 "install infraX skill" 或 "接入 InfraX"
-2. Agent 调用 `openclaw skills install infrax`
-3. SkillHub 下载 infrax 的 SKILL.md + MCP server config
-4. Agent 配置中自动注册 InfraX MCP Server URL 和认证
-5. Agent 自动调用 `list_tools` 验证 16+ 个 tools 可用
-6. Agent 回复 "InfraX 已接入，可用功能：..."
-
-#### 业务规则
-
-- BR-01: Free 套餐需要在 InfraX 官网注册 API Key（Skill 内引导）
-- BR-02: 自动配置 MCP server URL 为生产环境（可配置自定义节点）
-
----
-
-### UC-04 创建 TEE 钱包并操作
-
-| 项目 | 内容 |
-|------|------|
-| **用例编号** | UC-04 |
-| **用例名称** | 创建 TEE 钱包并操作 |
-| **参与者** | AI Agent / 开发者 |
-| **前置条件** | 用户已通过 InfraX MCP 或 REST API 认证 |
-| **后置条件** | TEE 钱包创建成功，可以进行链上操作 |
-| **优先级** | P0 |
-
-#### 基本事件流
-
-1. 用户/AI Agent 调用 `tee_create_wallet`
-2. TEE Wallet Service 验证环境 attestation
-3. TEE 内生成 ECDSA 密钥对
-4. 密钥分片通过 MPC 协议分散存储
-5. 返回钱包地址（无完整私钥导出）
-6. 用户向地址充值
-7. 调用 `tee_unlock` 设置 session token
-8. 调用 `tee_balance` 确认余额
-9. 调用 `tee_transfer` / `tee_swap` / `tee_contract_write` 执行操作
-
-#### 业务规则
-
-- BR-01: 私钥永不明文导出，只在 TEE 环境内使用
-- BR-02: TEE attestation 每 24 小时自动刷新
-- BR-03: 密钥分片至少 3 个节点，阈值 2/3
-
----
-
-### UC-05 数据订阅与实时通知
-
-| 项目 | 内容 |
-|------|------|
-| **用例编号** | UC-05 |
-| **用例名称** | 数据订阅与实时通知 |
-| **参与者** | AI Agent / 开发者 |
-| **前置条件** | 1. 用户已订阅 DC Pro/Enterprise 套餐<br>2. 已配置 webhook URL |
-| **后置条件** | 满足条件的链上事件发生时，用户收到实时通知 |
-| **优先级** | P1 |
-
-#### 基本事件流
-
-1. Agent 调用 `dc_subscribe` 创建订阅
-2. 传入参数：chain、event_category、filters
-3. DC 记录订阅到 PostgreSQL
-4. Collector 扫描到匹配事件时触发通知
-5. DC 向 webhook URL POST 事件 data
-6. AI Agent 通过回调收到实时数据
-
-#### 业务规则
-
-- BR-01: 单个用户最多 10 个活跃订阅
-- BR-02: 重试 3 次，间隔 1min/5min/15min
-- BR-03: 订阅支持按 category 过滤
-
----
-
-## 4. 数据强化与细分设计
-
-### 4.1 事件分类体系
-
-#### 一级分类
-
-| Category ID | 名称 | 描述 |
-|------|------|------|
-| `dex` | DEX 交易 | Swap/AddLiquidity/RemoveLiquidity |
-| `lending` | 借贷 | Borrow/Repay/Supply/Withdraw/Liquidate |
-| `nft` | NFT 交易 | Mint/Transfer/Sale/Bid |
-| `bridge` | 跨链桥 | Deposit/Withdraw/Relay |
-| `staking` | 质押 | Stake/Unstake/ClaimReward |
-| `governance` | 治理 | Propose/Vote/Execute |
-| `transfer` | 转账 | ETH/ERC20 原生转账 |
-| `contract` | 合约交互 | 通用合约调用 |
-| `deploy` | 合约部署 | 新合约创建 |
-| `other` | 其他 | 未分类事件 |
-
-#### 二级标签（按协议）
-
-| 协议 | Category | 链支持 |
+| 协议 | Category | 链 |
 |------|------|------|
 | Uniswap V2/V3 | dex | ETH/BSC/Base/Sepolia |
 | PancakeSwap | dex | BSC |
 | Aave V3 | lending | ETH/Base |
 | Compound | lending | ETH |
-| OpenSea | nft | ETH/Base |
-| Blur | nft | ETH |
+| OpenSea/Blur | nft | ETH/Base |
 | Lido | staking | ETH |
 | OxaBridge | bridge | OxaChain/ETH |
 
-### 4.2 Data API v3 端点设计
+### 3.3 DC MCP v2 新增 tool 示例
 
-| 端点 | 方法 | 描述 |
-|------|:---:|------|
-| `/api/v3/data/events` | GET | 按分类/标签/地址/时间查询事件 |
-| `/api/v3/data/events/:txHash` | GET | 单笔交易详情（含解码后的参数） |
-| `/api/v3/data/balance` | GET | 多链/多代币聚合余额查询 |
-| `/api/v3/data/token/:address` | GET | 代币详情（价格/流动性/holders） |
-| `/api/v3/data/stats` | GET | 聚合统计（24h 交易量/活跃地址等） |
-| `/api/v3/data/categories` | GET | 列出所有可用分类和标签 |
-| `/api/v3/data/subscribe` | POST | 创建事件订阅 |
-| `/api/v3/data/unsubscribe` | DELETE | 取消订阅 |
-| `/api/v3/data/subscriptions` | GET | 列出当前订阅 |
+```json
+// dc_categories
+{
+  "categories": [
+    { "category_id": "dex", "name": "DEX 交易", "labels": ["uniswap_v3", "pancakeswap"] },
+    { "category_id": "lending", "name": "借贷", "labels": ["aave_v3", "compound"] }
+  ]
+}
 
-### 4.3 数据字典
+// dc_events（新参数）
+// Agent 调用: dc_events(chain="ethereum", category="dex", label="uniswap_v3", from="2026-07-29")
+```
 
-#### 事件分类表 (event_categories)
+### 3.4 数据层改动
 
-| 字段 | 类型 | 说明 |
+| 改动 | 文件 | 说明 |
 |------|------|------|
-| id | SERIAL PK | 自增主键 |
-| category_id | VARCHAR(50) | 分类标识（dex/lending/nft/...） |
-| category_name | VARCHAR(100) | 分类名称 |
-| label_id | VARCHAR(50) | 标签标识（uniswap_v3/aave_v3/...） |
-| label_name | VARCHAR(100) | 标签/协议名称 |
-| chain | VARCHAR(20) | 链标识 |
-
-#### 细分事件表 (events_v3) — 继承现有 events，新增字段
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| event_id | UUID PK | 事件唯一 ID |
-| category_id | VARCHAR(50) | FK → event_categories |
-| label_id | VARCHAR(50) | FK → event_categories |
-| token_address | VARCHAR(42) | 代币地址 |
-| usd_value | DECIMAL(38,6) | USD 估值 |
-| decoded_params | JSONB | 解码后的合约参数 |
-| raw_log | JSONB | 原始 event log |
+| 新增 event_categories 表 | DC migration | 分类+标签静态数据 |
+| events 表加 category_id/label_id 列 | DC migration | 索引加速 |
+| collector 加事件分类逻辑 | `projects/collector/` | 匹配已知合约地址 → 分类 |
+| dc-index.ts 扩展 | `mcp-server/src/dc-index.ts` | +2 tools，事件查询加参数 |
 
 ---
 
-## 5. TEE 钱包安全架构
+## 4. MPC → TEE 钱包升级（P0）
 
-### 5.1 安全架构图
+### 4.1 现状 `mpc-index.ts`（15 tools）
+
+| tool | 说明 |
+|------|------|
+| `mpc_send_code` | 发邮件验证码 |
+| `mpc_register` | 注册钱包（需验证码） |
+| `mpc_recover` | 恢复钱包 |
+| `mpc_status` | 查钱包状态 |
+| `mpc_create_wallet` | 一键创建 |
+| `mpc_session_unlock` | 解锁 → 返回 session token |
+| `mpc_session_lock` | 锁定 |
+| `mpc_session_status` | 查会话状态 |
+| `mpc_balance` | 查余额 |
+| `mpc_sign_message` | EIP-191 签名 |
+| `mpc_sign_typed_data` | EIP-712 签名 |
+| `mpc_send_transaction` | 转账（0.1 ETH 限额） |
+| `mpc_contract_read` | 合约只读 |
+| `mpc_contract_write` | 合约写（staticCall 模拟→签名→广播） |
+| `mpc_gas_estimate` | Gas 估算 |
+
+> ⚠️ 这 15 个 tool 的功能逻辑**全部保留**，只改底层签名实现。
+
+### 4.2 升级策略：底层切 TEE，接口不变
 
 ```
-┌──────────────────────────────────────────────────────┐
-│           TEE Enclave (Intel SGX / AWS Nitro)        │
-│                                                      │
-│  ┌────────────┐  ┌───────────┐  ┌───────────────┐   │
-│  │ KeyGen     │  │ Signer    │  │ Attestation   │   │
-│  │ (ECDSA)    │  │ (EIP-191/ │  │ Service       │   │
-│  │            │  │  EIP-712) │  │               │   │
-│  └────────────┘  └───────────┘  └───────────────┘   │
-│                                                      │
-│  私钥永不离 Enclave │ 签名在 Enclave 内完成           │
-└──────────────────────────────────────────────────────┘
-       ▲                              ▲
-       │ 分片存储                      │ session token
-  ┌────┴────┐                   ┌─────┴─────────┐
-  │ 节点A-C │                   │ MCP/API 层     │
-  │ (SGX×3) │                   │ (:9120)        │
-  └─────────┘                   └───────────────┘
+现有 mpc-index.ts
+    │
+    │  mpmpc_sign_message / mpc_send_transaction / mpc_contract_write
+    │  当前: POST → MPC API (:9104) → 服务端内存签名
+    │
+    ▼ 重构
+改后 mpc-index.ts → 改名 tee-index.ts
+    │
+    │  tee_sign_message / tee_send_transaction / tee_contract_write
+    │  改后: POST → TEE API (:9104) → TEE Enclave 内签名
+    │
+    ▼
+TEE Enclave (Intel SGX / AWS Nitro)
+    │ 密钥生成 + 签名 + attestation 全部在 Enclave 内
+    │ 私钥永不离 Enclave
 ```
 
-### 5.2 安全机制
+### 4.3 改动清单
 
-| 层级 | 机制 | 描述 |
+| 改动 | 文件 | 说明 |
 |------|------|------|
-| **硬件层** | TEE Enclave | Intel SGX 或 AWS Nitro，私钥在安全区生成和使用 |
-| **密钥层** | MPC 分片 | 密钥分 3 片，2/3 阈值重构 |
-| **会话层** | Session Token | 30min TTL，JWT + HMAC-SHA256 |
-| **认证层** | Attestation | 每 24h quote 验证，确保 Enclave 未被篡改 |
-| **风控层** | 限额 + 白名单 | 单笔/单日限额，仅白名单 DEX |
-| **审计层** | 全操作日志 | Enclave 操作记录到不可变日志 |
+| **MPC API 底层切换** | `projects/mpc/server.ts` | 签名逻辑从 Node.js crypto → 转发 TEE Enclave |
+| **新增 TEE Service** | `projects/mpc/services/tee.ts` | TEE Enclave 客户端（attestation 验证+签名请求） |
+| **MCP 改名** | `mcp-server/src/mpc-index.ts` → `tee-index.ts` | tool 前缀 `mpc_` → `tee_` |
+| **新增 swap tool** | `tee-index.ts` | `tee_swap` — DEX 代币兑换 |
+| **新增 approve tool** | `tee-index.ts` | `tee_approve` — ERC20 授权 |
+| **限额强化** | `tee-index.ts` + `mpc/server.ts` | 单笔限额可配置，单日累计限额，白名单 DEX 路由 |
+| **环境搭建** | `deploy/` | SGX/Nitro Enclave Docker + systemd unit |
 
-### 5.3 现有 MPC vs TEE 钱包对比
+### 4.4 TEE 钱包 vs 现有 MPC（对比）
 
-| 维度 | 现有 MPC | TEE 钱包 |
+| 维度 | 现有 | TEE 后 |
 |------|------|------|
-| 密钥存储 | 分片，服务端存储 | 分片 + TEE Enclave 硬件保护 |
-| 签名环境 | 服务端内存 | TEE Enclave 安全区 |
-| 验证方式 | 邮件验证码（6位） | Session token + Attestation |
-| Agent 调用 | 需用户手动验证码 | Session token 自动签名 |
-| 私钥导出 | ❌ | ❌（更强保证） |
-| 安全假设 | 信任服务器运维 | 信任硬件 + 数学（MPC） |
+| 密钥生成 | 服务端 Node.js | TEE Enclave 内 |
+| 签名 | 服务端内存 | TEE Enclave 内 |
+| 私钥保护 | ❌ 服务端可访问内存 | ✅ 硬件隔离 |
+| 远程证明 | ❌ | ✅ SGX Quote / Nitro Attestation |
+| tools 数量 | 15 | **17**（+tee_swap +tee_approve） |
+| 接口兼容 | — | ✅ 17 tools 参数不变，仅前缀改名 |
 
 ---
 
-## 6. 品牌 MCP 市场发布计划
+## 5. SkillHub 品牌 Skill（P0）
+
+### 5.1 Skill 包结构
+
+```
+infrax-skill/
+├── SKILL.md          ← 品牌 Skill 定义（触发词 + 描述 + 使用示例）
+├── mcp-config.json   ← MCP Server 连接配置
+└── README.md
+```
+
+### 5.2 SKILL.md 核心内容
+
+```markdown
+---
+name: infrax
+description: InfraX Web3 Infrastructure — 区块链数据、TEE 安全钱包、多签保险库、支付引擎
+---
+
+# InfraX Skill
+
+Install: `openclaw skills install infrax`
+
+## Quick Start
+1. Sign up at https://infrax.ai → Get API Key
+2. `openclaw skills install infrax`
+3. Say "查 Sepolia 上 Uniswap 最近的 swap" or "用 InfraX 向 0x... 发 0.01 ETH"
+```
+
+### 5.3 mcp-config.json
+
+```json
+{
+  "mcpServers": {
+    "infrax": {
+      "url": "https://api.infrax.ai/mcp/message",
+      "transport": "streamable-http",
+      "env": {
+        "INFRAX_API_KEY": "${INFRAX_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### 5.4 SDK 集成（引用现有 `infrax-dk`）
+
+Skill 安装后，Agent 可通过 `infrax-dk` npm 包直接调用：
+```typescript
+import InfraX from 'infrax-dk';
+const infrax = new InfraX({ apiKey: process.env.INFRAX_API_KEY });
+```
+
+---
+
+## 6. MCP 市场发布计划
 
 ### 6.1 市场列表
 
-| 市场 | 分发方式 | 优先级 |
+| 市场 | 发布物 | 优先级 |
 |------|------|:---:|
-| **ClawHub** | `openclaw skills install infrax` | P0 |
-| **MCP Hub** (mcp.so) | HTTPS endpoint 注册 | P0 |
-| **OpenAI GPT Store** | OpenAPI spec 导入 | P1 |
-| **Cursor MCP** | JSON config 分发 | P1 |
-| **Claude MCP** | JSON config 分发 | P1 |
-| **GitHub MCP Registry** | 公开 repo + 文档 | P1 |
+| **ClawHub** | SKILL.md + mcp-config.json | P0 |
+| **MCP Hub** (mcp.so) | `hub-index.ts` URL + OpenAPI spec | P0 |
+| **OpenAI GPT Store** | OpenAPI 3.1 spec → GPT Action | P1 |
+| **Cursor MCP** | mcp-config.json | P1 |
+| **Claude MCP** | mcp-config.json | P1 |
+| **GitHub** | 公开 `hub-index.ts` + 文档 | P1 |
 
-### 6.2 统一品牌入口
+### 6.2 开放端点
 
-```
-                    ┌─────────────────────┐
-                    │ InfraX Hub MCP :9120 │
-                    │ 45+ tools 统一入口    │
-                    └──────┬──────┬───────┘
-                           │      │
-              ┌────────────┼──────┼────────────┐
-              ▼            ▼      ▼            ▼
-         DC MCP v2    TEE MCP  Vault MCP   Wallet MCP
-         (9 tools)  (16 tools) (13 tools) (10 tools)
-```
-
-合并现有 4 个 MCP Server 为品牌统一入口：
-- 新端口 **9120**（保留旧端口 9103/9105/9108/9110 兼容过渡）
-- `/mcp/message` — MCP JSON-RPC
-- `/openapi.json` — OpenAPI 3.1 规范
+| 端点 | 用途 |
+|------|------|
+| `https://api.infrax.ai/mcp/message` | MCP JSON-RPC 统一入口 |
+| `https://api.infrax.ai/mcp/sse` | MCP SSE 流式 |
+| `https://api.infrax.ai/mcp/.well-known` | MCP 服务发现 |
+| `https://api.infrax.ai/openapi.json` | OpenAPI 3.1 规范 |
+| `https://api.infrax.ai/health` | 健康检查 |
 
 ---
 
-## 7. 非功能需求
+## 7. 实施计划
+
+### Phase 1: DC 数据强化（1 周）
+
+| # | 任务 | 文件 | 估计 |
+|:---:|------|------|:---:|
+| 1.1 | event_categories 表 + 分类数据 | DC migration | 1d |
+| 1.2 | events 表加 category_id/label_id 列 | DC migration | 0.5d |
+| 1.3 | collector 事件分类逻辑 | `projects/collector/` | 2d |
+| 1.4 | dc-index.ts 扩展 → v2 (+2 tools) | `mcp-server/src/dc-index.ts` | 2d |
+| 1.5 | DC API v3（/api/v3/data/*） | `projects/dc/` | 2d |
+
+### Phase 2: TEE 钱包 + 品牌 MCP Hub（2 周）
+
+| # | 任务 | 文件 | 估计 |
+|:---:|------|------|:---:|
+| 2.1 | TEE Enclave 环境搭建（SGX/Nitro） | `deploy/` | 2d |
+| 2.2 | MPC API 底层切 TEE | `projects/mpc/server.ts` + `services/tee.ts` | 3d |
+| 2.3 | mpc-index.ts → tee-index.ts（改名+swap+approve） | `mcp-server/src/tee-index.ts` | 2d |
+| 2.4 | 新增 hub-index.ts 统一入口 | `mcp-server/src/hub-index.ts` | 2d |
+| 2.5 | hub-index systemd unit | `deploy/systemd/infrax-hub-mcp.service` | 0.5d |
+
+### Phase 3: SkillHub + 多市场发布（1 周）
+
+| # | 任务 | 文件 | 估计 |
+|:---:|------|------|:---:|
+| 3.1 | SKILL.md + mcp-config.json 编写 | `infrax-skill/` | 1d |
+| 3.2 | OpenAPI 3.1 自动生成（从 hub-index.ts） | `mcp-server/src/hub-index.ts` | 1d |
+| 3.3 | ClawHub 发布 | — | 0.5d |
+| 3.4 | MCP Hub (mcp.so) 注册 | — | 0.5d |
+| 3.5 | 其他市场适配 | — | 1d |
+
+---
+
+## 8. 非功能需求
 
 | 指标 | 目标 |
 |------|------|
+| hub-index 启动延迟 | < 5s |
 | MCP tool 响应 | P95 < 2s（查询），P95 < 10s（交易广播） |
-| Data API v3 查询 | P95 < 500ms（索引命中） |
 | TEE 签名延迟 | P95 < 500ms |
 | 并发 MCP 连接 | 100+ |
-| 事件索引入库延迟 | < 3 个区块 |
-| API Key 加密 | bcrypt hash |
-| MCP 通信 | HTTPS only |
-| 审计日志保留 | ≥ 1 年 |
+| 向后兼容 | 现有 4 个 MCP 端口继续运行 30 天过渡期 |
 
 ---
 
-## 8. 实施计划
+## 9. 风险与约束
 
-### Phase 1: 数据强化（2 周）
-
-- 创建 event_categories + 迁移 events_v3
-- Data API v3（9 端点）
-- DC MCP v2（9 tools）
-- 测试 + 文档
-
-### Phase 2: TEE 钱包（3 周）
-
-- TEE Enclave 环境搭建
-- 密钥生成/分片/签名/交易广播
-- Session token 机制
-- 16 个 MCP tools
-- 安全审计
-
-### Phase 3: 品牌 MCP 发布（1 周）
-
-- InfraX Hub MCP Server (:9120)
-- OpenAPI 3.1 spec
-- SkillHub Skill 编写 + 发布
-- ClawHub + MCP Hub 注册
-
----
-
-## 9. 附录
-
-### 术语表
-
-| 术语 | 说明 |
+| 风险 | 缓解 |
 |------|------|
-| **MCP** | Model Context Protocol，AI Agent 与外部工具标准协议 |
-| **TEE** | Trusted Execution Environment，硬件安全执行环境 |
-| **MPC** | Multi-Party Computation，多方安全计算 |
-| **Attestation** | TEE 远程证明，验证 Enclave 身份和完整性 |
-| **DC** | Data Center，InfraX 链上数据中心 |
+| SGX/Nitro 硬件不支持当前服务器 | 先用软件模拟模式（TEE mock），后迁移真机 |
+| MPC → TEE tool 改名破坏兼容 | 旧名 `mpc_*` 保留 30 天 → 弃用通知 → 移除 |
+| DC 分类覆盖不足 | 初始 10 分类 + 8 协议标签，按需扩展 |
 
-### 参考资料
+---
 
-- InfraX: https://github.com/sftgroup/infrax
-- MCP: https://modelcontextprotocol.io
-- ClawHub: https://clawhub.ai
+## 附录 A: 现有代码文件路径总览
+
+```
+sftgroup/infrax/
+├── projects/
+│   ├── mcp-server/src/
+│   │   ├── index.ts          ← Wallet MCP (10 tools, 手写 JSON-RPC)
+│   │   ├── dc-index.ts       ← DC MCP (7 tools, 官方 MCP SDK)
+│   │   ├── mpc-index.ts      ← MPC MCP (15 tools, 手写 JSON-RPC) → 重构为 tee-index.ts
+│   │   ├── vault-index.ts    ← Vault MCP (13 tools, 手写 JSON-RPC)
+│   │   └── hub-index.ts      ← 🆕 统一品牌入口
+│   ├── sdk/src/index.ts      ← infrax-dk v0.1.0 (750行, 7模块)
+│   ├── dc/                   ← DC API :9102
+│   ├── mpc/server.ts         ← MPC API :9104 → 核心改动文件
+│   ├── mpc/services/         ← MPC 业务逻辑 + 🆕 tee.ts
+│   ├── collector/            ← 链上采集 :9101 → 加事件分类
+│   └── ...
+├── deploy/systemd/           ← systemd unit files (+ 🆕 infrax-hub-mcp.service)
+└── docs/
+    ├── API_ACCESS.md
+    └── MCP_REQUIREMENTS.md
+```
