@@ -71,6 +71,15 @@ export interface MPCWalletResult { email: string; address: string; walletId: str
 export interface MPCStatusParams { email: string; }
 export interface MPCStatusResult { exists: boolean; address?: string; walletId?: string; }
 
+// Market — OKX ChainOS v6 Market API
+export interface MarketTokenInfo { chain: string; tokenAddress: string; symbol: string; name: string; price: number; volume24h: number; marketCap: number; liquidity: number; holders: number; change24h: number; }
+export interface MarketCandle { timestamp: string; open: number; high: number; low: number; close: number; volume: number; }
+export interface MarketBalance { address: string; chain: string; tokenAddress: string; symbol: string; balance: string; valueUsd: number; }
+export interface MarketTx { txHash: string; chain: string; blockHeight: number; fromAddress: string; toAddress: string; value: string; status: string; }
+export interface MarketMemeToken { chain: string; tokenAddress: string; symbol: string; name: string; liquidity: number; volume24h: number; holderCount: number; devAddress: string; isHoneypot: boolean; bundledPercent: number; }
+export interface MarketSignal { signalId: string; chain: string; tokenAddress: string; symbol: string; signalType: string; address: string; amount: number; valueUsd: number; }
+export interface MarketLeaderboardEntry { rank: number; address: string; pnl: number; pnlPercent: number; winRate: number; tradeCount: number; }
+
 // ═══════════════ HTTP ═══════════════
 
 class HttpClient {
@@ -235,6 +244,81 @@ class MPCAPI {
   async createWallet(params: MPCSendCodeParams) { const s1 = await this.sendCode(params); if (s1.code !== 0) return s1; return { code: 0, message: 'Verification code sent. Call mpc.register() to complete.', email: params.email }; }
 }
 
+// ═══════════════ Market — OKX ChainOS v6 DEX Market ═══════════════
+
+class MarketAPI {
+  constructor(private http: HttpClient) {}
+
+  /** P1 Free — token search */
+  async searchToken(keyword: string, chainIndex?: string, limit?: number) {
+    const q = new URLSearchParams({ keyword });
+    if (chainIndex) q.set('chainIndex', chainIndex);
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<MarketTokenInfo[]>('/api/v2/data/market/token-search?' + q.toString());
+  }
+
+  /** P2 Basic — token basic info */
+  async getTokenInfo(chainIndex: string, tokenAddress: string) {
+    return this.http.get<any>('/api/v2/data/market/token-info?chainIndex=' + chainIndex + '&tokenAddress=' + tokenAddress);
+  }
+
+  /** P2 Basic — trending hot tokens */
+  async getHotTokens(chainIndex: string, limit?: number) {
+    const q = new URLSearchParams({ chainIndex });
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<MarketTokenInfo[]>('/api/v2/data/market/hot-tokens?' + q.toString());
+  }
+
+  /** P2 Basic — K-line candles */
+  async getCandles(chainIndex: string, tokenAddress: string, period = '15m', limit = 100) {
+    return this.http.get<MarketCandle[]>('/api/v2/data/market/candles?chainIndex=' + chainIndex + '&tokenAddress=' + tokenAddress + '&period=' + period + '&limit=' + limit);
+  }
+
+  /** P2 Basic — real-time DEX price */
+  async getPrice(chainIndex: string, tokenAddress: string) {
+    return this.http.get<any>('/api/v2/data/market/price?chainIndex=' + chainIndex + '&tokenAddress=' + tokenAddress);
+  }
+
+  /** P1 Free — all token balances for address */
+  async getBalances(address: string, chains?: string[]) {
+    let q = 'address=' + encodeURIComponent(address);
+    if (chains?.length) q += '&chains=' + chains.join(',');
+    return this.http.get<MarketBalance[]>('/api/v2/data/market/balances?' + q);
+  }
+
+  /** P1 Free — transaction history */
+  async getTransactions(address: string, chains?: string[], limit?: number) {
+    let q = 'address=' + encodeURIComponent(address);
+    if (chains?.length) q += '&chains=' + chains.join(',');
+    if (limit) q += '&limit=' + limit;
+    return this.http.get<MarketTx[]>('/api/v2/data/market/transactions?' + q);
+  }
+
+  /** P3 Premium — meme token list */
+  async getMemePumpList(chainIndex: string, protocol?: string, sortBy?: string, limit?: number) {
+    const q = new URLSearchParams({ chainIndex });
+    if (protocol) q.set('protocol', protocol);
+    if (sortBy) q.set('sortBy', sortBy);
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<MarketMemeToken[]>('/api/v2/data/market/mempump/list?' + q.toString());
+  }
+
+  /** P3 Premium — smart money signals */
+  async getSignalList(chainIndex: string, signalType?: string, limit?: number) {
+    const q = new URLSearchParams({ chainIndex });
+    if (signalType) q.set('signalType', signalType);
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<MarketSignal[]>('/api/v2/data/market/signals?' + q.toString());
+  }
+
+  /** P3 Premium — trader leaderboard */
+  async getLeaderboard(chainIndex: string, leaderboardType = 'pnl', limit?: number) {
+    const q = new URLSearchParams({ chainIndex, leaderboardType });
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<MarketLeaderboardEntry[]>('/api/v2/data/market/leaderboard?' + q.toString());
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -246,6 +330,7 @@ export class InfraX {
   readonly dc: DCAPI;
   readonly vault: VaultAPI;
   readonly mpc: MPCAPI;
+  readonly market: MarketAPI;
 
   private http: HttpClient;
 
@@ -259,6 +344,7 @@ export class InfraX {
     this.dc = new DCAPI(this.http);
     this.vault = new VaultAPI(this.http);
     this.mpc = new MPCAPI(this.http);
+    this.market = new MarketAPI(this.http);
   }
 
   setApiKey(key: string) { this.http.setApiKey(key); }

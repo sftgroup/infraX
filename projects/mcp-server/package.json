@@ -4,6 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev:dc": "tsx src/dc-index.ts",
+    "dev:sk": "tsx src/session-key-index.ts",
+    "dev:mpc": "tsx src/mpc-index.ts",
+    "dev:vault": "tsx src/vault-index.ts",
+    "dev:market": "tsx src/market-index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
