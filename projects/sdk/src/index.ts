@@ -318,6 +318,42 @@ class MarketAPI {
     if (limit) q.set('limit', String(limit));
     return this.http.get<MarketLeaderboardEntry[]>('/api/v2/data/market/leaderboard?' + q.toString());
   }
+
+  // ── Tracked Tokens ──────────────────────────────────────────
+
+  /** List tracked tokens (user-configured monitoring list) */
+  async getTrackedTokens(chain?: string) {
+    const q = chain ? `?chain=${chain}` : '';
+    return this.http.get<any>('/api/v2/data/market/tracked-tokens' + q);
+  }
+
+  /** Add a token to user monitoring list */
+  async addTrackedToken(params: { chain: string; tokenAddress: string; tokenSymbol?: string; label?: string }) {
+    return this.http.post<any>('/api/v2/data/market/tracked-tokens', params);
+  }
+
+  /** Remove a token from monitoring list */
+  async removeTrackedToken(chain: string, tokenAddress: string) {
+    return this.http.del<any>(`/api/v2/data/market/tracked-tokens?chain=${chain}&tokenAddress=${encodeURIComponent(tokenAddress)}`);
+  }
+
+  // ── Custom Event Signatures ─────────────────────────────────
+
+  /** List custom event signatures */
+  async getEventSigs(chain?: string) {
+    const q = chain ? `?chain=${chain}` : '';
+    return this.http.get<any>('/api/v2/data/market/custom-sigs' + q);
+  }
+
+  /** Register a custom event signature (topic hash → event type mapping) */
+  async addEventSig(params: { chain: string; topicHash: string; eventType: string; eventName?: string; abi?: any }) {
+    return this.http.post<any>('/api/v2/data/market/custom-sigs', params);
+  }
+
+  /** Remove a custom event signature */
+  async removeEventSig(chain: string, topicHash: string) {
+    return this.http.del<any>(`/api/v2/data/market/custom-sigs?chain=${chain}&topicHash=${encodeURIComponent(topicHash)}`);
+  }
 }
 
 // ═══════════════ Main Client ═══════════════

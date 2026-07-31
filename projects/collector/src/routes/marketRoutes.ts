@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler, apiResponse } from '../helpers';
 import { getMarketClient } from '../services/okxMarketV6';
+import { pool } from '../database';
 
 const router = Router();
 const m = () => getMarketClient();
@@ -341,6 +342,105 @@ router.get('/market/portfolio-dex-history', asyncHandler(async (req, res) => {
   if (!address) { res.status(400).json(apiResponse(null, 'address required')); return; }
   const data = await m().getDexHistory(address, chains ? chains.split(',') : undefined, parseInt(limit || '50'));
   res.json(apiResponse(data));
+}));
+
+// ================================================================
+// Tracked Tokens (api-key auth for SDK/MCP access)
+// ================================================================
+
+router.get('/market/tracked-tokens', asyncHandler(async (req, res) => {
+  const { chain, enabled } = req.query as any;
+  let query = 'SELECT * FROM tracked_tokens WHERE 1=1';
+  const params: any[] = [];
+  let i = 1;
+  if (chain) { query += ` AND chain = $${i++}`; params.push(chain); }
+  if (enabled !== undefined) { query += ` AND enabled = $${i++}`; params.push(enabled === 'true'); }
+  query += ' ORDER BY created_at DESC';
+  const result = await pool.query(query, params);
+  res.json(apiResponse(result.rows));
+}));
+
+router.post('/market/tracked-tokens', asyncHandler(async (req, res) => {
+  const { chain, tokenAddress, tokenSymbol, tokenName, label } = req.body || {};
+  if (!chain || !tokenAddress) {
+    res.status(400).json(apiResponse(null, 'chain and tokenAddress required'));
+    return;
+  }
+  const result = await pool.query(
+    `INSERT INTO tracked_tokens (chain, token_address, token_symbol, token_name, label)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (chain, token_address) DO UPDATE
+     SET token_symbol = EXCLUDED.token_symbol, token_name = EXCLUDED.token_name, enabled = true, updated_at = NOW()
+     RETURNING *`,
+    [chain, tokenAddress, tokenSymbol || null, tokenName || null, label || null]
+  );
+  res.json(apiResponse(result.rows[0], 'Token added'));
+}));
+
+router.delete('/market/tracked-tokens', asyncHandler(async (req, res) => {
+  const chain = (req.query as any).chain || (req.body as any)?.chain;
+  const tokenAddress = (req.query as any).tokenAddress || (req.body as any)?.tokenAddress;
+  if (!chain || !tokenAddress) {
+    res.status(400).json(apiResponse(null, 'chain and tokenAddress required'));
+    return;
+  }
+  const result = await pool.query(
+    'DELETE FROM tracked_tokens WHERE chain = $1 AND token_address = $2 RETURNING *',
+    [chain, tokenAddress]
+  );
+  res.json(apiResponse(result.rows[0] || null, result.rows.length > 0 ? 'Removed' : 'Not found'));
+}));
+
+// ================================================================
+// Custom Event Signatures (api-key auth for SDK/MCP access)
+// ================================================================
+
+router.get('/market/custom-sigs', asyncHandler(async (req, res) => {
+  const { chain, enabled } = req.query as any;
+  let query = 'SELECT * FROM custom_event_sigs WHERE 1=1';
+  const params: any[] = [];
+  let i = 1;
+  if (chain) { query += ` AND chain = $${i++}`; params.push(chain); }
+  if (enabled !== undefined) { query += ` AND enabled = $${i++}`; params.push(enabled === 'true'); }
+  query += ' ORDER BY created_at DESC';
+  const result = await pool.query(query, params);
+  res.json(apiResponse(result.rows));
+}));
+
+router.post('/market/custom-sigs', asyncHandler(async (req, res) => {
+  const { chain, topicHash, eventType, eventName, abi } = req.body || {};
+  if (!chain || !topicHash || !eventType) {
+    res.status(400).json(apiResponse(null, 'chain, topicHash, eventType required'));
+    return;
+  }
+  if (!/^0x[a-fA-F0-9]{64}$/.test(topicHash)) {
+    res.status(400).json(apiResponse(null, 'topicHash must be 0x + 64 hex chars'));
+    return;
+  }
+  const result = await pool.query(
+    `INSERT INTO custom_event_sigs (chain, topic_hash, event_type, event_name, abi)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (chain, topic_hash) DO UPDATE
+     SET event_type = EXCLUDED.event_type, event_name = COALESCE(EXCLUDED.event_name, custom_event_sigs.event_name),
+         abi = COALESCE(EXCLUDED.abi, custom_event_sigs.abi), enabled = true, updated_at = NOW()
+     RETURNING *`,
+    [chain, topicHash.toLowerCase(), eventType, eventName || null, abi ? JSON.stringify(abi) : null]
+  );
+  res.json(apiResponse(result.rows[0], 'Custom event signature registered'));
+}));
+
+router.delete('/market/custom-sigs', asyncHandler(async (req, res) => {
+  const chain = (req.query as any).chain || (req.body as any)?.chain;
+  const topicHash = (req.query as any).topicHash || (req.body as any)?.topicHash;
+  if (!chain || !topicHash) {
+    res.status(400).json(apiResponse(null, 'chain and topicHash required'));
+    return;
+  }
+  const result = await pool.query(
+    'DELETE FROM custom_event_sigs WHERE chain = $1 AND topic_hash = $2 RETURNING *',
+    [chain, topicHash.toLowerCase()]
+  );
+  res.json(apiResponse(result.rows[0] || null, result.rows.length > 0 ? 'Removed' : 'Not found'));
 }));
 
 export default router;

@@ -209,6 +209,60 @@ server.tool(
   }
 );
 
+// ── track_token (add to monitoring) ────────────────────────────────
+server.tool(
+  "track_token",
+  "Add a token to the user's monitoring list so candles and snapshots are automatically collected",
+  {
+    chain: z.string().describe("Chain ID (1=ETH, 56=BSC, 8453=Base)"),
+    tokenAddress: z.string().describe("Token contract address"),
+    label: z.string().optional().describe("Optional label for this token"),
+  },
+  async ({ chain, tokenAddress, label }) => {
+    const data = await market("/api/v2/data/market/tracked-tokens", {
+      method: "POST",
+      body: JSON.stringify({ chain, tokenAddress, label }),
+    });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── list_tracked ────────────────────────────────────────────────────
+server.tool(
+  "list_tracked",
+  "List all tokens currently being monitored (user-configured tracking list)",
+  {
+    chain: z.string().optional().describe("Filter by chain ID"),
+  },
+  async ({ chain }) => {
+    const q = chain ? `?chain=${chain}` : "";
+    const data = await market(`/api/v2/data/market/tracked-tokens${q}`);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── register_event ──────────────────────────────────────────────────
+server.tool(
+  "register_event",
+  "Register a custom event signature for on-chain event classification. Provide topic hash and event type. Optional ABI for full parameter decoding.",
+  {
+    chain: z.string().describe("Chain name (ethereum, bsc, base)"),
+    topicHash: z.string().describe("Event topic hash (0x + 64 hex chars, keccak256 of event signature)"),
+    eventType: z.string().describe("Custom event type name (e.g. pool_created, stake_deposited)"),
+    eventName: z.string().optional().describe("Human-readable event name"),
+    abi: z.string().optional().describe("Event ABI JSON string for parameter decoding"),
+  },
+  async ({ chain, topicHash, eventType, eventName, abi }) => {
+    let parsedAbi = undefined;
+    if (abi) { try { parsedAbi = JSON.parse(abi); } catch { return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Invalid ABI JSON" }) }], isError: true }; } }
+    const data = await market("/api/v2/data/market/custom-sigs", {
+      method: "POST",
+      body: JSON.stringify({ chain, topicHash, eventType, eventName, abi: parsedAbi }),
+    });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
 // ── Start server ───────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || "3007", 10);
 
