@@ -380,9 +380,29 @@ export async function migrateEventCollectorTables(): Promise<void> {
         ON okx_market_mempump (chain, collected_at DESC);
     `);
 
+    // ============================================================
+    // tracked_tokens — user-configured tokens to monitor
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tracked_tokens (
+        id SERIAL PRIMARY KEY,
+        chain VARCHAR(50) NOT NULL,
+        token_address VARCHAR(200) NOT NULL,
+        token_symbol VARCHAR(100),
+        token_name VARCHAR(300),
+        label VARCHAR(200),
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        created_by VARCHAR(100),
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        UNIQUE(chain, token_address)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tracked_tokens_chain ON tracked_tokens (chain, enabled);
+    `);
+
     await client.query('COMMIT');
     logger.info('[migration] All tables created', {
-      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump'],
+      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'tracked_tokens'],
     });
   } catch (err: any) {
     await client.query('ROLLBACK');

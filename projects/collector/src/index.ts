@@ -27,6 +27,7 @@ import { handleWsUpgrade } from './services/eventBus';
 import relayRoutes from './routes/relayRoutes';
 import priceRoutes from './routes/priceRoutes';
 import marketRoutes from './routes/marketRoutes';
+import trackedTokenRoutes from './routes/trackedTokenRoutes';
 
 const app = express();
 
@@ -108,7 +109,7 @@ app.get('/admin/*', (req, res) => {
 
 // ── API routes ──
 // Admin: session auth at mount point prevents accidental bypass
-app.use('/api/v2/admin', sessionAuth, apiKeyRoutes, adminRoutes, managementRoutes);
+app.use('/api/v2/admin', sessionAuth, apiKeyRoutes, adminRoutes, managementRoutes, trackedTokenRoutes);
 // Data: API key auth at mount point
 app.use('/api/v2/data', apiKeyAuth, dataRoutes);
 app.use('/api/v2/data', apiKeyAuth, priceRoutes);

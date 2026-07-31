@@ -121,20 +121,48 @@ export class OkxMarketScheduler {
     }
   }
 
+  // ── Tracked Tokens (user-configured) ───────────────────────────
+  private async loadTrackedTokens(): Promise<Array<{ chain: string; token_address: string }>> {
+    try {
+      const result = await pool.query(
+        `SELECT chain, token_address FROM tracked_tokens WHERE enabled = true`
+      );
+      return result.rows;
+    } catch { return []; }
+  }
+
   // ── Candles ───────────────────────────────────────────────────
   private async snapshotCandles(): Promise<void> {
     const limit = this.candleTokens;
-    for (const chainIndex of this.chains) {
-      let tokens: any[] = [];
-      try {
-        tokens = await this.client.getHotTokens(chainIndex, limit);
-      } catch { continue; }
-      if (!tokens || !Array.isArray(tokens)) continue;
+    const gathered = new Map<string, Set<string>>(); // chain → Set<tokenAddress>
 
-      for (const token of tokens.slice(0, limit)) {
-        if (!token?.tokenAddress) continue;
+    // 1. Hot tokens from OKX
+    for (const chainIndex of this.chains) {
+      try {
+        const tokens = await this.client.getHotTokens(chainIndex, limit);
+        if (tokens && Array.isArray(tokens)) {
+          const set = new Set<string>();
+          for (const t of tokens.slice(0, limit)) {
+            if (t?.tokenAddress) set.add(t.tokenAddress);
+          }
+          gathered.set(chainIndex, set);
+        }
+      } catch { /* skip */ }
+    }
+
+    // 2. User-configured tracked tokens
+    const tracked = await this.loadTrackedTokens();
+    for (const t of tracked) {
+      const set = gathered.get(t.chain) || new Set<string>();
+      set.add(t.token_address);
+      gathered.set(t.chain, set);
+    }
+
+    // 3. Pull candles for all gathered tokens
+    for (const [chainIndex, addresses] of gathered) {
+      for (const tokenAddress of addresses) {
         try {
-          const candles = await this.client.getCandles(chainIndex, token.tokenAddress, CANDLE_PERIOD, CANDLE_LIMIT);
+          const candles = await this.client.getCandles(chainIndex, tokenAddress, CANDLE_PERIOD, CANDLE_LIMIT);
           if (!candles || !Array.isArray(candles)) continue;
 
           const client = await pool.connect();
@@ -146,7 +174,7 @@ export class OkxMarketScheduler {
                    (chain, token_address, period, bucket, open_price, high_price, low_price, close_price, volume)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                  ON CONFLICT DO NOTHING`,
-                [chainIndex, token.tokenAddress, CANDLE_PERIOD,
+                [chainIndex, tokenAddress, CANDLE_PERIOD,
                  new Date(parseInt(c.timestamp, 10)),
                  c.open || 0, c.high || 0, c.low || 0, c.close || 0, c.volume || 0]
               );
@@ -154,7 +182,6 @@ export class OkxMarketScheduler {
           } finally { client.release(); }
         } catch { /* skip individual token errors */ }
 
-        // Rate limit between tokens
         await new Promise(r => setTimeout(r, 100));
       }
     }
