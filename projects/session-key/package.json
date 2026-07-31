@@ -1,0 +1,11 @@
+{
+  "name": "session-key-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Session Key Engine — cross-project automated transaction authorization",
+  "scripts": {
+    "build": "pnpm run -r build",
+    "dev": "pnpm --filter @sftgroup/session-key-server dev",
+    "test": "pnpm run -r test"
+  }
+}

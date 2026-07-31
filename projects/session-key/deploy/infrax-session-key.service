@@ -1,0 +1,17 @@
+[Unit]
+Description=InfraX Session Key Engine (:3500)
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/session-key/packages/server
+EnvironmentFile=/home/ubuntu/infraX-1/projects/session-key/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/infraX-1/logs/session-key-engine.log
+StandardError=append:/home/ubuntu/infraX-1/logs/session-key-engine.error.log
+
+[Install]
+WantedBy=multi-user.target

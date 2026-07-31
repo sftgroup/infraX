@@ -1,0 +1,8 @@
+export const DEFAULTS = {
+  MAX_PER_TX_USDC: '1000',
+  MAX_TOTAL_USDC: '10000',
+  VALID_DAYS_OPTIONS: [7, 14, 30, 90],
+  DEFAULT_VALID_DAYS: 30,
+  NONCE_TTL_MS: 15 * 60 * 1000,
+  ENCRYPTION_ALGORITHM: 'aes-256-gcm' as const,
+} as const;
