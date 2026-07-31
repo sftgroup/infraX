@@ -295,9 +295,94 @@ export async function migrateEventCollectorTables(): Promise<void> {
       logger.warn('[migration] index api_keys skipped', { error: e.message });
     });
 
+    // ============================================================
+    // okx_market_candles — K-line candle snapshots (time-series)
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS okx_market_candles (
+        id BIGSERIAL,
+        chain VARCHAR(50) NOT NULL,
+        token_address VARCHAR(200) NOT NULL,
+        period VARCHAR(10) NOT NULL DEFAULT '15m',
+        bucket TIMESTAMPTZ NOT NULL,
+        open_price NUMERIC(30,10),
+        high_price NUMERIC(30,10),
+        low_price NUMERIC(30,10),
+        close_price NUMERIC(30,10),
+        volume NUMERIC(40,10),
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (id, bucket)
+      );
+      CREATE INDEX IF NOT EXISTS idx_okx_candles_chain_token_period
+        ON okx_market_candles (chain, token_address, period, bucket DESC);
+    `);
+
+    // ============================================================
+    // okx_market_index_prices — index price snapshots (time-series)
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS okx_market_index_prices (
+        id BIGSERIAL,
+        chain VARCHAR(50) NOT NULL,
+        token_address VARCHAR(200),
+        price NUMERIC(30,10),
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (id, collected_at)
+      );
+      CREATE INDEX IF NOT EXISTS idx_okx_index_chain_time
+        ON okx_market_index_prices (chain, collected_at DESC);
+    `);
+
+    // ============================================================
+    // okx_market_hot_tokens — periodic trending token snapshots
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS okx_market_hot_tokens (
+        id BIGSERIAL PRIMARY KEY,
+        chain VARCHAR(50) NOT NULL,
+        token_address VARCHAR(200) NOT NULL,
+        token_symbol VARCHAR(100),
+        token_name VARCHAR(300),
+        price_usd NUMERIC(30,10),
+        volume_24h NUMERIC(40,10),
+        market_cap NUMERIC(40,10),
+        price_change_24h NUMERIC(10,4),
+        rank INTEGER NOT NULL DEFAULT 0,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_okx_hot_chain_time
+        ON okx_market_hot_tokens (chain, collected_at DESC);
+    `);
+
+    // ============================================================
+    // okx_market_mempump — meme token pump/trench snapshots
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS okx_market_mempump (
+        id BIGSERIAL PRIMARY KEY,
+        chain VARCHAR(50) NOT NULL,
+        protocol VARCHAR(50),
+        token_address VARCHAR(200) NOT NULL,
+        token_symbol VARCHAR(100),
+        token_name VARCHAR(300),
+        liquidity NUMERIC(40,10),
+        volume_24h NUMERIC(40,10),
+        price_change_24h NUMERIC(10,4),
+        holder_count INTEGER,
+        dev_address VARCHAR(200),
+        dev_holding_pct NUMERIC(10,4),
+        bundled_pct NUMERIC(10,4),
+        is_honeypot BOOLEAN DEFAULT false,
+        created_at_ts BIGINT,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_okx_memp_chain_time
+        ON okx_market_mempump (chain, collected_at DESC);
+    `);
+
     await client.query('COMMIT');
     logger.info('[migration] All tables created', {
-      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts'],
+      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump'],
     });
   } catch (err: any) {
     await client.query('ROLLBACK');

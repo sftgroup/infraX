@@ -15,6 +15,8 @@ import { startReclassifyScheduler } from './services/reclassifier';
 import { BinanceFuturesCollector, getBinanceCollector } from './services/binanceFutures';
 import { OkxChainOSCollector, getOkxCollector } from './services/okxChainOS';
 import { getMarketClient } from './services/okxMarketV6';
+import { getMarketScheduler } from './services/okxMarketScheduler';
+import { getMarketWsClient } from './services/okxMarketWs';
 import adminRoutes from './routes/adminRoutes';
 import dataRoutes from './routes/dataRoutes';
 import managementRoutes from './routes/managementRoutes';
@@ -162,6 +164,20 @@ async function main() {
     getMarketClient().init().then((n) => {
       if (n > 0) logger.info('[okx-market] Ready');
     }).catch((e: any) => logger.error('[okx-market] Init failed', { error: e.message }));
+  }
+
+  // 8. OKX Market scheduler — periodic time-series snapshots
+  try {
+    getMarketScheduler().start();
+  } catch (e: any) {
+    logger.error('[okx-sched] Start failed', { error: e.message });
+  }
+
+  // 9. OKX WebSocket — real-time ticker streaming
+  try {
+    getMarketWsClient().start();
+  } catch (e: any) {
+    logger.error('[okx-ws] Start failed', { error: e.message });
   }
 }
 main().catch((e) => { logger.error('Startup failed', e); process.exit(1); });
