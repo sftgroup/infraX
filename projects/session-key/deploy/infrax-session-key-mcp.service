@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX Session Key MCP Server (:9111)
+After=network.target session-key-engine.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/mcp-server
+Environment=PORT=9111
+Environment=SESSION_KEY_URL=http://localhost:3500
+Environment=SESSION_KEY_API_KEY=
+ExecStart=/usr/bin/node dist/session-key-index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/infraX-1/logs/session-key-mcp.log
+StandardError=append:/home/ubuntu/infraX-1/logs/session-key-mcp.error.log
+
+[Install]
+WantedBy=multi-user.target
