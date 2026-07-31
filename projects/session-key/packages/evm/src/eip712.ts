@@ -1,5 +1,5 @@
-import type { Chain, PermissionConfig } from '@sftgroup/session-key-core';
-import { CHAIN_IDS } from '@sftgroup/session-key-core';
+import type { Chain, PermissionConfig } from '@stevenwang000x/session-key-core';
+import { CHAIN_IDS } from '@stevenwang000x/session-key-core';
 import { verifyTypedData } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 

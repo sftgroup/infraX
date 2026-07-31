@@ -1,5 +1,5 @@
 {
-  "name": "@sftgroup/session-key-evm",
+  "name": "@stevenwang000x/session-key-evm",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sftgroup/session-key-core": "workspace:*",
+    "@stevenwang000x/session-key-core": "workspace:*",
     "viem": "^2.21.0"
   },
   "devDependencies": {

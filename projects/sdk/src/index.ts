@@ -101,6 +101,11 @@ class HttpClient {
     return r.json();
   }
 
+  async put<T>(path: string, body?: any): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
+    return r.json();
+  }
+
   async del<T>(path: string): Promise<InfraXResponse<T>> {
     const r = await this.fetch(path, { method: 'DELETE' });
     return r.json();

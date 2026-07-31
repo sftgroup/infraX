@@ -1,9 +1,9 @@
-import type { IBlockchainAdapter } from '@sftgroup/session-key-core';
-import { encrypt, decrypt, loadEncryptionKey } from '@sftgroup/session-key-core';
+import type { IBlockchainAdapter } from '@stevenwang000x/session-key-core';
+import { encrypt, decrypt, loadEncryptionKey } from '@stevenwang000x/session-key-core';
 import { generateSessionKey, verifySessionAuthSignature } from './eip712.js';
 import { signAndBroadcast } from './tx-executor.js';
 import { buildRpcRegistry } from './rpc-registry.js';
-import type { Chain } from '@sftgroup/session-key-core';
+import type { Chain } from '@stevenwang000x/session-key-core';
 
 /**
  * EVM chain adapter — implements IBlockchainAdapter for all EVM-compatible chains.

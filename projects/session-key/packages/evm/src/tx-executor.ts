@@ -1,4 +1,4 @@
-import type { Chain } from '@sftgroup/session-key-core';
+import type { Chain } from '@stevenwang000x/session-key-core';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { buildViemChain } from './rpc-registry.js';

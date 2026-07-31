@@ -1,5 +1,5 @@
 {
-  "name": "@sftgroup/session-key-core",
+  "name": "@stevenwang000x/session-key-core",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",

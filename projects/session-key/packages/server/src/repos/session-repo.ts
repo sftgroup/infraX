@@ -1,5 +1,5 @@
 import pg from 'pg';
-import type { SessionKey, PermissionConfig, SessionStatus } from '@sftgroup/session-key-core';
+import type { SessionKey, PermissionConfig, SessionStatus } from '@stevenwang000x/session-key-core';
 
 export class SessionRepo {
   constructor(private pool: pg.Pool) {}

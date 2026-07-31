@@ -21,6 +21,10 @@ async function waas(path: string, opts?: { method?: string; body?: any }) {
   return r.json();
 }
 
+async function pay(path: string, opts?: { method?: string; body?: any }) {
+  return waas(path, opts);
+}
+
 const tools: Record<string, any> = {};
 function reg(def: any, fn: Function) { tools[def.name] = { def, handler: fn }; }
 

@@ -1,4 +1,4 @@
-import { env } from '@sftgroup/session-key-core';
+import { env } from '@stevenwang000x/session-key-core';
 
 export interface AppConfig {
   port: number;

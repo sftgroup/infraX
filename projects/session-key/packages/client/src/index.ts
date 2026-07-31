@@ -1,7 +1,7 @@
 import type {
   Chain, PermissionConfig, CreateSessionRequest,
   ExecuteRequest, ExecuteResult, NonceData, SessionKey,
-} from '@sftgroup/session-key-core';
+} from '@stevenwang000x/session-key-core';
 
 export interface ClientConfig {
   baseUrl: string;

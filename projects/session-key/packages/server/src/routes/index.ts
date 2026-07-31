@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { DEFAULTS } from '@sftgroup/session-key-core';
+import { DEFAULTS } from '@stevenwang000x/session-key-core';
 import type { NonceService } from '../services/nonce-service.js';
 import type { SessionService } from '../services/session-service.js';
 import type { ExecutionService } from '../services/execution-service.js';
