@@ -11,6 +11,7 @@ import { logger } from './logger';
 import { migrateEventCollectorTables } from './services/migration';
 import { BlockScanner, getScanner } from './services/scanner';
 import { DataCleaner } from './services/cleaner';
+import { startReclassifyScheduler } from './services/normalizer';
 import { BinanceFuturesCollector, getBinanceCollector } from './services/binanceFutures';
 import { OkxChainOSCollector, getOkxCollector } from './services/okxChainOS';
 import adminRoutes from './routes/adminRoutes';
@@ -130,7 +131,14 @@ async function main() {
     logger.error('[scanner] Init failed', { error: e.message });
   }
 
-  // 4. Data cleaner
+  // 4. Reclassification scheduler (post-process raw_events → classified types)
+  try {
+    startReclassifyScheduler();
+  } catch (e: any) {
+    logger.error('[reclassify] Scheduler start failed', { error: e.message });
+  }
+
+  // 5. Data cleaner
   try {
     const cleaner = new DataCleaner();
     cleaner.start();
@@ -138,7 +146,7 @@ async function main() {
     logger.error('[cleaner] Start failed', { error: e.message });
   }
 
-  // 5. Market data collectors (non-blocking, independent)
+  // 6. Market data collectors (non-blocking, independent)
   if (config.binance.wsEnabled !== false) {
     getBinanceCollector().start().catch((e: any) => logger.error('[binance] Start failed', { error: e.message }));
   }
