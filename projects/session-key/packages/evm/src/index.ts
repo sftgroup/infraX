@@ -1,9 +1,4 @@
-export {
-  buildRpcRegistry,
-  getPublicClient,
-  getWalletClient,
-  buildSessionAuthMessage,
-  verifySessionAuthSignature,
-  generateSessionKey,
-  signAndBroadcast,
-} from './wallet.js';
+export { buildRpcRegistry, getPublicClient, getWalletClient, buildViemChain, getChainId } from './rpc-registry.js';
+export { buildSessionAuthMessage, verifySessionAuthSignature, generateSessionKey } from './eip712.js';
+export { signAndBroadcast } from './tx-executor.js';
+export { EvmAdapter } from './evm-adapter.js';

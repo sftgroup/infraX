@@ -1,20 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import { DEFAULTS } from '@sftgroup/session-key-core';
-import { SessionService } from '../services/session-service.js';
-import { SessionRepo } from '../repos/session-repo.js';
-import { ExecutionRepo } from '../repos/execution-repo.js';
-import { redis } from '../plugins/db.js';
+import type { NonceService } from '../services/nonce-service.js';
+import type { SessionService } from '../services/session-service.js';
+import type { ExecutionService } from '../services/execution-service.js';
 
-const sessionRepo = new SessionRepo();
-const executionRepo = new ExecutionRepo();
-const sessionService = new SessionService(sessionRepo, executionRepo, redis);
+export interface Services {
+  nonceService: NonceService;
+  sessionService: SessionService;
+  executionService: ExecutionService;
+}
 
-export async function registerRoutes(app: FastifyInstance) {
+export function registerRoutes(app: FastifyInstance, svc: Services) {
   // ── Nonce ──────────────────────────────────────────────────────────
   app.get('/api/v1/nonce', async (req, res) => {
     const { user } = req.query as { user?: string };
     if (!user) return res.status(400).send({ code: 400, message: 'user address required' });
-    const data = sessionService.getNonce(user);
+    const data = svc.nonceService.get(user);
     return res.send({ code: 200, data, message: 'ok' });
   });
 
@@ -30,7 +31,8 @@ export async function registerRoutes(app: FastifyInstance) {
       return res.status(400).send({ code: 400, message: 'Missing required fields' });
     }
     try {
-      const result = await sessionService.create({
+      svc.nonceService.consume(userAddress, nonce);
+      const result = await svc.sessionService.create({
         signature, chain, permissions,
         validDays: validDays || DEFAULTS.DEFAULT_VALID_DAYS,
         maxPerTx: maxPerTx || DEFAULTS.MAX_PER_TX_USDC,
@@ -48,7 +50,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get('/api/v1/sessions', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
     const { user, chain, status } = req.query as any;
     if (!user) return res.status(400).send({ code: 400, message: 'user address required' });
-    const sessions = await sessionService.list(user, chain, status);
+    const sessions = await svc.sessionService.list(user, chain, status);
     return res.send({ code: 200, data: { sessions }, message: 'ok' });
   });
 
@@ -56,7 +58,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get('/api/v1/sessions/:id', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
     const { id } = req.params as any;
     try {
-      const session = await sessionService.get(id);
+      const session = await svc.sessionService.get(id);
       return res.send({ code: 200, data: session, message: 'ok' });
     } catch (err: any) {
       return res.status(err.statusCode || 500).send({ code: err.statusCode || 500, message: err.message });
@@ -67,7 +69,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.delete('/api/v1/sessions/:id', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
     const { id } = req.params as any;
     try {
-      const result = await sessionService.revoke(id);
+      const result = await svc.sessionService.revoke(id);
       return res.send({ code: 200, data: result, message: 'ok' });
     } catch (err: any) {
       return res.status(err.statusCode || 500).send({ code: err.statusCode || 500, message: err.message });
@@ -81,7 +83,7 @@ export async function registerRoutes(app: FastifyInstance) {
       return res.status(400).send({ code: 400, message: 'sessionId, chain, to, data required' });
     }
     try {
-      const result = await sessionService.execute({ sessionId, chain, to, data, value, gasLimit });
+      const result = await svc.executionService.execute({ sessionId, chain, to, data, value, gasLimit });
       return res.send({ code: 200, data: result, message: result.status === 'success' ? 'Transaction sent' : 'Transaction failed' });
     } catch (err: any) {
       const status = err.statusCode || 500;

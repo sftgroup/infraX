@@ -2,29 +2,46 @@ import pg from 'pg';
 import { Redis } from 'ioredis';
 import { loadConfig } from '../config.js';
 
-const config = loadConfig();
+export interface Infra {
+  pool: pg.Pool;
+  redis: Redis;
+}
 
-export const pool = new pg.Pool({
-  host: config.db.host,
-  port: config.db.port,
-  database: config.db.database,
-  user: config.db.user,
-  password: config.db.password,
-  max: 10,
-  idleTimeoutMillis: 30000,
-});
+let _infra: Infra | null = null;
 
-export const redis = new Redis({
-  host: config.redis.host,
-  port: config.redis.port,
-  password: config.redis.password || undefined,
-  maxRetriesPerRequest: 3,
-});
+/**
+ * Create or return singleton database/redis connections.
+ * In tests, pass a custom config to avoid module-level side effects.
+ */
+export function createInfra(configOverrides?: Partial<ReturnType<typeof loadConfig>>): Infra {
+  if (_infra && !configOverrides) return _infra;
 
-export async function initDb(): Promise<void> {
-  await pool.query(`
-    CREATE EXTENSION IF NOT EXISTS "uuid-ossp"
-  `);
+  const config = { ...loadConfig(), ...configOverrides };
+
+  const infra: Infra = {
+    pool: new pg.Pool({
+      host: config.db.host,
+      port: config.db.port,
+      database: config.db.database,
+      user: config.db.user,
+      password: config.db.password,
+      max: 10,
+      idleTimeoutMillis: 30000,
+    }),
+    redis: new Redis({
+      host: config.redis.host,
+      port: config.redis.port,
+      password: config.redis.password || undefined,
+      maxRetriesPerRequest: 3,
+    }),
+  };
+
+  if (!configOverrides) _infra = infra;
+  return infra;
+}
+
+export async function initDb(pool: pg.Pool): Promise<void> {
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS session_keys (
@@ -62,6 +79,4 @@ export async function initDb(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_exec_session ON session_executions(session_id);
     CREATE INDEX IF NOT EXISTS idx_exec_hash    ON session_executions(tx_hash);
   `);
-
-  console.log('[DB] Tables initialised');
 }
