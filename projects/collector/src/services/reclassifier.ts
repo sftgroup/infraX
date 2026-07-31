@@ -1,12 +1,8 @@
 import { ethers } from 'ethers';
 import { pool } from '../database';
 import { logger } from '../logger';
+import { config } from '../config';
 import { classifyLog, type LogData } from './normalizer';
-
-const RECLASSIFY_INTERVAL_MS = 30_000;
-const RECLASSIFY_BATCH_SIZE = 500;
-const RECLASSIFY_FIRST_RUN_DELAY_MS = 10_000;
-const CUSTOM_SIGS_REFRESH_MS = 300_000; // refresh custom sigs every 5 min
 
 interface CustomSig {
   topic_hash: string;
@@ -23,7 +19,7 @@ interface CustomSig {
  *   2. Tenant-registered custom_event_sigs from DB
  *   3. If no match → mark _classified:false so we skip on next run
  */
-export async function reclassifyRawEvents(batchSize: number = RECLASSIFY_BATCH_SIZE): Promise<{ processed: number; classified: number; custom: number }> {
+export async function reclassifyRawEvents(batchSize: number = config.reclassifier.batchSize): Promise<{ processed: number; classified: number; custom: number }> {
   const client = await pool.connect();
   let processed = 0;
   let classified = 0;
@@ -150,7 +146,7 @@ let customSigCacheTime = 0;
 
 async function loadAllCustomSigs(): Promise<Map<string, CustomSig>> {
   const now = Date.now();
-  if (customSigCache && (now - customSigCacheTime) < CUSTOM_SIGS_REFRESH_MS) {
+  if (customSigCache && (now - customSigCacheTime) < config.reclassifier.customSigsRefreshMs) {
     return customSigCache;
   }
 
@@ -269,14 +265,14 @@ export function startReclassifyScheduler(): void {
     } catch { /* logged internally */ }
   };
 
-  reclassifyTimer = setInterval(run, RECLASSIFY_INTERVAL_MS);
+  reclassifyTimer = setInterval(run, config.reclassifier.intervalMs);
   if (reclassifyTimer && 'unref' in reclassifyTimer) reclassifyTimer.unref();
 
-  setTimeout(run, RECLASSIFY_FIRST_RUN_DELAY_MS).unref?.();
+  setTimeout(run, config.reclassifier.firstRunDelayMs).unref?.();
 
   logger.info('[reclassify] Scheduler started', {
-    intervalMs: RECLASSIFY_INTERVAL_MS,
-    batchSize: RECLASSIFY_BATCH_SIZE,
+    intervalMs: config.reclassifier.intervalMs,
+    batchSize: config.reclassifier.batchSize,
   });
 }
 

@@ -6,21 +6,9 @@ import { getMarketClient } from './okxMarketV6';
 // ================================================================
 // OKX Market v6 Periodic Snapshot Scheduler
 // ================================================================
-// Periodically collects time-series data from OKX Market v6 API
-// and stores it in local database tables for historical analysis
-// without repeated API calls.
-//
-// All intervals and limits are configurable via env vars:
-//   OKX_MARKET_SCHED_CHAINS     — comma-separated chainIndex (default "1,56,8453")
-//   OKX_MARKET_CANDLE_TOKENS   — tokens per chain for candles (default 10)
-//   OKX_MARKET_HOT_INTERVAL_MS  — hot-tokens interval (default 60000)
-//   OKX_MARKET_CANDLE_INTERVAL_MS — candles interval (default 300000)
-//   OKX_MARKET_INDEX_INTERVAL_MS  — index-price interval (default 60000)
-//   OKX_MARKET_MEMPUMP_INTERVAL_MS — mempump interval (default 300000)
+// All intervals and limits are configurable via env vars
+// (see config.ts okxMarket section).
 // ================================================================
-
-const CANDLE_PERIOD = '15m';
-const CANDLE_LIMIT = 4;   // last 1h worth of 15m candles
 
 export class OkxMarketScheduler {
   private running = false;
@@ -162,7 +150,7 @@ export class OkxMarketScheduler {
     for (const [chainIndex, addresses] of gathered) {
       for (const tokenAddress of addresses) {
         try {
-          const candles = await this.client.getCandles(chainIndex, tokenAddress, CANDLE_PERIOD, CANDLE_LIMIT);
+          const candles = await this.client.getCandles(chainIndex, tokenAddress, config.okxMarket.schedulerCandlePeriod, config.okxMarket.schedulerCandleLimit);
           if (!candles || !Array.isArray(candles)) continue;
 
           const client = await pool.connect();
@@ -174,7 +162,7 @@ export class OkxMarketScheduler {
                    (chain, token_address, period, bucket, open_price, high_price, low_price, close_price, volume)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
                  ON CONFLICT DO NOTHING`,
-                [chainIndex, tokenAddress, CANDLE_PERIOD,
+                [chainIndex, tokenAddress, config.okxMarket.schedulerCandlePeriod,
                  new Date(parseInt(c.timestamp, 10)),
                  c.open || 0, c.high || 0, c.low || 0, c.close || 0, c.volume || 0]
               );
