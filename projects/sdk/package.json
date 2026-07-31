@@ -1,15 +1,25 @@
 {
   "name": "@0xinfrax/infrax-dk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "InfraX JavaScript SDK — wallet creation, data queries, multisig vault, MPC key shards",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["infrax", "wallet", "web3", "multisig", "mpc"],
+  "keywords": [
+    "infrax",
+    "wallet",
+    "web3",
+    "multisig",
+    "mpc"
+  ],
   "license": "MIT",
-  "devDependencies": { "typescript": "^5.0.0" }
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
 }

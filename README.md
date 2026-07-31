@@ -1,6 +1,6 @@
 # InfraX — Web3 基础设施平台
 
-> Monorepo | 12 模块 | Version `v0.3.2-20260718` | 生产 `43.156.99.215`
+> Monorepo | 12 模块 | Version `v0.5.0-20260801` | 生产 `43.156.99.215`
 
 ## 项目介绍
 
@@ -12,13 +12,14 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 |------|------|------|
 | **WAAS** | 托管钱包、HD 地址生成、Gas Sponsor、热钱包、SaaS 租户管理 | 9109 |
 | **Vault** | Safe 多签：部署/提案/确认/执行、Owner 管理、风控 | 9107 |
-| **DC** | 链上事件查询（5 链，含 OxaChain）、订阅计划、API Key 管理 | 9102 |
+| **DC** | 链上事件查询（5 链）、订阅计划、API Key 管理 | 9102 |
 | **MPC** | 邮件验证码、密钥分片注册/恢复、Agent Wallet（会话/签名/合约/转账） | 9104 |
 | **Payment** | x402 支付引擎、订单管理 | 9106 |
-| **Collector** | 链上数据采集 (5 链)、OKX ChainOS 资产快照、Binance 行情 | 9101 |
+| **Collector** | 全链事件扫描（全量日志→本地分类）+ OKX ChainOS v6 行情（40+端点/K线/Meme/信号）+ Binance 期货 | 9101 |
+| **Market API** | 代币搜索/K线/热门排行/Meme扫链/聪明钱信号/持仓集群/地址分析/余额(免费)/交易历史(免费) | 9101 |
 | **Admin** | 跨模块聚合管理后台（12 服务状态/租户/交易/收益） | 9100 |
 | **Web Proxy** | 静态文件 + API 反向代理 + 安全头 + 健康检查 | 9111 |
-| **MCP × 4** | AI Agent 接入：DC/MPC/Vault/Wallet 共 45 tools | 9103/9105/9108/9110 |
+| **MCP × 5** | AI Agent 接入：DC/Market/MPC/Vault/Wallet 共 58+ tools | 9103/3007/9105/9108/9110 |
 
 ### 三种接入方式
 
@@ -28,6 +29,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | Safe/Vault | ✅ | ✅ | ✅ |
 | Payment | ✅ | ✅ | ✅ |
 | Data Center | ✅ | ✅ (7 tools) | ✅ |
+| Market (行情+分析) | ✅ (39 endpoints) | ✅ (13 tools) | ✅ (16 methods) |
 | MPC | ✅ | ✅ (15 tools) | ✅ |
 | Admin | ✅ | — | — |
 

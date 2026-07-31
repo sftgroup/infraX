@@ -1,6 +1,6 @@
 # InfraX 接入文档 — API / MCP / SDK
 
-> 版本 `v0.4.0-20260731` | 最后更新 2026-07-31 | GitHub: [sftgroup/infraX](https://github.com/sftgroup/infraX)
+> 版本 `v0.5.0-20260801` | 最后更新 2026-08-01 | GitHub: [sftgroup/infraX](https://github.com/sftgroup/infraX)
 
 ## 概述
 
@@ -49,6 +49,7 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 | `:9108` | Vault MCP | — | AI Agent 多签 |
 | `:9110` | Wallet MCP | — | AI Agent WAAS |
 | `:9111` | Session Key MCP | — | AI Agent 授权 |
+| `:3007` | Market MCP | — | AI Agent 行情分析 |
 
 ---
 
@@ -242,9 +243,69 @@ Base URL:  https://api.infrax.io
 
 ---
 
+### 1.6 行情市场 API（Collector /market/*）
+
+> okxMarket v6 — 所有 /market/* 路由使用 `x-api-key` 认证
+
+#### 行情查询（Basic/Premium tier，月免10万次）
+
+```
+GET  /api/v2/data/market/token-search     ?keyword=&chainIndex=&limit=
+GET  /api/v2/data/market/token-info       ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/hot-tokens       ?chainIndex=&rankingType=&rankingTimeFrame=&rankBy=&limit=
+GET  /api/v2/data/market/candles          ?chainIndex=&tokenAddress=&period=&limit=
+GET  /api/v2/data/market/price            ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/trades           ?chainIndex=&tokenAddress=&limit=
+GET  /api/v2/data/market/token-advanced   ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/token-holders    ?chainIndex=&tokenAddress=&limit=
+GET  /api/v2/data/market/token-top-traders ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/historical-candles ?chainIndex=&tokenAddress=&period=&limit=
+```
+
+#### Meme 币 + 信号（Premium tier）
+
+```
+GET  /api/v2/data/market/mempump/list     ?chainIndex=&protocol=&sortBy=&limit=
+GET  /api/v2/data/market/mempump/details  ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/mempump/devinfo  ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/mempump/similar  ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/mempump/bundle   ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/signals          ?chainIndex=&signalType=&limit=
+GET  /api/v2/data/market/leaderboard      ?chainIndex=&leaderboardType=&limit=
+GET  /api/v2/data/market/cluster-overview ?chainIndex=&tokenAddress=
+```
+
+#### 免费接口（Free tier, 无限制）
+
+```
+GET  /api/v2/data/market/balances         ?address=&chains=
+GET  /api/v2/data/market/token-balance    ?address=&chainIndex=&tokenAddress=
+GET  /api/v2/data/market/balance-total    ?address=&chains=
+GET  /api/v2/data/market/transactions     ?address=&chains=&limit=
+GET  /api/v2/data/market/transaction-detail ?chainIndex=&txHash=
+GET  /api/v2/data/market/index-price      ?chainIndex=&tokenAddress=
+GET  /api/v2/data/market/portfolio-overview ?address=&chains=
+GET  /api/v2/data/market/portfolio-pnl    ?address=&chains=&limit=
+GET  /api/v2/data/market/portfolio-dex-history ?address=&chains=&limit=
+```
+
+#### 热榜筛选示例
+
+```bash
+# 过去24小时按净流入排名
+curl -H "x-api-key: YOUR_KEY" \
+  "https://api.infrax.io/api/v2/data/market/hot-tokens?chainIndex=1&rankingTimeFrame=4&rankBy=14&limit=20"
+
+# Pump.fun 协议 Meme 币
+curl -H "x-api-key: YOUR_KEY" \
+  "https://api.infrax.io/api/v2/data/market/mempump/list?chainIndex=501&protocol=120596&sortBy=volume24h"
+```
+
+---
+
 ## 二、MCP Server
 
-5 个 MCP Server，每个独立进程。
+6 个 MCP Server，每个独立进程。
 
 ### 服务地址
 
@@ -252,6 +313,7 @@ Base URL:  https://api.infrax.io
 |------------|------|--------|------|
 | Wallet MCP | `:9110` | 10 | SSE |
 | DC MCP | `:9103` | 7 | HTTP Streamable |
+| Market MCP | `:3007` | 13 | HTTP Streamable |
 | Vault MCP | `:9108` | 14 | SSE |
 | MPC MCP | `:9105` | 15 | SSE |
 | Session Key MCP | `:9111` | 7 | HTTP Streamable |
@@ -470,6 +532,7 @@ if (r.code === 0) {
 | `.dc` | DC :9102 | 6 |
 | `.payment` | Payment :9106 | 4 |
 | `.mpc` | MPC :9104/6003 | 12 |
+| `.market` | Collector :9101 | 16 |
 | `SessionKeyClient` | Session Key :3500 | 7 |
 
 ---
@@ -499,6 +562,11 @@ if (r.code === 0) {
 | 链上事件 | `GET /api/v2/data/events` | `dc_events` | `ix.dc.events()` |
 | MPC 注册 | `POST /api/v2/mpc/register` | `mpc_register` | `ix.mpc.register()` |
 | Session Key | `POST /api/v1/sessions` | `sk_create_session` | `sk.createSession()` |
+| 代币搜索 | `GET /api/v2/data/market/token-search` | `market_search` | `ix.market.searchToken()` |
+| 热门代币 | `GET /api/v2/data/market/hot-tokens` | `market_hot` | `ix.market.getHotTokens()` |
+| K线数据 | `GET /api/v2/data/market/candles` | `market_candles` | `ix.market.getCandles()` |
+| 余额查询 | `GET /api/v2/data/market/balances` | `market_balances` | `ix.market.getBalances()` |
+| Meme 扫链 | `GET /api/v2/data/market/mempump/list` | `market_mempump` | `ix.market.getMemePumpList()` |
 | AI 自然语言 | — | ✅ 全部 | — |
 
 ---

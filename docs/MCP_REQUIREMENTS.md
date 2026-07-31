@@ -1,6 +1,6 @@
 # InfraX MCP — AI Agent 接入文档
 
-> v0.4.0-20260731 | @0xinfrax
+> v0.5.0-20260801 | @0xinfrax
 
 ## 架构
 
@@ -24,6 +24,7 @@ AI Agent ── MCP 协议 ──┼─ dc-mcp       (:9103) ── pocketx_dc /
 |------------|------|-------|-------------|------|:---:|
 | Wallet MCP | `:9110` | 10 | `infrax-wallet-mcp` | SSE | 运行中 |
 | DC MCP | `:9103` | 7 | `infrax-dc-mcp` | HTTP Streamable | 运行中 |
+| Market MCP | `:3007` | 13 | `infrax-market-mcp` | HTTP Streamable | 新增 |
 | Vault MCP | `:9108` | 14 | `infrax-vault-mcp` | SSE | 运行中 |
 | MPC MCP | `:9105` | 15 | `infrax-mpc-mcp` | SSE | 运行中 |
 | Session Key MCP | `:9111` | 7 | `infrax-session-key-mcp` | HTTP Streamable | 新增 |
@@ -38,6 +39,9 @@ AI Agent ── MCP 协议 ──┼─ dc-mcp       (:9103) ── pocketx_dc /
     },
     "infrax-dc": {
       "url": "http://<host>:9103/mcp/message"
+    },
+    "infrax-market": {
+      "url": "http://<host>:3007/mcp/message"
     },
     "infrax-vault": {
       "url": "http://<host>:9108/mcp/sse"
@@ -117,6 +121,59 @@ AI Agent ── MCP 协议 ──┼─ dc-mcp       (:9103) ── pocketx_dc /
 
 用户: "BTC 现在什么价？"
 → dc_price(symbol="BTC")
+```
+
+---
+
+## 二点五、Market MCP (`:3007`) — 13 tools (v0.5.0 新增)
+
+OKX OnchainOS Market v6 全能力接入。支持代币搜索、行情K线、Meme币扫描、聪明钱信号、地址余额、交易历史等。
+
+### 行情数据（8 个）
+
+| Tool | 描述 | 参数 |
+|------|------|------|
+| `market_search` | 代币搜索 | keyword, chainIndex?, limit? |
+| `market_hot` | 热门代币排行（30+筛选参数） | chainIndex, rankingType?, rankingTimeFrame?, rankBy?, limit? |
+| `market_candles` | K线 OHLCV | chainIndex, tokenAddress, period?, limit? |
+| `market_price` | 实时 DEX 价格 | chainIndex, tokenAddress |
+| `market_balances` | 地址多链余额（免费） | address, chains? |
+| `market_transactions` | 地址交易历史（免费） | address, chains?, limit? |
+| `market_mempump` | Meme 币扫链 | chainIndex, protocol?, sortBy?, limit? |
+| `market_mempump_detail` | Meme 币详情（dev持仓/honeypot/bundle） | chainIndex, tokenAddress |
+
+### 交易分析（2 个）
+
+| Tool | 描述 | 参数 |
+|------|------|------|
+| `market_signals` | 聪明钱/鲸鱼/KOL 信号 | chainIndex, signalType?, limit? |
+| `market_leaderboard` | 交易排行榜（PnL/胜率/交易量） | chainIndex, leaderboardType?, limit? |
+
+### 管理配置（3 个）
+
+| Tool | 描述 | 参数 |
+|------|------|------|
+| `track_token` | 添加代币到监控列表 | chain, tokenAddress, label? |
+| `list_tracked` | 查看监控列表 | chain? |
+| `register_event` | 注册自定义链上事件签名 | chain, topicHash, eventType, eventName?, abi? |
+
+### 使用示例
+
+```
+用户: "搜一下 PEPE 代币"
+→ market_search(keyword="pepe")
+
+用户: "Ethereum 上过去 24h 净流入最多的热门代币"
+→ market_hot(chainIndex="1", rankingTimeFrame="4", rankBy="14")
+
+用户: "0xABC 地址有多少钱？"
+→ market_balances(address="0xABC")
+
+用户: "有哪些新上的 Meme 币"
+→ market_mempump(chainIndex="1", sortBy="volume24h")
+
+用户: "监控 PEPE 这个代币"
+→ track_token(chain="1", tokenAddress="0x6982508...", label="PEPE")
 ```
 
 ---
@@ -284,7 +341,7 @@ SESSION_KEY_API_KEY=your-api-key
 | 传输模式 | SSE / HTTP Streamable | 可复用 Express 端口 |
 | 认证 | 内网模式（可按服务配 API Key） | 后续可加统一认证 |
 | 部署 | systemd unit，独立进程 | 崩溃自动重启 |
-| 端口 | :9103/:9105/:9108/:9110/:9111 | 按服务独立 |
+| 端口 | :9103/:9105/:9108/:9110/:9111/:3007 | 按服务独立 |
 
 ## MCP Tool 设计原则
 
