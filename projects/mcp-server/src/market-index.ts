@@ -47,14 +47,26 @@ server.tool(
 // ── market_hot ─────────────────────────────────────────────────────
 server.tool(
   "market_hot",
-  "Get trending/hot tokens on a specific chain",
+  "Get trending/hot tokens — customizable by ranking type, time frame, sort, and 30+ filters",
   {
     chainIndex: z.string().describe("Chain ID (1=ETH, 56=BSC, 8453=Base)"),
-    limit: z.string().optional().describe("Max results (default 50)"),
+    limit: z.string().optional().describe("Max results (default 50, max 100)"),
+    rankingType: z.string().optional().describe("4=Trending(token score), 5=Xmentioned(Twitter mentions)"),
+    rankingTimeFrame: z.string().optional().describe("1=5min, 2=1h(default), 3=4h, 4=24h"),
+    rankBy: z.string().optional().describe("2=priceChange, 5=volumeUSD, 10=holders, 12=socialScore, 14=netInflow, 15=tokenScore"),
+    riskFilter: z.string().optional().describe("Hide risky tokens (default true)"),
+    protocolId: z.string().optional().describe("Protocol filter, e.g. 120596 for Pump.fun"),
+    marketCapMin: z.string().optional().describe("Min market cap in USD"),
+    liquidityMin: z.string().optional().describe("Min liquidity in USD"),
+    holdersMin: z.string().optional().describe("Min holder count"),
   },
-  async ({ chainIndex, limit }) => {
+  async (params) => {
+    const { chainIndex, limit, ...rest } = params;
     const q = new URLSearchParams({ chainIndex });
     if (limit) q.set("limit", limit);
+    for (const [k, v] of Object.entries(rest)) {
+      if (v !== undefined && v !== '') q.set(k, String(v));
+    }
     const data = await market(`/api/v2/data/market/hot-tokens?${q.toString()}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
   }

@@ -136,11 +136,15 @@ router.get('/market/token-info', asyncHandler(async (req, res) => {
   res.json(apiResponse(data));
 }));
 
-/** GET /api/v2/data/market/hot-tokens — Trending tokens */
+/** GET /api/v2/data/market/hot-tokens — Trending tokens (30+ filter params) */
 router.get('/market/hot-tokens', asyncHandler(async (req, res) => {
-  const { chainIndex, limit } = req.query as any;
+  const { chainIndex, limit, ...rest } = req.query as any;
   if (!chainIndex) { res.status(400).json(apiResponse(null, 'chainIndex required')); return; }
-  const data = await getHotTokens(chainIndex, parseInt(limit || '50'));
+  const opts: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rest)) {
+    if (v !== undefined && v !== '') opts[k] = String(v);
+  }
+  const data = await getHotTokens(chainIndex, parseInt(limit || '50'), Object.keys(opts).length > 0 ? opts : undefined);
   res.json(apiResponse(data));
 }));
 

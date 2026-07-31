@@ -287,10 +287,34 @@ export class OkxMarketV6Client {
     return this.request(acct, 'GET', path);
   }
 
-  /** GET /api/v6/dex/market/token/hot-token — trending tokens */
-  async getHotTokens(chainIndex: string, limit = 50): Promise<OkxTokenInfo[]> {
+  /** GET /api/v6/dex/market/token/hot-token — trending tokens
+   *
+   * @param chainIndex  Chain ID (1=ETH, 56=BSC, 8453=Base, 501=Solana)
+   * @param limit       Max results (default 50, max 100)
+   * @param opts        Optional filters:
+   *   rankingType       4=Trending(token score), 5=Xmentioned(Twitter)
+   *   rankingTimeFrame  1=5min, 2=1h(default), 3=4h, 4=24h
+   *   rankBy            1=price, 2=priceChange%, 3=txs, 4=uniqueTraders,
+   *                     5=volumeUSD, 6=mcap, 7=liquidity, 8=createdAt,
+   *                     9=OKXsearch, 10=holders, 11=mentions, 12=socialScore,
+   *                     14=netInflow, 15=tokenScore
+   *   riskFilter        Hide risky tokens (default true)
+   *   stableTokenFilter Hide stablecoins (default true)
+   *   protocolId        Filter by protocol (e.g. "120596" for Pump.fun)
+   *   priceChangePercentMin/Max, tradeAmountMin/Max, volumeMin/Max,
+   *   txsMin/Max, uniqueTraderMin/Max, marketCapMin/Max, liquidityMin/Max,
+   *   holdersMin/Max, mentionedCountMin/Max, socialScoreMin/Max, inflowUsdMin/Max,
+   *   fdvMin/Max, isLpBurnt, isMint, isFreeze, cursor
+   */
+  async getHotTokens(chainIndex: string, limit = 50, opts?: Record<string, string>): Promise<OkxTokenInfo[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/token/hot-token?chainIndex=${chainIndex}&limit=${limit}`;
+    const q = new URLSearchParams({ chainIndex, limit: String(limit) });
+    if (opts) {
+      for (const [k, v] of Object.entries(opts)) {
+        if (v !== undefined && v !== '') q.set(k, String(v));
+      }
+    }
+    const path = `/api/v6/dex/market/token/hot-token?${q.toString()}`;
     return this.request(acct, 'GET', path);
   }
 
@@ -533,7 +557,7 @@ export const getTransactionDetail = (c: string, t: string) => getMarketClient().
 // P2 — Basic
 export const searchToken = (k: string, c?: string, l?: number) => getMarketClient().searchToken(k, c, l);
 export const getTokenBasicInfo = (c: string, t: string) => getMarketClient().getTokenBasicInfo(c, t);
-export const getHotTokens = (c: string, l?: number) => getMarketClient().getHotTokens(c, l);
+export const getHotTokens = (c: string, l?: number, o?: Record<string, string>) => getMarketClient().getHotTokens(c, l, o);
 export const getTopLiquidity = (c: string, t: string) => getMarketClient().getTopLiquidity(c, t);
 export const getCandles = (c: string, t: string, p?: string, l?: number) => getMarketClient().getCandles(c, t, p, l);
 export const getMarketPrice = (c: string, t: string) => getMarketClient().getPrice(c, t);

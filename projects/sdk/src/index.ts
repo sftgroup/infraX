@@ -262,10 +262,11 @@ class MarketAPI {
     return this.http.get<any>('/api/v2/data/market/token-info?chainIndex=' + chainIndex + '&tokenAddress=' + tokenAddress);
   }
 
-  /** P2 Basic — trending hot tokens */
-  async getHotTokens(chainIndex: string, limit?: number) {
+  /** P2 Basic — trending hot tokens (30+ filter params available) */
+  async getHotTokens(chainIndex: string, limit?: number, opts?: Record<string, string>) {
     const q = new URLSearchParams({ chainIndex });
     if (limit) q.set('limit', String(limit));
+    if (opts) { for (const [k, v] of Object.entries(opts)) { if (v !== undefined && v !== '') q.set(k, String(v)); } }
     return this.http.get<MarketTokenInfo[]>('/api/v2/data/market/hot-tokens?' + q.toString());
   }
 
