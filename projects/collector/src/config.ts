@@ -52,6 +52,18 @@ export const config = {
     apiSecret: process.env.OKX_MARKET_API_SECRET || process.env.OKX_CHAINOS_API_SECRET || '',
     apiPassphrase: process.env.OKX_MARKET_API_PASSPHRASE || process.env.OKX_CHAINOS_API_PASSPHRASE || '',
     wsEnabled: process.env.OKX_MARKET_WS_ENABLED !== 'false',
+    // Scheduler: which chains to track (comma-separated chainIndex like "1,56,8453")
+    schedulerChains: (process.env.OKX_MARKET_SCHED_CHAINS || '1,56,8453').split(',').filter(Boolean),
+    // Scheduler: how many top tokens to track candles for (per chain)
+    schedulerCandleTokens: parseInt(process.env.OKX_MARKET_CANDLE_TOKENS || '10', 10),
+    // Scheduler: hot-tokens snapshot interval in ms
+    schedulerHotTokensMs: parseInt(process.env.OKX_MARKET_HOT_INTERVAL_MS || '60000', 10),
+    // Scheduler: candles snapshot interval in ms
+    schedulerCandlesMs: parseInt(process.env.OKX_MARKET_CANDLE_INTERVAL_MS || '300000', 10),
+    // Scheduler: index-price snapshot interval in ms
+    schedulerIndexMs: parseInt(process.env.OKX_MARKET_INDEX_INTERVAL_MS || '60000', 10),
+    // Scheduler: mempump snapshot interval in ms
+    schedulerMempumpMs: parseInt(process.env.OKX_MARKET_MEMPUMP_INTERVAL_MS || '300000', 10),
   },
 };
 

@@ -1,5 +1,6 @@
 import { pool } from '../database';
 import { logger } from '../logger';
+import { config } from '../config';
 import { getMarketClient } from './okxMarketV6';
 
 // ================================================================
@@ -9,33 +10,33 @@ import { getMarketClient } from './okxMarketV6';
 // and stores it in local database tables for historical analysis
 // without repeated API calls.
 //
-// Tables:
-//   okx_market_candles      — K-line OHLCV
-//   okx_market_index_prices  — index prices
-//   okx_market_hot_tokens   — trending token snapshots
-//   okx_market_mempump      — meme token snapshots
+// All intervals and limits are configurable via env vars:
+//   OKX_MARKET_SCHED_CHAINS     — comma-separated chainIndex (default "1,56,8453")
+//   OKX_MARKET_CANDLE_TOKENS   — tokens per chain for candles (default 10)
+//   OKX_MARKET_HOT_INTERVAL_MS  — hot-tokens interval (default 60000)
+//   OKX_MARKET_CANDLE_INTERVAL_MS — candles interval (default 300000)
+//   OKX_MARKET_INDEX_INTERVAL_MS  — index-price interval (default 60000)
+//   OKX_MARKET_MEMPUMP_INTERVAL_MS — mempump interval (default 300000)
 // ================================================================
 
-const HOT_TOKENS_INTERVAL_MS = 60_000;    // 1 min
-const CANDLES_INTERVAL_MS = 300_000;      // 5 min
-const INDEX_PRICE_INTERVAL_MS = 60_000;   // 1 min
-const MEMPUMP_INTERVAL_MS = 300_000;      // 5 min
-
-const CHAINS = ['1', '56', '8453'];       // ethereum, bsc, base
 const CANDLE_PERIOD = '15m';
-const CANDLE_LIMIT = 4;                   // last 1h worth of 15m candles
-const TRACKED_TOKENS_LIMIT = 20;          // top N tokens to track candles for
+const CANDLE_LIMIT = 4;   // last 1h worth of 15m candles
 
 export class OkxMarketScheduler {
   private running = false;
   private timers: NodeJS.Timeout[] = [];
   private client = getMarketClient();
 
+  private get chains(): string[] { return config.okxMarket.schedulerChains; }
+  private get candleTokens(): number { return config.okxMarket.schedulerCandleTokens; }
+
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
 
     await this.client.init();
+
+    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs, schedulerMempumpMs: mempumpMs } = config.okxMarket;
 
     // Initial snapshots (staggered)
     setTimeout(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), 5_000).unref?.();
@@ -45,17 +46,18 @@ export class OkxMarketScheduler {
 
     // Periodic
     this.timers.push(
-      setInterval(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), HOT_TOKENS_INTERVAL_MS),
-      setInterval(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), INDEX_PRICE_INTERVAL_MS),
-      setInterval(() => this.safeRun('candles', () => this.snapshotCandles()), CANDLES_INTERVAL_MS),
-      setInterval(() => this.safeRun('mempump', () => this.snapshotMemePump()), MEMPUMP_INTERVAL_MS),
+      setInterval(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), hotMs),
+      setInterval(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), indexMs),
+      setInterval(() => this.safeRun('candles', () => this.snapshotCandles()), candlesMs),
+      setInterval(() => this.safeRun('mempump', () => this.snapshotMemePump()), mempumpMs),
     );
 
     for (const t of this.timers) { if ('unref' in t) (t as any).unref?.(); }
 
     logger.info('[okx-sched] Scheduler started', {
-      chains: CHAINS.length,
-      intervals: { hotTokens: HOT_TOKENS_INTERVAL_MS, candles: CANDLES_INTERVAL_MS, indexPrice: INDEX_PRICE_INTERVAL_MS, mempump: MEMPUMP_INTERVAL_MS },
+      chains: this.chains.length,
+      candleTokens: this.candleTokens,
+      intervals: { hotTokens: hotMs, candles: candlesMs, indexPrice: indexMs, mempump: mempumpMs },
     });
   }
 
@@ -74,8 +76,8 @@ export class OkxMarketScheduler {
 
   // ── Hot Tokens ────────────────────────────────────────────────
   private async snapshotHotTokens(): Promise<void> {
-    for (const chainIndex of CHAINS) {
-      const tokens = await this.client.getHotTokens(chainIndex, TRACKED_TOKENS_LIMIT);
+    for (const chainIndex of this.chains) {
+      const tokens = await this.client.getHotTokens(chainIndex, this.candleTokens);
       if (!tokens || !Array.isArray(tokens)) continue;
 
       const collectedAt = new Date();
@@ -98,7 +100,7 @@ export class OkxMarketScheduler {
 
   // ── Index Prices ──────────────────────────────────────────────
   private async snapshotIndexPrices(): Promise<void> {
-    for (const chainIndex of CHAINS) {
+    for (const chainIndex of this.chains) {
       const data = await this.client.getIndexPrice(chainIndex);
       if (!data) continue;
 
@@ -121,15 +123,15 @@ export class OkxMarketScheduler {
 
   // ── Candles ───────────────────────────────────────────────────
   private async snapshotCandles(): Promise<void> {
-    // First get hot tokens to know what to track
-    for (const chainIndex of CHAINS) {
+    const limit = this.candleTokens;
+    for (const chainIndex of this.chains) {
       let tokens: any[] = [];
       try {
-        tokens = await this.client.getHotTokens(chainIndex, TRACKED_TOKENS_LIMIT);
+        tokens = await this.client.getHotTokens(chainIndex, limit);
       } catch { continue; }
       if (!tokens || !Array.isArray(tokens)) continue;
 
-      for (const token of tokens.slice(0, TRACKED_TOKENS_LIMIT)) {
+      for (const token of tokens.slice(0, limit)) {
         if (!token?.tokenAddress) continue;
         try {
           const candles = await this.client.getCandles(chainIndex, token.tokenAddress, CANDLE_PERIOD, CANDLE_LIMIT);
@@ -160,9 +162,9 @@ export class OkxMarketScheduler {
 
   // ── MemePump ──────────────────────────────────────────────────
   private async snapshotMemePump(): Promise<void> {
-    for (const chainIndex of CHAINS) {
+    for (const chainIndex of this.chains) {
       try {
-        const tokens = await this.client.getMemePumpTokenList(chainIndex, undefined, 'volume24h', TRACKED_TOKENS_LIMIT);
+        const tokens = await this.client.getMemePumpTokenList(chainIndex, undefined, 'volume24h', this.candleTokens);
         if (!tokens || !Array.isArray(tokens)) continue;
 
         const collectedAt = new Date();
