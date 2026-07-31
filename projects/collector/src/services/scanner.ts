@@ -2,13 +2,15 @@ import { RpcPoolManager } from './rpcPool';
 import { buildRpcPoolConfig, mergeDbEndpoints } from './rpcPoolConfig';
 import {
   normalizeBlock,
-  normalizeSolanaBlock,
+  NormalizedEvent,
+} from './normalizer';
+import { normalizeSolanaBlock } from './normalizerSolana';
+import {
   insertEvents,
   updateCheckpoint,
   getCheckpoint,
   incrementEventCount,
-  NormalizedEvent,
-} from './normalizer';
+} from './eventStore';
 import { logger } from '../logger';
 
 /**

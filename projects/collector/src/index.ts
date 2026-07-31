@@ -11,7 +11,7 @@ import { logger } from './logger';
 import { migrateEventCollectorTables } from './services/migration';
 import { BlockScanner, getScanner } from './services/scanner';
 import { DataCleaner } from './services/cleaner';
-import { startReclassifyScheduler } from './services/normalizer';
+import { startReclassifyScheduler } from './services/reclassifier';
 import { BinanceFuturesCollector, getBinanceCollector } from './services/binanceFutures';
 import { OkxChainOSCollector, getOkxCollector } from './services/okxChainOS';
 import adminRoutes from './routes/adminRoutes';
