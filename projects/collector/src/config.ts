@@ -34,7 +34,7 @@ export const config = {
     aggregateIntervalMs: parseInt(process.env.BINANCE_AGGREGATE_INTERVAL_MS || '60000', 10),
   },
 
-  // OKX ChainOS — DEX token data (multi-account)
+  // OKX ChainOS — DEX token data (v5 wallet API, multi-account)
   okx: {
     apiBase: process.env.OKX_CHAINOS_API || 'https://www.okx.com/api/v5/wallet/token',
     apiKey: process.env.OKX_CHAINOS_API_KEY || '',
@@ -43,6 +43,15 @@ export const config = {
     wsEnabled: process.env.OKX_WS_ENABLED !== 'false',
     tokenLimit: parseInt(process.env.OKX_TOKEN_LIMIT || '100', 10),
     snapshotIntervalMs: parseInt(process.env.OKX_SNAPSHOT_INTERVAL_MS || '60000', 10),
+  },
+
+  // OKX OnchainOS Market — v6 DEX Market API (token/meme/signal/balance/history)
+  okxMarket: {
+    apiBase: process.env.OKX_MARKET_API || 'https://web3.okx.com',
+    apiKey: process.env.OKX_MARKET_API_KEY || process.env.OKX_CHAINOS_API_KEY || '',
+    apiSecret: process.env.OKX_MARKET_API_SECRET || process.env.OKX_CHAINOS_API_SECRET || '',
+    apiPassphrase: process.env.OKX_MARKET_API_PASSPHRASE || process.env.OKX_CHAINOS_API_PASSPHRASE || '',
+    wsEnabled: process.env.OKX_MARKET_WS_ENABLED !== 'false',
   },
 };
 

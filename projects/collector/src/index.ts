@@ -14,6 +14,7 @@ import { DataCleaner } from './services/cleaner';
 import { startReclassifyScheduler } from './services/reclassifier';
 import { BinanceFuturesCollector, getBinanceCollector } from './services/binanceFutures';
 import { OkxChainOSCollector, getOkxCollector } from './services/okxChainOS';
+import { getMarketClient } from './services/okxMarketV6';
 import adminRoutes from './routes/adminRoutes';
 import dataRoutes from './routes/dataRoutes';
 import managementRoutes from './routes/managementRoutes';
@@ -23,6 +24,7 @@ import { sessionAuth, hasSession, initSessionStore } from './middleware/sessionA
 import { handleWsUpgrade } from './services/eventBus';
 import relayRoutes from './routes/relayRoutes';
 import priceRoutes from './routes/priceRoutes';
+import marketRoutes from './routes/marketRoutes';
 
 const app = express();
 
@@ -108,6 +110,7 @@ app.use('/api/v2/admin', sessionAuth, apiKeyRoutes, adminRoutes, managementRoute
 // Data: API key auth at mount point
 app.use('/api/v2/data', apiKeyAuth, dataRoutes);
 app.use('/api/v2/data', apiKeyAuth, priceRoutes);
+app.use('/api/v2/data', apiKeyAuth, marketRoutes);
 // Relay: API key auth at mount point (was previously inside router only)
 app.use('/api/v1', apiKeyAuth, relayRoutes);
 
@@ -152,6 +155,13 @@ async function main() {
   }
   if (config.okx.wsEnabled !== false) {
     getOkxCollector().start().catch((e: any) => logger.error('[okx] Start failed', { error: e.message }));
+  }
+
+  // 7. OKX Market v6 API client (non-blocking)
+  if (config.okxMarket.wsEnabled !== false) {
+    getMarketClient().init().then((n) => {
+      if (n > 0) logger.info('[okx-market] Ready');
+    }).catch((e: any) => logger.error('[okx-market] Init failed', { error: e.message }));
   }
 }
 main().catch((e) => { logger.error('Startup failed', e); process.exit(1); });
