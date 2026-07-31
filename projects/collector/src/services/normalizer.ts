@@ -6,17 +6,39 @@ import { logger } from '../logger';
 import { broadcastEvent } from './eventBus';
 
 /**
- * Event Normalizer
+ * Event Normalizer — full-chain log classifier
  *
- * Converts raw on-chain data into standardized events records.
- * Responsibilities:
- *  - Address checksumming (ethers.getAddress)
- *  - Amount normalization (wei → decimal)
- *  - Chain name normalization
- *  - Event deduplication (txHash + logIndex)
+ * Uses eth_getLogs (no topic filter) to fetch ALL logs for a block,
+ * then classifies each log locally into one of:
+ *   transfer      — ERC-20 / native coin / SPL token transfer
+ *   nft_transfer  — ERC-721 / ERC-1155 NFT transfer
+ *   approval      — ERC-20 Allowance change
+ *   swap          — UniswapV2 / UniswapV3 token swap
+ *   deposit       — WETH / wNative deposit
+ *   withdrawal    — WETH / wNative withdrawal
+ *   mint          — ERC-20 mint
+ *   burn          — ERC-20 burn
+ *   raw_event     — unrecognised topic (preserved for later analysis)
+ *
+ * Zero extra RPC calls — same eth_getLogs already fetches everything.
  */
 
-const CONFIRMATIONS_REQUIRED = 3; // Sepolia uses 3, Eth mainnet 12
+const CONFIRMATIONS_REQUIRED = 3;
+
+// ── Well-known event signatures (keccak256 first 4 bytes of topic[0]) ─
+const SIGS = {
+  ERC20_TRANSFER:    '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+  ERC20_APPROVAL:    '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925',
+  UNIV2_SWAP:        '0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822',
+  UNIV3_SWAP:        '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67',
+  WETH_DEPOSIT:      '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c',
+  WETH_WITHDRAWAL:   '0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65',
+  ERC1155_SINGLE:    '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62',
+  ERC1155_BATCH:     '0x4a39dc06b4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb',
+  ERC20_MINT:        '0x0f6798a571793762a0c5d0c1e74c9c5c9b27a76c88beebce18607e95f3dfed9b',
+  ERC20_BURN:        '0xcc16f5dbb4873280815c1ee09dbd06736cffcc18402cfaed63bb8c5f01e5052a',
+  TRANSFER:          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+} as const;
 
 export interface NormalizedEvent {
   event_id: string;
@@ -109,46 +131,309 @@ export function normalizeBlock(rawBlock: any, chain: string): NormalizedEvent[] 
     }
   }
 
-  // 2. Extract ERC-20 Transfer events from logs
+  // 2. Extract ALL events from logs via local classification
   if (logs && Array.isArray(logs)) {
     for (const log of logs) {
       const topics = log.topics || [];
-      const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+      if (topics.length === 0) continue;
 
-      if (topics.length >= 3 && topics[0] === TRANSFER_TOPIC) {
-        const logIndex = safeParseInt(log.logIndex || '0');
-        const dataHex = log.data && log.data !== '0x' ? log.data : '0x0';
-
-        events.push({
-          event_id: `${log.transactionHash || '0xunknown'}_${logIndex}`,
-          event_type: 'transfer',
-          source: 'blockchain',
-          chain: normalizeChainName(chain),
-          block_number: blockNumber,
-          tx_hash: log.transactionHash || '',
-          log_index: logIndex,
-          contract_address: safeChecksum(log.address),
-          from_address: topics[1] ? topicToAddress(topics[1]) : '',
-          to_address: topics[2] ? topicToAddress(topics[2]) : '',
-          token_address: safeChecksum(log.address),
-          token_symbol: '',
-          token_id: '',
-          amount: ethers.formatUnits(safeBigInt(dataHex), 0),
-          amount_raw: safeBigInt(dataHex).toString(),
-          event_data: {
-            blockTimestamp,
-            logIndex,
-            removed: log.removed || false,
-          },
-          topic_hash: TRANSFER_TOPIC,
-          status: 'confirmed',
-          confirmations: CONFIRMATIONS_REQUIRED,
-        });
-      }
+      const classified = classifyLog(log, blockNumber, blockTimestamp, chain);
+      if (classified) events.push(classified);
     }
   }
 
   return events;
+}
+
+// ── Log Classifier ────────────────────────────────────────────────────
+
+interface LogData {
+  address: string;
+  topics: string[];
+  data: string;
+  transactionHash: string;
+  logIndex: string;
+  removed?: boolean;
+}
+
+function classifyLog(
+  log: LogData,
+  blockNumber: number,
+  blockTimestamp: number,
+  chain: string
+): NormalizedEvent | null {
+  const topics = log.topics || [];
+  if (topics.length === 0) return null;
+
+  const topic0 = topics[0];
+  const logIndex = safeParseInt(log.logIndex || '0');
+  const ch = normalizeChainName(chain);
+
+  switch (topic0) {
+    // ── ERC-20 / ERC-721 / ERC-1155 Transfer ──
+    case SIGS.TRANSFER:
+      if (topics.length >= 3 && log.data && log.data !== '0x' && log.data !== '0x0') {
+        // ERC-20: value is in data (not indexed), topics[1]=from, topics[2]=to
+        return makeEvent(ch, blockNumber, log, logIndex, 'transfer', {
+          contract_address: safeChecksum(log.address),
+          from_address: topicToAddress(topics[1]),
+          to_address: topicToAddress(topics[2]),
+          token_address: safeChecksum(log.address),
+          token_symbol: '',
+          token_id: '',
+          amount: ethers.formatUnits(safeBigInt(log.data), 0),
+          amount_raw: safeBigInt(log.data).toString(),
+          topic_hash: topic0,
+          event_data: { blockTimestamp, logIndex, removed: log.removed || false },
+        });
+      } else if (topics.length >= 4) {
+        // ERC-721: all 3 params indexed (from+to+tokenId), data is empty
+        const tokenId = safeBigInt(topics[3]).toString();
+        return makeEvent(ch, blockNumber, log, logIndex, 'nft_transfer', {
+          contract_address: safeChecksum(log.address),
+          from_address: topicToAddress(topics[1]),
+          to_address: topicToAddress(topics[2]),
+          token_address: safeChecksum(log.address),
+          token_symbol: '',
+          token_id: tokenId,
+          amount: '1',
+          amount_raw: '1',
+          topic_hash: topic0,
+          event_data: { blockTimestamp, logIndex, tokenId, standard: 'ERC-721' },
+        });
+      } else {
+        // Degraded ERC-20: topics < 3 (should never happen, but be safe)
+        return makeEvent(ch, blockNumber, log, logIndex, 'transfer', {
+          contract_address: safeChecksum(log.address),
+          from_address: topics.length > 1 ? topicToAddress(topics[1]) : '',
+          to_address: topics.length > 2 ? topicToAddress(topics[2]) : '',
+          token_address: safeChecksum(log.address),
+          amount: safeBigInt(log.data || '0x0') > 0n ? ethers.formatUnits(safeBigInt(log.data), 0) : '0',
+          amount_raw: safeBigInt(log.data || '0x0').toString(),
+          topic_hash: topic0,
+          event_data: { blockTimestamp, logIndex, note: 'degraded_transfer' },
+        });
+      }
+
+    // ── ERC-20 Approval ──
+    case SIGS.ERC20_APPROVAL:
+      return makeEvent(ch, blockNumber, log, logIndex, 'approval', {
+        contract_address: safeChecksum(log.address),
+        from_address: topicToAddress(topics[1]),   // owner
+        to_address: topicToAddress(topics[2]),     // spender
+        token_address: safeChecksum(log.address),
+        amount: safeBigInt(log.data || '0x0').toString(),
+        amount_raw: safeBigInt(log.data || '0x0').toString(),
+        topic_hash: topic0,
+        event_data: {
+          blockTimestamp, logIndex,
+          owner: topicToAddress(topics[1]),
+          spender: topicToAddress(topics[2]),
+          value: safeBigInt(log.data || '0x0').toString(),
+        },
+      });
+
+    // ── WETH Deposit ──
+    case SIGS.WETH_DEPOSIT:
+      return makeEvent(ch, blockNumber, log, logIndex, 'deposit', {
+        contract_address: safeChecksum(log.address),
+        from_address: '',
+        to_address: topicToAddress(topics[1]),
+        token_address: safeChecksum(log.address),
+        amount: ethers.formatEther(safeBigInt(log.data || '0x0')),
+        amount_raw: safeBigInt(log.data || '0x0').toString(),
+        topic_hash: topic0,
+        event_data: { blockTimestamp, logIndex, dst: topicToAddress(topics[1]), wad: safeBigInt(log.data || '0x0').toString() },
+      });
+
+    // ── WETH Withdrawal ──
+    case SIGS.WETH_WITHDRAWAL:
+      return makeEvent(ch, blockNumber, log, logIndex, 'withdrawal', {
+        contract_address: safeChecksum(log.address),
+        from_address: topicToAddress(topics[1]),
+        to_address: '',
+        token_address: safeChecksum(log.address),
+        amount: ethers.formatEther(safeBigInt(log.data || '0x0')),
+        amount_raw: safeBigInt(log.data || '0x0').toString(),
+        topic_hash: topic0,
+        event_data: { blockTimestamp, logIndex, src: topicToAddress(topics[1]), wad: safeBigInt(log.data || '0x0').toString() },
+      });
+
+    // ── UniswapV2 Swap ──
+    // topics[0]=Swap, topics[1]=sender, topics[2]=to
+    // data = amount0In(256) + amount0Out(256) + amount1In(256) + amount1Out(256)
+    case SIGS.UNIV2_SWAP:
+      {
+        const vals = decodeUint256Array(log.data || '0x', 4);
+        return makeEvent(ch, blockNumber, log, logIndex, 'swap', {
+          contract_address: safeChecksum(log.address),
+          from_address: topicToAddress(topics[1]),
+          to_address: topicToAddress(topics[2]),
+          token_address: safeChecksum(log.address),
+          amount: vals[2] > 0n ? ethers.formatUnits(vals[2], 0) : ethers.formatUnits(vals[3], 0),
+          amount_raw: (vals[2] > 0n ? vals[2] : vals[3]).toString(),
+          topic_hash: topic0,
+          event_data: {
+            blockTimestamp, logIndex,
+            sender: topicToAddress(topics[1]),
+            to: topicToAddress(topics[2]),
+            amount0In: vals[0].toString(),
+            amount0Out: vals[1].toString(),
+            amount1In: vals[2].toString(),
+            amount1Out: vals[3].toString(),
+            dex: 'UniswapV2',
+          },
+        });
+      }
+
+    // ── UniswapV3 Swap ──
+    // topics[0]=Swap, topics[1]=sender, topics[2]=recipient
+    // data = amount0(int256) + amount1(int256) + sqrtPriceX96(160) + liquidity(128) + tick(int24)
+    case SIGS.UNIV3_SWAP:
+      {
+        const vals = decodeUint256Array(log.data || '0x', 2);
+        const amt0 = safeInt256(log.data || '0x', 0);
+        const amt1 = safeInt256(log.data || '0x', 32);
+        const amt0Abs = amt0 < 0n ? -amt0 : amt0;
+        const amt1Abs = amt1 < 0n ? -amt1 : amt1;
+        return makeEvent(ch, blockNumber, log, logIndex, 'swap', {
+          contract_address: safeChecksum(log.address),
+          from_address: topicToAddress(topics[1]),
+          to_address: topicToAddress(topics[2]),
+          token_address: safeChecksum(log.address),
+          amount: ethers.formatUnits(amt0Abs > 0n ? amt0Abs : amt1Abs, 0),
+          amount_raw: (amt0Abs > 0n ? amt0Abs : amt1Abs).toString(),
+          topic_hash: topic0,
+          event_data: {
+            blockTimestamp, logIndex,
+            sender: topicToAddress(topics[1]),
+            recipient: topicToAddress(topics[2]),
+            amount0: amt0.toString(),
+            amount1: amt1.toString(),
+            dex: 'UniswapV3',
+          },
+        });
+      }
+
+    // ── ERC-1155 TransferSingle ──
+    case SIGS.ERC1155_SINGLE:
+      {
+        const id = topics.length > 3 ? safeBigInt(topics[3]).toString() : '0';
+        const value = safeBigInt(log.data ? '0x' + log.data.slice(2, 66) : '0x0').toString();
+        return makeEvent(ch, blockNumber, log, logIndex, 'nft_transfer', {
+          contract_address: safeChecksum(log.address),
+          from_address: topicToAddress(topics[2]),
+          to_address: topicToAddress(topics[3]),
+          token_address: safeChecksum(log.address),
+          token_id: id,
+          amount: value,
+          amount_raw: value,
+          topic_hash: topic0,
+          event_data: {
+            blockTimestamp, logIndex,
+            operator: topicToAddress(topics[1]),
+            id, value,
+            standard: 'ERC-1155',
+          },
+        });
+      }
+
+    // ── ERC-1155 TransferBatch ──
+    case SIGS.ERC1155_BATCH:
+      return makeEvent(ch, blockNumber, log, logIndex, 'nft_transfer', {
+        contract_address: safeChecksum(log.address),
+        from_address: topicToAddress(topics[2]),
+        to_address: topicToAddress(topics[3]),
+        token_address: safeChecksum(log.address),
+        amount: '0',
+        amount_raw: '0',
+        topic_hash: topic0,
+        event_data: {
+          blockTimestamp, logIndex,
+          operator: topicToAddress(topics[1]),
+          standard: 'ERC-1155-Batch',
+        },
+      });
+
+    // ── ERC-20 Mint ──
+    case SIGS.ERC20_MINT:
+      return makeEvent(ch, blockNumber, log, logIndex, 'mint', {
+        contract_address: safeChecksum(log.address),
+        from_address: '',
+        to_address: topicToAddress(topics[1]),
+        token_address: safeChecksum(log.address),
+        amount: ethers.formatUnits(safeBigInt(log.data || '0x0'), 0),
+        amount_raw: safeBigInt(log.data || '0x0').toString(),
+        topic_hash: topic0,
+        event_data: { blockTimestamp, logIndex, to: topicToAddress(topics[1]), value: safeBigInt(log.data || '0x0').toString() },
+      });
+
+    // ── ERC-20 Burn ──
+    case SIGS.ERC20_BURN:
+      return makeEvent(ch, blockNumber, log, logIndex, 'burn', {
+        contract_address: safeChecksum(log.address),
+        from_address: topicToAddress(topics[1]),
+        to_address: '',
+        token_address: safeChecksum(log.address),
+        amount: ethers.formatUnits(safeBigInt(log.data || '0x0'), 0),
+        amount_raw: safeBigInt(log.data || '0x0').toString(),
+        topic_hash: topic0,
+        event_data: { blockTimestamp, logIndex, from: topicToAddress(topics[1]), value: safeBigInt(log.data || '0x0').toString() },
+      });
+
+    // ── Unknown — capture as raw_event for later analysis ──
+    default:
+      return makeEvent(ch, blockNumber, log, logIndex, 'raw_event', {
+        contract_address: safeChecksum(log.address),
+        from_address: topics.length > 1 ? topicToHex(topics[1]) : '',
+        to_address: topics.length > 2 ? topicToHex(topics[2]) : '',
+        token_address: safeChecksum(log.address),
+        amount: '0',
+        amount_raw: '0',
+        topic_hash: topic0,
+        event_data: {
+          blockTimestamp, logIndex,
+          topics: topics.slice(0, 5),
+          dataPreview: (log.data || '').length > 128 ? (log.data || '').slice(0, 128) + '...' : (log.data || ''),
+        },
+      });
+  }
+}
+
+/**
+ * Build a NormalizedEvent from classified log data (caller provides all fields).
+ */
+function makeEvent(
+  chain: string,
+  blockNumber: number,
+  log: Pick<LogData, 'transactionHash' | 'removed'>,
+  logIndex: number,
+  eventType: string,
+  overrides: Partial<NormalizedEvent> & { event_data?: Record<string, any> }
+): NormalizedEvent {
+  const evt: NormalizedEvent = {
+    event_id: `${log.transactionHash || '0xunknown'}_${logIndex}`,
+    event_type: eventType,
+    source: 'blockchain',
+    chain,
+    block_number: blockNumber,
+    tx_hash: log.transactionHash || '',
+    log_index: logIndex,
+    contract_address: null,
+    from_address: null,
+    to_address: null,
+    token_address: null,
+    token_symbol: null,
+    token_id: null,
+    amount: null,
+    amount_raw: null,
+    event_data: {},
+    topic_hash: null,
+    status: 'confirmed',
+    confirmations: CONFIRMATIONS_REQUIRED,
+    ...overrides,
+  };
+  return evt;
 }
 
 /**
@@ -436,4 +721,42 @@ function nativeToken(chain: string): string {
     solana: 'SOL',
   };
   return map[chain.toLowerCase()] || 'ETH';
+}
+
+/**
+ * Decode a hex data string into an array of uint256 values.
+ */
+function decodeUint256Array(dataHex: string, count: number): bigint[] {
+  const vals: bigint[] = [];
+  for (let i = 0; i < count; i++) {
+    const offset = 2 + i * 64;
+    const chunk = dataHex.length > offset ? '0x' + dataHex.slice(offset, offset + 64) : '0x0';
+    vals.push(safeBigInt(chunk));
+  }
+  return vals;
+}
+
+/**
+ * Safely parse a signed int256 from a hex string at a given byte offset.
+ */
+function safeInt256(dataHex: string, byteOffset: number): bigint {
+  const start = 2 + byteOffset * 2;
+  const chunk = dataHex.length > start ? '0x' + dataHex.slice(start, start + 64) : '0x0';
+  try {
+    const val = BigInt(chunk);
+    // If top bit is set, it's negative in two's complement
+    if (val >= (1n << 255n)) {
+      return val - (1n << 256n);
+    }
+    return val;
+  } catch {
+    return 0n;
+  }
+}
+
+/**
+ * Convert a topic to hex string without address checksumming (for unknown events).
+ */
+function topicToHex(topic: string): string {
+  return topic;
 }
