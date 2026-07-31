@@ -1,5 +1,5 @@
 {
-  "name": "@stevenwang000x/session-key-server",
+  "name": "@0xinfrax/session-key-server",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@stevenwang000x/session-key-core": "workspace:*",
-    "@stevenwang000x/session-key-evm": "workspace:*",
+    "@0xinfrax/session-key-core": "workspace:*",
+    "@0xinfrax/session-key-evm": "workspace:*",
     "@fastify/cors": "^11.0.0",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.0",

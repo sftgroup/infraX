@@ -1,5 +1,5 @@
-import { AppError, Errors } from '@stevenwang000x/session-key-core';
-import type { IBlockchainAdapter, Chain } from '@stevenwang000x/session-key-core';
+import { AppError, Errors } from '@0xinfrax/session-key-core';
+import type { IBlockchainAdapter, Chain } from '@0xinfrax/session-key-core';
 import { SessionRepo } from '../repos/session-repo.js';
 import { ExecutionRepo } from '../repos/execution-repo.js';
 import { Redis } from 'ioredis';

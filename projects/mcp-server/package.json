@@ -1,5 +1,5 @@
 {
-  "name": "infrax-cp-server",
+  "name": "@0xinfrax/infrax-cp-server",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

@@ -1,5 +1,5 @@
 {
-  "name": "@stevenwang000x/session-key-evm",
+  "name": "@0xinfrax/session-key-evm",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@stevenwang000x/session-key-core": "workspace:*",
+    "@0xinfrax/session-key-core": "workspace:*",
     "viem": "^2.21.0"
   },
   "devDependencies": {

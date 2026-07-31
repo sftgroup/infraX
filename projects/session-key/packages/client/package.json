@@ -1,5 +1,5 @@
 {
-  "name": "@stevenwang000x/session-key-client",
+  "name": "@0xinfrax/session-key-client",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@stevenwang000x/session-key-core": "workspace:*"
+    "@0xinfrax/session-key-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

@@ -1,5 +1,5 @@
 {
-  "name": "infrax-dk",
+  "name": "@0xinfrax/infrax-dk",
   "version": "0.1.0",
   "description": "InfraX JavaScript SDK — wallet creation, data queries, multisig vault, MPC key shards",
   "main": "dist/index.js",

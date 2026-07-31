@@ -1,5 +1,5 @@
-import type { Chain } from '@stevenwang000x/session-key-core';
-import { CHAIN_IDS, env } from '@stevenwang000x/session-key-core';
+import type { Chain } from '@0xinfrax/session-key-core';
+import { CHAIN_IDS, env } from '@0xinfrax/session-key-core';
 import { createPublicClient, createWalletClient, http, defineChain } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PublicClient, WalletClient, Account, Transport } from 'viem';

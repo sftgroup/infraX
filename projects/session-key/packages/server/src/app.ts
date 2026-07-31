@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { EvmAdapter } from '@stevenwang000x/session-key-evm';
+import { EvmAdapter } from '@0xinfrax/session-key-evm';
 import { loadConfig } from './config.js';
 import { authPlugin } from './plugins/auth.js';
 import { createInfra, initDb } from './plugins/db.js';

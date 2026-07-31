@@ -1,4 +1,4 @@
-import { generateNonce, normalizeAddress } from '@stevenwang000x/session-key-core';
+import { generateNonce, normalizeAddress } from '@0xinfrax/session-key-core';
 
 /** Pure nonce management — no external dependencies */
 export class NonceService {
