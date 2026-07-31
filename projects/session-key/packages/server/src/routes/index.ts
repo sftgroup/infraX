@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { DEFAULTS } from '@sftgroup/session-key-core';
 import { SessionService } from '../services/session-service.js';
 import { SessionRepo } from '../repos/session-repo.js';
 import { ExecutionRepo } from '../repos/execution-repo.js';
@@ -30,9 +31,10 @@ export async function registerRoutes(app: FastifyInstance) {
     }
     try {
       const result = await sessionService.create({
-        signature, chain, permissions, validDays: validDays || 30,
-        maxPerTx: maxPerTx || '1000000000000000000000',
-        maxTotal: maxTotal || '10000000000000000000000',
+        signature, chain, permissions,
+        validDays: validDays || DEFAULTS.DEFAULT_VALID_DAYS,
+        maxPerTx: maxPerTx || DEFAULTS.MAX_PER_TX_USDC,
+        maxTotal: maxTotal || DEFAULTS.MAX_TOTAL_USDC,
         userAddress, nonce,
       });
       return res.status(201).send({ code: 201, data: result, message: 'Session created' });

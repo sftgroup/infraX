@@ -6,33 +6,26 @@ import {
   createWalletClient,
   http,
   verifyTypedData,
+  defineChain,
   type Account,
   type PublicClient,
   type WalletClient,
   type Transport,
-  type Chain as ViemChain,
 } from 'viem';
-
-const localhostChain: ViemChain = { id: 31337, name: 'Localhost', nativeCurrency: { decimals: 18, name: 'Ether', symbol: 'ETH' }, rpcUrls: { default: { http: ['http://127.0.0.1:8545'] } } };
+import { env } from '@sftgroup/session-key-core';
 
 // ─── RPC Registry ──────────────────────────────────────────────────────────
 
 export function buildRpcRegistry(): Record<string, string> {
   return {
-    eth:       requireEnv('ETH_RPC_URL'),
-    bsc:       requireEnv('BSC_RPC_URL'),
-    base:      requireEnv('BASE_RPC_URL'),
-    polygon:   requireEnv('POLYGON_RPC_URL'),
-    arbitrum:  requireEnv('ARBITRUM_RPC_URL'),
-    optimism:  requireEnv('OPTIMISM_RPC_URL'),
-    xlayer:    requireEnv('XLAYER_RPC_URL'),
+    eth:       env('ETH_RPC_URL'),
+    bsc:       env('BSC_RPC_URL'),
+    base:      env('BASE_RPC_URL'),
+    polygon:   env('POLYGON_RPC_URL'),
+    arbitrum:  env('ARBITRUM_RPC_URL'),
+    optimism:  env('OPTIMISM_RPC_URL'),
+    xlayer:    env('XLAYER_RPC_URL'),
   };
-}
-
-function requireEnv(key: string): string {
-  const val = process.env[key];
-  if (!val) throw new Error(`Missing required env: ${key}`);
-  return val;
 }
 
 // ─── Wallet Clients ────────────────────────────────────────────────────────
@@ -150,11 +143,20 @@ export async function signAndBroadcast(params: {
 }): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string }> {
   const account = privateKeyToAccount(params.privateKey as `0x${string}`);
 
+  // Build viem chain object from RPC URL and chain ID
+  const chainId = CHAIN_IDS[params.chain];
+  if (!chainId) throw new Error(`Unsupported chain: ${params.chain}`);
+  const viemChain = defineChain({
+    id: chainId,
+    name: params.chain,
+    nativeCurrency: { decimals: 18, name: 'ETH', symbol: 'ETH' },
+    rpcUrls: { default: { http: [params.rpcUrl] } },
+  });
+
   const publicClient = createPublicClient({ transport: http(params.rpcUrl) });
   const walletClient = createWalletClient({ account, transport: http(params.rpcUrl) });
 
   try {
-    // Estimate gas if not provided
     let gas: bigint;
     if (params.gasLimit) {
       gas = BigInt(params.gasLimit);
@@ -169,7 +171,7 @@ export async function signAndBroadcast(params: {
 
     const hash = await walletClient.sendTransaction({
       account,
-      chain: localhostChain,  // viem requires chain field
+      chain: viemChain,
       to: params.to as `0x${string}`,
       data: params.data as `0x${string}`,
       value: params.value ? BigInt(params.value) : 0n,

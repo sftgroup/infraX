@@ -1,3 +1,5 @@
+import { env } from '@sftgroup/session-key-core';
+
 export interface AppConfig {
   port: number;
   db: {
@@ -14,12 +16,6 @@ export interface AppConfig {
   chains: Record<string, string>;
 }
 
-function env(key: string, fallback?: string): string {
-  const val = process.env[key] ?? fallback;
-  if (val === undefined) throw new Error(`Missing required env: ${key}`);
-  return val;
-}
-
 let cached: AppConfig | null = null;
 
 export function loadConfig(): AppConfig {
@@ -32,16 +28,16 @@ export function loadConfig(): AppConfig {
       port:      parseInt(env('DB_PORT', '5432'), 10),
       database:  env('DB_NAME', 'session_key_engine'),
       user:      env('DB_USER', 'postgres'),
-      password:  env('DB_PASSWORD', ''),
+      password:  env('DB_PASSWORD'),           // required — no default
     },
     redis: {
       host:      env('REDIS_HOST', 'localhost'),
       port:      parseInt(env('REDIS_PORT', '6379'), 10),
       password:  process.env.REDIS_PASSWORD || undefined,
     },
-    encryptionKey: env('ENCRYPTION_KEY'),
-    jwtSecret:     env('JWT_SECRET'),
-    apiTokens:     (process.env.API_TOKENS || 'dev-token').split(',').filter(Boolean),
+    encryptionKey: env('ENCRYPTION_KEY'),       // required
+    jwtSecret:     env('JWT_SECRET'),            // required
+    apiTokens:     env('API_TOKENS').split(',').filter(Boolean),  // required — no default
     chains: {
       eth:       env('ETH_RPC_URL'),
       bsc:       env('BSC_RPC_URL'),
