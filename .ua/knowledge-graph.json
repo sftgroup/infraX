@@ -2088,6 +2088,185 @@
         "session-key"
       ],
       "complexity": "medium"
+    },
+    {
+      "id": "file:projects/ragservicer/main.py",
+      "type": "file",
+      "label": "RAGservicer 入口",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/config.py",
+      "type": "file",
+      "label": "RAGservicer 配置",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/engine.py",
+      "type": "file",
+      "label": "RAG 引擎封装",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/auth.py",
+      "type": "file",
+      "label": "认证中间件",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/middleware.py",
+      "type": "file",
+      "label": "限流 + 审计",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/adapters.py",
+      "type": "file",
+      "label": "LLM/嵌入适配器",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/code_refactor.py",
+      "type": "file",
+      "label": "工具库",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/routes/__init__.py",
+      "type": "file",
+      "label": "路由注册 + /health",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/routes/documents.py",
+      "type": "file",
+      "label": "文档 CRUD",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/routes/query.py",
+      "type": "file",
+      "label": "查询路由",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/api/routes/admin.py",
+      "type": "file",
+      "label": "管理路由",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/mcp_server/server.py",
+      "type": "file",
+      "label": "MCP STDIO 传输",
+      "properties": {
+        "language": "python",
+        "layer": "mcp",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/mcp_server/tools.py",
+      "type": "file",
+      "label": "MCP 工具定义",
+      "properties": {
+        "language": "python",
+        "layer": "mcp",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/tenants/manager.py",
+      "type": "file",
+      "label": "租户 SQLite 管理",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/sdk/index.ts",
+      "type": "file",
+      "label": "RAGservicer SDK",
+      "properties": {
+        "language": "typescript",
+        "layer": "sdk",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "file:projects/ragservicer/sdk/types.ts",
+      "type": "file",
+      "label": "SDK 类型定义",
+      "properties": {
+        "language": "typescript",
+        "layer": "sdk",
+        "service": "ragservicer"
+      }
+    },
+    {
+      "id": "service:ragservicer",
+      "type": "service",
+      "label": "InfraX RAGservicer (RAG知识库微服务)",
+      "properties": {
+        "language": "service",
+        "port": 9721,
+        "db": "sqlite",
+        "framework": "flask+lightrag"
+      }
+    },
+    {
+      "id": "module:ragservicer",
+      "type": "module",
+      "label": "RAG知识库微服务模块",
+      "properties": {
+        "language": "module"
+      }
     }
   ],
   "edges": [
@@ -2945,6 +3124,111 @@
       "target": "service:session-key",
       "type": "documents",
       "weight": 3
+    },
+    {
+      "source": "file:projects/ragservicer/main.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/main.py",
+      "target": "file:projects/ragservicer/api/engine.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/main.py",
+      "target": "file:projects/ragservicer/api/adapters.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/main.py",
+      "target": "file:projects/ragservicer/api/middleware.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/engine.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/engine.py",
+      "target": "file:projects/ragservicer/api/adapters.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/engine.py",
+      "target": "file:projects/ragservicer/api/code_refactor.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/auth.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/auth.py",
+      "target": "file:projects/ragservicer/tenants/manager.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/auth.py",
+      "target": "file:projects/ragservicer/api/code_refactor.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/middleware.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/middleware.py",
+      "target": "file:projects/ragservicer/api/code_refactor.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/api/adapters.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/mcp_server/server.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/mcp_server/server.py",
+      "target": "file:projects/ragservicer/mcp_server/tools.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/mcp_server/tools.py",
+      "target": "file:projects/ragservicer/api/engine.py",
+      "type": "imports"
+    },
+    {
+      "source": "file:projects/ragservicer/tenants/manager.py",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "imports"
+    },
+    {
+      "source": "service:ragservicer",
+      "target": "module:ragservicer",
+      "type": "has_module"
+    },
+    {
+      "source": "module:ragservicer",
+      "target": "file:projects/ragservicer/main.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:ragservicer",
+      "target": "file:projects/ragservicer/config.py",
+      "type": "contains"
+    },
+    {
+      "source": "service:aiservicer",
+      "target": "service:ragservicer",
+      "type": "calls"
     }
   ],
   "layers": [
