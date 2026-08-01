@@ -1,0 +1,9 @@
+# LightRAG Microservice Dependencies
+flask>=3.0
+python-dotenv>=1.0
+lightrag-hku>=1.0
+sentence-transformers>=3.0
+openai>=1.0
+# For Postgres storage mode (optional)
+# asyncpg>=0.29
+# psycopg2-binary>=2.9

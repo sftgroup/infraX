@@ -1,0 +1,17 @@
+# MCP Configuration for InfraX Doc Service
+# Add this to your IDE's MCP config (mcp.json)
+
+{
+  "mcpServers": {
+    "infrax-doc": {
+      "command": "python",
+      "args": ["-c", "import sys; sys.path.insert(0, 'projects/doc'); from mcp_server.server import run_mcp_server; run_mcp_server()"],
+      "cwd": "/home/ubuntu/infraX-1",
+      "env": {
+        "MCP_TENANT_ID": "my-project",
+        "DOC_API_KEY": "your-doc-api-key",
+        "WORKING_DIR": "./data"
+      }
+    }
+  }
+}

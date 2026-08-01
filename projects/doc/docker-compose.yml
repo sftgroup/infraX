@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  lightrag:
+    build: .
+    container_name: lightrag-microservice
+    ports:
+      - "9721:9721"
+    volumes:
+      - ./data:/app/data
+      - ./tenants/tenants.db:/app/tenants/tenants.db
+      - ./.env:/app/.env:ro
+    environment:
+      - STORAGE_MODE=${STORAGE_MODE:-local}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9721/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Postgres backend (uncomment for production)
+  # postgres:
+  #   image: pgvector/pgvector:pg16
+  #   container_name: lightrag-postgres
+  #   environment:
+  #     POSTGRES_USER: lightrag
+  #     POSTGRES_PASSWORD: ${PG_PASSWORD:-lightrag}
+  #     POSTGRES_DB: lightrag
+  #   ports:
+  #     - "5433:5432"
+  #   volumes:
+  #     - ./pgdata:/var/lib/postgresql/data
+  #   restart: unless-stopped
