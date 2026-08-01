@@ -34,12 +34,10 @@ def start_event_loop():
 
 
 def _run_async(coro, timeout=None):
-    if _loop is None:
-        raise RuntimeError("Event loop not started")
+    from api.code_refactor import run_async
     if timeout is None:
         timeout = get_config().rag.insert_timeout
-    future = asyncio.run_coroutine_threadsafe(coro, _loop)
-    return future.result(timeout=timeout)
+    return run_async(coro, timeout=timeout)
 
 
 # ── Lazy-init factories (set after adapters are ready) ────

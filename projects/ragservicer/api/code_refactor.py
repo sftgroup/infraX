@@ -7,11 +7,9 @@ and MCP server into a single importable module.
 Covers:
   ─ Request parsing      → parse_json, extract_tenant_context
   ─ Validation           → Guard: required fields, types, ranges, enums
-  ─ Error handling       → @handle_errors decorator, build_error
+  ─ Error handling       → @handle_errors decorator, build_error, AppError
   ─ Response builders    → build_success, build_paginated
-  ─ Async utilities      → run_async_in_loop, async_retry
-  ─ Retry / timeout      → retry_on_failure, timeout_context
-  ─ Logging context      → log_context (structured key=value)
+  ─ Async utilities      → run_async, set_event_loop
   ─ Flask integration    → register_tenant_on_g (fixes g.tenant_id bug)
   ─ Type aliases         → JsonDict, TenantId, Namespace, DocId
 
@@ -39,7 +37,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-import time
 import inspect
 from typing import (
     Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, ParamSpec,
@@ -160,10 +157,12 @@ class Guard:
         return self
 
     def require_page_limit(self, page_key: str = "page", limit_key: str = "limit") -> "Guard":
-        """Validate pagination params.  page>=1, 1<=limit<=200."""
+        """Validate pagination params.  page>=1, 1<=limit<=page_limit_max."""
+        from config import get_config as _cfg
+        max_limit = _cfg().rag.page_limit_max
         return (
             self.require_int(page_key, min_val=1, message=f"{page_key} must be >= 1")
-                .require_int(limit_key, min_val=1, max_val=200, message=f"{limit_key} must be 1–200")
+                .require_int(limit_key, min_val=1, max_val=max_limit, message=f"{limit_key} must be 1–{max_limit}")
         )
 
     @property
@@ -203,6 +202,7 @@ def handle_errors(
 ):
     """Decorator that catches exceptions in a Flask route and returns JSON.
 
+    Handles: AppError, GuardError, and generic Exception.
     Usage::
 
         @handle_errors(logger, "Query failed")
@@ -210,67 +210,11 @@ def handle_errors(
             ...
 
     Parameters:
-        logger_or_name: Pass a ``logging.Logger`` instance, a logger name (str),
-                        or ``None`` to skip logging.
-        label:          Prepended to the error log line ("{label}: {error}").
-        reraise:        ``True`` or a tuple of exception types that should
-                        *not* be caught (they bubble up to Flask).
-        fallback_status:HTTP status used for unexpected exceptions (default 500).
+        logger_or_name: logging.Logger / logger name (str) / None.
+        label:          Prepended to error log line.
+        reraise:        True or tuple of exception types to bubble up.
+        fallback_status: HTTP status for unexpected exceptions (default 500).
     """
-    if isinstance(reraise, bool):
-        _reraise: Tuple[type, ...] = (Exception,) if reraise else ()
-    else:
-        _reraise = reraise
-
-    # Resolve logger
-    _logger: Optional[logging.Logger] = None
-    if isinstance(logger_or_name, logging.Logger):
-        _logger = logger_or_name
-    elif isinstance(logger_or_name, str):
-        _logger = logging.getLogger(logger_or_name)
-
-    def _decorator(func):
-        @functools.wraps(func)
-        def _wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except _reraise:
-                raise
-            except GuardError as exc:
-                if _logger:
-                    _logger.warning(f"{label}: {exc}" if label else str(exc))
-                return build_error(str(exc), 400, code="VALIDATION_ERROR")
-            except Exception as exc:
-                if _logger:
-                    msg = f"{label}: {exc}" if label else str(exc)
-                    _logger.error(msg)
-                return build_error(str(exc), fallback_status)
-        return _wrapper
-    return _decorator
-
-
-class AppError(Exception):
-    """Application-level error with HTTP status code.  Use in route logic for
-    structured error responses captured by @handle_errors.
-
-    Usage::
-
-        raise AppError("Tenant not found", 404, code="TENANT_NOT_FOUND")
-    """
-
-    def __init__(self, message: str, status: int = 400, code: Optional[str] = None) -> None:
-        super().__init__(message)
-        self.status = status
-        self.code = code
-
-
-# Extend @handle_errors to also understand AppError
-def handle_errors_v2(
-    logger_or_name=None,  # type: logging.Logger | str | None
-    label: str = "",
-    reraise: Union[bool, Tuple[type, ...]] = False,
-):
-    """Enhanced version of @handle_errors that also handles AppError."""
     if isinstance(reraise, bool):
         _reraise: Tuple[type, ...] = (Exception,) if reraise else ()
     else:
@@ -301,9 +245,24 @@ def handle_errors_v2(
                 if _logger:
                     msg = f"{label}: {exc}" if label else str(exc)
                     _logger.error(msg)
-                return build_error(str(exc), 500)
+                return build_error(str(exc), fallback_status)
         return _wrapper
     return _decorator
+
+
+class AppError(Exception):
+    """Application-level error with HTTP status code.  Use in route logic for
+    structured error responses captured by @handle_errors.
+
+    Usage::
+
+        raise AppError("Tenant not found", 404, code="TENANT_NOT_FOUND")
+    """
+
+    def __init__(self, message: str, status: int = 400, code: Optional[str] = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -390,151 +349,7 @@ def run_async(coro, timeout: Optional[float] = None) -> Any:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  6.  Retry / Timeout Utilities
-# ═══════════════════════════════════════════════════════════════
-
-def retry_on_failure(
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: Tuple[type, ...] = (Exception,),
-    logger: Optional[logging.Logger] = None,
-    label: str = "",
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Decorator: retry a synchronous function on failure with exponential backoff.
-
-    Usage::
-
-        @retry_on_failure(max_attempts=3, delay=0.5, logger=logger)
-        def call_llm(prompt):
-            ...
-
-    Parameters:
-        max_attempts:  Total attempts (including the first).
-        delay:         Initial wait seconds between attempts.
-        backoff:       Multiplier applied after each failure.
-        exceptions:    Tuple of exception types to catch.
-        logger:        If provided, warnings are emitted on retry.
-        label:         Human-readable name for log messages.
-    """
-    def _decorator(func: Callable[P, T]) -> Callable[P, T]:
-        @functools.wraps(func)
-        def _wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            last_exc = None
-            current_delay = delay
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as exc:
-                    last_exc = exc
-                    if attempt == max_attempts:
-                        if logger:
-                            logger.error(f"{label}: Exhausted {max_attempts} attempts: {exc}")
-                        raise
-                    if logger:
-                        logger.warning(
-                            f"{label}: Attempt {attempt}/{max_attempts} failed ({exc}). "
-                            f"Retrying in {current_delay:.1f}s..."
-                        )
-                    time.sleep(current_delay)
-                    current_delay *= backoff
-            # Should never reach here, but satisfy type checker
-            raise last_exc  # type: ignore[misc]
-        return _wrapper
-    return _decorator
-
-
-async def async_retry(
-    coro_factory: Callable[[], Any],
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: Tuple[type, ...] = (Exception,),
-    logger: Optional[logging.Logger] = None,
-    label: str = "",
-) -> Any:
-    """Async version of @retry_on_failure.  Pass a factory that creates a fresh coroutine.
-
-    Usage::
-
-        result = await async_retry(
-            lambda: rag.aquery(text, param=param),
-            max_attempts=3,
-            logger=logger, label="RAG query"
-        )
-    """
-    last_exc = None
-    current_delay = delay
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return await coro_factory()
-        except exceptions as exc:
-            last_exc = exc
-            if attempt == max_attempts:
-                if logger:
-                    logger.error(f"{label}: Exhausted {max_attempts} attempts: {exc}")
-                raise
-            if logger:
-                logger.warning(
-                    f"{label}: Attempt {attempt}/{max_attempts} failed ({exc}). "
-                    f"Retrying in {current_delay:.1f}s..."
-                )
-            await asyncio.sleep(current_delay)
-            current_delay *= backoff
-    raise last_exc
-
-
-class TimeoutError(Exception):
-    """Raised when a timeout_context expires."""
-
-
-from contextlib import contextmanager
-import signal
-
-
-@contextmanager
-def timeout_context(seconds: float, message: str = "Operation timed out"):
-    """Context manager that raises TimeoutError after *seconds*.
-
-    Uses ``signal.alarm`` (Unix only).  For cross-platform use consider
-    ``concurrent.futures.ThreadPoolExecutor`` as an alternative.
-
-    Usage::
-
-        with timeout_context(30, "LLM call"):
-            result = llm.chat(messages)
-    """
-    def _handler(signum, frame):
-        raise TimeoutError(message)
-
-    old_handler = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(int(seconds))
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-
-
-# ═══════════════════════════════════════════════════════════════
-#  7.  Structured Logging Context
-# ═══════════════════════════════════════════════════════════════
-
-def log_context(logger: logging.Logger, level: int = logging.INFO, **kwargs) -> str:
-    """Format key=value pairs into a single log line and emit it.
-
-    Usage::
-
-        log_context(logger, tenant="mybot", action="insert", doc_id="abc.txt")
-        # → "[RAGservicer] INFO ... tenant=mybot action=insert doc_id=abc.txt"
-    """
-    parts = " ".join(f"{k}={v}" for k, v in kwargs.items())
-    logger.log(level, parts)
-    return parts
-
-
-# ═══════════════════════════════════════════════════════════════
-#  8.  Flask Integration Helpers
+#  6.  Flask Integration Helpers
 # ═══════════════════════════════════════════════════════════════
 
 def register_tenant_on_g():
@@ -566,7 +381,7 @@ def register_tenant_on_g():
 
 
 # ═══════════════════════════════════════════════════════════════
-#  9.  Re-exports for convenience
+#  7.  Re-exports for convenience
 # ═══════════════════════════════════════════════════════════════
 
 __all__ = [
@@ -578,7 +393,6 @@ __all__ = [
     "GuardError",
     # Errors
     "handle_errors",
-    "handle_errors_v2",
     "build_error",
     "AppError",
     # Responses
@@ -587,13 +401,6 @@ __all__ = [
     # Async
     "run_async",
     "set_event_loop",
-    # Retry
-    "retry_on_failure",
-    "async_retry",
-    "timeout_context",
-    "TimeoutError",
-    # Logging
-    "log_context",
     # Flask
     "register_tenant_on_g",
     # Types

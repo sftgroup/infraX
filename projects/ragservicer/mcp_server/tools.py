@@ -20,7 +20,7 @@ TOOLS = [
                 "text": {"type": "string", "description": "Document text content to index"},
                 "ragservicer_id": {"type": "string", "description": "Unique document identifier (e.g., filename)"},
             },
-            "required": ["namespace", "text", "doc_id"]
+            "required": ["namespace", "text", "ragservicer_id"]
         }
     },
     {
@@ -45,7 +45,7 @@ TOOLS = [
                 "namespace": {"type": "string", "description": "Namespace/collection"},
                 "ragservicer_id": {"type": "string", "description": "Document ID to delete"},
             },
-            "required": ["namespace", "doc_id"]
+            "required": ["namespace", "ragservicer_id"]
         }
     },
     {
@@ -59,7 +59,7 @@ TOOLS = [
     },
     {
         "name": "ragservicer_retrieve",
-        "description": "Retrieve relevant document chunks and knowledge graph context WITHOUT generating an LLM answer. Returns raw context that the caller can use with their own LLM. This does NOT consume the Doc service's LLM quota.",
+        "description": "Retrieve relevant document chunks and knowledge graph context WITHOUT generating an LLM answer. Returns raw context that the caller can use with their own LLM. This does NOT consume the RAGservicer's LLM quota.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -79,7 +79,7 @@ async def handle_insert(args: dict, tenant_id: str) -> dict:
     from api.engine import insert_document
     ns = args.get("namespace", "default")
     text = args.get("text", "")
-    doc_id = args.get("doc_id", "document.txt")
+    doc_id = args.get("ragservicer_id", "document.txt")
     result = insert_document(tenant_id, ns, text, doc_id)
     return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}
 
@@ -96,7 +96,7 @@ async def handle_query(args: dict, tenant_id: str) -> dict:
 async def handle_delete(args: dict, tenant_id: str) -> dict:
     from api.engine import delete_document
     ns = args.get("namespace", "default")
-    doc_id = args.get("doc_id", "")
+    doc_id = args.get("ragservicer_id", "")
     result = delete_document(tenant_id, ns, doc_id)
     return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}
 

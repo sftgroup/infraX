@@ -9,6 +9,7 @@ from threading import Lock
 
 from flask import request, g, jsonify
 from config import get_config
+from api.code_refactor import _ANON_FALLBACK as ANON_FALLBACK, _UNKNOWN_ENDPOINT as UNKNOWN_ENDPOINT
 
 logger = logging.getLogger("ragservicer.middleware")
 
@@ -39,9 +40,6 @@ class TokenBucket:
 
 _buckets: dict[str, TokenBucket] = {}
 _buckets_lock = Lock()
-
-ANON_FALLBACK = 'anonymous'
-UNKNOWN_ENDPOINT = 'unknown'
 
 
 def _get_bucket(key: str) -> TokenBucket:

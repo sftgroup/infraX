@@ -39,8 +39,8 @@ def extract_tenant():
 
     cfg = get_config()
 
-    # Internal DOC_API_KEY → tenant "default" (aiservicer bridge)
-    if cfg.server.doc_api_key and key == cfg.server.doc_api_key:
+    # Internal RAGSERVICER_API_KEY → tenant "default" (aiservicer bridge)
+    if cfg.server.ragservicer_api_key and key == cfg.server.ragservicer_api_key:
         tenant_header = request.headers.get("X-Tenant-ID", "")
         return tenant_header if tenant_header else "default"
 

@@ -41,6 +41,8 @@ class RAGConfig:
     chunk_top_k: int = 20
     summary_language: str = "Chinese"
     insert_timeout: int = 300
+    default_doc_id: str = "document.txt"
+    page_limit_max: int = 200
 
 
 @dataclass(frozen=True)
@@ -95,7 +97,7 @@ def load_config() -> AppConfig:
             backend=os.getenv("EMBEDDING_BACKEND", "local"),
             model_name=os.getenv("EMBEDDING_MODEL", EmbeddingConfig.model_name),
             dims=int(os.getenv("EMBEDDING_DIMS", str(EmbeddingConfig.dims))),
-            max_token_size=EmbeddingConfig.max_token_size,
+            max_token_size=int(os.getenv("EMBEDDING_MAX_TOKENS", str(EmbeddingConfig.max_token_size))),
             api_key=os.getenv("EMBEDDING_API_KEY", ""),
             base_url=os.getenv("EMBEDDING_BASE_URL", EmbeddingConfig.base_url),
             api_timeout=int(os.getenv("EMBEDDING_TIMEOUT", str(EmbeddingConfig.api_timeout))),
