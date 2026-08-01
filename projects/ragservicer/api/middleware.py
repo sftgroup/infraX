@@ -10,7 +10,7 @@ from threading import Lock
 from flask import request, g, jsonify
 from config import get_config
 
-logger = logging.getLogger("doc.middleware")
+logger = logging.getLogger("ragservicer.middleware")
 
 
 # ── Token Bucket Rate Limiter ──────────────────────────────

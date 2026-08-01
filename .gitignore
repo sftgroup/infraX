@@ -7,9 +7,9 @@ logs/
 .env.local
 .env.production
 *.py
-# Allow Python files in Doc Service
-!projects/doc/*.py
-!projects/doc/**/*.py
+# Allow Python files in RAGservicer
+!projects/ragservicer/*.py
+!projects/ragservicer/**/*.py
 create_release.ps1
 release_body.json
 deploy_remote.sh

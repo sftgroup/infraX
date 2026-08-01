@@ -10,7 +10,7 @@ from flask import request, jsonify
 from config import get_config
 from tenants import manager as tm
 
-logger = logging.getLogger("doc.auth")
+logger = logging.getLogger("ragservicer.auth")
 
 
 def extract_tenant():
@@ -18,7 +18,7 @@ def extract_tenant():
     Extract tenant_id from request.  All paths require valid credentials.
     
     Valid credentials:
-      1. Bearer token matching DOC_API_KEY env var → tenant "default" (internal bridge)
+      1. Bearer token matching RAGSERVICER_API_KEY env var → tenant "default" (internal bridge)
       2. Bearer token matching Admin key → tenant "admin"
       3. Bearer token or X-API-Key validated against DB → bound tenant
       4. Any valid key + X-Tenant-ID header → uses header tenant (service accounts)

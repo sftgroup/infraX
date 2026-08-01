@@ -1,47 +1,49 @@
 /**
- * InfraX Doc Service Client SDK
+ * InfraX RAGservicer Client SDK
  *
  * Usage:
- *   import { DocClient } from './projects/doc/sdk';
+ *   import { RagServicerClient } from './projects/ragservicer/sdk';
  *
- *   const doc = new DocClient({
+ *   const rs = new RagServicerClient({
  *     baseUrl: 'http://localhost:9721',
- *     apiKey: 'doc_xxxx',
+ *     apiKey: 'rs_xxxx',
  *   });
  *
- *   await doc.insert('my-project', 'Hello world', 'doc-1');
- *   const result = await doc.query('my-project', 'What is the greeting?');
+ *   await rs.insert('my-project', 'Hello world', 'doc-1');
+ *   const result = await rs.query('my-project', 'What is the greeting?');
  */
 import type {
-  DocConfig,
+  RagServicerConfig,
   InsertResult,
   QueryResult,
   RetrieveResult,
   DocumentInfo,
   TenantInfo,
   ApiKeyInfo,
+  DocConfig,
   LightRAGConfig,
 } from './types';
-import { DocError, LightRAGError } from './types';
+import { RagServicerError, DocError, LightRAGError } from './types';
 
 export type {
-  DocConfig,
+  RagServicerConfig,
   InsertResult,
   QueryResult,
   RetrieveResult,
   DocumentInfo,
   TenantInfo,
   ApiKeyInfo,
+  DocConfig,
   LightRAGConfig,
 };
-export { DocError, LightRAGError };
+export { RagServicerError, DocError, LightRAGError };
 
-export class DocClient {
+export class RagServicerClient {
   private baseUrl: string;
   private headers: Record<string, string>;
   private timeout: number;
 
-  constructor(config: DocConfig) {
+  constructor(config: RagServicerConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.timeout = config.timeout || 120000;
     this.headers = { 'Content-Type': 'application/json' };
@@ -69,7 +71,7 @@ export class DocClient {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new DocError(
+        throw new RagServicerError(
           res.status,
           body.code || 'UNKNOWN',
           body.error || `HTTP ${res.status}`
@@ -184,5 +186,7 @@ export class DocClient {
   }
 }
 
-/** @deprecated Use DocClient instead */
-export const LightRAGClient = DocClient;
+/** @deprecated Use RagServicerClient instead */
+export const DocClient = RagServicerClient;
+/** @deprecated Use RagServicerClient instead */
+export const LightRAGClient = RagServicerClient;

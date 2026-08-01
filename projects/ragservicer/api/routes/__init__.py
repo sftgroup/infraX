@@ -13,7 +13,7 @@ api = Blueprint("api", __name__, url_prefix="/api/v1")
 def health():
     return jsonify({
         "status": "ok",
-        "service": "infrax-doc",
+        "service": "infrax-ragservicer",
         "instances": len(list_instances()),
     })
 

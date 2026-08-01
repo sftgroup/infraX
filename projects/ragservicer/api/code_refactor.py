@@ -526,7 +526,7 @@ def log_context(logger: logging.Logger, level: int = logging.INFO, **kwargs) -> 
     Usage::
 
         log_context(logger, tenant="mybot", action="insert", doc_id="abc.txt")
-        # → "[Doc] INFO ... tenant=mybot action=insert doc_id=abc.txt"
+        # → "[RAGservicer] INFO ... tenant=mybot action=insert doc_id=abc.txt"
     """
     parts = " ".join(f"{k}={v}" for k, v in kwargs.items())
     logger.log(level, parts)

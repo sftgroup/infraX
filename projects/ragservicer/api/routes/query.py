@@ -5,7 +5,7 @@ from api.engine import query as rag_query, retrieve as rag_retrieve
 from api.auth import require_tenant
 from api.code_refactor import parse_json, Guard, handle_errors, build_success
 
-logger = logging.getLogger("doc.routes.query")
+logger = logging.getLogger("ragservicer.routes.query")
 
 
 def register(api: Blueprint):

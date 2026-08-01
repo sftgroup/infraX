@@ -8,7 +8,7 @@ import logging
 
 from config import get_config
 
-logger = logging.getLogger("doc.adapters")
+logger = logging.getLogger("ragservicer.adapters")
 
 # ── Embedding model (lazy singleton, local backend) ──
 

@@ -13,7 +13,7 @@ from typing import Optional
 from config import get_config
 from api.adapters import create_llm_func, create_embedding_func
 
-logger = logging.getLogger("doc.engine")
+logger = logging.getLogger("ragservicer.engine")
 
 # ── Persistent Async Loop ─────────────────────────────────
 

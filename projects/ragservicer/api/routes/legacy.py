@@ -22,7 +22,7 @@ from api.engine import (
 from api.code_refactor import parse_json, handle_errors, build_success, Guard
 from config import get_config
 
-logger = logging.getLogger("doc.routes.legacy")
+logger = logging.getLogger("ragservicer.routes.legacy")
 
 
 def _check_legacy_gate():

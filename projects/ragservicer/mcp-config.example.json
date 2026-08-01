@@ -1,0 +1,17 @@
+# MCP Configuration for InfraX RAGservicer
+# Add this to your IDE's MCP config (mcp.json)
+
+{
+  "mcpServers": {
+    "infrax-ragservicer": {
+      "command": "python",
+      "args": ["-c", "import sys; sys.path.insert(0, 'projects/ragservicer'); from mcp_server.server import run_mcp_server; run_mcp_server()"],
+      "cwd": "/home/ubuntu/infraX-1",
+      "env": {
+        "MCP_TENANT_ID": "my-project",
+        "RAGSERVICER_API_KEY": "your-ragservicer-api-key",
+        "WORKING_DIR": "./data"
+      }
+    }
+  }
+}

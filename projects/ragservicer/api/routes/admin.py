@@ -6,7 +6,7 @@ from api.auth import require_admin
 from tenants import manager as tm
 from api.code_refactor import parse_json, handle_errors, build_success
 
-logger = logging.getLogger("doc.routes.admin")
+logger = logging.getLogger("ragservicer.routes.admin")
 
 
 def register(api: Blueprint):

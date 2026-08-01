@@ -1,16 +1,18 @@
 /**
- * InfraX Doc Service Client SDK — Type Definitions
+ * InfraX RAGservicer Client SDK — Type Definitions
  */
 
-export interface DocConfig {
+export interface RagServicerConfig {
   baseUrl: string;
   apiKey?: string;
   tenantId?: string;
   timeout?: number;
 }
 
-/** @deprecated Use DocConfig instead */
-export type LightRAGConfig = DocConfig;
+/** @deprecated Use RagServicerConfig instead */
+export type DocConfig = RagServicerConfig;
+/** @deprecated Use RagServicerConfig instead */
+export type LightRAGConfig = RagServicerConfig;
 
 export interface InsertResult {
   success: boolean;
@@ -63,16 +65,18 @@ export interface ApiKeyInfo {
   expires_at?: string;
 }
 
-export class DocError extends Error {
+export class RagServicerError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string
   ) {
     super(message);
-    this.name = 'DocError';
+    this.name = 'RagServicerError';
   }
 }
 
-/** @deprecated Use DocError instead */
-export const LightRAGError = DocError;
+/** @deprecated Use RagServicerError instead */
+export const DocError = RagServicerError;
+/** @deprecated Use RagServicerError instead */
+export const LightRAGError = RagServicerError;

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-InfraX Doc Service — Main Entry Point.
+InfraX RAGservicer — Main Entry Point.
 Starts REST API + optional MCP STDIO server.
-(Formerly LightRAG Microservice)
+(Formerly LightRAG Microservice / Doc Service)
 """
 import sys
 import logging
@@ -20,9 +20,9 @@ cfg = load_config()
 
 logging.basicConfig(
     level=getattr(logging, cfg.log_level),
-    format="[Doc] %(levelname)s %(name)s %(message)s"
+    format="[RAGservicer] %(levelname)s %(name)s %(message)s"
 )
-logger = logging.getLogger("doc.main")
+logger = logging.getLogger("ragservicer.main")
 
 # ── Imports ────────────────────────────────────────────────
 from api.engine import start_event_loop, list_instances
@@ -33,7 +33,7 @@ from mcp_server.server import run_mcp_server
 
 def main():
     logger.info("=" * 60)
-    logger.info("  InfraX Doc Service v2.0.0")
+    logger.info("  InfraX RAGservicer v2.0.0")
     logger.info("=" * 60)
 
     # Tenant DB
@@ -64,7 +64,7 @@ def main():
 
     # MCP (background thread)
     if cfg.server.mcp_enabled:
-        mcp_thread = threading.Thread(target=run_mcp_server, daemon=True, name="doc-mcp")
+        mcp_thread = threading.Thread(target=run_mcp_server, daemon=True, name="ragservicer-mcp")
         mcp_thread.start()
         logger.info("MCP server started on STDIO")
 

@@ -1,31 +1,31 @@
 """
-MCP tool definitions and handlers for InfraX Doc Service.
+MCP tool definitions and handlers for InfraX RAGservicer.
 Separated from the STDIO transport loop for testability.
 """
 import json
 import logging
 
-logger = logging.getLogger("doc.mcp")
+logger = logging.getLogger("ragservicer.mcp")
 
 # ── Tool Definitions ──────────────────────────────────────
 
 TOOLS = [
     {
-        "name": "doc_insert_document",
-        "description": "Insert a document into the Doc knowledge base for a given namespace. Text will be chunked, embedded, and indexed for later retrieval.",
+        "name": "ragservicer_insert_document",
+        "description": "Insert a document into the RAGservicer knowledge base for a given namespace. Text will be chunked, embedded, and indexed for later retrieval.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "namespace": {"type": "string", "description": "Namespace/collection identifier (e.g., project name)"},
                 "text": {"type": "string", "description": "Document text content to index"},
-                "doc_id": {"type": "string", "description": "Unique document identifier (e.g., filename)"},
+                "ragservicer_id": {"type": "string", "description": "Unique document identifier (e.g., filename)"},
             },
             "required": ["namespace", "text", "doc_id"]
         }
     },
     {
-        "name": "doc_query",
-        "description": "Query the Doc knowledge base using hybrid search (vector + graph + keyword). Returns relevant context from indexed documents.",
+        "name": "ragservicer_query",
+        "description": "Query the RAGservicer knowledge base using hybrid search (vector + graph + keyword). Returns relevant context from indexed documents.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -37,19 +37,19 @@ TOOLS = [
         }
     },
     {
-        "name": "doc_delete_document",
-        "description": "Delete a document from the Doc knowledge base by its doc_id.",
+        "name": "ragservicer_delete_document",
+        "description": "Delete a document from the RAGservicer knowledge base by its doc_id.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "namespace": {"type": "string", "description": "Namespace/collection"},
-                "doc_id": {"type": "string", "description": "Document ID to delete"},
+                "ragservicer_id": {"type": "string", "description": "Document ID to delete"},
             },
             "required": ["namespace", "doc_id"]
         }
     },
     {
-        "name": "doc_list_instances",
+        "name": "ragservicer_list_instances",
         "description": "List all active Doc instances and their namespaces.",
         "inputSchema": {
             "type": "object",
@@ -58,7 +58,7 @@ TOOLS = [
         }
     },
     {
-        "name": "doc_retrieve",
+        "name": "ragservicer_retrieve",
         "description": "Retrieve relevant document chunks and knowledge graph context WITHOUT generating an LLM answer. Returns raw context that the caller can use with their own LLM. This does NOT consume the Doc service's LLM quota.",
         "inputSchema": {
             "type": "object",
@@ -118,9 +118,9 @@ async def handle_retrieve(args: dict, tenant_id: str) -> dict:
 
 
 TOOL_HANDLERS = {
-    "doc_insert_document": handle_insert,
-    "doc_query": handle_query,
-    "doc_delete_document": handle_delete,
-    "doc_list_instances": handle_list,
-    "doc_retrieve": handle_retrieve,
+    "ragservicer_insert_document": handle_insert,
+    "ragservicer_query": handle_query,
+    "ragservicer_delete_document": handle_delete,
+    "ragservicer_list_instances": handle_list,
+    "ragservicer_retrieve": handle_retrieve,
 }

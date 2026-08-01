@@ -1,6 +1,6 @@
 """
-InfraX Doc MCP Server — Model Context Protocol STDIO transport.
-Exposes Doc knowledge base operations as MCP tools for AI agents.
+InfraX RAGservicer MCP Server — Model Context Protocol STDIO transport.
+Exposes RAG knowledge base operations as MCP tools for AI agents.
 
 Uses mcp_server.tools for tool definitions (decoupled from transport).
 All settings from config.py (zero os.getenv outside config).
@@ -13,7 +13,7 @@ import logging
 from config import get_config
 from mcp_server.tools import TOOLS, TOOL_HANDLERS
 
-logger = logging.getLogger("doc.mcp")
+logger = logging.getLogger("ragservicer.mcp")
 
 # ── JSON-RPC Error codes ────────────────────────────────
 ERR_TOOL_EXEC = -32000
@@ -49,7 +49,7 @@ def _error(req_id, code, message):
 def run_mcp_server():
     """Run the MCP server on STDIO (stdin/stdout)."""
     cfg = get_config().server
-    logger.info("InfraX Doc MCP server starting on STDIO...")
+    logger.info("InfraX RAGservicer MCP server starting on STDIO...")
 
     _write_message({
         "jsonrpc": "2.0",

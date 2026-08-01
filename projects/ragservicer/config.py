@@ -50,10 +50,10 @@ class ServerConfig:
     mcp_enabled: bool = True
     mcp_tenant_id: str = "default"
     mcp_protocol_version: str = "2024-11-05"
-    mcp_server_name: str = "infrax-doc-mcp"
+    mcp_server_name: str = "infrax-ragservicer-mcp"
     mcp_server_version: str = "2.0.0"
     admin_api_key: str = ""        # REQUIRED in production
-    doc_api_key: str = ""          # Internal key for aiservicer bridge (optional)
+    ragservicer_api_key: str = ""  # Internal key for aiservicer bridge (optional)
     rate_limit_rpm: int = 100
     rate_limit_window: int = 60    # seconds
 
@@ -118,7 +118,7 @@ def load_config() -> AppConfig:
             mcp_enabled=os.getenv("MCP_ENABLED", "true").lower() == "true",
             mcp_tenant_id=os.getenv("MCP_TENANT_ID", ServerConfig.mcp_tenant_id),
             admin_api_key=os.getenv("ADMIN_API_KEY", ""),
-            doc_api_key=os.getenv("DOC_API_KEY", "") or os.getenv("LIGHTRAG_API_KEY", ""),
+            ragservicer_api_key=os.getenv("RAGSERVICER_API_KEY", "") or os.getenv("DOC_API_KEY", "") or os.getenv("LIGHTRAG_API_KEY", ""),
             rate_limit_rpm=int(os.getenv("RATE_LIMIT_RPM", str(ServerConfig.rate_limit_rpm))),
             rate_limit_window=int(os.getenv("RATE_LIMIT_WINDOW", str(ServerConfig.rate_limit_window))),
         ),

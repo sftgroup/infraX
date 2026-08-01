@@ -5,7 +5,7 @@ from api.engine import insert_document as eng_insert, insert_documents_batch, de
 from api.auth import require_tenant
 from api.code_refactor import parse_json, Guard, handle_errors, build_success
 
-logger = logging.getLogger("doc.routes.documents")
+logger = logging.getLogger("ragservicer.routes.documents")
 
 
 def register(api: Blueprint):
