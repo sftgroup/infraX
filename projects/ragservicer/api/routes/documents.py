@@ -1,9 +1,9 @@
 """Document CRUD routes."""
 import logging
-from flask import request, jsonify, Blueprint
+from flask import request, Blueprint
 from api.engine import insert_document as eng_insert, insert_documents_batch, delete_document
 from api.auth import require_tenant
-from api.code_refactor import parse_json, Guard, handle_errors, build_success
+from api.code_refactor import parse_json, Guard, handle_errors, build_success, build_error
 
 logger = logging.getLogger("ragservicer.routes.documents")
 
@@ -18,7 +18,7 @@ def register(api: Blueprint):
         doc_id = data.get("doc_id", data.get("file_name", "document.txt"))
 
         if not text.strip():
-            return jsonify({"error": "text is required"}), 400
+            return build_error("text is required", 400)
 
         result = eng_insert(_tenant, namespace, text, doc_id)
         return build_success(result, status=201)
@@ -30,12 +30,12 @@ def register(api: Blueprint):
         data = parse_json()
         documents = data.get("documents", [])
         if not documents:
-            return jsonify({"error": "documents array is required"}), 400
+            return build_error("documents array is required", 400)
 
         # Validate each document has a "text" field
         for i, doc in enumerate(documents):
             if not isinstance(doc, dict) or not str(doc.get("text", "")).strip():
-                return jsonify({"error": f"documents[{i}].text is required"}), 400
+                return build_error(f"documents[{i}].text is required", 400)
 
         result = insert_documents_batch(_tenant, namespace, documents)
         return build_success(result, status=201)

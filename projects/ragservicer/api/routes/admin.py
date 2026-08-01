@@ -1,10 +1,10 @@
 """Admin routes: tenant management + API key management."""
 import logging
-from flask import request, jsonify, Blueprint
+from flask import request, Blueprint
 from api.engine import list_instances
 from api.auth import require_admin
 from tenants import manager as tm
-from api.code_refactor import parse_json, handle_errors, build_success
+from api.code_refactor import parse_json, handle_errors, build_success, build_error
 
 logger = logging.getLogger("ragservicer.routes.admin")
 
@@ -29,7 +29,7 @@ def register(api: Blueprint):
         desc = data.get("description", "")
 
         if not tenant_id:
-            return jsonify({"error": "tenant_id is required"}), 400
+            return build_error("tenant_id is required", 400)
 
         result = tm.create_tenant(tenant_id, name, desc)
         return build_success(result, status=201)
@@ -58,7 +58,7 @@ def register(api: Blueprint):
 
         t = tm.get_tenant(tenant_id)
         if not t:
-            return jsonify({"error": f"Tenant '{tenant_id}' not found"}), 404
+            return build_error(f"Tenant '{tenant_id}' not found", 404)
 
         key_info = tm.generate_api_key(tenant_id, name, expires_days)
         return build_success(key_info, status=201)

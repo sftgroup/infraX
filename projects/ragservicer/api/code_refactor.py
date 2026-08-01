@@ -180,14 +180,14 @@ def build_error(
     code: Optional[str] = None,
     **extra,
 ) -> Tuple[JsonDict, int]:
-    """Return a (body, status) tuple suitable for Flask's ``jsonify(**body), status`` pattern.
+    """Return InfraX-standard (body, status) tuple.
 
     Usage::
 
         return build_error("Tenant not found", 404, code="TENANT_NOT_FOUND")
         return build_error("Invalid mode 'naive'", 400)
     """
-    body: JsonDict = {"error": message}
+    body: JsonDict = {"code": status, "message": message, "data": None}
     if code:
         body["code"] = code
     body.update(extra)
@@ -270,7 +270,7 @@ class AppError(Exception):
 # ═══════════════════════════════════════════════════════════════
 
 def build_success(data: Any = None, *, status: int = 200, **extra) -> Tuple[Any, int]:
-    """Build a standard success response.  For inserts use status=201.
+    """Build InfraX-standard success response.
 
     Usage::
 
@@ -278,10 +278,15 @@ def build_success(data: Any = None, *, status: int = 200, **extra) -> Tuple[Any,
         return build_success({"doc_id": "abc"}, status=201)
         return build_success({"doc_id": "abc"}, status=201, namespace="foo")
     """
+    body = {"code": 0, "message": "ok"}
     if isinstance(data, dict):
-        body = {**data, **extra, "success": True}
+        body["data"] = {**data, **extra}
+    elif data is not None:
+        body["data"] = data
+    elif extra:
+        body["data"] = extra
     else:
-        body = {"data": data, "success": True, **extra}
+        body["data"] = None
     return jsonify(body), status
 
 
@@ -292,20 +297,23 @@ def build_paginated(
     limit: int,
     **extra,
 ) -> Tuple[JsonDict, int]:
-    """Build a paginated response envelope.
+    """Build an InfraX-standard paginated response.
 
     Usage::
 
         return build_paginated(docs, total=42, page=1, limit=20)
     """
     body = {
-        "items": items,
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "has_more": (page * limit) < total,
-        "success": True,
-        **extra,
+        "code": 0,
+        "message": "ok",
+        "data": {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "has_more": (page * limit) < total,
+            **extra,
+        },
     }
     return jsonify(body), 200
 

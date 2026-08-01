@@ -6,9 +6,10 @@ Does NOT fall back to 'default' tenant — unknown requests get 401.
 import functools
 import logging
 
-from flask import request, jsonify
+from flask import request
 from config import get_config
 from tenants import manager as tm
+from api.code_refactor import build_error
 
 logger = logging.getLogger("ragservicer.auth")
 
@@ -67,7 +68,7 @@ def require_tenant(f):
     def wrapper(*args, **kwargs):
         tenant = extract_tenant()
         if not tenant:
-            return jsonify({"error": "Missing or invalid API key"}), 401
+            return build_error("Missing or invalid API key", 401)
         kwargs["_tenant"] = tenant
         return f(*args, **kwargs)
     return wrapper
@@ -79,10 +80,10 @@ def require_admin(f):
     def wrapper(*args, **kwargs):
         admin_key = get_config().server.admin_api_key
         if not admin_key:
-            return jsonify({"error": "Admin API key not configured on server"}), 403
+            return build_error("Admin API key not configured on server", 403)
 
         auth = request.headers.get("Authorization", "")
         if auth != f"Bearer {admin_key}":
-            return jsonify({"error": "Admin access required"}), 403
+            return build_error("Admin access required", 403)
         return f(*args, **kwargs)
     return wrapper

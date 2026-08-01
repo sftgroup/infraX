@@ -7,9 +7,9 @@ import logging
 from collections import defaultdict
 from threading import Lock
 
-from flask import request, g, jsonify
+from flask import request, g
 from config import get_config
-from api.code_refactor import _ANON_FALLBACK as ANON_FALLBACK, _UNKNOWN_ENDPOINT as UNKNOWN_ENDPOINT
+from api.code_refactor import _ANON_FALLBACK as ANON_FALLBACK, _UNKNOWN_ENDPOINT as UNKNOWN_ENDPOINT, build_error
 
 logger = logging.getLogger("ragservicer.middleware")
 
@@ -63,7 +63,7 @@ def rate_limit_middleware():
     bucket = _get_bucket(tenant)
     if not bucket.consume():
         logger.warning(f"Rate limit exceeded for tenant={tenant}")
-        return jsonify({"error": "Rate limit exceeded. Try again later."}), 429
+        return build_error("Rate limit exceeded. Try again later.", 429)
     g.request_start = time.time()
     return None
 

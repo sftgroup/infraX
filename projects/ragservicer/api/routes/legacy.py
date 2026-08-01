@@ -12,14 +12,14 @@
 ╚══════════════════════════════════════════════════════════════╝
 """
 import logging
-from flask import request, jsonify, Blueprint
+from flask import request, Blueprint
 from api.engine import (
     insert_document as eng_insert,
     insert_documents_batch,
     delete_document,
     query as rag_query,
 )
-from api.code_refactor import parse_json, handle_errors, build_success, Guard
+from api.code_refactor import parse_json, handle_errors, build_success, build_error, Guard
 from config import get_config
 
 logger = logging.getLogger("ragservicer.routes.legacy")
@@ -40,13 +40,13 @@ def register(api: Blueprint):
     @handle_errors(logger, "Legacy insert failed")
     def legacy_insert(bot_id):
         if not _check_legacy_gate():
-            return jsonify({"error": "Admin access required for legacy routes"}), 403
+            return build_error("Admin access required for legacy routes", 403)
 
         data = parse_json()
         text = data.get("text", "")
         doc_id = data.get("doc_id", data.get("file_name", "document.txt"))
         if not text.strip():
-            return jsonify({"error": "text is required"}), 400
+            return build_error("text is required", 400)
 
         result = eng_insert(bot_id, bot_id, text, doc_id)
         return build_success(result, status=201)
@@ -55,7 +55,7 @@ def register(api: Blueprint):
     @handle_errors(logger, "Legacy query failed")
     def legacy_query(bot_id):
         if not _check_legacy_gate():
-            return jsonify({"error": "Admin access required for legacy routes"}), 403
+            return build_error("Admin access required for legacy routes", 403)
 
         data = parse_json()
         Guard(data).require("query").check_mode("mode")
@@ -66,16 +66,16 @@ def register(api: Blueprint):
     @handle_errors(logger, "Legacy batch insert failed")
     def legacy_batch(bot_id):
         if not _check_legacy_gate():
-            return jsonify({"error": "Admin access required for legacy routes"}), 403
+            return build_error("Admin access required for legacy routes", 403)
 
         data = parse_json()
         documents = data.get("documents", [])
         if not documents:
-            return jsonify({"error": "documents array is required"}), 400
+            return build_error("documents array is required", 400)
 
         for i, doc in enumerate(documents):
             if not isinstance(doc, dict) or not str(doc.get("text", "")).strip():
-                return jsonify({"error": f"documents[{i}].text is required"}), 400
+                return build_error(f"documents[{i}].text is required", 400)
 
         result = insert_documents_batch(bot_id, bot_id, documents)
         return build_success(result, status=201)

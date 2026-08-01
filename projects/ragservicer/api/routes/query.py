@@ -1,9 +1,9 @@
 """RAG query routes."""
 import logging
-from flask import request, jsonify, Blueprint
+from flask import request, Blueprint
 from api.engine import query as rag_query, retrieve as rag_retrieve
 from api.auth import require_tenant
-from api.code_refactor import parse_json, Guard, handle_errors, build_success
+from api.code_refactor import parse_json, Guard, handle_errors, build_success, build_error
 
 logger = logging.getLogger("ragservicer.routes.query")
 
@@ -33,9 +33,9 @@ def register(api: Blueprint):
             try:
                 top_k = int(top_k)
                 if top_k < 1:
-                    return jsonify({"error": "top_k must be >= 1"}), 400
+                    return build_error("top_k must be >= 1", 400)
             except (TypeError, ValueError):
-                return jsonify({"error": "top_k must be an integer"}), 400
+                return build_error("top_k must be an integer", 400)
 
         result = rag_retrieve(_tenant, namespace, data["query"], data.get("mode", "mix"), top_k)
         return build_success(result)
