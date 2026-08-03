@@ -15,12 +15,22 @@ const INJECTOR_BASE = process.env.INJECTOR_BASE || 'http://127.0.0.1:9113';
 const RAGSERVICER_BASE = process.env.RAGSERVICER_BASE || 'http://127.0.0.1:9721';
 const RAGSERVICER_API_BASE = `${RAGSERVICER_BASE}/api/v1`;
 
-// ragservicer 管理 key（用于拉取实例列表；与 ragservicer/.env 的 ADMIN_API_KEY 一致）
-const RAGSERVICER_ADMIN_KEY = process.env.RAGSERVICER_ADMIN_KEY || '';
-
 // ragservicer .env 路径（LLM key 落点；admin 与 ragservicer 同机时可直接读写）
 const RAGSERVICER_ENV_PATH =
   process.env.RAGSERVICER_ENV_PATH || '/home/ubuntu/infraX-1/projects/ragservicer/.env';
+
+// ragservicer 管理 key（用于拉取实例列表；优先取 .env 中当前 ADMIN_API_KEY，env 可覆盖）
+function readRagAdminKey(): string {
+  if (process.env.RAGSERVICER_ADMIN_KEY) return process.env.RAGSERVICER_ADMIN_KEY;
+  try {
+    const env = fs.existsSync(RAGSERVICER_ENV_PATH) ? fs.readFileSync(RAGSERVICER_ENV_PATH, 'utf8') : '';
+    const line = env.split('\n').find(l => l.startsWith('ADMIN_API_KEY='));
+    return line ? line.split('=').slice(1).join('=').trim() : '';
+  } catch {
+    return '';
+  }
+}
+const RAGSERVICER_ADMIN_KEY = readRagAdminKey();
 
 // 重启命令前缀：非 root 时填 'sudo'（需免密 sudo），root 时留空
 const RESTART_CMD = process.env.RESTART_CMD || 'sudo';
