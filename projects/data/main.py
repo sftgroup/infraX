@@ -1,0 +1,231 @@
+"""
+data-service — Unified market data API for all asset classes.
+
+InfraX microservice `infrax-data` (:9112).
+Provides REST endpoints for:
+  - Historical K-line data (/bars)
+  - Technical / external / snapshot factors (/factors/*)
+  - Complex snapshots (heatmap, calendar, indices, tvl, volatility) (/snapshots)
+  - Database stats (/stats)
+  - Health (/health, InfraX standard format)
+
+Configuration: .env file at project root, or environment variables.
+"""
+
+import os
+import logging
+
+# ── Load .env (must happen before any app imports) ─────────
+from pathlib import Path
+
+_env_path = Path(__file__).resolve().parent / ".env"
+if _env_path.exists():
+    with open(_env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                key, val = key.strip(), val.strip().strip("\"'")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))  # .env loaded above
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="InfraX Data Service",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Health ─────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"code": 0, "message": "ok", "data": {"service": "infrax-data", "version": "1.0.0"}}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Data Service — SQLite-backed bars / factors / snapshots
+# ═══════════════════════════════════════════════════════════════
+
+# ── Bars (unified OHLCV + indicators + external factors) ──────
+
+@app.get("/bars")
+async def get_bars(
+    symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
+    timeframe: str = Query("1m", description="Timeframe: 1m/5m/15m/1h/4h/1D"),
+    start: Optional[int] = Query(None, description="Start unix ms"),
+    end: Optional[int] = Query(None, description="End unix ms"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Unified bar data: OHLCV + pre-computed indicators + external factors."""
+    try:
+        from app.enrich import query_bars
+        bars = query_bars(symbol=symbol, timeframe=timeframe, start=start, end=end, limit=limit)
+        return {"symbol": symbol, "timeframe": timeframe, "count": len(bars), "bars": bars}
+    except Exception as e:
+        logger.error(f"/bars failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Factors Catalog ────────────────────────────────────────────
+
+@app.get("/factors/catalog")
+async def factors_catalog():
+    """All available factors for AI strategy building."""
+    try:
+        from app.factors import get_catalog
+        return {"factors": get_catalog()}
+    except Exception as e:
+        logger.error(f"/factors/catalog failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Factors Current ────────────────────────────────────────────
+
+@app.get("/factors/current")
+async def factors_current(
+    symbols: str = Query("BTC", description="Comma-separated symbols"),
+    category: Optional[str] = Query(None, description="Filter: external/heatmap/calendar/snapshot"),
+):
+    """Latest factor values (for live trading FactorClient).
+
+    Use ?category= to filter by data source:
+      - external: fear_greed, vix, dxy, us10y
+      - heatmap: crypto heatmap by category
+      - calendar: upcoming economic events
+      - snapshot: crypto prices, indices, on-chain, defi, volatility, macro, earnings
+    """
+    try:
+        from app.factors import get_current_factors
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        result = get_current_factors(sym_list, category=category)
+        response = {"ts": result.pop("_ts", 0), "factors": result}
+        return response
+    except Exception as e:
+        logger.error(f"/factors/current failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Factors History ────────────────────────────────────────────
+
+@app.get("/factors/history")
+async def factors_history(
+    symbol: str = Query(..., description="Symbol (e.g. BTC/USDT or BTCUSDT)"),
+    timeframe: str = Query("1m", description="Candle timeframe (e.g. 1m, 1h, 4h, 1d)"),
+    ids: Optional[str] = Query(None, description="Comma-separated factor ids to include"),
+    start: Optional[int] = Query(None, description="Start ts (ms)"),
+    end: Optional[int] = Query(None, description="End ts (ms)"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Per-bar factor time series for backtests / factor research.
+
+    Returns technical factors (rsi_14/macd/bb/atr/ma_*) aligned to candle
+    timestamps so a consumer can reproduce live factor values bar-by-bar.
+    ``ts`` is in milliseconds, matching /bars.
+    """
+    try:
+        from app.factors import get_history_factors
+        id_list = [i.strip() for i in ids.split(",") if i.strip()] if ids else None
+        return get_history_factors(
+            symbol=symbol,
+            timeframe=timeframe,
+            ids=id_list,
+            start=start,
+            end=end,
+            limit=limit,
+        )
+    except Exception as e:
+        logger.error(f"/factors/history failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Stats ──────────────────────────────────────────────────────
+
+@app.get("/stats")
+async def stats():
+    """Database stats: row counts, coverage range."""
+    try:
+        from app.storage import get_db
+        db = get_db()
+        kline_count = db.execute("SELECT COUNT(*) FROM kline").fetchone()[0]
+        snap_count = db.execute("SELECT COUNT(*) FROM raw_snapshots").fetchone()[0]
+        symbol_count = db.execute("SELECT COUNT(DISTINCT symbol) FROM kline").fetchone()[0]
+        time_range = db.execute(
+            "SELECT MIN(ts), MAX(ts) FROM kline"
+        ).fetchone()
+        return {
+            "kline_rows": kline_count,
+            "snapshot_rows": snap_count,
+            "symbols": symbol_count,
+            "time_start": time_range[0],
+            "time_end": time_range[1],
+        }
+    except Exception as e:
+        logger.error(f"/stats failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Snapshots (complex data: heatmap, calendar, indices, etc.) ─
+
+@app.get("/snapshots")
+async def snapshots(
+    type: Optional[str] = Query(None, description="Data type: heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings"),
+):
+    """Return latest complex snapshot data.
+
+    Use ?type= to filter by data type:
+      - heatmap: crypto market heatmap by category
+      - calendar: upcoming economic events (Finnhub or FOMC static)
+      - crypto_prices: current prices from CoinGecko
+      - indices: global stock indices
+      - tvl: DeFi total value locked by chain
+      - volatility: VXN/GVZ volatility indices
+      - us_indicators: FRED macro indicators (CPI, GDP, etc.)
+      - earnings: upcoming earnings reports
+    """
+    try:
+        from app.factors import get_snapshots
+        result = get_snapshots(type)
+        return {"ts": result.pop("_ts", 0), "snapshots": result}
+    except Exception as e:
+        logger.error(f"/snapshots failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Startup ────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def _startup():
+    from app.storage import init_db
+    init_db()
+    from app.kline_store import get_kline_store
+    get_kline_store().start()
+    from app.collectors import ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector
+    ExternalFactorCollector().start()
+    CalendarCollector().start()
+    SnapshotCollector().start()
+    HeatmapCollector().start()
+    logger.info("InfraX Data Service startup complete")
+
+
+# ── Entry ──────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import uvicorn
+    from app.config import DATA_SERVICE_PORT
+    uvicorn.run(app, host="0.0.0.0", port=DATA_SERVICE_PORT)

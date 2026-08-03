@@ -108,7 +108,7 @@ def create_embedding_func():
             func=func,
         )
 
-    # Default: local SentenceTransformer
+    # Default: local SentenceTransformer (platform default is DashScope cloud)
     async def func(texts: list[str]):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _encode_local, texts)

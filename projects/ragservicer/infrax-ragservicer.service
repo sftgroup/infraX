@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/infraX-1/projects/ragservicer
-ExecStart=/home/ubuntu/aiservicer/lightrag/.venv/bin/python main.py
+ExecStart=/home/ubuntu/infraX-1/projects/ragservicer/.venv/bin/python main.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

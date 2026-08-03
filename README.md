@@ -1,6 +1,6 @@
 # InfraX — Web3 基础设施平台
 
-> Monorepo | 12 模块 | Version `v0.5.0-20260801` | 生产 `43.156.99.215`
+> Monorepo | 14 模块 | Version `v0.5.1-20260804` | 生产 `43.156.99.215`
 
 ## 项目介绍
 
@@ -19,6 +19,9 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **Market API** | 代币搜索/K线/热门排行/Meme扫链/聪明钱信号/持仓集群/地址分析/余额(免费)/交易历史(免费) | 9101 |
 | **Admin** | 跨模块聚合管理后台（12 服务状态/租户/交易/收益） | 9100 |
 | **Web Proxy** | 静态文件 + API 反向代理 + 安全头 + 健康检查 | 9111 |
+| **Data** | 统一行情/K 线/因子/快照数据服务（AItrader data-service 迁入） | 9112 |
+| **Knowledge Injector** | 知识图谱注入：拉取快照 → 解析 → 注入 RAGservicer 构建图谱 | 9113 |
+| **RAGservicer** | LightRAG 知识库微服务（文档管理 + 图谱检索 + MCP） | 9721 |
 | **MCP × 5** | AI Agent 接入：DC/Market/MPC/Vault/Wallet 共 58+ tools | 9103/3007/9105/9108/9110 |
 
 ### 三种接入方式
@@ -315,7 +318,7 @@ infraX/
 
 | 环境 | 服务器 | 规格 | 方式 |
 |------|--------|------|------|
-| 生产 | **43.156.99.215** | 4C/8G | systemd (12 units) |
+| 生产 | **43.156.99.215** | 4C/8G | systemd (14 units) |
 | 跳板机 | 129.226.203.60 | 2C/4G/59G | SSH 中转 |
 
 详见 [DEPLOYMENT.md](./DEPLOYMENT.md) 和 [PROGRESS.md](./PROGRESS.md)
@@ -324,6 +327,7 @@ infraX/
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v0.5.1 | 2026-08-04 | AItrader 合并：data-service → projects/data (:9112)、knowledge-injector (:9113)、可配置解析层（YAML 规则驱动）、DC/Collector raw 注入 RAGservicer 构建图谱 |
 | v0.3.2 | 2026-07-18 | 生产 E2E 测试：端口 9100-9111、Web Proxy /health+安全头、Admin API 修复、MPC 前端验证码流程、DB 建表补全、MCP 环境变量+端口修复、浏览器钱包注入 19/19 通过、MCP 45 tools 可用 |
 | v0.3.1 | 2026-07-17 | 新服务器 43.156.99.215、Express 5 迁移、BSC RPC 池三层合并、依赖补全 |
 | v0.3.0 | 2026-07-17 | MPC Agent Wallet（Session Token、EIP-191/712 签名、合约调用、5 链转账）、安全加固 × 3、Bug 修复 × 8、MCP 15 tools |

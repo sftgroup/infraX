@@ -2267,6 +2267,244 @@
       "properties": {
         "language": "module"
       }
+    },
+    {
+      "id": "file:projects/data/main.py",
+      "type": "file",
+      "label": "FastAPI 入口主程序 (v2 端点)",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/config.py",
+      "type": "file",
+      "label": "服务配置",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/factors.py",
+      "type": "file",
+      "label": "因子目录/当前值/历史",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/kline_store.py",
+      "type": "file",
+      "label": "K 线采集存储",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/enrich.py",
+      "type": "file",
+      "label": "bars 统一装配",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/collectors/external_factors.py",
+      "type": "file",
+      "label": "外部因子采集",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/data_sources/factory.py",
+      "type": "file",
+      "label": "数据源工厂",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "file:projects/data/app/storage/sqlite.py",
+      "type": "file",
+      "label": "SQLite 存储",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "data"
+      }
+    },
+    {
+      "id": "service:data",
+      "type": "service",
+      "label": "InfraX Data (行情数据微服务)",
+      "properties": {
+        "language": "service",
+        "port": 9112,
+        "db": "sqlite",
+        "framework": "fastapi+uvicorn"
+      }
+    },
+    {
+      "id": "module:data",
+      "type": "module",
+      "label": "行情数据微服务模块",
+      "properties": {
+        "language": "module"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/main.py",
+      "type": "file",
+      "label": "入口主程序 (注入调度/REST API)",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/config.py",
+      "type": "file",
+      "label": "服务配置",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/injector/worker.py",
+      "type": "file",
+      "label": "注入器工作线程 (15 内置注入器)",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/injector/parser.py",
+      "type": "file",
+      "label": "可配置解析层 (YAML 规则)",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/injector/client.py",
+      "type": "file",
+      "label": "RAGservicer 客户端",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/injector/textify.py",
+      "type": "file",
+      "label": "内置文本化",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/injector/stats.py",
+      "type": "file",
+      "label": "注入统计",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/api/routes.py",
+      "type": "file",
+      "label": "REST API 路由",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/providers/infrax_dc.py",
+      "type": "file",
+      "label": "DC 链上 raw 事件 provider",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/providers/infrax_collector.py",
+      "type": "file",
+      "label": "Collector 市场信号 provider",
+      "properties": {
+        "language": "python",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/parsers/dc_events.yaml",
+      "type": "file",
+      "label": "链上事件解析规则",
+      "properties": {
+        "language": "yaml",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "file:projects/knowledge-injector/parsers/collector_signals.yaml",
+      "type": "file",
+      "label": "市场信号解析规则",
+      "properties": {
+        "language": "yaml",
+        "layer": "service",
+        "service": "knowledge-injector"
+      }
+    },
+    {
+      "id": "service:knowledge-injector",
+      "type": "service",
+      "label": "InfraX Knowledge Injector (知识图谱注入微服务)",
+      "properties": {
+        "language": "service",
+        "port": 9113,
+        "db": "sqlite",
+        "framework": "flask+waitress"
+      }
+    },
+    {
+      "id": "module:knowledge-injector",
+      "type": "module",
+      "label": "知识图谱注入微服务模块",
+      "properties": {
+        "language": "module"
+      }
     }
   ],
   "edges": [
@@ -3228,6 +3466,143 @@
     {
       "source": "service:aiservicer",
       "target": "service:ragservicer",
+      "type": "calls"
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:data",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "project:infrax",
+      "target": "service:knowledge-injector",
+      "type": "contains",
+      "weight": 3
+    },
+    {
+      "source": "service:data",
+      "target": "module:data",
+      "type": "has_module"
+    },
+    {
+      "source": "service:knowledge-injector",
+      "target": "module:knowledge-injector",
+      "type": "has_module"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/main.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/config.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/factors.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/kline_store.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/enrich.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/collectors/external_factors.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/data_sources/factory.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:data",
+      "target": "file:projects/data/app/storage/sqlite.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/main.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/config.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/injector/worker.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/injector/parser.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/injector/client.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/injector/textify.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/injector/stats.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/api/routes.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/providers/infrax_dc.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/providers/infrax_collector.py",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/parsers/dc_events.yaml",
+      "type": "contains"
+    },
+    {
+      "source": "module:knowledge-injector",
+      "target": "file:projects/knowledge-injector/parsers/collector_signals.yaml",
+      "type": "contains"
+    },
+    {
+      "source": "service:knowledge-injector",
+      "target": "service:ragservicer",
+      "type": "calls"
+    },
+    {
+      "source": "service:knowledge-injector",
+      "target": "service:dc",
+      "type": "calls"
+    },
+    {
+      "source": "service:knowledge-injector",
+      "target": "service:collector",
       "type": "calls"
     }
   ],

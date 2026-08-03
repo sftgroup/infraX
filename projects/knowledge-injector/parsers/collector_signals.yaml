@@ -1,0 +1,22 @@
+# Collector 市场信号 → 文本
+parsers:
+  - name: market_signal
+    source: infrax_collector
+    match: {}
+    template: |
+      [Signal] {symbol} {signal_type} at {price:fmt} ({change_pct:+.2f}%),
+      confidence {confidence}, {reason}
+    doc_id: "signal:{symbol}:{signal_type}:{timestamp}"
+    namespace: market
+    dedup: true
+
+  - name: market_hot_token
+    source: infrax_collector
+    match:
+      data_type: [hot_tokens]
+    template: |
+      [Hot Token] {symbol} trending, price {price:fmt} ({change_pct:+.2f}% 24h),
+      volume {volume:fmt}
+    doc_id: "hot:{symbol}:{timestamp}"
+    namespace: market
+    dedup: true

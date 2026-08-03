@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX Knowledge Injector — RAG knowledge graph injector (:9113)
+After=network.target ragservicer.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/knowledge-injector
+Environment=PYTHONPATH=/home/ubuntu/infraX-1/projects/knowledge-injector
+Environment=PORT=9113
+Environment=RAGSERVICER_URL=http://127.0.0.1:9721
+ExecStart=/home/ubuntu/infraX-1/projects/knowledge-injector/.venv/bin/python main.py --api
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/infraX-1/projects/knowledge-injector/service.log
+StandardError=append:/home/ubuntu/infraX-1/projects/knowledge-injector/service.log
+
+[Install]
+WantedBy=multi-user.target

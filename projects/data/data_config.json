@@ -1,0 +1,170 @@
+{
+  "_comment": "Data Service — 数据采集配置。修改后需重启服务生效。",
+
+  "kline": {
+    "_comment": "symbols/timeframes/exchange/fetch_limit 由 .env (KL_* 变量) 控制，此处仅供文档参考。indicators 参数由此处读取。",
+    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
+    "exchange": "binance",
+    "fetch_limit": 500,
+    "indicators": {
+      "_comment": "技术指标计算参数。修改后重启生效。",
+      "rsi": {"period": 14},
+      "macd": {"fast": 12, "slow": 26, "signal": 9},
+      "bollinger": {"window": 20, "num_std": 2},
+      "atr": {"period": 14},
+      "sma": {"windows": [5, 10, 20]}
+    }
+  },
+
+  "crypto": {
+    "coingecko_ids": {
+      "bitcoin":      "BTC",
+      "ethereum":     "ETH",
+      "binancecoin":  "BNB",
+      "solana":       "SOL",
+      "ripple":       "XRP"
+    }
+  },
+
+  "indices": {
+    "symbols": [
+      {"symbol": "^GSPC",     "name": "S&P 500",        "region": "US"},
+      {"symbol": "^IXIC",     "name": "NASDAQ",         "region": "US"},
+      {"symbol": "^DJI",      "name": "Dow Jones",      "region": "US"},
+      {"symbol": "^N225",     "name": "Nikkei 225",     "region": "JP"},
+      {"symbol": "^STOXX50E", "name": "Euro Stoxx 50",  "region": "EU"},
+      {"symbol": "^FTSE",     "name": "FTSE 100",       "region": "UK"},
+      {"symbol": "^HSI",      "name": "Hang Seng",      "region": "HK"}
+    ]
+  },
+
+  "volatility": {
+    "symbols": [
+      {"symbol": "^VXN", "key": "vxn"},
+      {"symbol": "^GVZ", "key": "gvz"}
+    ]
+  },
+
+  "onchain": {
+    "btc_difficulty": true,
+    "btc_height": true
+  },
+
+  "defi": {
+    "top_chains": 10
+  },
+
+  "macro": {
+    "fred_series": {
+      "CPIAUCSL": "CPI",
+      "PCEPILFE": "Core PCE",
+      "PAYEMS":   "NFP",
+      "UNRATE":   "Unemployment",
+      "GDP":      "GDP",
+      "FEDFUNDS": "Fed Funds Rate"
+    }
+  },
+
+  "earnings": {
+    "tickers": [
+      "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+      "JPM", "V", "MA", "XOM", "WMT", "KO", "JNJ",
+      "CRM", "AVGO", "ORCL", "ADBE", "NFLX", "AMD"
+    ]
+  },
+
+  "calendar": {
+    "_comment": "经济日历采集。优先使用 Finnhub API（免费 tier），回退到静态日期。",
+    "source": "auto",
+    "lookahead_days": 7,
+    "event_types": [
+      {"name": "FOMC Meeting",       "impact": "high", "category": "monetary"},
+      {"name": "CPI MoM",            "impact": "high", "category": "inflation"},
+      {"name": "Core CPI MoM",       "impact": "high", "category": "inflation"},
+      {"name": "PPI MoM",            "impact": "medium", "category": "inflation"},
+      {"name": "Nonfarm Payrolls",   "impact": "high", "category": "employment"},
+      {"name": "Unemployment Rate",  "impact": "high", "category": "employment"},
+      {"name": "GDP Growth Rate QoQ","impact": "high", "category": "growth"},
+      {"name": "Retail Sales MoM",   "impact": "medium", "category": "consumption"},
+      {"name": "ISM Manufacturing PMI","impact": "medium", "category": "manufacturing"},
+      {"name": "ISM Services PMI",   "impact": "medium", "category": "services"},
+      {"name": "Consumer Confidence","impact": "medium", "category": "sentiment"},
+      {"name": "Fed Interest Rate Decision","impact": "high", "category": "monetary"}
+    ]
+  },
+
+  "multi_kline": {
+    "_comment": "多市场K线（yfinance免费/akshare免费）。采集周期共用KL_INTERVAL_SEC。",
+    "fetch_bars": 200,
+    "us_stocks": {
+      "symbols": [
+        {"symbol": "AAPL",  "name": "Apple"},
+        {"symbol": "MSFT",  "name": "Microsoft"},
+        {"symbol": "GOOGL", "name": "Google"},
+        {"symbol": "AMZN",  "name": "Amazon"},
+        {"symbol": "NVDA",  "name": "NVIDIA"},
+        {"symbol": "META",  "name": "Meta"},
+        {"symbol": "TSLA",  "name": "Tesla"},
+        {"symbol": "JPM",   "name": "JPMorgan"},
+        {"symbol": "V",     "name": "Visa"},
+        {"symbol": "XOM",   "name": "Exxon Mobil"}
+      ],
+      "timeframes": ["1h", "4h", "1d"]
+    },
+    "forex": {
+      "symbols": [
+        {"symbol": "EURUSD=X", "name": "EUR/USD"},
+        {"symbol": "GBPUSD=X", "name": "GBP/USD"},
+        {"symbol": "USDJPY=X", "name": "USD/JPY"},
+        {"symbol": "AUDUSD=X", "name": "AUD/USD"},
+        {"symbol": "USDCAD=X", "name": "USD/CAD"},
+        {"symbol": "USDCHF=X", "name": "USD/CHF"},
+        {"symbol": "NZDUSD=X", "name": "NZD/USD"},
+        {"symbol": "EURJPY=X", "name": "EUR/JPY"}
+      ],
+      "timeframes": ["1h", "4h", "1d"]
+    },
+    "futures": {
+      "symbols": [
+        {"symbol": "GC=F",  "name": "Gold Futures"},
+        {"symbol": "SI=F",  "name": "Silver Futures"},
+        {"symbol": "CL=F",  "name": "Crude Oil"},
+        {"symbol": "NG=F",  "name": "Natural Gas"},
+        {"symbol": "ZC=F",  "name": "Corn Futures"},
+        {"symbol": "ZW=F",  "name": "Wheat Futures"},
+        {"symbol": "HG=F",  "name": "Copper Futures"},
+        {"symbol": "ES=F",  "name": "S&P 500 Futures"},
+        {"symbol": "NQ=F",  "name": "NASDAQ Futures"},
+        {"symbol": "YM=F",  "name": "Dow Futures"}
+      ],
+      "timeframes": ["1h", "4h", "1d"]
+    },
+    "cn_stocks": {
+      "symbols": [
+        {"symbol": "600519", "name": "贵州茅台", "market": "sh"},
+        {"symbol": "000858", "name": "五粮液",   "market": "sz"},
+        {"symbol": "601318", "name": "中国平安", "market": "sh"},
+        {"symbol": "000333", "name": "美的集团", "market": "sz"},
+        {"symbol": "002594", "name": "比亚迪",   "market": "sz"}
+      ],
+      "timeframes": ["1d"]
+    },
+    "hk_stocks": {
+      "symbols": [
+        {"symbol": "00700", "name": "腾讯控股"},
+        {"symbol": "09988", "name": "阿里巴巴"},
+        {"symbol": "09999", "name": "网易"},
+        {"symbol": "01810", "name": "小米集团"},
+        {"symbol": "09618", "name": "京东集团"}
+      ],
+      "timeframes": ["1d"]
+    }
+  },
+
+  "heatmap": {
+    "_comment": "加密热力图 — CoinGecko 免费，无需 API Key。",
+    "interval_sec": 600,
+    "max_per_category": 30
+  }
+}

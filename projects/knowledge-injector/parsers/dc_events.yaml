@@ -1,0 +1,35 @@
+# DC 链上 raw 事件 → 文本（按 event_type 匹配）
+# 新增事件类型只需在 parsers 下加一条规则，无需改代码。
+parsers:
+  - name: dc_transfer
+    source: infrax_dc
+    match:
+      event_type: [transfer, transfer_batch]
+    template: |
+      [OnChain] {chain} block {block_number}: {token_symbol} {amount:fmt} moved
+      from {from_address:short} to {to_address:short}. tx {tx_hash:short}
+    doc_id: "dc:{event_type}:{chain}:{block_number}:{event_id}"
+    namespace: onchain
+    dedup: true
+
+  - name: dc_swap
+    source: infrax_dc
+    match:
+      event_type: [swap]
+    template: |
+      [OnChain Swap] {chain} block {block_number}: {token_symbol} {amount:fmt}
+      swapped at tx {tx_hash:short}
+    doc_id: "dc:{event_type}:{chain}:{block_number}:{event_id}"
+    namespace: onchain
+    dedup: true
+
+  - name: dc_liquidation
+    source: infrax_dc
+    match:
+      event_type: [liquidation]
+    template: |
+      [OnChain Liquidation] {chain} block {block_number}: {token_symbol} {amount:fmt}
+      liquidated at tx {tx_hash:short}
+    doc_id: "dc:{event_type}:{chain}:{block_number}:{event_id}"
+    namespace: onchain
+    dedup: true

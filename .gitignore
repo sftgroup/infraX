@@ -3,13 +3,24 @@ dist/
 *.log
 logs/
 *.bak
+__pycache__/
+*.pyc
+*.db
 .env
 .env.local
 .env.production
 *.py
+# Python virtualenvs
+**/.venv/
 # Allow Python files in RAGservicer
 !projects/ragservicer/*.py
 !projects/ragservicer/**/*.py
+# Allow Python files in Data (FastAPI)
+!projects/data/*.py
+!projects/data/**/*.py
+# Allow Python files in Knowledge Injector
+!projects/knowledge-injector/*.py
+!projects/knowledge-injector/**/*.py
 create_release.ps1
 release_body.json
 deploy_remote.sh

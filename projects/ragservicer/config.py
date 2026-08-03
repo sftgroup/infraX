@@ -94,7 +94,7 @@ def load_config() -> AppConfig:
             timeout=int(os.getenv("LLM_TIMEOUT", str(LLMConfig.timeout))),
         ),
         embedding=EmbeddingConfig(
-            backend=os.getenv("EMBEDDING_BACKEND", "local"),
+            backend=os.getenv("EMBEDDING_BACKEND", "dashscope"),
             model_name=os.getenv("EMBEDDING_MODEL", EmbeddingConfig.model_name),
             dims=int(os.getenv("EMBEDDING_DIMS", str(EmbeddingConfig.dims))),
             max_token_size=int(os.getenv("EMBEDDING_MAX_TOKENS", str(EmbeddingConfig.max_token_size))),
