@@ -118,6 +118,47 @@ sudo systemctl enable --now infrax-ragservicer
 
 三个服务均已开机自启（`Restart=always`）。
 
+### 3.6 管理后台（infrax-admin，可选）
+
+Admin Panel 统一管理数据栈三个服务（健康、K线/因子/注入/实例）+ LLM API Key 配置：
+
+```bash
+# 前置：Node.js 20+
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+
+cd /home/ubuntu/infraX-1/projects/admin
+npm install --no-audit --no-fund
+npm run build                        # 构建 React 前端 → dist/
+
+# 生成管理密码，写入 systemd 单元
+ADMIN_PASS_VAL=$(openssl rand -hex 16)
+
+# /etc/systemd/system/infrax-admin.service
+#   [Unit]
+#   Description=InfraX Admin Panel (data stack)
+#   After=network.target
+#   [Service]
+#   Type=simple
+#   User=ubuntu
+#   WorkingDirectory=/home/ubuntu/infraX-1/projects/admin
+#   Environment="ADMIN_PASS=<ADMIN_PASS_VAL>"
+#   Environment="ADMIN_USER=admin"
+#   Environment="PORT=3002"
+#   Environment="RESTART_CMD=sudo"        # 面板保存 key 后需免密 sudo 重启 ragservicer
+#   Environment="PATH=/usr/local/bin:/usr/bin:/home/ubuntu/infraX-1/projects/admin/node_modules/.bin:$PATH"
+#   ExecStart=/home/ubuntu/infraX-1/projects/admin/node_modules/.bin/tsx server/index.ts
+#   Restart=on-failure
+#   RestartSec=5
+#   [Install]
+#   WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now infrax-admin
+```
+
+访问 `http://<服务器IP>:3002`，账号 `admin`，密码为上述 `ADMIN_PASS_VAL`（服务器上也保存在 `/home/ubuntu/.admin_pass.txt`）。
+注意：`3002` 端口需在腾讯云安全组放行。
+
 ---
 
 ## 4. 配置详解
@@ -178,6 +219,24 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 
 `multi_kline` 段驱动美股/期货/A股/港股/外汇日线采集，`timeframes` 当前仅 `1d`（akshare 免费源仅日线）。**外汇 `symbols` 在 yfinance 限流期间留空**，恢复后填回 `EURUSD=X` 等 Yahoo 代码。
 
+### 4.5 管理后台（infrax-admin）
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `ADMIN_PASS` | 必填 | 后台登录密码（无则拒绝启动） |
+| `ADMIN_USER` | admin | 登录用户名 |
+| `PORT` | 3002 | 后台端口 |
+| `RESTART_CMD` | sudo | 保存 key 后重启服务用（需免密 sudo；root 可留空） |
+| `RAGSERVICER_ENV_PATH` | `/home/ubuntu/infraX-1/projects/ragservicer/.env` | ragservicer 配置落点 |
+| `DATA_BASE` / `INJECTOR_BASE` / `RAGSERVICER_BASE` | `http://127.0.0.1:9112/9113/9721` | 数据栈服务地址（跨机部署时改） |
+
+**LLM API Key 管理**：后台「Data Stack」页可直接填写 LLM/Embedding/Admin/桥接 4 个 key，保存后自动写入 `ragservicer/.env` 并 `systemctl restart infrax-ragservicer`（若改了桥接 key 还会重启注入器），无需再 SSH。读取时仅返回脱敏值（`sk-n********7890`），不暴露明文。
+
+**REST 接口**（均需后台登录 cookie 或 `X-Admin-Token`）：
+- `GET /api/v2/data/overview` — 三服务健康 + K线/快照/注入统计
+- `GET /api/v2/data/factors` — 因子目录 + 最新外部因子值
+- `GET /api/v2/data/llm-keys` / `POST /api/v2/data/llm-keys` — 脱敏读取 / 写入 key 并重启
+
 ---
 
 ## 5. 数据源与降级链（yfinance 限流绕过）
@@ -232,6 +291,16 @@ curl -s http://127.0.0.1:9112/factors/catalog
 # ④ 注入器 → ragservicer 鉴权
 curl -s -X POST http://127.0.0.1:9113/inject/macro -H 'Content-Type: application/json' -d '{"dry_run":true}'
 curl -s http://127.0.0.1:9721/api/v1/instances -H "X-API-Key: <ADMIN_API_KEY>"
+
+# ⑤ 管理后台
+systemctl is-active infrax-admin                 # active
+curl -s http://127.0.0.1:3002/health             # {"status":"ok","service":"infrax-admin",...}
+# 登录后聚合数据（cookie 或 X-Admin-Token）
+curl -s -c /tmp/cj -X POST http://127.0.0.1:3002/api/v2/admin/login \
+  -H 'Content-Type: application/json' -d '{"username":"admin","password":"<ADMIN_PASS>"}'
+curl -s -b /tmp/cj http://127.0.0.1:3002/api/v2/data/overview   # 三服务健康 + 统计
+curl -s -b /tmp/cj http://127.0.0.1:3002/api/v2/data/llm-keys   # 脱敏 key 状态
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3002/api/v2/data/overview   # 未登录 → 401
 ```
 
 预期结果（已实测 2026-08-04）：`/stats` 显示 21 symbols / 5000+ K线行；`/bars` 返回真实 OHLCV + us10y 因子；因子周期日志 `ExternalFactorCollector cycle: 3/4 sources ok`（DXY 受 yfinance 限流，其余 3 项正常）。
@@ -249,6 +318,10 @@ cd projects/data            && ./.venv/bin/pip install -q -r requirements.txt 2>
 cd ../knowledge-injector    && ./.venv/bin/pip install -q -r requirements.txt 2>/dev/null || true
 cd ../ragservicer           && ./.venv/bin/pip install -q -r requirements.txt 2>/dev/null || true
 sudo systemctl restart infrax-data infrax-knowledge-injector infrax-ragservicer
+
+# 管理后台（改了 admin 前端/后端时）
+cd /home/ubuntu/infraX-1/projects/admin && npm install --no-audit --no-fund && npm run build
+sudo systemctl restart infrax-admin
 ```
 
 ### 7.2 日志
