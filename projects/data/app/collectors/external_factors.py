@@ -2,13 +2,17 @@
 
 Fetches free public data sources (no API key required):
   - Fear & Greed Index (alternative.me)
-  - VIX, DXY, US10Y (yfinance)
+  - VIX (CBOE official CSV, yfinance fallback)
+  - DXY (yfinance; falls back to last saved snapshot when rate-limited)
+  - US10Y (akshare 东财美债收益率, yfinance fallback)
 
-Design: fail-silent background thread, writes via factors.save_snapshot().
+All factors fall back to the last saved snapshot if every source fails,
+so downstream factor consumers never see a gap.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -19,6 +23,7 @@ import requests
 import numpy as np
 
 from app.factors import save_snapshot
+from app.storage import get_db
 from app.collectors.urls import ALTERNATIVE_ME_FNG_URL
 
 logger = logging.getLogger(__name__)
@@ -26,6 +31,28 @@ logger = logging.getLogger(__name__)
 # ── Config ─────────────────────────────────────────────────
 
 COLLECT_INTERVAL = int(os.getenv("FACTOR_COLLECT_INTERVAL_SEC", "300"))  # 5 min
+
+# CBOE 官方 VIX 历史 CSV（免费、稳定、无需 key）
+CBOE_VIX_CSV = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
+
+
+def _last_snapshot_value(provider: str, data_type: str) -> Optional[float]:
+    """从 raw_snapshots 读最近一次快照值（fetch 失败时的 stale 兜底）。"""
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT raw_json FROM raw_snapshots WHERE provider=? AND data_type=? "
+            "ORDER BY fetched_at DESC LIMIT 1",
+            (provider, data_type),
+        ).fetchone()
+        if not row:
+            return None
+        data = json.loads(row[0])
+        if isinstance(data, dict):
+            return data.get("value")
+        return data
+    except Exception:
+        return None
 
 
 # ── Fetchers (fail-silent, return None on error) ──────────
@@ -47,17 +74,39 @@ def _fetch_fear_greed() -> Optional[int]:
     return None
 
 
+def _fetch_vix_cboe() -> Optional[float]:
+    """VIX from CBOE official CSV (no API key, stable)."""
+    try:
+        resp = requests.get(CBOE_VIX_CSV, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            logger.warning("VIX (CBOE) fetch failed: status=%d", resp.status_code)
+            return None
+        lines = [ln.strip() for ln in resp.text.strip().splitlines() if ln.strip()]
+        if len(lines) < 2:
+            logger.warning("VIX (CBOE) fetch: empty payload")
+            return None
+        # last row: DATE,OPEN,HIGH,LOW,CLOSE
+        last = lines[-1].split(",")
+        if len(last) >= 5 and last[4]:
+            return round(float(last[4]), 2)
+        logger.warning("VIX (CBOE) fetch: bad last row %r", last)
+        return None
+    except Exception as exc:
+        logger.warning("VIX (CBOE) fetch failed: %s", exc)
+        return None
+
+
 def _fetch_vix() -> Optional[float]:
-    """VIX from yfinance."""
+    """VIX from yfinance (fallback when CBOE unavailable)."""
     try:
         import yfinance as yf
         ticker = yf.Ticker("^VIX")
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-        logger.warning("VIX fetch: empty history from yfinance")
-    except Exception as exc:
-        logger.warning("VIX fetch failed: %s", exc)
+        logger.debug("VIX fetch: empty history from yfinance")
+    except Exception:
+        logger.debug("VIX fetch failed (yfinance rate-limited?)", exc_info=True)
     return None
 
 
@@ -69,23 +118,41 @@ def _fetch_dxy() -> Optional[float]:
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-        logger.warning("DXY fetch: empty history from yfinance")
-    except Exception as exc:
-        logger.warning("DXY fetch failed: %s", exc)
+        logger.debug("DXY fetch: empty history from yfinance")
+    except Exception:
+        logger.debug("DXY fetch failed (yfinance rate-limited?)", exc_info=True)
     return None
 
 
+def _fetch_us10y_bond() -> Optional[float]:
+    """US 10Y Treasury yield from akshare (东财美债收益率, free)."""
+    try:
+        import akshare as ak
+        df = ak.bond_zh_us_rate(start_date="20180101")
+        if df is None or df.empty or "美国国债收益率10年" not in df.columns:
+            logger.warning("US10Y (akshare) fetch: empty data")
+            return None
+        vals = df["美国国债收益率10年"].dropna()
+        if vals.empty:
+            logger.warning("US10Y (akshare) fetch: no non-null value")
+            return None
+        return round(float(vals.iloc[-1]), 2)
+    except Exception as exc:
+        logger.warning("US10Y (akshare) fetch failed: %s", exc)
+        return None
+
+
 def _fetch_us10y() -> Optional[float]:
-    """US 10-year Treasury yield from yfinance."""
+    """US 10-year Treasury yield from yfinance (fallback)."""
     try:
         import yfinance as yf
         ticker = yf.Ticker("^TNX")
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-        logger.warning("US10Y fetch: empty history from yfinance")
-    except Exception as exc:
-        logger.warning("US10Y fetch failed: %s", exc)
+        logger.debug("US10Y fetch: empty history from yfinance")
+    except Exception:
+        logger.debug("US10Y fetch failed (yfinance rate-limited?)", exc_info=True)
     return None
 
 
@@ -125,20 +192,36 @@ class ExternalFactorCollector:
             save_snapshot("sentiment", "fear_greed", {"value": fg})
             logger.debug("Fear & Greed: %d", fg)
 
-        # VIX
-        vix = _fetch_vix()
+        # VIX: CBOE 官方 → yfinance → DB 最近快照
+        vix = _fetch_vix_cboe()
+        if vix is None:
+            vix = _fetch_vix()
+        if vix is None:
+            vix = _last_snapshot_value("macro", "vix")
+            if vix is not None:
+                logger.warning("VIX: all sources failed, using stale snapshot %.2f", vix)
         if vix is not None:
             save_snapshot("macro", "vix", {"value": vix})
             logger.debug("VIX: %.2f", vix)
 
-        # DXY
+        # DXY: yfinance → DB 最近快照
         dxy = _fetch_dxy()
+        if dxy is None:
+            dxy = _last_snapshot_value("macro", "dxy")
+            if dxy is not None:
+                logger.warning("DXY: yfinance rate-limited, using stale snapshot %.2f", dxy)
         if dxy is not None:
             save_snapshot("macro", "dxy", {"value": dxy})
             logger.debug("DXY: %.2f", dxy)
 
-        # US10Y
-        us10y = _fetch_us10y()
+        # US10Y: akshare 东财 → yfinance → DB 最近快照
+        us10y = _fetch_us10y_bond()
+        if us10y is None:
+            us10y = _fetch_us10y()
+        if us10y is None:
+            us10y = _last_snapshot_value("macro", "us10y")
+            if us10y is not None:
+                logger.warning("US10Y: all sources failed, using stale snapshot %.2f", us10y)
         if us10y is not None:
             save_snapshot("macro", "us10y", {"us10y": us10y})
             logger.debug("US10Y: %.2f%%", us10y)

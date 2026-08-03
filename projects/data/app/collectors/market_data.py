@@ -92,19 +92,45 @@ def _fetch_crypto_prices() -> Optional[list[dict]]:
     return None
 
 
+# 新浪美股指数代码映射（yfinance 代码 → akshare 新浪代码；新浪仅支持美国指数）
+_SINA_INDEX_MAP = {
+    "^GSPC": ".INX",
+    "^IXIC": ".IXIC",
+    "^DJI": ".DJI",
+    "^NDX": ".NDX",
+}
+
+
 def _fetch_global_indices() -> Optional[list[dict]]:
     cfg = _get_config().get("indices", {})
     symbols = cfg.get("symbols", [])
     if not symbols:
         return None
+    results = []
     try:
-        import yfinance as yf
-        results = []
         for entry in symbols:
             sym = entry.get("symbol", "")
             if not sym:
                 continue
+            sina_code = _SINA_INDEX_MAP.get(sym)
             try:
+                if sina_code:
+                    # 新浪日线（绕过 Yahoo 限流）
+                    import akshare as ak
+                    df = ak.index_us_stock_sina(symbol=sina_code)
+                    if df is None or df.empty:
+                        logger.debug("Sina index fetch empty %s (%s)", sym, sina_code)
+                        continue
+                    results.append({
+                        "symbol": sym,
+                        "name": entry.get("name", sym),
+                        "region": entry.get("region", ""),
+                        "price": round(float(df["close"].iloc[-1]), 2),
+                        "change_pct": round(float(df["close"].pct_change().iloc[-1] * 100), 2),
+                    })
+                    continue
+                # 非美国指数 → yfinance 兜底
+                import yfinance as yf
                 t = yf.Ticker(sym)
                 h = t.history(period="5d")
                 if not h.empty:
@@ -115,11 +141,11 @@ def _fetch_global_indices() -> Optional[list[dict]]:
                         "price": round(float(h["Close"].iloc[-1]), 2),
                         "change_pct": round(float(h["Close"].pct_change().iloc[-1] * 100), 2),
                     })
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.debug("Index fetch failed %s: %s", sym, exc)
         return results if results else None
-    except Exception:
-        logger.debug("Indices fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Global indices fetch failed: %s", exc)
     return None
 
 
@@ -186,8 +212,8 @@ def _fetch_volatility() -> Optional[dict]:
                 h = t.history(period="5d")
                 if not h.empty:
                     result[key] = round(float(h["Close"].iloc[-1]), 2)
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.debug("Volatility fetch failed %s: %s", sym, exc)
         return result if result else None
     except Exception as exc:
         logger.warning("Volatility fetch failed: %s", exc)

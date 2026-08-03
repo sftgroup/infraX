@@ -95,7 +95,7 @@
   },
 
   "multi_kline": {
-    "_comment": "多市场K线（yfinance免费/akshare免费）。采集周期共用KL_INTERVAL_SEC。",
+    "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；外汇 yfinance 限流期间留空，恢复后填回。采集周期共用 KL_INTERVAL_SEC。",
     "fetch_bars": 200,
     "us_stocks": {
       "symbols": [
@@ -110,20 +110,12 @@
         {"symbol": "V",     "name": "Visa"},
         {"symbol": "XOM",   "name": "Exxon Mobil"}
       ],
-      "timeframes": ["1h", "4h", "1d"]
+      "timeframes": ["1d"]
     },
     "forex": {
-      "symbols": [
-        {"symbol": "EURUSD=X", "name": "EUR/USD"},
-        {"symbol": "GBPUSD=X", "name": "GBP/USD"},
-        {"symbol": "USDJPY=X", "name": "USD/JPY"},
-        {"symbol": "AUDUSD=X", "name": "AUD/USD"},
-        {"symbol": "USDCAD=X", "name": "USD/CAD"},
-        {"symbol": "USDCHF=X", "name": "USD/CHF"},
-        {"symbol": "NZDUSD=X", "name": "NZD/USD"},
-        {"symbol": "EURJPY=X", "name": "EUR/JPY"}
-      ],
-      "timeframes": ["1h", "4h", "1d"]
+      "_comment": "yfinance 限流期间留空；恢复后填回 EURUSD=X 等 Yahoo 代码。",
+      "symbols": [],
+      "timeframes": ["1d"]
     },
     "futures": {
       "symbols": [
@@ -131,14 +123,12 @@
         {"symbol": "SI=F",  "name": "Silver Futures"},
         {"symbol": "CL=F",  "name": "Crude Oil"},
         {"symbol": "NG=F",  "name": "Natural Gas"},
-        {"symbol": "ZC=F",  "name": "Corn Futures"},
-        {"symbol": "ZW=F",  "name": "Wheat Futures"},
         {"symbol": "HG=F",  "name": "Copper Futures"},
         {"symbol": "ES=F",  "name": "S&P 500 Futures"},
         {"symbol": "NQ=F",  "name": "NASDAQ Futures"},
         {"symbol": "YM=F",  "name": "Dow Futures"}
       ],
-      "timeframes": ["1h", "4h", "1d"]
+      "timeframes": ["1d"]
     },
     "cn_stocks": {
       "symbols": [

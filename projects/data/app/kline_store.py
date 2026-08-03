@@ -19,6 +19,20 @@ from typing import Optional
 
 import ccxt
 import numpy as np
+import requests
+import socket
+
+# akshare 内部大量 requests.get() 不传 timeout，目标源无响应时会无限挂起；
+# 打补丁给所有 requests 调用注入默认超时（显式传过 timeout 的不受影响）。
+_orig_session_request = requests.Session.request
+
+
+def _session_request_with_timeout(self, method, url, **kwargs):
+    kwargs.setdefault("timeout", 12)
+    return _orig_session_request(self, method, url, **kwargs)
+
+
+requests.Session.request = _session_request_with_timeout
 
 from app.config import (
     KL_SYMBOLS,
@@ -291,41 +305,82 @@ class KlineStore:
         return self._multi_config
 
     def _collect_multi_market(self):
-        """Fetch multi-market K-lines and write OHLCV (no indicators)."""
+        """Fetch multi-market K-lines and write OHLCV (no indicators).
+
+        数据源（绕过 Yahoo 限流）：
+          - us_stocks → akshare 新浪日线（stock_us_daily）
+          - futures   → akshare 东财外盘期货日线（futures_foreign_hist）
+          - forex     → yfinance（Yahoo 限流期间在配置中留空）
+        """
         cfg = self._get_multi_config()
         if not cfg:
             return
+        # akshare 内部请求大多不传 timeout，若目标源无响应会无限挂起；
+        # 设置进程级 socket 默认超时，让挂起的请求快速失败并进入退避重试。
+        socket.setdefaulttimeout(10)
         fetch_bars = cfg.get("fetch_bars", 200)
         total = 0
+        failed = []
+        # 新浪/东财接口对快速连续请求会返回空（风控），每 symbol 间节流
+        _THROTTLE = 2.0
 
-        # US stocks / Forex / Futures → yfinance
-        for market_key in ("us_stocks", "forex", "futures"):
-            sect = cfg.get(market_key) or {}
-            for sym in sect.get("symbols", []):
-                for tf in sect.get("timeframes", ["1d"]):
-                    rows = self._fetch_yfinance(sym["symbol"], tf, fetch_bars)
-                    if rows:
-                        self._upsert_ohlcv(sym["symbol"], tf, rows)
-                        total += 1
+        # US stocks → akshare (新浪) — 仅日线
+        us = cfg.get("us_stocks") or {}
+        for sym in us.get("symbols", []):
+            time.sleep(_THROTTLE)
+            rows = self._fetch_akshare_us(sym["symbol"], fetch_bars)
+            if rows:
+                self._upsert_ohlcv(sym["symbol"], "1d", rows)
+                total += 1
+            else:
+                failed.append(sym["symbol"])
+
+        # Futures → akshare (东财) — 仅日线
+        ft = cfg.get("futures") or {}
+        for sym in ft.get("symbols", []):
+            time.sleep(_THROTTLE)
+            rows = self._fetch_akshare_futures(sym["symbol"], fetch_bars)
+            if rows:
+                self._upsert_ohlcv(sym["symbol"], "1d", rows)
+                total += 1
+            else:
+                failed.append(sym["symbol"])
+
+        # Forex → yfinance（Yahoo 恢复后把 symbol 配置回来即可；限流期间跳过）
+        fx = cfg.get("forex") or {}
+        for sym in fx.get("symbols", []):
+            time.sleep(_THROTTLE)
+            rows = self._fetch_yfinance(sym["symbol"], "1d", fetch_bars)
+            if rows:
+                self._upsert_ohlcv(sym["symbol"], "1d", rows)
+                total += 1
 
         # A-shares → akshare
         cn = cfg.get("cn_stocks") or {}
         for sym in cn.get("symbols", []):
+            time.sleep(_THROTTLE)
             rows = self._fetch_akshare_cn(sym["symbol"], sym.get("market", "sh"), fetch_bars)
             if rows:
                 self._upsert_ohlcv(sym["symbol"], "1d", rows)
                 total += 1
+            else:
+                failed.append(sym["symbol"])
 
         # HK stocks → akshare
         hk = cfg.get("hk_stocks") or {}
         for sym in hk.get("symbols", []):
+            time.sleep(_THROTTLE)
             rows = self._fetch_akshare_hk(sym["symbol"], fetch_bars)
             if rows:
                 self._upsert_ohlcv(sym["symbol"], "1d", rows)
                 total += 1
+            else:
+                failed.append(sym["symbol"])
 
         if total:
             logger.info("KlineStore: multi-market saved %d symbol(s)", total)
+        if failed:
+            logger.warning("KlineStore: multi-market failed %d symbol(s): %s", len(failed), ", ".join(failed))
 
     @staticmethod
     def _fetch_yfinance(symbol: str, timeframe: str, bars: int) -> list:
@@ -353,70 +408,146 @@ class KlineStore:
             return []
 
     @staticmethod
+    def _ts_ms(val) -> Optional[int]:
+        """兼容 pandas.Timestamp / datetime / '%Y-%m-%d' 字符串的毫秒时间戳解析。"""
+        import pandas as pd
+        from datetime import datetime as _dt
+        if isinstance(val, (pd.Timestamp, _dt)):
+            return int(val.timestamp() * 1000)
+        if isinstance(val, str):
+            try:
+                return int(_dt.strptime(val[:10], "%Y-%m-%d").timestamp() * 1000)
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _fetch_akshare_us(symbol: str, bars: int) -> list:
+        """US stocks daily OHLCV from akshare (新浪, free, bypasses Yahoo rate-limit).
+
+        新浪对快速/并发请求会返回空（风控，需静默较长时间恢复）：空或异常退避短
+        重试；风控期间重试无益，快速失败留给下一采集周期。
+        """
+        last_err = ""
+        for attempt in range(3):
+            try:
+                import akshare as ak
+                df = ak.stock_us_daily(symbol=symbol)
+                if df is not None and not df.empty:
+                    rows = []
+                    for _, row in df.iterrows():
+                        ts = KlineStore._ts_ms(row.get("date"))
+                        if ts is None:
+                            continue
+                        rows.append((ts, round(float(row["open"]), 8), round(float(row["high"]), 8),
+                                     round(float(row["low"]), 8), round(float(row["close"]), 8),
+                                     round(float(row.get("volume", 0) or 0), 8)))
+                    if rows:
+                        return rows[-bars:]
+                last_err = "empty"
+            except Exception as exc:
+                last_err = str(exc)
+            if attempt < 2:
+                time.sleep(3)
+        logger.warning("akshare US fetch failed %s: %s", symbol, last_err)
+        return []
+
+    @staticmethod
+    def _fetch_akshare_futures(symbol: str, bars: int) -> list:
+        """Foreign futures daily OHLCV from akshare (东财, free).
+
+        symbol 形如 "GC=F"，映射为东财代码 "GC"；empty 或异常均退避重试。
+        """
+        code = symbol.replace("=F", "").replace("=f", "")
+        last_err = ""
+        for attempt in range(3):
+            try:
+                import akshare as ak
+                df = ak.futures_foreign_hist(symbol=code)
+                if df is not None and not df.empty:
+                    rows = []
+                    for _, row in df.iterrows():
+                        ts = KlineStore._ts_ms(row.get("date"))
+                        if ts is None:
+                            continue
+                        rows.append((ts, round(float(row["open"]), 8), round(float(row["high"]), 8),
+                                     round(float(row["low"]), 8), round(float(row["close"]), 8),
+                                     round(float(row.get("volume", 0) or 0), 8)))
+                    if rows:
+                        return rows[-bars:]
+                last_err = "empty"
+            except Exception as exc:
+                last_err = str(exc)
+            if attempt < 2:
+                time.sleep(3)
+        logger.warning("akshare futures fetch failed %s (%s): %s", symbol, code, last_err)
+        return []
+
+    @staticmethod
     def _fetch_akshare_cn(symbol: str, market: str, bars: int) -> list:
-        try:
-            import akshare as ak
-            df = ak.stock_zh_a_hist(symbol=symbol, period="daily",
-                                    start_date=None, end_date=None, adjust="qfq")
-            if df is None or df.empty:
-                logger.debug("akshare CN fetch empty %s", symbol)
-                return []
-            from datetime import datetime
-            rows = []
-            for _, row in df.iterrows():
-                ts_str = str(row.get("日期", ""))
-                try:
-                    ts = int(datetime.strptime(ts_str, "%Y-%m-%d").timestamp() * 1000)
-                except Exception:
-                    continue
-                rows.append((ts, round(float(row["开盘"]), 4), round(float(row["最高"]), 4),
-                             round(float(row["最低"]), 4), round(float(row["收盘"]), 4),
-                             round(float(row.get("成交量", 0)), 0)))
-            return rows[-bars:]
-        except Exception as exc:
-            logger.warning("akshare CN fetch failed %s: %s", symbol, exc)
-            return []
+        """A-shares daily OHLCV from akshare (新浪源, 绕过东财断连)。empty 或异常退避 3s 重试。"""
+        last_err = ""
+        for attempt in range(3):
+            try:
+                import akshare as ak
+                df = ak.stock_zh_a_daily(symbol=f"{market}{symbol}")
+                if df is not None and not df.empty:
+                    rows = []
+                    for _, row in df.iterrows():
+                        ts = KlineStore._ts_ms(row.get("date"))
+                        if ts is None:
+                            continue
+                        rows.append((ts, round(float(row["open"]), 4), round(float(row["high"]), 4),
+                                     round(float(row["low"]), 4), round(float(row["close"]), 4),
+                                     round(float(row.get("volume", 0) or 0), 0)))
+                    if rows:
+                        return rows[-bars:]
+                last_err = "empty"
+            except Exception as exc:
+                last_err = str(exc)
+            if attempt < 2:
+                time.sleep(3)
+        logger.warning("akshare CN fetch failed %s: %s", symbol, last_err)
+        return []
 
     @staticmethod
     def _fetch_akshare_hk(symbol: str, bars: int) -> list:
-        try:
-            import akshare as ak
-            df = ak.stock_hk_hist(symbol=symbol, period="daily",
-                                  start_date=None, end_date=None, adjust="qfq")
-            if df is None or df.empty:
-                logger.debug("akshare HK fetch empty %s", symbol)
-                return []
-            from datetime import datetime
-            rows = []
-            for _, row in df.iterrows():
-                ts_str = str(row.get("日期", ""))
-                try:
-                    ts = int(datetime.strptime(ts_str, "%Y-%m-%d").timestamp() * 1000)
-                except Exception:
-                    continue
-                rows.append((ts, round(float(row["开盘"]), 4), round(float(row["最高"]), 4),
-                             round(float(row["最低"]), 4), round(float(row["收盘"]), 4),
-                             round(float(row.get("成交量", 0)), 0)))
-            return rows[-bars:]
-        except Exception as exc:
-            logger.warning("akshare HK fetch failed %s: %s", symbol, exc)
-            return []
+        """HK stocks daily OHLCV from akshare (新浪源, 绕过东财断连)。empty 或异常退避 3s 重试。"""
+        last_err = ""
+        for attempt in range(3):
+            try:
+                import akshare as ak
+                df = ak.stock_hk_daily(symbol=symbol)
+                if df is not None and not df.empty:
+                    rows = []
+                    for _, row in df.iterrows():
+                        ts = KlineStore._ts_ms(row.get("date"))
+                        if ts is None:
+                            continue
+                        rows.append((ts, round(float(row["open"]), 4), round(float(row["high"]), 4),
+                                     round(float(row["low"]), 4), round(float(row["close"]), 4),
+                                     round(float(row.get("volume", 0) or 0), 0)))
+                    if rows:
+                        return rows[-bars:]
+                last_err = "empty"
+            except Exception as exc:
+                last_err = str(exc)
+            if attempt < 2:
+                time.sleep(3)
+        logger.warning("akshare HK fetch failed %s: %s", symbol, last_err)
+        return []
 
     def _upsert_ohlcv(self, symbol: str, timeframe: str, rows: list):
         """Upsert OHLCV-only rows (no indicators) into kline table."""
         db = get_db()
-        data = [(symbol, timeframe, ts, o, h, l, c, v,
-                 None, None, None, None, None, None, None, None, None, None, None)
+        data = [(symbol, timeframe, ts, o, h, l, c, v)
                 for ts, o, h, l, c, v in rows]
         try:
             with db:
                 db.executemany(
                     """INSERT OR REPLACE INTO kline
-                       (symbol, timeframe, ts, open, high, low, close, volume,
-                        rsi_14, macd, macd_signal, macd_hist,
-                        bb_upper, bb_middle, bb_lower, atr_14,
-                        ma_5, ma_10, ma_20)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       (symbol, timeframe, ts, open, high, low, close, volume)
+                       VALUES (?,?,?,?,?,?,?,?)""",
                     data,
                 )
         except Exception:
