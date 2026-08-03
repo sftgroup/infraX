@@ -14,6 +14,7 @@ Configuration: .env file at project root, or environment variables.
 
 import os
 import logging
+import time
 
 # ── Load .env (must happen before any app imports) ─────────
 from pathlib import Path
@@ -56,6 +57,31 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     return {"code": 0, "message": "ok", "data": {"service": "infrax-data", "version": "1.0.0"}}
+
+
+# ── Access log (every HTTP request) ────────────────────────────
+
+@app.middleware("http")
+async def _access_log(request, call_next):
+    """统一请求日志：method / path / query / client / status / 耗时。"""
+    start = time.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Request failed: %s %s?%s", request.method, request.url.path, request.url.query)
+        raise
+    duration_ms = (time.monotonic() - start) * 1000
+    client = request.client.host if request.client else "-"
+    logger.info(
+        "%s %s?%s -> %d (%.1fms) client=%s",
+        request.method,
+        request.url.path,
+        (request.url.query[:200] if request.url.query else ""),
+        response.status_code,
+        duration_ms,
+        client,
+    )
+    return response
 
 
 # ═══════════════════════════════════════════════════════════════

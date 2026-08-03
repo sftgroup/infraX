@@ -4,9 +4,12 @@
 """
 from __future__ import annotations
 
+import logging
 import time
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 # 启动时间
 _START_TIME = time.time()
@@ -26,6 +29,21 @@ def create_app() -> Flask:
 
     app = Flask(__name__)
     injector = GraphInjector(LightRAGClient())
+
+    # ─── 请求日志（统一） ──────────────────────────────
+
+    @app.before_request
+    def _log_request():
+        g._req_start = time.monotonic()
+        logger.info("→ %s %s (body=%s)", request.method, request.path,
+                    (request.get_data(cache=True)[:200].decode("utf-8", "replace") if request.data else ""))
+
+    @app.after_request
+    def _log_response(response):
+        duration_ms = (time.monotonic() - g.get("_req_start", time.monotonic())) * 1000
+        logger.info("← %s %s -> %d (%.1fms)", request.method, request.path,
+                    response.status_code, duration_ms)
+        return response
 
     # ─── 注入器列表 ────────────────────────────────
 

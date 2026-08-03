@@ -35,6 +35,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _log_runtime_config() -> None:
+    """启动时打印关键配置，便于排查（数据源是否启用）。"""
+    from config import SETTINGS
+
+    logger.info(
+        "Runtime config: lightrag_url=%s enabled=%s default_namespace=%s "
+        "dc_url=%s collector_url=%s interval=%ss",
+        SETTINGS.lightrag_url or "(not set)",
+        SETTINGS.lightrag_enabled,
+        SETTINGS.default_namespace,
+        SETTINGS.dc_url or "(not set)",
+        SETTINGS.collector_url or "(not set)",
+        SETTINGS.injector_interval_sec,
+    )
+
+
 def _get_db():
     """获取 InjectDB 实例（延迟导入）。"""
     try:
@@ -95,6 +111,7 @@ def _run_api(host: str, port: int) -> None:
 
     from api.routes import create_app
 
+    _log_runtime_config()
     app = create_app()
     logger.info("REST API starting on %s:%s", host, port)
     serve(app, host=host, port=port)

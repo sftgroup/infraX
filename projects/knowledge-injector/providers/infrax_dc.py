@@ -58,16 +58,20 @@ def fetch_dc_events(
         resp = requests.get(endpoint, params=params, headers=headers, timeout=_TIMEOUT)
         resp.raise_for_status()
         body = resp.json()
+    except requests.HTTPError:
+        logger.warning("infrax_dc fetch failed status=%d endpoint=%s params=%s", resp.status_code, endpoint, params)
+        return []
     except Exception as exc:
-        logger.debug("infrax_dc fetch failed: %s", exc)
+        logger.warning("infrax_dc fetch failed endpoint=%s: %s", endpoint, exc)
         return []
 
     # 兼容多种响应形态：{data: [...]} / {data: {events: [...]}} / {events: [...]}
     data = body.get("data", body)
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in ("events", "items", "results"):
-            if isinstance(data.get(key), list):
-                return data[key]
-    return []
+        events = data
+    elif isinstance(data, dict):
+        events = next((data[k] for k in ("events", "items", "results") if isinstance(data.get(k), list)), [])
+    else:
+        events = []
+    logger.debug("infrax_dc fetched %d event(s) from %s", len(events), endpoint)
+    return events

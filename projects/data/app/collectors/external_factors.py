@@ -35,11 +35,15 @@ def _fetch_fear_greed() -> Optional[int]:
     """Fear & Greed Index from alternative.me (free, no key)."""
     try:
         resp = requests.get(ALTERNATIVE_ME_FNG_URL, timeout=10)
+        if resp.status_code != 200:
+            logger.warning("Fear & Greed fetch failed: status=%d url=%s", resp.status_code, ALTERNATIVE_ME_FNG_URL)
+            return None
         data = resp.json().get("data", [])
         if data:
             return int(data[0]["value"])
-    except Exception:
-        logger.debug("Fear & Greed fetch failed", exc_info=True)
+        logger.warning("Fear & Greed fetch: empty data payload")
+    except Exception as exc:
+        logger.warning("Fear & Greed fetch failed: %s", exc)
     return None
 
 
@@ -51,8 +55,9 @@ def _fetch_vix() -> Optional[float]:
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-    except Exception:
-        logger.debug("VIX fetch failed", exc_info=True)
+        logger.warning("VIX fetch: empty history from yfinance")
+    except Exception as exc:
+        logger.warning("VIX fetch failed: %s", exc)
     return None
 
 
@@ -64,8 +69,9 @@ def _fetch_dxy() -> Optional[float]:
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-    except Exception:
-        logger.debug("DXY fetch failed", exc_info=True)
+        logger.warning("DXY fetch: empty history from yfinance")
+    except Exception as exc:
+        logger.warning("DXY fetch failed: %s", exc)
     return None
 
 
@@ -77,8 +83,9 @@ def _fetch_us10y() -> Optional[float]:
         hist = ticker.history(period="5d")
         if not hist.empty:
             return round(float(hist["Close"].iloc[-1]), 2)
-    except Exception:
-        logger.debug("US10Y fetch failed", exc_info=True)
+        logger.warning("US10Y fetch: empty history from yfinance")
+    except Exception as exc:
+        logger.warning("US10Y fetch failed: %s", exc)
     return None
 
 
@@ -135,3 +142,6 @@ class ExternalFactorCollector:
         if us10y is not None:
             save_snapshot("macro", "us10y", {"us10y": us10y})
             logger.debug("US10Y: %.2f%%", us10y)
+
+        ok = sum(1 for v in (fg, vix, dxy, us10y) if v is not None)
+        logger.info("ExternalFactorCollector cycle: %d/4 sources ok", ok)

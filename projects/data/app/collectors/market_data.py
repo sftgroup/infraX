@@ -74,6 +74,7 @@ def _fetch_crypto_prices() -> Optional[list[dict]]:
             timeout=COLLECTOR_HTTP_TIMEOUT,
         )
         if resp.status_code != 200:
+            logger.warning("Crypto price fetch failed: status=%d", resp.status_code)
             return None
         data = resp.json()
         return [
@@ -86,8 +87,8 @@ def _fetch_crypto_prices() -> Optional[list[dict]]:
             }
             for cg_id, name in ids.items()
         ]
-    except Exception:
-        logger.debug("Crypto price fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Crypto price fetch failed: %s", exc)
     return None
 
 
@@ -137,8 +138,8 @@ def _fetch_onchain() -> Optional[dict]:
             if r.status_code == 200:
                 result["height"] = r.json().get("height")
         return result if result else None
-    except Exception:
-        logger.debug("On-chain fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("On-chain fetch failed: %s", exc)
     return None
 
 
@@ -150,6 +151,7 @@ def _fetch_defi_tvl() -> Optional[list[dict]]:
     try:
         resp = requests.get(DEFILLAMA_CHAINS_URL, timeout=COLLECTOR_HTTP_TIMEOUT)
         if resp.status_code != 200:
+            logger.warning("DeFi TVL fetch failed: status=%d", resp.status_code)
             return None
         chains = resp.json()
         top = sorted(chains, key=lambda c: c.get("tvl", 0), reverse=True)[:top_n]
@@ -162,8 +164,8 @@ def _fetch_defi_tvl() -> Optional[list[dict]]:
             }
             for c in top
         ]
-    except Exception:
-        logger.debug("DeFi TVL fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("DeFi TVL fetch failed: %s", exc)
     return None
 
 
@@ -187,8 +189,8 @@ def _fetch_volatility() -> Optional[dict]:
             except Exception:
                 continue
         return result if result else None
-    except Exception:
-        logger.debug("Volatility fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Volatility fetch failed: %s", exc)
     return None
 
 
@@ -260,8 +262,8 @@ def _fetch_earnings() -> Optional[list[dict]]:
             except Exception:
                 continue
         return results if results else None
-    except Exception:
-        logger.debug("Earnings fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Earnings fetch failed: %s", exc)
     return None
 
 
@@ -335,3 +337,5 @@ class SnapshotCollector:
 
         if count:
             logger.info("SnapshotCollector: saved %d snapshot(s)", count)
+        else:
+            logger.warning("SnapshotCollector: cycle produced 0 snapshots — all 7 sources failed")

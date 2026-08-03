@@ -102,6 +102,8 @@ class GraphInjector:
             ok = True
         else:
             ok = self._client.inject(text, doc_id=full_source, namespace=namespace)
+            if not ok:
+                logger.warning("Inject failed: %s (ns=%s)", full_source, namespace)
 
         # 3. 记录注入日志
         if self._db is not None:
@@ -140,7 +142,7 @@ class GraphInjector:
                 return self._inject(text, file_source="macro:daily")
             return False
         except Exception:
-            logger.debug("inject_macro failed", exc_info=True)
+            logger.warning("inject_macro failed", exc_info=True)
             return False
 
     def inject_sentiment(self) -> bool:
@@ -156,7 +158,7 @@ class GraphInjector:
             snap_id = self._save_raw(fng, "sentiment", "fear_greed")
             return self._inject(text, file_source="sentiment:daily", snap_id=snap_id)
         except Exception:
-            logger.debug("inject_sentiment failed", exc_info=True)
+            logger.warning("inject_sentiment failed", exc_info=True)
             return False
 
     def inject_crypto_overview(self) -> bool:
@@ -171,7 +173,7 @@ class GraphInjector:
             snap_id = self._save_raw(prices, "sentiment", "crypto_prices")
             return self._inject(text, file_source="crypto:daily", snap_id=snap_id)
         except Exception:
-            logger.debug("inject_crypto_overview failed", exc_info=True)
+            logger.warning("inject_crypto_overview failed", exc_info=True)
             return False
 
     def inject_volatility(self) -> bool:
@@ -192,7 +194,7 @@ class GraphInjector:
                 return self._inject(text, file_source="volatility:daily", snap_id=snap_id)
             return False
         except Exception:
-            logger.debug("inject_volatility failed", exc_info=True)
+            logger.warning("inject_volatility failed", exc_info=True)
             return False
 
     def inject_major_events(self) -> bool:
@@ -217,7 +219,7 @@ class GraphInjector:
                         success = True
             return success
         except Exception:
-            logger.debug("inject_major_events failed", exc_info=True)
+            logger.warning("inject_major_events failed", exc_info=True)
             return False
 
     def inject_news_sentiment(self) -> bool:
@@ -244,7 +246,7 @@ class GraphInjector:
                 return self._inject(text, file_source="news:sentiment_daily")
             return False
         except Exception:
-            logger.debug("inject_news_sentiment failed", exc_info=True)
+            logger.warning("inject_news_sentiment failed", exc_info=True)
             return False
 
     def inject_fred_economics(self) -> bool:
@@ -277,7 +279,7 @@ class GraphInjector:
                     success = True
             return success
         except Exception:
-            logger.debug("inject_fred_economics failed", exc_info=True)
+            logger.warning("inject_fred_economics failed", exc_info=True)
             return False
 
     def inject_earnings_index(self) -> bool:
@@ -294,7 +296,7 @@ class GraphInjector:
                 return self._inject(text, file_source="earnings:megacap:daily")
             return False
         except Exception:
-            logger.debug("inject_earnings_index failed", exc_info=True)
+            logger.warning("inject_earnings_index failed", exc_info=True)
             return False
 
     def inject_onchain(self) -> bool:
@@ -328,7 +330,7 @@ class GraphInjector:
 
             return success
         except Exception:
-            logger.debug("inject_onchain failed", exc_info=True)
+            logger.warning("inject_onchain failed", exc_info=True)
             return False
 
     def inject_defi_tvl(self) -> bool:
@@ -353,7 +355,7 @@ class GraphInjector:
                     success = True
             return success
         except Exception:
-            logger.debug("inject_defi_tvl failed", exc_info=True)
+            logger.warning("inject_defi_tvl failed", exc_info=True)
             return False
 
     def inject_macro_trend(self) -> bool:
@@ -382,7 +384,7 @@ class GraphInjector:
                 return self._inject(text, file_source="macro:trend:daily")
             return False
         except Exception:
-            logger.debug("inject_macro_trend failed", exc_info=True)
+            logger.warning("inject_macro_trend failed", exc_info=True)
             return False
 
     def inject_evm(self) -> bool:
@@ -399,7 +401,7 @@ class GraphInjector:
                 return self._inject(text, file_source="onchain:eth:daily", namespace="onchain")
             return False
         except Exception:
-            logger.debug("inject_evm failed", exc_info=True)
+            logger.warning("inject_evm failed", exc_info=True)
             return False
 
     def inject_global_macro(self) -> bool:
@@ -436,7 +438,7 @@ class GraphInjector:
 
             return success
         except Exception:
-            logger.debug("inject_global_macro failed", exc_info=True)
+            logger.warning("inject_global_macro failed", exc_info=True)
             return False
 
     def inject_indices(self) -> bool:
@@ -455,7 +457,7 @@ class GraphInjector:
                 return self._inject(text, file_source="indices:global:daily", snap_id=snap_id)
             return False
         except Exception:
-            logger.debug("inject_indices failed", exc_info=True)
+            logger.warning("inject_indices failed", exc_info=True)
             return False
 
     def inject_tech_analysis(self) -> bool:
@@ -495,7 +497,7 @@ class GraphInjector:
 
             return success
         except Exception:
-            logger.debug("inject_tech_analysis failed", exc_info=True)
+            logger.warning("inject_tech_analysis failed", exc_info=True)
             return False
 
     # ─── 配置化解析注入（DC / Collector raw data） ──
@@ -551,7 +553,7 @@ class GraphInjector:
             logger.info("inject_parsed(%s): %d/%d units injected", source, sum(1 for r in results if r["ok"]), len(results))
             return results
         except Exception:
-            logger.debug("inject_parsed(%s) failed", source, exc_info=True)
+            logger.warning("inject_parsed(%s) failed", source, exc_info=True)
             return []
 
     # ─── 全量注入 ────────────────────────────────────

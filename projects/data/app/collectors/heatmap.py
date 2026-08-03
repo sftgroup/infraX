@@ -94,6 +94,7 @@ def _fetch_heatmap(max_per: int = 30) -> Optional[dict]:
             timeout=15,
         )
         if resp.status_code != 200:
+            logger.warning("Heatmap fetch failed: status=%d base=%s", resp.status_code, _COINGECKO_BASE)
             return None
 
         coins = resp.json()
@@ -117,8 +118,8 @@ def _fetch_heatmap(max_per: int = 30) -> Optional[dict]:
             result[category] = tickers
 
         return result
-    except Exception:
-        logger.debug("Heatmap fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Heatmap fetch failed: %s", exc)
         return None
 
 

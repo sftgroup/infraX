@@ -59,12 +59,14 @@ class LightRAGClient:
         if not self._enabled:
             return False
         if not text:
+            logger.warning("RAGservicer inject skipped: empty text (ns=%s)", namespace)
             return False
         ns = namespace or SETTINGS.default_namespace
+        resolved_doc_id = doc_id or "injector:default"
         try:
             payload: dict = {
                 "text": text,
-                "doc_id": doc_id or "injector:default",
+                "doc_id": resolved_doc_id,
             }
             resp = requests.post(
                 f"{self._base_url}/api/v1/namespaces/{ns}/documents",
@@ -74,17 +76,28 @@ class LightRAGClient:
             )
             # 2xx=success, 409=already exists (skip)
             ok = resp.status_code < 300 or resp.status_code == 409
-            if not ok:
-                logger.debug("RAGservicer inject %s → %s", resp.status_code, resp.text[:120])
+            if ok:
+                logger.debug(
+                    "RAGservicer inject ok ns=%s doc_id=%s status=%d",
+                    ns, resolved_doc_id, resp.status_code,
+                )
+            else:
+                logger.warning(
+                    "RAGservicer inject failed ns=%s doc_id=%s status=%d body=%s",
+                    ns, resolved_doc_id, resp.status_code, resp.text[:200],
+                )
             return ok
         except requests.Timeout:
-            logger.debug("RAGservicer inject timeout (%ss)", _INJECT_TIMEOUT)
+            logger.warning(
+                "RAGservicer inject timeout (%ss) ns=%s doc_id=%s",
+                _INJECT_TIMEOUT, ns, resolved_doc_id,
+            )
             return False
         except requests.ConnectionError:
-            logger.debug("RAGservicer unreachable: %s", self._base_url)
+            logger.warning("RAGservicer unreachable: %s", self._base_url)
             return False
         except Exception as exc:
-            logger.debug("RAGservicer inject failed: %s", exc)
+            logger.warning("RAGservicer inject failed ns=%s doc_id=%s: %s", ns, resolved_doc_id, exc)
             return False
 
     # ─── query ────────────────────────────────────────
@@ -115,7 +128,17 @@ class LightRAGClient:
             )
             if resp.status_code == 200:
                 body = resp.json()
-                return body.get("data", [])
+                data = body.get("data", [])
+                logger.debug("RAGservicer query ok ns=%s results=%d", ns, len(data))
+                return data
+            logger.warning("RAGservicer query failed ns=%s status=%d body=%s", ns, resp.status_code, resp.text[:200])
             return []
-        except Exception:
+        except requests.Timeout:
+            logger.warning("RAGservicer query timeout (%ss) ns=%s", _QUERY_TIMEOUT, ns)
+            return []
+        except requests.ConnectionError:
+            logger.warning("RAGservicer unreachable: %s", self._base_url)
+            return []
+        except Exception as exc:
+            logger.warning("RAGservicer query failed ns=%s: %s", ns, exc)
             return []

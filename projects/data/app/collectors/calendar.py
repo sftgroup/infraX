@@ -141,8 +141,8 @@ def _fetch_finnhub_calendar() -> Optional[list[dict]]:
                 "source": "finnhub",
             })
         return filtered if filtered else None
-    except Exception:
-        logger.debug("Finnhub calendar fetch failed", exc_info=True)
+    except Exception as exc:
+        logger.warning("Finnhub calendar fetch failed: %s", exc)
     return None
 
 
@@ -185,6 +185,10 @@ class CalendarCollector:
         # Fallback: static FOMC dates
         if not events:
             events = _static_fomc_events()
+            if events:
+                logger.info("CalendarCollector: Finnhub unavailable, using static FOMC (%d event(s))", len(events))
+            else:
+                logger.warning("CalendarCollector: no calendar events from Finnhub or static source")
 
         if not events:
             return

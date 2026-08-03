@@ -339,5 +339,9 @@ def save_snapshot(provider: str, data_type: str, data: dict, symbol: str = ""):
             (provider, data_type, symbol, raw, int(time.time() * 1000), checksum),
         )
         db.commit()
-    except Exception:
-        pass  # best-effort
+    except Exception as exc:
+        # 落库失败不能静默 —— 数据采集链路的关键故障点
+        logger.warning(
+            "save_snapshot failed provider=%s data_type=%s symbol=%s: %s",
+            provider, data_type, symbol, exc,
+        )

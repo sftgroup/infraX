@@ -274,6 +274,7 @@ class KlineStore:
                 "enableRateLimit": True,
                 "options": {"defaultType": "spot"},
             })
+            logger.info("KlineStore: exchange initialized: ccxt.%s", KL_EXCHANGE)
         return self._exchange
 
     # ── multi-market K-lines (yfinance / akshare) ───────────
@@ -337,6 +338,7 @@ class KlineStore:
             ticker = yf.Ticker(symbol)
             df = ticker.history(period=period, interval=interval)
             if df is None or df.empty:
+                logger.debug("yfinance fetch empty %s %s", symbol, timeframe)
                 return []
             import pandas as pd
             rows = []
@@ -346,8 +348,8 @@ class KlineStore:
                              round(float(row["Low"]), 8), round(float(row["Close"]), 8),
                              round(float(row.get("Volume", 0) or 0), 8)))
             return rows[-bars:]
-        except Exception:
-            logger.debug("yfinance fetch failed %s %s", symbol, timeframe, exc_info=True)
+        except Exception as exc:
+            logger.warning("yfinance fetch failed %s %s: %s", symbol, timeframe, exc)
             return []
 
     @staticmethod
@@ -357,6 +359,7 @@ class KlineStore:
             df = ak.stock_zh_a_hist(symbol=symbol, period="daily",
                                     start_date=None, end_date=None, adjust="qfq")
             if df is None or df.empty:
+                logger.debug("akshare CN fetch empty %s", symbol)
                 return []
             from datetime import datetime
             rows = []
@@ -370,8 +373,8 @@ class KlineStore:
                              round(float(row["最低"]), 4), round(float(row["收盘"]), 4),
                              round(float(row.get("成交量", 0)), 0)))
             return rows[-bars:]
-        except Exception:
-            logger.debug("akshare CN fetch failed %s", symbol, exc_info=True)
+        except Exception as exc:
+            logger.warning("akshare CN fetch failed %s: %s", symbol, exc)
             return []
 
     @staticmethod
@@ -381,6 +384,7 @@ class KlineStore:
             df = ak.stock_hk_hist(symbol=symbol, period="daily",
                                   start_date=None, end_date=None, adjust="qfq")
             if df is None or df.empty:
+                logger.debug("akshare HK fetch empty %s", symbol)
                 return []
             from datetime import datetime
             rows = []
@@ -394,8 +398,8 @@ class KlineStore:
                              round(float(row["最低"]), 4), round(float(row["收盘"]), 4),
                              round(float(row.get("成交量", 0)), 0)))
             return rows[-bars:]
-        except Exception:
-            logger.debug("akshare HK fetch failed %s", symbol, exc_info=True)
+        except Exception as exc:
+            logger.warning("akshare HK fetch failed %s: %s", symbol, exc)
             return []
 
     def _upsert_ohlcv(self, symbol: str, timeframe: str, rows: list):

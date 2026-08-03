@@ -36,19 +36,23 @@ def _get(path: str, params: dict | None = None) -> list[dict]:
         resp = requests.get(f"{base}{path}", params=params, headers=_headers(), timeout=_TIMEOUT)
         resp.raise_for_status()
         body = resp.json()
+    except requests.HTTPError:
+        logger.warning("infrax_collector fetch failed status=%d path=%s", resp.status_code, path)
+        return []
     except Exception as exc:
-        logger.debug("infrax_collector fetch %s failed: %s", path, exc)
+        logger.warning("infrax_collector fetch failed path=%s: %s", path, exc)
         return []
 
     # 兼容多种响应形态
     data = body.get("data", body)
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in ("signals", "items", "results", "tokens"):
-            if isinstance(data.get(key), list):
-                return data[key]
-    return []
+        items = data
+    elif isinstance(data, dict):
+        items = next((data[k] for k in ("signals", "items", "results", "tokens") if isinstance(data.get(k), list)), [])
+    else:
+        items = []
+    logger.debug("infrax_collector fetched %d item(s) from %s", len(items), path)
+    return items
 
 
 def fetch_market_signals(limit: int = 50) -> list[dict]:
