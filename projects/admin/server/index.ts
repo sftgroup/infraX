@@ -1,6 +1,7 @@
 // InfraX Admin Server — independent backend for admin panel
 // Aggregates data from all module databases
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { Pool } from 'pg';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -12,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use(cors({ origin: true, credentials: true }));
 
 // Serve React admin frontend
