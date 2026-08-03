@@ -78,7 +78,12 @@ export class RagServicerClient {
         );
       }
 
-      return await res.json();
+      // InfraX standard envelope: { code: 0, message: "ok", data: {...} }
+      const body = await res.json();
+      if (body && typeof body === 'object' && body.code === 0 && 'data' in body) {
+        return body.data as T;
+      }
+      return body as T;
     } finally {
       clearTimeout(timer);
     }

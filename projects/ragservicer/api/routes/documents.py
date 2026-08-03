@@ -1,7 +1,7 @@
 """Document CRUD routes."""
 import logging
 from flask import request, Blueprint
-from api.engine import insert_document as eng_insert, insert_documents_batch, delete_document
+from api.engine import insert_document as eng_insert, insert_documents_batch, delete_document, list_documents
 from api.auth import require_tenant
 from api.code_refactor import parse_json, Guard, handle_errors, build_success, build_error
 
@@ -39,6 +39,22 @@ def register(api: Blueprint):
 
         result = insert_documents_batch(_tenant, namespace, documents)
         return build_success(result, status=201)
+
+    @api.route("/namespaces/<namespace>/documents", methods=["GET"])
+    @require_tenant
+    @handle_errors(logger, "List documents failed")
+    def api_list_documents(namespace, _tenant):
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+        except (TypeError, ValueError):
+            return build_error("page must be an integer", 400)
+        try:
+            limit = max(1, min(100, int(request.args.get("limit", 20))))
+        except (TypeError, ValueError):
+            return build_error("limit must be an integer", 400)
+
+        result = list_documents(_tenant, namespace, page, limit)
+        return build_success(result)
 
     @api.route("/namespaces/<namespace>/documents/<doc_id>", methods=["DELETE"])
     @require_tenant

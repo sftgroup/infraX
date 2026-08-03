@@ -189,3 +189,56 @@ def list_instances() -> list[dict]:
             "namespace": parts[1] if len(parts) > 1 else "default"
         })
     return results
+
+
+# ── Document Listing (pagination) ───────────────────────
+
+def _map_doc_status(status: str) -> str:
+    """Map LightRAG DocStatus → SDK-friendly status (indexed/indexing/error)."""
+    if status == "processed":
+        return "indexed"
+    if status == "failed":
+        return "error"
+    return "indexing"
+
+
+def list_documents(tenant_id: str, namespace: str, page: int = 1, limit: int = 20) -> dict:
+    """List documents in a namespace, paginated, deterministically ordered by doc_id."""
+    rag = get_rag(tenant_id, namespace)
+
+    async def _do():
+        from lightrag.base import DocStatus
+        all_docs: dict[str, object] = {}
+        # No single "list all" API on the storage backend, so sweep every
+        # known status and merge (idempotent via setdefault).
+        for s in DocStatus:
+            try:
+                docs = await rag.get_docs_by_status(s)
+                for doc_id, st in docs.items():
+                    all_docs.setdefault(doc_id, st)
+            except Exception:
+                logger.debug(f"get_docs_by_status({s}) failed, skipping")
+        return all_docs
+
+    docs = _run_async(_do())
+    total = len(docs)
+    start = (page - 1) * limit
+    paged = sorted(docs.items())[start:start + limit]
+
+    documents = []
+    for doc_id, st in paged:
+        documents.append({
+            "doc_id": doc_id,
+            "size_bytes": getattr(st, "content_length", 0),
+            "chunk_count": getattr(st, "chunks_count", 0) or 0,
+            "created_at": getattr(st, "created_at", ""),
+            "status": _map_doc_status(str(getattr(st, "status", ""))),
+        })
+
+    return {
+        "namespace": namespace,
+        "documents": documents,
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
