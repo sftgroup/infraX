@@ -6,6 +6,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dataRouter from './dataRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -374,6 +375,9 @@ app.get('/api/v2/admin/okx/health', requireAdmin, asyncHandler(async (_req: any,
     res.json(apiResponse({ status: 'error', message: 'No OKX data' }));
   }
 }));
+
+// ─── Data Stack (data :9112 / injector :9113 / ragservicer :9721) ───
+app.use('/api/v2/data', requireAdmin, dataRouter);
 
 // ─── Health ───
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-admin', uptime: process.uptime() }));

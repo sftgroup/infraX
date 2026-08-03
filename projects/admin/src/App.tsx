@@ -1,12 +1,13 @@
 import { Routes, Route, useNavigate, useLocation, Navigate, Outlet } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext } from 'react';
-import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings, BarChart3 } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import WaasPanel from './pages/WaasPanel';
 import DcPanel from './pages/DcPanel';
 import VaultPanel from './pages/VaultPanel';
 import MpcPanel from './pages/MpcPanel';
 import DataPipeline from './pages/DataPipeline';
+import DataStack from './pages/DataStack';
 import Revenue from './pages/Revenue';
 import SettingsPage from './pages/SettingsPage';
 import Audit from './pages/Audit';
@@ -24,6 +25,7 @@ const NAV = [
   { path: '/vault', label: 'Vault', icon: Shield },
   { path: '/mpc', label: 'MPC', icon: Key },
   { path: '/pipeline', label: 'Data Pipeline', icon: Activity },
+  { path: '/data', label: 'Data Stack', icon: BarChart3 },
   { path: '/revenue', label: 'Revenue', icon: DollarSign },
   { path: '/settings', label: 'Settings', icon: Settings },
   { path: '/audit', label: 'Audit', icon: FileText },
@@ -83,6 +85,7 @@ function AuthedLayout() {
           <Route path="/vault" element={<VaultPanel />} />
           <Route path="/mpc" element={<MpcPanel />} />
           <Route path="/pipeline" element={<DataPipeline />} />
+          <Route path="/data" element={<DataStack />} />
           <Route path="/revenue" element={<Revenue />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/audit" element={<Audit />} />
