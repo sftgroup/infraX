@@ -191,6 +191,19 @@ def list_instances() -> list[dict]:
     return results
 
 
+def reload_runtime_config() -> None:
+    """Drop cached LLM/embedding factories and existing RAG instances so the
+    next access rebuilds them with freshly-loaded config (hot config update).
+
+    Safe under concurrent access: in-flight operations keep their own object
+    references; new operations simply build a new instance from disk storage.
+    """
+    global _llm_func, _embed_func, _rag_instances
+    _llm_func = None
+    _embed_func = None
+    _rag_instances = {}
+
+
 # ── Document Listing (pagination) ───────────────────────
 
 def _map_doc_status(status: str) -> str:

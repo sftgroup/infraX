@@ -137,3 +137,14 @@ def get_config() -> AppConfig:
     if _config is None:
         raise RuntimeError("Config not loaded — call load_config() at startup")
     return _config
+
+
+def reload_config() -> AppConfig:
+    """Rebuild the config singleton from current environment.
+
+    Used after runtime config updates (e.g. admin API changed .env) so the
+    process picks up new values without a restart. Returns the new config.
+    """
+    global _config
+    _config = None
+    return load_config()
