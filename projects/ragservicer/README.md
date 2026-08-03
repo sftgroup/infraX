@@ -25,6 +25,8 @@
 
 ## 快速开始
 
+> 生产环境（systemd / Docker）完整部署、`.env` 密钥配置与验证清单见 [docs/DEPLOYMENT_DATA_STACK.md](../../docs/DEPLOYMENT_DATA_STACK.md)。
+
 ### 1. 启动服务
 
 ```bash

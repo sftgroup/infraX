@@ -319,9 +319,12 @@ infraX/
 | 环境 | 服务器 | 规格 | 方式 |
 |------|--------|------|------|
 | 生产 | **43.156.99.215** | 4C/8G | systemd (14 units) |
+| 数据服务栈生产 | **43.163.105.172** | 2C/3.6G/59G | systemd (data/injector/ragservicer) |
 | 跳板机 | 129.226.203.60 | 2C/4G/59G | SSH 中转 |
 
-详见 [DEPLOYMENT.md](./DEPLOYMENT.md) 和 [PROGRESS.md](./PROGRESS.md)
+- 区块链服务栈：详见 [DEPLOYMENT.md](./DEPLOYMENT.md)
+- **数据服务栈（9112/9113/9721）**：详见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)
+- 合并进度：详见 [PROGRESS.md](./PROGRESS.md)
 
 ## 版本历史
 

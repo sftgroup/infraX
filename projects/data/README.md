@@ -14,6 +14,8 @@ cp .env.example .env   # 按需修改
 
 systemd：`sudo cp infrax-data.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now infrax-data`
 
+> 生产环境完整部署（systemd / .env / 数据源降级链 / 验证清单）见 [docs/DEPLOYMENT_DATA_STACK.md](../../docs/DEPLOYMENT_DATA_STACK.md)。
+
 ## 环境变量
 
 见 [.env.example](./.env.example)。核心项：
