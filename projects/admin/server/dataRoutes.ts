@@ -3,10 +3,7 @@
 // 全部路由都通过 requireAdmin 鉴权（在 index.ts 挂载时校验）。
 import express from 'express';
 import fs from 'fs';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 
-const execFileP = promisify(execFile);
 const router = express.Router();
 
 // ── 数据栈服务地址（admin 与数据栈同机时默认 127.0.0.1） ──
@@ -19,7 +16,8 @@ const RAGSERVICER_API_BASE = `${RAGSERVICER_BASE}/api/v1`;
 const RAGSERVICER_ENV_PATH =
   process.env.RAGSERVICER_ENV_PATH || '/home/ubuntu/infraX-1/projects/ragservicer/.env';
 
-// ragservicer 管理 key（用于拉取实例列表；优先取 .env 中当前 ADMIN_API_KEY，env 可覆盖）
+// ragservicer 管理 key（调用 /admin/config 与实例列表；优先取 .env 中当前
+// ADMIN_API_KEY，env 可覆盖。改 key 后无需重启 admin，动态读取）
 function readRagAdminKey(): string {
   if (process.env.RAGSERVICER_ADMIN_KEY) return process.env.RAGSERVICER_ADMIN_KEY;
   try {
@@ -31,9 +29,6 @@ function readRagAdminKey(): string {
   }
 }
 const RAGSERVICER_ADMIN_KEY = readRagAdminKey();
-
-// 重启命令前缀：非 root 时填 'sudo'（需免密 sudo），root 时留空
-const RESTART_CMD = process.env.RESTART_CMD || 'sudo';
 
 const TIMEOUT_MS = 8000;
 
@@ -49,16 +44,33 @@ async function getJson<T = any>(url: string, headers: Record<string, string> = {
   }
 }
 
-function maskKey(v: string | undefined): { set: boolean; masked: string } {
-  if (!v) return { set: false, masked: '' };
-  if (v.length <= 8) return { set: true, masked: '********' };
-  return { set: true, masked: `${v.slice(0, 4)}********${v.slice(-4)}` };
-}
-
-async function restartUnit(unit: string): Promise<void> {
-  const bin = RESTART_CMD || 'systemctl';
-  const args = RESTART_CMD ? ['-n', 'systemctl', 'restart', unit] : ['restart', unit];
-  await execFileP(bin, args, { timeout: 30000 });
+// ── RAGservicer 配置 API 转发（替代原 .env 直接读写 + systemctl 重启） ──
+// ragservicer 自身管理 LLM/embedding 配置：GET/PUT /api/v1/admin/config（热生效）。
+async function ragConfigReq<T = any>(method: 'GET' | 'PUT', path: string, body?: any): Promise<{ status: number; data?: T; message?: string }> {
+  if (!RAGSERVICER_ADMIN_KEY) {
+    return { status: 503, message: 'ragservicer admin key 未配置（RAGSERVICER_ADMIN_KEY 或 ragservicer .env 的 ADMIN_API_KEY）' };
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(`${RAGSERVICER_API_BASE}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${RAGSERVICER_ADMIN_KEY}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: r.status, message: j?.message || `HTTP ${r.status}` };
+    return { status: r.status, data: (j?.data ?? j) as T };
+  } catch (e: any) {
+    return { status: 0, message: `连接 ragservicer 失败: ${e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── 概览：三个服务健康 + 关键指标（任一失败不影响其他） ──
@@ -125,82 +137,43 @@ router.get('/factors', async (_req: any, res: any, next: any) => {
   }
 });
 
-// ── LLM Keys：读取（脱敏）状态 ──
-router.get('/llm-keys', (_req: any, res: any) => {
-  try {
-    const env = fs.existsSync(RAGSERVICER_ENV_PATH) ? fs.readFileSync(RAGSERVICER_ENV_PATH, 'utf8') : '';
-    const get = (k: string) => {
-      const line = env.split('\n').find(l => l.startsWith(`${k}=`));
-      return line ? line.split('=').slice(1).join('=').trim() : '';
-    };
-    res.json({
-      code: 0,
-      message: 'success',
-      data: {
-        env_path: RAGSERVICER_ENV_PATH,
-        env_exists: !!env,
-        keys: {
-          llm_api_key: maskKey(get('LLM_BINDING_API_KEY')),
-          embedding_api_key: maskKey(get('EMBEDDING_API_KEY')),
-          admin_api_key: maskKey(get('ADMIN_API_KEY')),
-          ragservicer_api_key: maskKey(get('RAGSERVICER_API_KEY')),
-        },
-      },
-    });
-  } catch (e: any) {
-    res.status(500).json({ code: -1, message: e.message, data: null });
+// ── LLM/Embedding 配置：读取（转发 RAGservicer /admin/config，脱敏） ──
+router.get('/llm-keys', async (_req: any, res: any) => {
+  const r = await ragConfigReq<any>('GET', '/admin/config');
+  if (r.status !== 200 || !r.data) {
+    return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
   }
+  res.json({ code: 0, message: 'success', data: { config: r.data, hot_reload: true } });
 });
 
-// ── LLM Keys：写入 ragservicer .env 并重启服务 ──
+// ── LLM/Embedding 配置：更新（转发 RAGservicer /admin/config，热生效，无需重启） ──
 router.post('/llm-keys', async (req: any, res: any) => {
-  const { llm_api_key, embedding_api_key, admin_api_key, ragservicer_api_key } = req.body || {};
-  const keyMap: Array<[string, string]> = (
-    [
-      ['LLM_BINDING_API_KEY', llm_api_key],
-      ['EMBEDDING_API_KEY', embedding_api_key],
-      ['ADMIN_API_KEY', admin_api_key],
-      ['RAGSERVICER_API_KEY', ragservicer_api_key],
-    ] as Array<[string, string | undefined]>
-  )
-    .filter(([, v]) => v && String(v).trim())
-    .map(([k, v]) => [k, String(v).trim()] as [string, string]);
+  const { llm, embedding } = req.body || {};
 
-  if (!keyMap.length) return res.status(400).json({ code: -1, message: 'nothing to update', data: null });
-  if (!fs.existsSync(RAGSERVICER_ENV_PATH)) {
-    return res.status(400).json({ code: -1, message: `ragservicer .env not found: ${RAGSERVICER_ENV_PATH}`, data: null });
-  }
-
-  try {
-    const lines = fs.readFileSync(RAGSERVICER_ENV_PATH, 'utf8').split('\n');
-    for (const [k, v] of keyMap) {
-      const line = `${k}=${v}`;
-      const idx = lines.findIndex(l => l.startsWith(`${k}=`));
-      if (idx >= 0) lines[idx] = line;
-      else lines.push(line);
+  const pick = (src: any, numFields: string[] = []): Record<string, any> | undefined => {
+    if (!src || typeof src !== 'object') return undefined;
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(src)) {
+      if (v === undefined || v === null || String(v).trim() === '') continue;
+      out[k] = numFields.includes(k) ? Number(v) : String(v).trim();
     }
-    fs.writeFileSync(RAGSERVICER_ENV_PATH, lines.join('\n'));
-  } catch (e: any) {
-    return res.status(500).json({ code: -1, message: `write .env failed: ${e.message}`, data: null });
+    return Object.keys(out).length ? out : undefined;
+  };
+
+  const payload: Record<string, any> = {};
+  const pLlm = pick(llm);
+  if (pLlm) payload.llm = pLlm;
+  const pEmb = pick(embedding, ['dims', 'max_token_size']);
+  if (pEmb) payload.embedding = pEmb;
+  if (!Object.keys(payload).length) {
+    return res.status(400).json({ code: -1, message: 'nothing to update', data: null });
   }
 
-  // 重启 ragservicer；若同步更新了注入器桥接 key 则一并重启注入器
-  const restarted: string[] = [];
-  try {
-    await restartUnit('infrax-ragservicer');
-    restarted.push('infrax-ragservicer');
-  } catch (e: any) {
-    console.error('restart infrax-ragservicer failed:', e.message);
+  const r = await ragConfigReq<any>('PUT', '/admin/config', payload);
+  if (r.status !== 200 || !r.data) {
+    return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
   }
-  if (keyMap.some(([k]) => k === 'RAGSERVICER_API_KEY')) {
-    try {
-      await restartUnit('infrax-knowledge-injector');
-      restarted.push('infrax-knowledge-injector');
-    } catch (e: any) {
-      console.error('restart infrax-knowledge-injector failed:', e.message);
-    }
-  }
-  res.json({ code: 0, message: 'keys saved', data: { updated: keyMap.map(([k]) => k), restarted } });
+  res.json({ code: 0, message: 'success', data: { config: r.data, hot_reload: true } });
 });
 
 export default router;

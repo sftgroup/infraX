@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { BarChart3, Server, FileText, KeyRound, Save, RefreshCw } from 'lucide-react';
 import { api } from '../lib';
 
-interface KeyStatus { set: boolean; masked: string }
+interface RagConfig {
+  llm: { model: string; base_url: string; api_key_set: boolean; api_key: string };
+  embedding: { backend: string; model_name: string; dims: number; max_token_size: number; base_url: string; api_key_set: boolean; api_key: string };
+  env_file: string;
+}
 interface DataStackOverview {
   data: { ok: boolean; error?: string; health?: any; stats?: any };
   injector: { ok: boolean; error?: string; health?: any; stats?: any; recent?: any[] };
@@ -10,17 +14,23 @@ interface DataStackOverview {
   fetched_at: number;
 }
 
-const KEY_LABELS: Array<[string, string]> = [
+const LLM_FIELDS: Array<[string, string]> = [
   ['llm_api_key', 'LLM API Key (DeepSeek)'],
+  ['llm_model', 'LLM Model'],
+  ['llm_base_url', 'LLM Base URL'],
+];
+const EMB_FIELDS: Array<[string, string]> = [
   ['embedding_api_key', 'Embedding API Key (DashScope)'],
-  ['admin_api_key', 'RAGservicer Admin Key'],
-  ['ragservicer_api_key', '注入器桥接 Key (RAGSERVICER_API_KEY)'],
+  ['embedding_backend', 'Embedding Backend'],
+  ['embedding_model_name', 'Embedding Model'],
+  ['embedding_base_url', 'Embedding Base URL'],
 ];
 
 export default function DataStack() {
   const [overview, setOverview] = useState<DataStackOverview | null>(null);
   const [factors, setFactors] = useState<{ catalog?: any; current?: any } | null>(null);
-  const [keys, setKeys] = useState<Record<string, KeyStatus>>({});
+  const [cfg, setCfg] = useState<RagConfig | null>(null);
+  const [cfgErr, setCfgErr] = useState('');
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -30,12 +40,15 @@ export default function DataStack() {
     try {
       const [ov, k] = await Promise.all([
         api<DataStackOverview>('/data/overview'),
-        api<{ keys: Record<string, KeyStatus> }>('/data/llm-keys'),
+        api<{ config: RagConfig }>('/data/llm-keys'),
       ]);
       setOverview(ov);
-      setKeys(k.keys || {});
+      setCfg(k.config || null);
+      setCfgErr('');
       setTs(new Date());
-    } catch {}
+    } catch (e: any) {
+      setCfgErr(e.message);
+    }
     try { setFactors(await api('/data/factors')); } catch {}
   }, []);
 
@@ -46,15 +59,27 @@ export default function DataStack() {
   }, [fetchAll]);
 
   const saveKeys = async () => {
-    const payload: Record<string, string> = {};
-    for (const [k, v] of Object.entries(form)) if (v && v.trim()) payload[k] = v.trim();
-    if (!Object.keys(payload).length) { setMsg({ ok: false, text: '请至少填写一个 key' }); return; }
+    const llm: Record<string, string> = {};
+    const embedding: Record<string, string> = {};
+    if (form.llm_api_key?.trim()) llm.api_key = form.llm_api_key.trim();
+    if (form.llm_model?.trim()) llm.model = form.llm_model.trim();
+    if (form.llm_base_url?.trim()) llm.base_url = form.llm_base_url.trim();
+    if (form.embedding_api_key?.trim()) embedding.api_key = form.embedding_api_key.trim();
+    if (form.embedding_backend?.trim()) embedding.backend = form.embedding_backend.trim();
+    if (form.embedding_model_name?.trim()) embedding.model_name = form.embedding_model_name.trim();
+    if (form.embedding_base_url?.trim()) embedding.base_url = form.embedding_base_url.trim();
+
+    const payload: Record<string, any> = {};
+    if (Object.keys(llm).length) payload.llm = llm;
+    if (Object.keys(embedding).length) payload.embedding = embedding;
+    if (!Object.keys(payload).length) { setMsg({ ok: false, text: '请至少填写一个配置项' }); return; }
+
     setSaving(true);
     setMsg(null);
     try {
-      const r = await api<{ restarted: string[] }>('/data/llm-keys', { method: 'POST', body: JSON.stringify(payload) });
-      const list = (r.restarted || []).join(', ') || '（重启失败，请手动重启）';
-      setMsg({ ok: true, text: `已保存并重启: ${list}` });
+      const r = await api<{ config: RagConfig }>('/data/llm-keys', { method: 'POST', body: JSON.stringify(payload) });
+      setCfg(r.config || null);
+      setMsg({ ok: true, text: '已保存并热生效（无需重启服务）' });
       setForm({});
       fetchAll();
     } catch (e: any) {
@@ -114,36 +139,68 @@ export default function DataStack() {
         </div>
       </div>
 
-      {/* LLM API Keys */}
+      {/* LLM / Embedding 配置（转发 ragservicer /admin/config，热生效） */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> LLM / Embedding API Keys（写入 ragservicer .env 并自动重启）</div>
+          <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> LLM / Embedding 配置（保存后热生效，无需重启）</div>
+          {cfgErr && <span className="badge yellow">{cfgErr}</span>}
         </div>
+
         <div className="form-row" style={{ marginBottom: 6 }}>
-          {KEY_LABELS.map(([k, label]) => {
-            const st = keys[k];
-            return (
-              <div key={k}>
-                <label className="form-label">{label}</label>
-                <input
-                  className="form-input"
-                  type="password"
-                  placeholder={st?.set ? `已配置 ${st.masked}` : '未配置'}
-                  value={form[k] || ''}
-                  onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                  autoComplete="new-password"
-                />
-              </div>
-            );
-          })}
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>LLM（实体抽取 · DeepSeek）</div>
+            {LLM_FIELDS.map(([k, label]) => {
+              const placeholder =
+                k === 'llm_api_key'
+                  ? cfg?.llm.api_key_set ? `已配置 ${cfg.llm.api_key}` : '未配置'
+                  : (cfg?.llm as any)?.[k === 'llm_model' ? 'model' : 'base_url'] || '默认值';
+              return (
+                <div key={k}>
+                  <label className="form-label">{label}</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder={placeholder}
+                    value={form[k] || ''}
+                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                    autoComplete="new-password"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+              Embedding（DashScope）{cfg?.embedding ? ` · dims=${cfg.embedding.dims}` : ''}
+            </div>
+            {EMB_FIELDS.map(([k, label]) => {
+              const placeholder =
+                k === 'embedding_api_key'
+                  ? cfg?.embedding.api_key_set ? `已配置 ${cfg.embedding.api_key}` : '未配置'
+                  : (cfg?.embedding as any)?.[k === 'embedding_backend' ? 'backend' : k === 'embedding_model_name' ? 'model_name' : 'base_url'] || '默认值';
+              return (
+                <div key={k}>
+                  <label className="form-label">{label}</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder={placeholder}
+                    value={form[k] || ''}
+                    onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+                    autoComplete="new-password"
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div className="flex-between">
           <span className="tooltip" style={{ color: msg?.ok ? 'var(--green)' : msg ? 'var(--red)' : 'var(--dim)' }}>
-            {msg?.text || '留空的字段保持不变；保存后 ragservicer 自动重启'}
+            {msg?.text || '留空的字段保持不变；密钥显示为脱敏值，仅展示'}
           </span>
           <button className="btn btn-primary btn-sm" onClick={saveKeys} disabled={saving}>
             {saving ? <span className="spin" style={{ marginRight: 6 }} /> : <Save size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />}
-            {saving ? 'Saving...' : '保存 Keys'}
+            {saving ? 'Saving...' : '保存配置'}
           </button>
         </div>
       </div>
