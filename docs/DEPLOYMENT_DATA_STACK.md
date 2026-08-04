@@ -526,7 +526,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
 | DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ⚠️ | P1 | 2d78050 已部署：market_overview ✅（crypto 15 项实测）；commodities/forex_pairs 走 TD→yfinance→Tiingo 多源兜底（无 key 时 yfinance 免费源，采集器过滤占位价）待实测非空后标 ✅ |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
-| DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | 🔲 | P1 | 与 AItrader 侧联动 |
+| DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | ✅ | P1 | 1f4deea 统一鉴权契约 app_auth 落地；生产三服务实测闭环（见 9.3） |
 
 ### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
 
@@ -537,18 +537,19 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] M4 P2 三件套（Bolt / Moirai / TimesFM，懒加载，全部署）
 - [x] P2 历史落库（`ml_predictions` 表 + P2MlCollector 30min 轮询 + `/ml/predictions` 历史查询，90 天滚动清理）
 - [x] P2 历史注入 RAG（`inject_p2_predictions` + `p2_predictions_report`，2026-08-05 实测落图 4 篇）
-- [ ] BTC 转账流量/巨鲸大额转账注入 RAG（injector：`fetch_btc_transfers` + `onchain_transfers` + `inject_onchain` 扩展已写未提交；data：`_fetch_btc_transfers` 已定义未接入 `_collect`；待提交 + 单测 + 实测落图）
+- [x] BTC 转账流量/巨鲸大额转账注入 RAG（d149320 已提交：injector `fetch_btc_transfers`/`onchain_transfers`/`inject_onchain` + data `_fetch_btc_transfers` 接入 `_collect`；单测 data 5 + injector 59 通过；生产 data 侧 `onchain/btc_transfers` 已落库实测（mempool_txs/height），RAG 注入侧随 9.2/9.3 持续运行验证）
 - [x] 默认注入列表 18 项（含 tree_ml / consensus / p2_predictions）
 
 ### 9.3 部署 / 运维待办（源：本文件 §3~§8）
 
 - [x] ragservicer 配置 LLM / embedding 密钥，端到端注入跑通 → `POST /query` 命中（2026-08-05 实测命中 count=4）
 - [x] 统一鉴权契约 + 共享 app_auth（`projects/shared/app_auth.py` 唯一来源；data/injector/ragservicer/ml-service 同一实现：Bearer/X-API-Key/X-Service-Key、统一 401、/health 豁免、bridge key 回退链收敛，1f4deea）
-- [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 未部署（代码已随 1f4deea 到位）
+- [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 部署于独立服务器 43.156.25.197（:9120，版本 ff2bad5 落后、未含 app_auth，待升级见下）
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
-- [ ] DS-10~DS-12 排期与完成时间（见 9.1）
+- [ ] DS-10~DS-11 排期与完成时间（见 9.1；DS-12 已完成）
+- [ ] ml-service 生产升级至 master（ff2bad5 → 含统一鉴权 app_auth 1f4deea）并实测入站鉴权 + `/ml/*` 出数
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 

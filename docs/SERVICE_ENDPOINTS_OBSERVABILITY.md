@@ -11,7 +11,7 @@
 | `infrax-data` | 9112 | FastAPI | ✅ 运行中（43.163.105.172） | `projects/data/infrax-data.service` | `projects/data/service.log` |
 | `infrax-knowledge-injector` | 9113 | Flask（`--api`） | ✅ 运行中 | `projects/knowledge-injector/infrax-knowledge-injector.service` | `projects/knowledge-injector/service.log` |
 | `infrax-ragservicer` | 9721 | Flask（LightRAG） | ✅ 运行中 | `projects/ragservicer/infrax-ragservicer.service` | `projects/ragservicer/service.log` / `journalctl -u infrax-ragservicer` |
-| `infrax-ml-service` | 9120 | FastAPI | 🔲 代码就绪，独立服务器未部署 | — | — |
+| `infrax-ml-service` | 9120 | FastAPI | ✅ 运行中（43.156.25.197；版本 ff2bad5 落后 master，未含统一鉴权，待升级） | `infrax-ml-service.service` | `journalctl -u infrax-ml-service` |
 | `infrax-admin`（可选） | 3002 | Node/React | 视部署 | `projects/admin` | `journalctl -u infrax-admin` |
 
 ```mermaid
@@ -114,7 +114,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 
 **MCP Server**（`mcp_server/server.py`，STDIO 传输）：`tools/list` 暴露 5 个工具 —— `ragservicer_insert_document` / `ragservicer_query` / `ragservicer_delete_document` / `ragservicer_list_instances` / `ragservicer_retrieve`，供 AI Agent 直接调用 RAG 能力（tenant 由 `mcp_tenant_id` 配置）。
 
-## 6. ml-service :9120 端点（未部署，代码就绪）
+## 6. ml-service :9120 端点（独立服务器 43.156.25.197 已部署）
 
 | Method | Path | 说明 | 鉴权 |
 |:---:|------|------|:---:|
@@ -126,6 +126,8 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | GET | `/ml/bolt` `/ml/moirai` `/ml/timesfm` | P2 时序模型概率预测 | ML_API_KEY |
 
 所有 ML 端点 fail-silent：模型不可用返回 `data: null`。
+
+> **部署状态**：已部署于独立服务器 43.156.25.197（:9120，`infrax-ml-service.service` 运行中）。生产版本 `ff2bad5` 落后 master（未含统一鉴权 app_auth 1f4deea），入站 `ML_API_KEY` 校验暂未生效；升级后 §2 鉴权契约对其同样适用。
 
 ## 7. 模块间依赖关系
 
@@ -148,6 +150,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | 存活 | `GET http://<host>:9112/health` | `code==0` |
 | 存活 | `GET http://<host>:9113/health` | `code==0` + `lightrag_enabled` |
 | 存活 | `GET http://<host>:9721/api/v1/health` | `code==0` |
+| 存活（ml） | `GET http://43.156.25.197:9120/health` | `code==0`（ML 端点另可用 `/ml/consensus` 探测） |
 | 数据规模/新鲜度 | `GET :9112/stats` | `snapshot_rows`、`time_end` |
 | 快照数据面 | `GET :9112/snapshots?type=onchain` 等 | 各 type 非空 + `ts` |
 | 采集健康 | `GET :9112/factors/current` | `_ts` 新鲜度 |
