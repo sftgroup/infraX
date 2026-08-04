@@ -87,7 +87,9 @@ def predict_all() -> list[dict[str, Any]]:
         if len(klines) < lookback:
             logger.warning("Moirai2: %s 历史K线不足（%d < %d）", sym, len(klines), lookback)
             continue
-        hist = klines[-lookback:]
+        # 多取 8 根：uni2ts 2.0.0 在输入长度==context_length 时触发空 pad bug
+        # （np.full((0,1), value) 广播失败），多喂走 slice 分支规避
+        hist = klines[-(lookback + 8):]
         closes_map[sym] = np.asarray([float(b["close"]) for b in hist], dtype=np.float32)
         last_close_map[sym] = float(hist[-1]["close"])
     if not closes_map:
