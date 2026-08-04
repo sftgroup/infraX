@@ -611,11 +611,12 @@ def consensus_report(payload: dict | None) -> str:
     """跨模型共识报告（ml-service /ml/consensus 快照）→ 文本。
 
     参数:
-        payload: {"generated_at", "signals": {"tree"/"volatility"/"sentiment"},
-                 "n_symbols", "avg_consensus_score", "market_risk_flag",
-                 "n_divergence", "symbols": [{symbol, consensus_score,
-                 divergence, risk_flag, tree_direction?, opportunity_score?,
-                 kronos_volatility_level?, sentiment_score?}]}，
+        payload: {"generated_at", "signals": {"tree"/"volatility"/"sentiment"/
+                 "bolt"/"moirai"/"timesfm"}, "n_symbols", "avg_consensus_score",
+                 "market_risk_flag", "n_divergence", "symbols": [{symbol,
+                 consensus_score, divergence, risk_flag, tree_direction?,
+                 opportunity_score?, kronos_volatility_level?, sentiment_score?,
+                 bolt_direction?, moirai_direction?, timesfm_direction?, ...}]}，
                  来自 data-service /snapshots?type=consensus。
 
     只描述共识事实（信号一致度/分歧/风险档位），不做投资建议。
@@ -627,7 +628,7 @@ def consensus_report(payload: dict | None) -> str:
         return ""
     signals = payload.get("signals") or {}
     lines = ["[ML Consensus] 跨模型信号共识聚合:"]
-    present = [k for k in ("tree", "volatility", "sentiment") if signals.get(k)]
+    present = [k for k in ("tree", "volatility", "sentiment", "bolt", "moirai", "timesfm") if signals.get(k)]
     lines.append(f"  signals: {', '.join(present) if present else 'none'}"
                  f" | market_risk {payload.get('market_risk_flag', 'unknown')}"
                  f" | divergence {payload.get('n_divergence', 0)}"
@@ -644,6 +645,10 @@ def consensus_report(payload: dict | None) -> str:
             parts.append(f"kronos_vol {s.get('kronos_volatility_level')}")
         if s.get("sentiment_score") is not None:
             parts.append(f"sentiment {s.get('sentiment_score'):+.2f}")
+        for name in ("bolt", "moirai", "timesfm"):
+            direction = s.get(f"{name}_direction")
+            if direction is not None:
+                parts.append(f"{name} {direction}")
         lines.append(f"  {sym}: {', '.join(parts)}")
     return "\n".join(lines)
 

@@ -43,6 +43,13 @@ def _sentiment(score=-0.45):
     return {"score": score, "ts": 1}
 
 
+def _p2_result(symbol="BTC", prob_up=0.9, direction="up", uncertainty="moderate"):
+    return [{
+        "symbol": symbol, "direction": direction, "prob_up": prob_up,
+        "uncertainty": uncertainty, "point_forecast": [1.0],
+    }]
+
+
 # ── 规则边界 ─────────────────────────────────────────────
 
 class TestAggregateRules:
@@ -53,8 +60,9 @@ class TestAggregateRules:
         assert p["symbols"][0]["divergence"] is False
 
     def test_tree_sentiment_opposite_direction(self):
+        # 2 票各半 → 主导方向占比 1/2 = 0.5；存在 up+down → divergence
         p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), _sentiment(-0.6))
-        assert p["symbols"][0]["consensus_score"] == 0.0
+        assert p["symbols"][0]["consensus_score"] == 0.5
         assert p["symbols"][0]["divergence"] is True
 
     def test_flat_does_not_vote(self):
@@ -65,7 +73,10 @@ class TestAggregateRules:
 
     def test_tree_only_single_signal(self):
         p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), None)
-        assert p["signals"] == {"tree": True, "volatility": True, "sentiment": False}
+        assert p["signals"] == {
+            "tree": True, "volatility": True, "sentiment": False,
+            "bolt": False, "moirai": False, "timesfm": False,
+        }
         assert p["symbols"][0]["consensus_score"] == 1.0
 
     def test_risk_flag_accumulation(self):
@@ -101,6 +112,67 @@ class TestAggregateRules:
         assert p["symbols"][0]["consensus_score"] == 1.0
 
 
+# ── P2 信号整合 ─────────────────────────────────────────
+
+class TestP2Consensus:
+    def test_p2_vote_threshold(self):
+        # prob_up 置信方向才投票；中间置信不投
+        assert cs._p2_vote({"prob_up": 0.95}) == 1.0
+        assert cs._p2_vote({"prob_up": 0.40}) == -1.0
+        assert cs._p2_vote({"prob_up": 0.52}) is None
+        assert cs._p2_vote({}) is None
+
+    def test_bolt_same_direction_as_tree(self):
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), _sentiment(0.6),
+                         bolt_results=_p2_result(prob_up=0.9, direction="up"))
+        s = p["symbols"][0]
+        assert s["consensus_score"] == 1.0  # 3 票全 up
+        assert s["divergence"] is False
+        assert s["bolt_direction"] == "up"
+        assert p["signals"]["bolt"] is True
+
+    def test_bolt_opposes_tree(self):
+        # tree up + sentiment up + bolt down → 2/3 主导 → 0.6667，分歧
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), _sentiment(0.6),
+                         bolt_results=_p2_result(prob_up=0.1, direction="down"))
+        s = p["symbols"][0]
+        assert s["consensus_score"] == round(2 / 3, 4)
+        assert s["divergence"] is True
+        assert p["n_divergence"] == 1
+
+    def test_multi_vote_consensus_ratio(self):
+        # 中性情绪不投票：tree up + bolt up + timesfm down = 3 票 → 主导 2/3
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), _sentiment(0.0),
+                         bolt_results=_p2_result(prob_up=0.9, direction="up"),
+                         timesfm_results=_p2_result(prob_up=0.2, direction="down"))
+        assert p["symbols"][0]["consensus_score"] == round(2 / 3, 4)
+
+    def test_low_confidence_p2_does_not_vote(self):
+        # P2 低置信不投票 → 仅 tree 一票 → 1.0
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), None,
+                         bolt_results=_p2_result(prob_up=0.52, direction="down"))
+        assert p["symbols"][0]["consensus_score"] == 1.0
+        assert p["symbols"][0]["divergence"] is False
+
+    def test_p2_only_signal(self):
+        # 仅 bolt 有方向票 → 1.0
+        p = cs.aggregate(None, [], None, bolt_results=_p2_result(prob_up=0.8, direction="up"))
+        assert p is not None
+        assert p["symbols"][0]["consensus_score"] == 1.0
+
+    def test_p2_uncertainty_adds_risk(self):
+        # 无风险项基础 + bolt high uncertainty → moderate（1 项）
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(level="low"), _sentiment(0.0),
+                         bolt_results=_p2_result(prob_up=0.9, uncertainty="high"))
+        assert p["symbols"][0]["risk_flag"] == "moderate"
+
+    def test_p2_missing_keeps_old_behavior(self):
+        # 不传 P2 参数 → 与 M3 行为一致（2 票反向 0.5 / 无分歧标记不变化）
+        p = cs.aggregate(_tree_payload(direction="up"), _vol_results(), _sentiment(-0.6))
+        assert p["symbols"][0]["consensus_score"] == 0.5
+        assert p["symbols"][0]["divergence"] is True
+
+
 # ── fail-silent ──────────────────────────────────────────
 
 class TestFailSilent:
@@ -122,9 +194,15 @@ class TestBuildConsensus:
 
         import app.analytics.tree_models as tm
         import app.providers.kronos as kr
+        import app.providers.chronos_bolt as bolt
+        import app.providers.moirai2 as moirai
+        import app.providers.timesfm25 as timesfm
         monkeypatch.setattr(tm, "predict_payload", _fail)
         monkeypatch.setattr(kr, "predict_all_volatility", _fail)
         monkeypatch.setattr(cs.data_client, "fetch_sentiment_score", _fail)
+        monkeypatch.setattr(bolt, "predict_all", _fail)
+        monkeypatch.setattr(moirai, "predict_all", _fail)
+        monkeypatch.setattr(timesfm, "predict_all", _fail)
         assert cs.build_consensus() is None
 
     def test_cache_returns_without_recompute(self, monkeypatch):
@@ -136,9 +214,15 @@ class TestBuildConsensus:
 
         import app.analytics.tree_models as tm
         import app.providers.kronos as kr
+        import app.providers.chronos_bolt as bolt
+        import app.providers.moirai2 as moirai
+        import app.providers.timesfm25 as timesfm
         monkeypatch.setattr(tm, "predict_payload", _boom)
         monkeypatch.setattr(kr, "predict_all_volatility", _boom)
         monkeypatch.setattr(cs.data_client, "fetch_sentiment_score", _boom)
+        monkeypatch.setattr(bolt, "predict_all", _boom)
+        monkeypatch.setattr(moirai, "predict_all", _boom)
+        monkeypatch.setattr(timesfm, "predict_all", _boom)
         cs._set_cache({"generated_at": 1, "cached": True, "symbols": [{"symbol": "T"}]})
         assert cs.build_consensus()["cached"] is True
         assert called["n"] == 0
