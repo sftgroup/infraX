@@ -1,8 +1,8 @@
 # InfraX 数据服务栈部署文档
 
-> 最后更新: 2026-08-04 | 适用版本 `v0.5.1-20260804`
+> 最后更新: 2026-08-05 | 适用版本 `v0.5.1-20260804`
 >
-> 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721)
+> 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
 
 本文档描述 AItrader 数据服务栈在生产环境的完整部署流程，包括一次性初始化、配置项、数据源降级链、验证清单与运维方式。
 
@@ -18,23 +18,26 @@
    ccxt/...)     │  │ external_     → 因子快照 (raw_snapshots) │  │
                  │  │ factors        (VIX/US10Y/DXY/F&G)      │  │
                  │  └────────────────────────────────────────┘  │
-                 └───────────────┬──────────────────────────────┘
-                                 │ HTTP (raw_snapshots / injectors)
-                 ┌───────────────▼──────────────────────────────┐
-                 │  knowledge-injector :9113                     │
-                 │  内置注入器(15类) + YAML 可配置解析层          │
-                 │  结构化文本 + 幂等 doc_id                      │
-                 └───────────────┬──────────────────────────────┘
-                                 │ POST /api/v1/namespaces/{ns}/documents
+                 └───────┬───────────────┬──────────────────────┘
+                         │ HTTP          │ HTTP (/bars /symbols → 数据)
+                 ┌───────▼────────┐  ┌───▼───────────────────────┐
+                 │ ml-service :9120│  │ knowledge-injector :9113 │
+                 │ (独立服务器常开) │  │ 内置注入器(15类) + YAML  │
+                 │ LightGBM/       │  │ 结构化文本 + 幂等 doc_id  │
+                 │ FinBERT/Kronos  │  └───────┬──────────────────┘
+                 └────────────────┘          │ POST /api/v1/namespaces/{ns}/documents
                  ┌───────────────▼──────────────────────────────┐
                  │  ragservicer :9721 (LightRAG 微服务)           │
                  │  实体抽取(LLM) + embedding + 知识图谱           │
                  └──────────────────────────────────────────────┘
 ```
 
+> 虚线关系：`ml-service` 拉取 data 的 K 线数据（不直连 SQLite），data/injector 通过 `ML_SERVICE_URL` 拉取推理结果（见 8.5）。
+
 - **data**: 聚合 Crypto(ccxt)/美股/港股/A股/外汇/期货行情、K线、因子与快照数据
 - **knowledge-injector**: 定时把快照转成结构化文本注入 RAGservicer，构建知识图谱
 - **ragservicer**: LightRAG 微服务（实体抽取需 LLM key，embedding 需 DashScope key）
+- **ml-service**: 独立服务器常开，承载 LightGBM / FinBERT / Kronos 模型推理（详见 8.5）
 
 ---
 
@@ -51,6 +54,8 @@
 ```bash
 ssh ubuntu@43.163.105.172
 ```
+
+**ML 推理服务器**（ml-service，待提供后填入）：独立 2C4G 服务器，常开承载三模型（详见 8.5 部署步骤）。
 
 > 注：旧的区块链服务栈（9100-9111）部署在另一台服务器 **43.156.99.215**，见 [DEPLOYMENT.md](../DEPLOYMENT.md)。
 
@@ -255,6 +260,22 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 
 **启用方式**：在对应服务 `.env` 填入 key 并重启即强制校验；删除 key 即回退开放模式（向后兼容，便于 aitrader 调用方逐步接入）。
 
+### 4.7 ml-service（`projects/ml-service/.env`，独立服务器）
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `ML_SERVICE_PORT` | 9120 | 服务端口 |
+| `DATA_SERVICE_URL` | 空 | **必填**，指向主栈 data（`http://<主服务器IP>:9112`），未配置则 LightGBM/Kronos fail-silent |
+| `DATA_API_KEY` | 空 | 主栈 data 的鉴权 key（主栈未配置 key 可留空） |
+| `ML_API_KEY` | 空 | 本服务自身鉴权（主栈 data/injector 侧 `ML_API_KEY` 需同步） |
+| `TREE_ML_ENABLED` / `TREE_ML_HORIZON`(7) / `TREE_ML_UP_THR`(0.01) / `TREE_ML_MIN_SAMPLES`(300) / `TREE_ML_MIN_BARS`(120) / `TREE_ML_MAX_BARS`(2000) / `TREE_ML_RETRAIN_HOURS`(24) | false / … | LightGBM 方向预测开关与训练参数；模型文件 `models/`（git 忽略） |
+| `FINBERT_ENABLED` / `FINBERT_MODEL` | false / `ProsusAI/finbert` | FinBERT 新闻情绪开关与模型名（可换 `yiyanghkust/finbert-tone` 支持中英） |
+| `KRONOS_ENABLED` / `KRONOS_MODEL` / `KRONOS_LOOKBACK`(400) / `KRONOS_PRED_LEN`(30) / `KRONOS_SAMPLE_COUNT`(12) | false / `NeoQuasar/Kronos-mini` / … | Kronos 波动率预测开关与参数；需 systemd `PYTHONPATH` 指向 Kronos 源码 |
+
+**主栈联动配置**（见 8.5 主栈切换）：
+- data `.env`：`ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）
+- injector `.env`：`ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）
+
 ---
 
 ## 5. 数据源与降级链（yfinance 限流绕过）
@@ -293,18 +314,26 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 ```bash
 # ① 服务状态
 systemctl is-active infrax-data infrax-knowledge-injector infrax-ragservicer
-# → active active active
+# → active active active（ml-service 独立服务器：infrax-ml-service）
 
 # ② 健康检查
 curl -s http://127.0.0.1:9112/health            # {"code":0,"data":{"service":"infrax-data",...}}
 curl -s http://127.0.0.1:9113/health            # lightrag_enabled:true 表示注入器已连上 ragservicer
 curl -s http://127.0.0.1:9721/api/v1/health     # {"code":0,"instances":0,...}
+curl -s http://127.0.0.1:9120/health            # ml-service（独立服务器）
 
 # ③ 数据已采集
 curl -s http://127.0.0.1:9112/stats             # kline_rows / symbols / snapshot_rows
 curl -s "http://127.0.0.1:9112/bars?symbol=AAPL&timeframe=1d&limit=3"
 curl -s "http://127.0.0.1:9112/bars?symbol=GC=F&timeframe=1d&limit=3"
 curl -s http://127.0.0.1:9112/factors/catalog
+curl -s "http://127.0.0.1:9112/symbols?timeframe=1d&min_bars=120"   # ml-service 训练标的发现
+
+# ③b ML 推理（ml-service，独立服务器；未配置 ML_SERVICE_URL 时下方快照为空）
+curl -s http://127.0.0.1:9120/ml/tree_predictions
+curl -s http://127.0.0.1:9120/ml/volatility
+curl -s http://127.0.0.1:9112/snapshots?provider=ml               # tree_predictions 快照
+curl -s http://127.0.0.1:9112/snapshots?provider=sentiment        # finbert_sentiment 快照
 
 # ④ 注入器 → ragservicer 鉴权
 curl -s -X POST http://127.0.0.1:9113/inject/macro -H 'Content-Type: application/json' -d '{"dry_run":true}'
@@ -349,6 +378,7 @@ sudo systemctl restart infrax-admin
 | data | `projects/data/service.log` |
 | knowledge-injector | `projects/knowledge-injector/service.log` |
 | ragservicer | `projects/ragservicer/service.log`（或 `journalctl -u infrax-ragservicer`） |
+| ml-service（独立服务器） | `projects/ml-service/service.log`（或 `journalctl -u infrax-ml-service`） |
 
 ```bash
 tail -f projects/data/service.log                # 采集日志（kline/因子/快照）
@@ -378,44 +408,94 @@ sudo journalctl -u infrax-knowledge-injector -f
 
 ---
 
-## 8.5 ML 模型（Kronos / FinBERT / Tree ML）
+## 8.5 ML 模型服务（独立 ml-service，:9120）
 
-三个模型均默认关闭、懒加载，启用不影响现有服务。生产服务器已部署就绪（2026-08-04 实测）。
+三个模型（Kronos / FinBERT / LightGBM）已从主数据栈拆分到**独立 ml-service**，部署在另一台 2C4G 服务器上常开。主栈（data / injector）仅通过 HTTP 拉取结果，不承载推理。
 
-| 模型 | 归属服务 | 开关 | 用途 | 生产状态 |
-|---|---|---|---|---|
-| **Kronos-mini**（P0） | knowledge-injector | `KRONOS_ENABLED` | 金融 K 线波动率/方向预测（真实模型推理，约 42s/周期） | ✅ 已启用 |
-| **FinBERT**（P1a） | data-service | `FINBERT_ENABLED` | 新闻文本情绪分类（需新闻输入） | ✅ 已启用（待新闻 key） |
-| **LightGBM**（P1） | data-service | `TREE_ML_ENABLED` | 方向三分类 + 机会评分（自训，24h 重训） | ✅ 已启用 |
-
-### Kronos-mini 启用（已完成于生产）
-
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install transformers huggingface-hub
-git clone https://github.com/shiyu-coder/Kronos /home/ubuntu/Kronos
-# 依赖与版本：pip install einops（Kronos 固定 hub/safetensors 版本已放宽以兼容 transformers 5.x）
+```
+                 ┌──────────────────────────────┐
+  data :9112 ──▶ │  ml-service :9120            │
+  (HTTP /bars    │  ├─ LightGBM  TREE_ML_ENABLED │  LightGBM 自训→预测
+   + /symbols) ─▶│  ├─ FinBERT   FINBERT_ENABLED │  FinBERT 新闻情绪
+                 │  └─ Kronos    KRONOS_ENABLED  │  Kronos 波动率预测
+  injector :9113 ──▶ GET /ml/volatility          │
+  data :9112    ──▶ GET /ml/tree_predictions     │
+  data :9112    ──▶ POST /ml/sentiment           │
+                 └──────────────────────────────┘
 ```
 
-- systemd unit（`infrax-knowledge-injector.service`）加 `Environment=PYTHONPATH=...:/home/ubuntu/Kronos`
-- injector `.env`：`KRONOS_ENABLED=true`
-- **数据前提**：crypto 需采日线（data `.env` 设 `KL_TIMEFRAMES=1m,1d`），否则 `Kronos: BTC 历史K线不足`；SPY/QQQ 走 yfinance 回退（本机受限流，BTC/ETH 已够用）
-- 预测结果：`/inject/ml_predictions`（Kronos 真实预测，`volatility_level`/`direction_consensus`/`uncertainty`）
+| 模型 | 开关 | 用途 | 数据源 |
+|---|---|---|---|
+| **LightGBM**（P1） | `TREE_ML_ENABLED` | 方向三分类 + 机会评分（自训，24h 重训） | 经 data-service `GET /symbols` + `GET /bars` 拉 K 线 |
+| **FinBERT**（P1a） | `FINBERT_ENABLED` | 新闻文本情绪分类 | 由 data-service `POST /ml/sentiment` 传入文章 |
+| **Kronos-mini**（P0） | `KRONOS_ENABLED` | K 线波动率/方向预测 | 经 data-service `/bars`（yfinance 回退） |
 
-### FinBERT 启用
+**端点**（全部 `{"code":0,"message":"ok","data":...}` 信封，异常 data=None）：
+- `GET /ml/tree_predictions` — LightGBM 快照（model 含 n_samples/val_accuracy + predictions）
+- `POST /ml/sentiment` — body `{"articles":[...]}`，返回聚合情绪 stats
+- `GET /ml/volatility` — Kronos 对 BTC/ETH/SPY/QQQ 的波动率预测列表
+- `GET /health` — 健康检查（`/health` `/docs` 免鉴权）
 
-- data `.env`：`FINBERT_ENABLED=true`（`FINBERT_MODEL` 默认 `ProsusAI/finbert`，可换 `yiyanghkust/finbert-tone` 支持中英）
-- **数据前提**：需 `NEWSAPI_API_KEY`（管理后台 Data Stack 页可热配）——无新闻快照时 collector 空转不产生数据
-- 输出：`raw_snapshots`（provider=sentiment, data_type=finbert_sentiment）
+**鉴权**：ml-service 配置 `ML_API_KEY` 后，主栈调用需 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`；未配置则开放。
 
-### LightGBM（Tree ML）启用
+**数据方向**：ml-service **不直连主栈 SQLite**，全部经 data-service HTTP（`/symbols?timeframe=1d&min_bars=120`、`/bars?limit=5000` 含指标列）。data-service 未配置 `DATA_SERVICE_URL` 时，LightGBM/Kronos fail-silent 返回空。
 
-- data `.env`：`TREE_ML_ENABLED=true`（依赖 lightgbm/scikit-learn/joblib）
-- 自动流程：启动/24h 后训练（kline 日线 ≥300 样本，时序切分验证，2C4G 秒级）→ 每 30min 预测全部 symbol → 快照 `provider=ml, data_type=tree_predictions`
-- 模型文件：`projects/data/models/`（git 忽略）；手动重训：`TREE_ML_RETRAIN_HOURS=24`
-- 注入：knowledge-injector `inject_tree_ml` 已在默认注入列表（真实模型，data-service 未启用时 fail-silent）
+### 部署步骤（新 2C4G 服务器）
 
-> 内存预算（2C4G + 2G swap）：三个模型均懒加载，常驻内存增量 ~200MB（Torch 库加载）；推理峰值 FinBERT ~1.5G / Kronos ~0.5G，不同时高峰即可。
+```bash
+# ① 前置依赖
+sudo apt-get update && sudo apt-get install -y python3.12-venv
+
+# ② 拉代码 + venv + 依赖
+git clone https://github.com/sftgroup/infraX.git /home/ubuntu/infraX-1
+cd /home/ubuntu/infraX-1/projects/ml-service
+python3 -m venv .venv
+./.venv/bin/pip install -q --upgrade pip
+./.venv/bin/pip install -q -r requirements.txt            # FastAPI + 轻量依赖
+./.venv/bin/pip install -q lightgbm scikit-learn joblib    # LightGBM
+./.venv/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+./.venv/bin/pip install -q transformers huggingface-hub einops   # FinBERT + Kronos
+
+# ③ Kronos 源码（PYTHONPATH 指向）
+git clone https://github.com/shiyu-coder/Kronos /home/ubuntu/Kronos
+
+# ④ 配置 .env（DATA_SERVICE_URL 指向主栈）
+cp .env.example .env
+# .env:  DATA_SERVICE_URL=http://<主服务器IP>:9112
+#        DATA_API_KEY=<与主栈 data 一致的 key>（主栈未配置 key 可留空）
+#        TREE_ML_ENABLED=true  FINBERT_ENABLED=true  KRONOS_ENABLED=true
+#        ML_API_KEY=<可选，主栈侧需同步>
+
+# ⑤ systemd 单元（开机自启，Restart=always）
+sudo cp ml-service.service /etc/systemd/system/
+# 注意加 Environment=PYTHONPATH=...:/home/ubuntu/Kronos（与 data-service 配置方式一致）
+sudo systemctl daemon-reload
+sudo systemctl enable --now infrax-ml-service
+```
+
+### 主栈切换（ml-service 就绪后）
+
+- **data `.env`**：设 `ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）；原 `TREE_ML_ENABLED`/`FINBERT_ENABLED` 本地推理开关不再使用（推理已在 ml-service），未配置 `ML_SERVICE_URL` 时 ML 类 collector 空转 fail-silent
+- **injector `.env`**：设 `ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）；Kronos 推理已从 injector 移除，改 HTTP 联动
+- 重启 `infrax-data` / `infrax-knowledge-injector` 后生效
+
+### 验证清单
+
+```bash
+curl -s http://127.0.0.1:9120/health                       # {"code":0,...}
+curl -s "http://127.0.0.1:9112/symbols?timeframe=1d&min_bars=120"   # ml-service 发现标的用
+curl -s http://127.0.0.1:9120/ml/tree_predictions          # 首次约 5s（含训练），之后复用模型
+curl -s -X POST http://127.0.0.1:9120/ml/sentiment \
+  -H 'Content-Type: application/json' -d '{"articles":[]}' # FinBERT 未启用时 data=null
+curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表（未启用时 data=null）
+```
+
+- LightGBM 自动流程：启动/24h 后训练（kline 日线 ≥300 样本，时序切分验证，2C4G 秒级）→ 每 30min 预测全部 symbol；模型文件 `projects/ml-service/models/`（git 忽略）
+- FinBERT 数据前提：主栈需 `NEWSAPI_API_KEY`（管理后台 Data Stack 页可热配）——无新闻快照时 collector 空转不产生数据；输出 `raw_snapshots`（provider=sentiment, data_type=finbert_sentiment）
+- Kronos 数据前提：crypto 需采日线（主栈 data `.env` 设 `KL_TIMEFRAMES=1m,1d`）；SPY/QQQ 走 yfinance 回退
+- 注入：injector `inject_ml_predictions`（Kronos）与 `inject_tree_ml`（LightGBM，拉主栈 tree_predictions 快照）均在默认注入列表，ml-service 未启用时 fail-silent
+
+> 内存预算（2C4G + 2G swap）：三模型均懒加载；常驻增量 ~200MB（Torch 库），推理峰值 FinBERT ~1.5G / Kronos ~0.5G，不同时高峰即可。独立服务器常开不影响主栈稳定性。
 
 ---
 

@@ -1,4 +1,4 @@
-"""app/analytics/sentiment_llm.py 纯函数单测（P1a FinBERT 文本情绪）。
+"""app/analytics/sentiment_llm.py 纯函数单测（FinBERT 文本情绪，ml-service）。
 
 只测纯函数与禁用态行为，不加载 transformers/torch：
   - _field_score / _article_score: 回退链（自带字段优先 → FinBERT → 跳过）
@@ -39,13 +39,12 @@ class TestFieldScore:
         assert sl._field_score(None) is None
         assert sl._field_score("") is None
         assert sl._field_score("unknown") is None
-        assert sl._field_score(5.0) is None  # 超范围
+        assert sl._field_score(5.0) is None
         assert sl._field_score(-5.0) is None
 
 
 class TestArticleScore:
     def test_field_priority(self):
-        # 自带字段优先，即使 FinBERT 给出相反结果
         assert sl._article_score({"sentiment": "positive"}, {"label": "NEGATIVE", "score": 0.9}) == 1.0
 
     def test_finbert_positive(self):
@@ -97,7 +96,6 @@ class TestAnalyzeArticles:
         assert sl.analyze_articles([{"link": "x"}]) is None
 
     def test_model_disabled(self):
-        # FINBERT_ENABLED=false → classify_texts 返回 None → analyze 返回 None（无模拟数据）
         assert sl.analyze_articles([{"title": "Bitcoin rally"}]) is None
 
     def test_uses_field_and_finbert(self):
@@ -107,13 +105,12 @@ class TestAnalyzeArticles:
             {"title": "War risk", "sentiment": "negative"},
         ]
         finbert_results = [
-            {"label": "positive", "score": 0.9},   # 仅走字段，FinBERT 结果被忽略
-            {"label": "neutral", "score": 0.6},    # Fed cuts rates → neutral
-            {"label": "negative", "score": 0.8},   # 仅走字段，FinBERT 结果被忽略
+            {"label": "positive", "score": 0.9},
+            {"label": "neutral", "score": 0.6},
+            {"label": "negative", "score": 0.8},
         ]
         with patch.object(sl, "classify_texts", return_value=finbert_results) as mocked:
             result = sl.analyze_articles(articles)
-        # 三条都有文本 → classify_texts 收到 3 条
         assert mocked.call_count == 1
         assert mocked.call_args.args[0] == ["Markets up today", "Fed cuts rates", "War risk"]
         assert result is not None
@@ -128,17 +125,16 @@ class TestAnalyzeArticles:
     def test_skips_unclassifiable(self):
         articles = [{"title": "A"}, {"sentiment": "positive"}, {"title": "B"}]
         finbert_results = [
-            {"label": "negative", "score": 0.8},  # A → negative
-            {"label": "positive", "score": 0.9},  # B 有字段，忽略 FinBERT 结果
+            {"label": "negative", "score": 0.8},
+            {"label": "positive", "score": 0.9},
         ]
         with patch.object(sl, "classify_texts", return_value=finbert_results) as mocked:
             result = sl.analyze_articles(articles)
-        # 第二条无文本被过滤，classify_texts 只收到 2 条
         assert mocked.call_args.args[0] == ["A", "B"]
         assert result is not None
         assert result["total"] == 2
-        assert result["positive"] == 1  # B
-        assert result["negative"] == 1  # A
+        assert result["positive"] == 1
+        assert result["negative"] == 1
 
     def test_all_skipped_returns_none(self):
         articles = [{"sentiment": "unknown"}, {"title": "x"}]

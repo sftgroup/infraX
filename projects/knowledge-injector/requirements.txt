@@ -7,8 +7,8 @@ numpy>=1.26                     # injector/textify.py 模块级 import（服务�
 # ── 数据源（可选，按需安装） ──────────────────────
 yfinance>=0.2                  # VIX/DXY/US10Y
 
-# ── ML（可选，KRONOS_ENABLED=true 时启用） ────────
-pandas>=2.0                     # providers/ml.py Kronos 推理（懒加载，不影响启动）
+# ── ML（可选，ML_SERVICE_URL 配置时联动 ml-service） ────
+# Kronos 推理已拆分到独立 ml-service（projects/ml-service/），本服务仅 HTTP 调用。
 
 # ── REST API（可选，仅 --api 模式需要） ────────────
 flask>=3.0

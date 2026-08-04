@@ -23,6 +23,9 @@ __pycache__/
 # Allow Python files in Knowledge Injector
 !projects/knowledge-injector/*.py
 !projects/knowledge-injector/**/*.py
+# Allow Python files in ML Service (FastAPI)
+!projects/ml-service/*.py
+!projects/ml-service/**/*.py
 create_release.ps1
 release_body.json
 deploy_remote.sh

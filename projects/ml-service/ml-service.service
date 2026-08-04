@@ -1,0 +1,17 @@
+[Unit]
+Description=InfraX ML Service — LightGBM/FinBERT/Kronos inference (:9120)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/ml-service
+Environment=PYTHONPATH=/home/ubuntu/infraX-1/projects/ml-service:/home/ubuntu/Kronos
+ExecStart=/home/ubuntu/infraX-1/projects/ml-service/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/infraX-1/projects/ml-service/service.log
+StandardError=append:/home/ubuntu/infraX-1/projects/ml-service/service.log
+
+[Install]
+WantedBy=multi-user.target

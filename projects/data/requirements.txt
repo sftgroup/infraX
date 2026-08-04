@@ -12,13 +12,6 @@ numpy>=1.24.0
 finnhub-python>=2.4.0
 akshare>=1.11.0
 
-# ── ML（可选，FINBERT_ENABLED=true 时启用本地文本情绪）────
-# 部署机启用需另装 torch：pip install torch --index-url https://download.pytorch.org/whl/cpu
-transformers>=4.40.0
-huggingface-hub>=0.23.0
-
-# ── Tree ML（可选，TREE_ML_ENABLED=true 时启用 LightGBM 方向预测）────
-# 纯 CPU 训练，2C4G 足够（样本数千行 × 数十特征，秒级训练）
-lightgbm>=4.0.0
-scikit-learn>=1.3.0
-joblib>=1.2.0
+# ── ML 推理已拆分到独立 ml-service（projects/ml-service/）────
+# 本服务仅通过 HTTP 调用 ml-service（/ml/tree_predictions、/ml/sentiment），
+# 无需安装 lightgbm / transformers / torch 等模型依赖。

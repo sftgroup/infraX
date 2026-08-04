@@ -1,24 +1,22 @@
-"""Tree ML — LightGBM 方向预测（P1，真实训练，无模拟回退）。
+"""Tree ML — LightGBM 方向预测（真实训练，无模拟回退）。
 
-从 kline 表读日线历史（含技术指标列 rsi_14/macd/bb/atr/ma_*），
-构造特征 + 未来 horizon 日收益方向标签（三分类 up/flat/down），
-训练 LightGBM 分类器。对每个 symbol 最新特征预测：
+归属：ml-service 算法层（独立推理服务）。数据经 data_client 走
+data-service /bars + /symbols（HTTP），不直连 SQLite。
+
+从 data-service 拉取日线历史（含技术指标列），构造特征 + 未来
+horizon 日收益方向标签（三分类 up/flat/down），训练 LightGBM
+分类器，对每个 symbol 最新特征预测：
 
     direction（prob_up/prob_flat/prob_down）+ 机会评分（0-100）
     + 波动率档位（基于该 symbol 历史 vol_20 分位数）
 
-结果存快照（provider="ml", data_type="tree_predictions"），由
-TreeMlCollector 调度。TREE_ML_ENABLED=false（默认）时完全不产生
-任何数据/不写快照；模型文件存 projects/data/models/（joblib）。
-
-2C4G 可行性：样本量 = Σ(各 symbol 日线有效行数)，当前数千行 ×
-约 30 特征，LightGBM CPU 秒级训练、内存几十 MB，无 GPU 需求。
-
-归属：算法层（app/analytics/），collector 只负责调度与落库。
+TREE_ML_ENABLED=false（默认）时 predict_payload() 返回 None
+（不产生任何数据）；模型文件存 ml-service/models/（joblib）。
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -27,28 +25,21 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from app.storage import get_db
+import config
+from app import data_client
 
-logger = __import__("logging").getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-# ── 配置（环境变量） ──────────────────────────────────────────
+# ── 常量 ────────────────────────────────────────────────────
 
 DIR_UP = 2
 DIR_FLAT = 1
 DIR_DOWN = 0
 _DIR_NAME = {DIR_UP: "up", DIR_FLAT: "flat", DIR_DOWN: "down"}
 
-HORIZON = int(os.getenv("TREE_ML_HORIZON", "7"))          # 未来 N 日收益作为标签
-UP_THR = float(os.getenv("TREE_ML_UP_THR", "0.01"))       # >+1% up / <-1% down / 其余 flat
-MIN_SAMPLES = int(os.getenv("TREE_ML_MIN_SAMPLES", "300"))  # 不足则跳过训练
-MIN_BARS = int(os.getenv("TREE_ML_MIN_BARS", "120"))        # 单 symbol 最少日线根数
-MAX_BARS = int(os.getenv("TREE_ML_MAX_BARS", "2000"))       # 单 symbol 最多用多少根
 TIMEFRAME = "1d"
-TREE_ML_ENABLED = os.getenv("TREE_ML_ENABLED", "false").strip().lower() in (
-    "1", "true", "yes", "on",
-)
 
-_MODEL_DIR = Path(os.getenv("TREE_ML_MODEL_DIR", str(Path(__file__).resolve().parent.parent / "models")))
+_MODEL_DIR = Path(config.TREE_ML_MODEL_DIR)
 _MODEL_FILE = _MODEL_DIR / "tree_direction.joblib"
 _META_FILE = _MODEL_DIR / "meta.json"
 
@@ -58,7 +49,7 @@ _LGB_IMPORT_ERROR = None
 def _enabled() -> bool:
     """TREE_ML_ENABLED=true 且 lightgbm 可导入才启用（懒加载，不崩）。"""
     global _LGB_IMPORT_ERROR
-    if not TREE_ML_ENABLED:
+    if not config.TREE_ML_ENABLED:
         return False
     if _LGB_IMPORT_ERROR is None:
         try:
@@ -69,7 +60,7 @@ def _enabled() -> bool:
     return _LGB_IMPORT_ERROR is None
 
 
-# ── 特征工程（纯函数，可单测） ────────────────────────────────
+# ── 特征工程（纯函数，可单测） ──────────────────────────────
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
     """从 OHLCV(+技术指标) DataFrame 构造特征。
@@ -117,11 +108,13 @@ def _num(df: pd.DataFrame, col: str) -> pd.Series:
     return df[col].astype(float)
 
 
-def make_labels(df: pd.DataFrame, horizon: int = HORIZON, up_thr: float = UP_THR) -> pd.Series:
+def make_labels(df: pd.DataFrame, horizon: int = None, up_thr: float = None) -> pd.Series:
     """未来 horizon 日收益 → 方向标签（2=up / 1=flat / 0=down）。
 
     尾部 horizon 行因无未来数据为 NaN（训练时丢弃）。
     """
+    horizon = horizon or config.TREE_ML_HORIZON
+    up_thr = up_thr if up_thr is not None else config.TREE_ML_UP_THR
     close = df["close"].astype(float)
     future_ret = close.shift(-horizon) / close - 1.0
     labels = pd.Series(np.nan, index=df.index, dtype="float64")
@@ -147,58 +140,45 @@ def volatility_level(vol_pct: float) -> str:
     return "very_high"
 
 
-# ── 数据加载 / 数据集构造 ─────────────────────────────────────
+# ── 数据加载（HTTP → DataFrame） ───────────────────────────
 
-def _kline_symbols(min_bars: int = MIN_BARS) -> list[str]:
-    """kline 表中 timeframe='1d' 且行数 >= min_bars 的 symbol 列表。"""
+def _kline_symbols(min_bars: int = None) -> list[str]:
+    """data-service 中 timeframe='1d' 且行数 >= min_bars 的 symbol 列表。"""
+    min_bars = min_bars or config.TREE_ML_MIN_BARS
     try:
-        db = get_db()
-        rows = db.execute(
-            """SELECT symbol, COUNT(*) AS n FROM kline
-               WHERE timeframe = ? GROUP BY symbol HAVING n >= ?""",
-            (TIMEFRAME, min_bars),
-        ).fetchall()
-        return [r["symbol"] for r in rows]
+        return data_client.fetch_symbols(timeframe=TIMEFRAME, min_bars=min_bars)
     except Exception as exc:
-        logger.debug("tree_ml _kline_symbols failed: %s", exc)
+        logger.debug("tree_ml fetch_symbols failed: %s", exc)
         return []
 
 
-def _load_kline_df(symbol: str, limit: int = MAX_BARS) -> Optional[pd.DataFrame]:
-    """读某 symbol 日线（升序）→ DataFrame[ts, open, high, low, close, volume, ...指标]。"""
+def _load_kline_df(symbol: str, limit: int = None) -> Optional[pd.DataFrame]:
+    """拉某 symbol 日线（升序）→ DataFrame[ts, open, high, low, close, volume, ...指标]。"""
+    limit = limit or config.TREE_ML_MAX_BARS
     try:
-        db = get_db()
-        rows = db.execute(
-            """SELECT ts, open, high, low, close, volume,
-                      rsi_14, macd, macd_signal, macd_hist,
-                      bb_upper, bb_middle, bb_lower, atr_14,
-                      ma_5, ma_10, ma_20
-               FROM kline WHERE symbol = ? AND timeframe = ?
-               ORDER BY ts ASC LIMIT ?""",
-            (symbol, TIMEFRAME, limit),
-        ).fetchall()
-        if not rows:
+        bars = data_client.fetch_bars(symbol, timeframe=TIMEFRAME, limit=limit)
+        if not bars:
             return None
-        df = pd.DataFrame([dict(r) for r in rows])
+        df = pd.DataFrame(bars)
         for col in ("open", "high", "low", "close", "volume"):
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
     except Exception as exc:
         logger.debug("tree_ml _load_kline_df(%s) failed: %s", symbol, exc)
         return None
 
 
-def build_dataset(
-    horizon: int = HORIZON,
-    up_thr: float = UP_THR,
-    min_bars: int = MIN_BARS,
-    max_bars: int = MAX_BARS,
-) -> Optional[list[tuple[str, pd.DataFrame]]]:
+def build_dataset() -> Optional[list[tuple[str, pd.DataFrame]]]:
     """构造 [(symbol, Xy)]，Xy = 特征 + 方向标签（drop 无标签行）。
 
     单 symbol 有效样本 < 30 跳过；总样本 < MIN_SAMPLES 返回 None。
     特征列 NaN 保留（训练时按列中位数填充）。
     """
+    horizon = config.TREE_ML_HORIZON
+    up_thr = config.TREE_ML_UP_THR
+    min_bars = config.TREE_ML_MIN_BARS
+    max_bars = config.TREE_ML_MAX_BARS
     symbols = _kline_symbols(min_bars)
     if not symbols:
         return None
@@ -215,16 +195,12 @@ def build_dataset(
         if len(Xy) < 30:
             continue
         frames.append((sym, Xy))
-    if not frames or sum(len(f) for _, f in frames) < MIN_SAMPLES:
+    if not frames or sum(len(f) for _, f in frames) < config.TREE_ML_MIN_SAMPLES:
         return None
     return frames
 
 
-# ── 训练 / 持久化 ─────────────────────────────────────────────
-
-def _model_paths() -> tuple[Path, Path]:
-    return _MODEL_FILE, _META_FILE
-
+# ── 训练 / 持久化 ──────────────────────────────────────────
 
 def _load_meta() -> Optional[dict]:
     try:
@@ -243,6 +219,13 @@ def _load_model() -> Optional[Any]:
     except Exception as exc:
         logger.warning("tree_ml load model failed: %s", exc)
     return None
+
+
+def _is_stale(meta: Optional[dict]) -> bool:
+    """无模型或超过重训周期。"""
+    if meta is None:
+        return True
+    return time.time() * 1000 - meta.get("trained_at_ms", 0) > config.TREE_ML_RETRAIN_HOURS * 3600 * 1000
 
 
 def train_models() -> Optional[dict]:
@@ -297,8 +280,8 @@ def train_models() -> Optional[dict]:
         "name": "lightgbm-direction",
         "version": 1,
         "trained_at_ms": int(time.time() * 1000),
-        "horizon": HORIZON,
-        "up_thr": UP_THR,
+        "horizon": config.TREE_ML_HORIZON,
+        "up_thr": config.TREE_ML_UP_THR,
         "n_samples": int(len(X_train)),
         "n_val": int(len(X_val)),
         "val_accuracy": round(val_acc, 4),
@@ -314,11 +297,9 @@ def train_models() -> Optional[dict]:
     return meta
 
 
-# ── 预测 ──────────────────────────────────────────────────────
+# ── 预测 ────────────────────────────────────────────────────
 
-def _predict_one(
-    model: Any, meta: dict, symbol: str,
-) -> Optional[dict]:
+def _predict_one(model: Any, meta: dict, symbol: str) -> Optional[dict]:
     """单 symbol 最新特征预测。数据不足返回 None。"""
     df = _load_kline_df(symbol, 500)
     if df is None or len(df) < 60:
@@ -357,7 +338,7 @@ def _predict_one(
 
 
 def predict_all() -> Optional[list[dict]]:
-    """对所有已训练 symbol 预测；无模型时尝试训练。
+    """对所有已训练 symbol 预测；无模型或过期时先训练。
 
     返回 [{symbol, direction, prob_*, opportunity_score, volatility_level}]；
     禁用/无模型且无法训练时返回 None。
@@ -366,7 +347,7 @@ def predict_all() -> Optional[list[dict]]:
         return None
     meta = _load_meta()
     model = _load_model()
-    if meta is None or model is None:
+    if _is_stale(meta) or model is None:
         meta = train_models()
         if meta is None:
             return None
@@ -380,3 +361,21 @@ def predict_all() -> Optional[list[dict]]:
         if pred:
             results.append(pred)
     return results or None
+
+
+def predict_payload() -> Optional[dict]:
+    """训练（如需）+ 预测 → 快照 payload（与 data-service 原快照结构一致）。"""
+    predictions = predict_all()
+    if not predictions:
+        return None
+    meta = _load_meta() or {}
+    return {
+        "generated_at": int(time.time() * 1000),
+        "model": {
+            "name": "lightgbm-direction",
+            "horizon": config.TREE_ML_HORIZON,
+            "n_samples": meta.get("n_samples"),
+            "val_accuracy": meta.get("val_accuracy"),
+        },
+        "predictions": predictions,
+    }

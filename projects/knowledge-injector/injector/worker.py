@@ -501,11 +501,11 @@ class GraphInjector:
             return False
 
     def inject_ml_predictions(self) -> bool:
-        """注入 Kronos-mini ML 波动率预测（与 data-service sentiment_score 联动）。
+        """注入 Kronos-mini ML 波动率预测（ml-service 推理 + data-service sentiment_score 联动）。
 
-        providers/ml.py 默认 MODEL_ENABLED=False 返回模拟数据；目标机
-        `pip install kronos-pytorch` 并置 MODEL_ENABLED=True 后即用真实预测。
-        未配置 DATA_SERVICE_URL 时跳过 sentiment 联动，仍注入波动率预测。
+        providers/ml.py 为 ml-service HTTP 客户端（GET /ml/volatility）；
+        未配置 ML_SERVICE_URL 时返回 [] 直接跳过。未配置 DATA_SERVICE_URL 时
+        跳过 sentiment 联动，仍注入波动率预测。
         """
         try:
             from providers.ml import predict_all_volatility

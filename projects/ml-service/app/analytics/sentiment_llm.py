@@ -1,7 +1,7 @@
 """FinBERT 新闻文本情绪分类 — 本地 NLP 推理（真实模型，无模拟回退）。
 
-归属：算法层放 data-service 的 app/analytics/（P1a）。injector 只做
-"取数 → 文本化 → 注入 RAG"，不承载模型推理。
+归属：ml-service 算法层（独立推理服务）。接收 data-service 采集的
+新闻文章（POST /ml/sentiment），做分类与聚合，返回统计给调用方。
 
 行为约定：
   - 懒加载 transformers pipeline（需 FINBERT_ENABLED=true + transformers + torch）。
@@ -9,25 +9,17 @@
   - 单条回退链：文章自带 sentiment 字段（Finnhub 风格字符串/数值）优先 →
     FinBERT 分类 → 跳过（不产生模拟值）。
   - 聚合输出 [-1, 1] sentiment_score + 正/负/中性分布；模型不可用或
-    无可分类文本时返回 None（不写快照，避免污染 RAG）。
-
-启用（部署机）：
-  1. pip install torch --index-url https://download.pytorch.org/whl/cpu
-     pip install transformers huggingface-hub
-  2. .env 置 FINBERT_ENABLED=true（可选 FINBERT_MODEL，默认 ProsusAI/finbert）
+    无可分类文本时返回 None。
 """
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import config
 
-# 默认模型：ProsusAI/finbert（金融新闻 3 类情绪，英文）。
-# 可换 yiyanghkust/finbert-tone（支持中英）等，经 FINBERT_MODEL 配置。
-_MODEL_DEFAULT = "ProsusAI/finbert"
+logger = logging.getLogger(__name__)
 
 _FIELD_LABELS = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
 
@@ -39,7 +31,7 @@ _pipeline_failed = False
 
 
 def _enabled() -> bool:
-    return os.getenv("FINBERT_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+    return config.FINBERT_ENABLED
 
 
 def _load_pipeline():
@@ -55,7 +47,7 @@ def _load_pipeline():
         try:
             from transformers import pipeline  # 可选依赖
 
-            model = os.getenv("FINBERT_MODEL", _MODEL_DEFAULT)
+            model = config.FINBERT_MODEL
             _pipeline = pipeline("sentiment-analysis", model=model)
             logger.info("FinBERT pipeline loaded: %s", model)
         except Exception as exc:  # ImportError / HF 下载失败 / OOM 等
@@ -200,7 +192,7 @@ def analyze_articles(articles: list[dict]) -> dict | None:
         return None
     stats = aggregate_scores(scores)
     stats.update({
-        "model": os.getenv("FINBERT_MODEL", _MODEL_DEFAULT).split("/")[-1],
+        "model": config.FINBERT_MODEL.split("/")[-1],
         "analyzed_at": None,  # collector 填充
         "articles": per_article,
         "used_finbert": used_finbert,

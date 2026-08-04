@@ -1,10 +1,10 @@
-"""app/analytics/tree_models.py 纯函数单测（P1 LightGBM 方向预测）。
+"""app/analytics/tree_models.py 纯函数单测（LightGBM 方向预测，ml-service）。
 
-只测纯函数与禁用态行为，不依赖 lightgbm / SQLite 数据：
+只测纯函数与禁用态行为，不依赖 lightgbm / 网络 / SQLite：
   - build_features: 特征列构造（含技术指标缺失时的降级）
   - make_labels: up/flat/down 分界 + 尾部 NaN
   - opportunity_score / volatility_level: 边界
-  - train_models / predict_all: 禁用态返回 None（无模拟数据）
+  - train_models / predict_payload: 禁用态返回 None（无模拟数据）
 """
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 os.environ["TREE_ML_ENABLED"] = "false"  # 测试环境默认禁用（模块加载前设置）
 
-import pandas as pd  # noqa: E402
 import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from app.analytics import tree_models as tm  # noqa: E402
 
@@ -63,31 +63,26 @@ class TestBuildFeatures:
     def test_missing_indicators_degrades(self):
         df = _mk_df(with_indicators=False)
         feat = tm.build_features(df)
-        # 核心价格特征仍在
         for col in ("ret_1", "ret_5", "vol_20", "mom_5_20", "high_low_range"):
             assert col in feat.columns
-        # 指标派生特征不存在（不会 KeyError）
         assert "rsi_14" not in feat.columns
 
     def test_ret_warmup_nan(self):
         df = _mk_df()
         feat = tm.build_features(df)
-        assert np.isnan(feat["ret_20"].iloc[10])  # 前 20 行滚动窗口未满
+        assert np.isnan(feat["ret_20"].iloc[10])
         assert not np.isnan(feat["ret_20"].iloc[-1])
 
 
 class TestMakeLabels:
     def test_up_down_flat(self):
         n = 30
-        close = pd.Series(np.linspace(100, 100, n))  # 全 flat
-        close.iloc[-15:] += 5  # 尾部 15 行 +5%
+        close = pd.Series(np.linspace(100, 100, n))
+        close.iloc[-15:] += 5
         df = pd.DataFrame({"close": close})
         labels = tm.make_labels(df, horizon=7, up_thr=0.01)
-        # 前 8 行：未来 7 日仍在 flat 段 → flat(1)
         assert (labels.iloc[:8] == 1.0).all()
-        # 中间 7 行：未来跨入 +5% 段 → up(2)
         assert (labels.iloc[8:15] == 2.0).all()
-        # 最后 7 行无未来数据 → NaN
         assert labels.iloc[-7:].isna().all()
 
     def test_values_are_binary(self):
@@ -120,11 +115,13 @@ class TestVolatilityLevel:
 
 class TestDisabledBehavior:
     def test_train_returns_none(self):
-        # TREE_ML_ENABLED=false → 无模拟数据，直接 None
         assert tm.train_models() is None
 
     def test_predict_returns_none(self):
         assert tm.predict_all() is None
+
+    def test_payload_returns_none(self):
+        assert tm.predict_payload() is None
 
     def test_enabled_flag(self):
         assert tm._enabled() is False

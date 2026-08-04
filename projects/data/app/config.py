@@ -67,6 +67,10 @@ KL_INTERVAL_SEC = int(os.getenv("KL_INTERVAL_SEC", "300"))
 KL_EXCHANGE = os.getenv("KL_EXCHANGE", "binance")
 LIGHTRAG_URL = os.getenv("LIGHTRAG_URL", "")
 
+# ── ML 推理联动（模型已拆分到独立 ml-service，如 /ml/tree_predictions） ──
+ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "")  # 未配置则 ML 类 collector 空转
+ML_API_KEY = os.getenv("ML_API_KEY", "")           # ml-service 自身鉴权（可选）
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

@@ -242,6 +242,33 @@ async def stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/symbols")
+async def symbols(
+    timeframe: str = Query("1d", description="Timeframe: 1m/5m/15m/1h/4h/1D"),
+    min_bars: int = Query(1, ge=1, description="Minimum bar count per symbol"),
+):
+    """Symbols with enough bars in a timeframe (ascending by name).
+
+    ml-service 用此端点发现可训练的 symbol（LightGBM 方向预测）。
+    """
+    try:
+        from app.storage import get_db
+        db = get_db()
+        rows = db.execute(
+            """SELECT symbol, COUNT(*) AS n FROM kline
+               WHERE timeframe = ? GROUP BY symbol HAVING n >= ?""",
+            (timeframe, min_bars),
+        ).fetchall()
+        return {
+            "timeframe": timeframe,
+            "min_bars": min_bars,
+            "symbols": sorted(r["symbol"] for r in rows),
+        }
+    except Exception as e:
+        logger.error(f"/symbols failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Snapshots (complex data: heatmap, calendar, indices, etc.) ─
 
 @app.get("/snapshots")

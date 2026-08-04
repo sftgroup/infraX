@@ -84,6 +84,10 @@ class Settings:
     # ── data-service 联动（sentiment_score 等聚合因子） ──
     data_service_url: str = field(default_factory=lambda: os.getenv("DATA_SERVICE_URL", ""))
 
+    # ── ml-service 联动（Kronos 波动率预测，已拆分独立服务） ──
+    ml_service_url: str = field(default_factory=lambda: os.getenv("ML_SERVICE_URL", ""))
+    ml_api_key: str = field(default_factory=lambda: os.getenv("ML_API_KEY", ""))
+
     # ── 管理后台鉴权（GET/PUT /admin/config 需 Bearer ADMIN_API_KEY） ──
     admin_api_key: str = field(default_factory=lambda: os.getenv("ADMIN_API_KEY", ""))
 
@@ -108,19 +112,6 @@ class Settings:
     # ── API server ──
     host: str = field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
     port: int = int(os.getenv("PORT", "9113"))
-
-    # ── Kronos（金融 K 线基础模型，可选） ──
-    # 启用需要：torch + shiyu-coder/Kronos（PYTHONPATH 指向克隆目录），详见 providers/ml.py
-    kronos_enabled: bool = field(
-        default_factory=lambda: os.getenv("KRONOS_ENABLED", "false").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    kronos_model: str = field(
-        default_factory=lambda: os.getenv("KRONOS_MODEL", "NeoQuasar/Kronos-mini")
-    )
-    kronos_lookback: int = int(os.getenv("KRONOS_LOOKBACK", "400"))
-    kronos_pred_len: int = int(os.getenv("KRONOS_PRED_LEN", "30"))
-    kronos_sample_count: int = int(os.getenv("KRONOS_SAMPLE_COUNT", "12"))
 
     @property
     def lightrag_enabled(self) -> bool:
