@@ -48,3 +48,26 @@ KRONOS_MODEL = os.getenv("KRONOS_MODEL", "NeoQuasar/Kronos-mini")
 KRONOS_LOOKBACK = int(os.getenv("KRONOS_LOOKBACK", "400"))
 KRONOS_PRED_LEN = int(os.getenv("KRONOS_PRED_LEN", "30"))
 KRONOS_SAMPLE_COUNT = int(os.getenv("KRONOS_SAMPLE_COUNT", "12"))
+
+# ── Chronos-Bolt 单变量概率预测（BOLT_ENABLED，P2） ───────
+# 快速零样本点预测/概率基线，用于与树模型方向交叉验证。
+BOLT_ENABLED = os.getenv("BOLT_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+BOLT_MODEL = os.getenv("BOLT_MODEL", "amazon/chronos-bolt-small")
+BOLT_CONTEXT = int(os.getenv("BOLT_CONTEXT", "512"))
+BOLT_PRED_LEN = int(os.getenv("BOLT_PRED_LEN", "30"))
+BOLT_QUANTILES = os.getenv("BOLT_QUANTILES", "0.1,0.5,0.9")
+
+# ── Moirai 2.0 多变量时序基础模型（MOIRAI_ENABLED，P2） ──
+# 多资产联动/跨序列预测；单批喂入全部目标资产 variate。
+MOIRAI_ENABLED = os.getenv("MOIRAI_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+MOIRAI_MODEL = os.getenv("MOIRAI_MODEL", "Salesforce/moirai-2.0-R-small")
+MOIRAI_CONTEXT = int(os.getenv("MOIRAI_CONTEXT", "512"))
+MOIRAI_PRED_LEN = int(os.getenv("MOIRAI_PRED_LEN", "30"))
+MOIRAI_PATCH_SIZE = int(os.getenv("MOIRAI_PATCH_SIZE", "32"))
+
+# ── TimesFM 2.5 长上下文时序基础模型（TIMESFM_ENABLED，P2） ──
+# 16K 长历史点预测 + 置信区间（连续分位数）。
+TIMESFM_ENABLED = os.getenv("TIMESFM_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+TIMESFM_MODEL = os.getenv("TIMESFM_MODEL", "google/timesfm-2.5-200m-pytorch")
+TIMESFM_CONTEXT = int(os.getenv("TIMESFM_CONTEXT", "1024"))
+TIMESFM_PRED_LEN = int(os.getenv("TIMESFM_PRED_LEN", "30"))

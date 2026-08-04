@@ -168,6 +168,56 @@ async def consensus():
         return {"code": 0, "message": "ok", "data": None}
 
 
+# ── P2 时序基础模型（Bolt / Moirai / TimesFM） ─────────────
+
+@app.get("/ml/bolt")
+async def bolt_predictions():
+    """Chronos-Bolt 单变量概率基线（分位数预测）。
+
+    返回 data: [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
+                 direction, prob_up, uncertainty}, ...] 或 null。
+    """
+    try:
+        from app.providers import chronos_bolt
+        results = chronos_bolt.predict_all()
+        return {"code": 0, "message": "ok", "data": results or None}
+    except Exception as exc:
+        logger.warning("bolt failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": None}
+
+
+@app.get("/ml/moirai")
+async def moirai_predictions():
+    """Moirai 2.0 多变量跨资产联动预测（全部资产一批喂入）。
+
+    返回 data: [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
+                 direction, prob_up, uncertainty, linked_symbols}, ...] 或 null。
+    """
+    try:
+        from app.providers import moirai2
+        results = moirai2.predict_all()
+        return {"code": 0, "message": "ok", "data": results or None}
+    except Exception as exc:
+        logger.warning("moirai failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": None}
+
+
+@app.get("/ml/timesfm")
+async def timesfm_predictions():
+    """TimesFM 2.5 长上下文点预测 + 置信区间。
+
+    返回 data: [{symbol, point_forecast, quantiles{min/max},
+                 direction, prob_up, uncertainty}, ...] 或 null。
+    """
+    try:
+        from app.providers import timesfm25
+        results = timesfm25.predict_all()
+        return {"code": 0, "message": "ok", "data": results or None}
+    except Exception as exc:
+        logger.warning("timesfm failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": None}
+
+
 # ── Entry ──────────────────────────────────────────────────
 
 if __name__ == "__main__":

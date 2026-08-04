@@ -29,3 +29,12 @@ huggingface-hub>=0.23.0
 einops>=0.7.0
 safetensors>=0.8.0
 huggingface-hub>=1.5.0
+
+# ── P2 时序基础模型（BOLT_ENABLED / MOIRAI_ENABLED / TIMESFM_ENABLED）─
+# Chronos-Bolt：pip install chronos-forecasting（amazon，零样本分位数）
+# Moirai 2.0：pip install uni2ts（Salesforce，多变量跨资产）
+# TimesFM 2.5：pip install timesfm[torch]（Google，长上下文+置信区间）
+# 三者均依赖 torch（CPU 版），懒加载错峰使用
+chronos-forecasting>=1.0.0
+uni2ts>=0.4.0
+timesfm>=0.3.0
