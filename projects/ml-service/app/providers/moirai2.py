@@ -32,39 +32,39 @@ logger = logging.getLogger(__name__)
 
 # ── 模型单例（懒加载） ─────────────────────────────────────
 
-_forecast_model: Any = None
+_module: Any = None
 _model_lock = threading.Lock()
 _model_failed = False
 
 
 def _load_model():
-    """懒加载 Moirai2Forecast（需 MOIRAI_ENABLED + uni2ts）。"""
-    global _forecast_model, _model_failed
-    if _forecast_model is not None or _model_failed:
-        return _forecast_model
+    """懒加载 Moirai2Module（需 MOIRAI_ENABLED + uni2ts）。
+
+    uni2ts 2.x 的 Moirai2Module 走 PyTorchModelHubMixin（参数 map_location，
+    非 device_map）；Moirai2Forecast 预测 wrapper 按 target_dim 在 predict_all
+    中构造（资产数动态）。
+    """
+    global _module, _model_failed
+    if _module is not None or _model_failed:
+        return _module
     if not config.MOIRAI_ENABLED:
         return None
     with _model_lock:
-        if _forecast_model is not None or _model_failed:
-            return _forecast_model
+        if _module is not None or _model_failed:
+            return _module
         try:
-            from uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module
+            from uni2ts.model.moirai2 import Moirai2Module
 
             module = Moirai2Module.from_pretrained(
-                config.MOIRAI_MODEL, device_map="cpu"
+                config.MOIRAI_MODEL, map_location="cpu"
             )
-            _forecast_model = Moirai2Forecast(
-                module=module,
-                prediction_length=config.MOIRAI_PRED_LEN,
-                context_length=config.MOIRAI_CONTEXT,
-                patch_size=config.MOIRAI_PATCH_SIZE,
-                num_samples=1,  # quantile 直接预测，不需采样
-            )
-            logger.info("Moirai2 model loaded: %s", config.MOIRAI_MODEL)
+            module.eval()
+            _module = module
+            logger.info("Moirai2 module loaded: %s", config.MOIRAI_MODEL)
         except Exception as exc:
             _model_failed = True
             logger.warning("Moirai2 加载失败（真实预测未启用）: %s", exc)
-    return _forecast_model
+    return _module
 
 
 # ── 主入口 ────────────────────────────────────────────────
@@ -75,12 +75,11 @@ def predict_all() -> list[dict[str, Any]]:
 
     任一资产数据不足时降级为「仅可用资产」；全部不足返回 []。
     """
-    model = _load_model()
-    if model is None:
+    module = _load_model()
+    if module is None:
         return []
 
     lookback = config.MOIRAI_CONTEXT
-    hist_map: dict[str, list[dict]] = {}
     closes_map: dict[str, np.ndarray] = {}
     last_close_map: dict[str, float] = {}
     for sym in _TARGETS:
@@ -89,29 +88,43 @@ def predict_all() -> list[dict[str, Any]]:
             logger.warning("Moirai2: %s 历史K线不足（%d < %d）", sym, len(klines), lookback)
             continue
         hist = klines[-lookback:]
-        hist_map[sym] = hist
         closes_map[sym] = np.asarray([float(b["close"]) for b in hist], dtype=np.float32)
         last_close_map[sym] = float(hist[-1]["close"])
     if not closes_map:
         return []
 
-    # 多变量输入：(variate, time)
     order = [s for s in _TARGETS if s in closes_map]
-    past_target = np.stack([closes_map[s] for s in order], axis=0)
+    # (past_time, tgt) —— 与 Moirai2Forecast.predict 输入约定一致
+    past_target = np.stack([closes_map[s] for s in order], axis=1)
 
-    # Moirai2Forecast 输入须带 batch 维（[batch, variate, time]）
-    forecasts = model(past_target=[past_target])  # list[gluonts Forecast]
-    if not forecasts:
-        return []
+    from uni2ts.model.moirai2 import Moirai2Forecast
 
-    results: list[dict[str, Any]] = []
+    fc_model = Moirai2Forecast(
+        module=module,
+        prediction_length=config.MOIRAI_PRED_LEN,
+        target_dim=len(order),
+        feat_dynamic_real_dim=0,
+        past_feat_dynamic_real_dim=0,
+        context_length=lookback,
+    )
+    preds = fc_model.predict(past_target=[past_target])  # (1, n_q, pred_len, tgt)
+
+    q_levels = list(module.quantile_levels)
+    idx = {
+        0.1: q_levels.index(0.1) if 0.1 in q_levels else 0,
+        0.5: q_levels.index(0.5) if 0.5 in q_levels else len(q_levels) // 2,
+        0.9: q_levels.index(0.9) if 0.9 in q_levels else len(q_levels) - 1,
+    }
     pred_len = config.MOIRAI_PRED_LEN
+    results: list[dict[str, Any]] = []
     for i, sym in enumerate(order):
-        fc = forecasts[0]
-        q10 = np.asarray(fc.quantile(0.1))[i] if fc.quantile(0.1) is not None else np.full(pred_len, np.nan)
-        q50 = np.asarray(fc.quantile(0.5))[i]
-        q90 = np.asarray(fc.quantile(0.9))[i] if fc.quantile(0.9) is not None else np.full(pred_len, np.nan)
-        # gluonts quantile 返回 (variate, pred_len)？降维后取该 variate
+        q10 = np.asarray(preds[0, idx[0.1], :, i])
+        q50 = np.asarray(preds[0, idx[0.5], :, i])
+        q90 = np.asarray(preds[0, idx[0.9], :, i])
+        if len(q10) < pred_len:  # 尾部补齐（罕见）
+            q10 = np.pad(q10, (0, pred_len - len(q10)))
+            q50 = np.pad(q50, (0, pred_len - len(q50)))
+            q90 = np.pad(q90, (0, pred_len - len(q90)))
         last_close = last_close_map[sym]
         stats = bolt._stats_from_paths(q50, q10, q50, q90, last_close)
         if not stats:
