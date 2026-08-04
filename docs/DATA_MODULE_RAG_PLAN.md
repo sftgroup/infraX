@@ -286,7 +286,7 @@ GET /ml/predictions?model=bolt&symbol=BTC&start=<unix ms>&end=<unix ms>&limit=50
 
 **配置**：`P2_COLLECT_ENABLED`（默认 true） / `P2_COLLECT_INTERVAL_SEC`（1800） / `P2_RETENTION_DAYS`（90）；未配 `ML_SERVICE_URL` 时整线程空转
 
-**与共识/RAG 关系**：consensus（聚合视图，最新一份）与 ml_predictions（明细视图，历史可追溯）并存各司其职；injector 可后续将 P2 预测历史文本化注入 RAG（事实层扩展，可选）
+**与共识/RAG 关系**：consensus（聚合视图，最新一份）与 ml_predictions（明细视图，历史可追溯）并存各司其职；injector 已将 P2 预测历史文本化注入 RAG（`inject_p2_predictions` + `textify.p2_predictions_report`，3 模型 × 4 标的，无历史 404 fail-silent，已实现）
 
 **验收**：部署后 30min 内 `/ml/predictions?model=timesfm&symbol=BTC` 返回非空序列；三模型均可查；`start/end` 区间过滤生效；90 天前数据被清理
 
@@ -297,7 +297,7 @@ GET /ml/predictions?model=bolt&symbol=BTC&start=<unix ms>&end=<unix ms>&limit=50
 ### 6.1 knowledge-injector (:9113)
 
 - **调度**：`inject_all()` 每 6h 全量注入（`INJECTOR_INTERVAL_SEC=21600`），每个 `inject_xxx` 独立 try/except fail-silent
-- **注入列表**（16 项）：macro / sentiment / crypto_overview / volatility / news_sentiment / major_events / onchain / defi_tvl / macro_trend / fred_economics / earnings_index / evm / global_macro / indices / tech_analysis / **tree_ml**
+- **注入列表**（18 项）：macro / sentiment / crypto_overview / volatility / news_sentiment / major_events / onchain / defi_tvl / macro_trend / fred_economics / earnings_index / evm / global_macro / indices / tech_analysis / **tree_ml** / **consensus** / **p2_predictions**
 - **文本化**：`injector/textify.py` 纯函数，输出 <500 token，前缀标记（[Macro]/[Price]/[Sentiment]/[ML Tree Direction] 等）引导实体/关系抽取
 - **去重**：幂等 doc_id，重复注入被忽略
 - **存储**：原始数据存档 raw_snapshots + 注入结果 inject_log（支持失败重放）

@@ -79,6 +79,7 @@ def create_app() -> Flask:
         "onchain", "defi_tvl", "macro_trend",
         "fred_economics", "earnings_index", "evm",
         "global_macro", "indices", "tech_analysis",
+        "tree_ml", "consensus", "p2_predictions",
         "ml_predictions",
     ]
 
