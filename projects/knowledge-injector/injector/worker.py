@@ -29,6 +29,10 @@ from config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
+# P2 单模型预测覆盖范围（与 ml-service _TARGETS / P2MlCollector 对齐）
+_P2_MODELS = ("bolt", "moirai", "timesfm")
+_P2_SYMBOLS = ("BTC", "ETH", "SPY", "QQQ")
+
 
 class GraphInjector:
     """注入器。
@@ -572,6 +576,39 @@ class GraphInjector:
             logger.debug("inject_consensus failed", exc_info=True)
             return False
 
+    def inject_p2_predictions(self) -> bool:
+        """注入 P2 单模型预测历史（data-service /ml/predictions 明细表）。
+
+        P2MlCollector（data-service）每 30min 把 bolt/moirai/timesfm 对
+        BTC/ETH/SPY/QQQ 的预测明细落库到 ml_predictions 表；本条把每个
+        (model, symbol) 的历史序列文本化后注入 RAG，使 RAG 可检索到
+        "模型过去是怎么预测的"（含方向分布 / prob_up 统计 / 最新输出）。
+        某 model×symbol 无历史（404）或未配置 DATA_SERVICE_URL 时 fail-silent。
+        """
+        try:
+            from providers.data_service import fetch_ml_predictions
+
+            success = False
+            for model in _P2_MODELS:
+                for symbol in _P2_SYMBOLS:
+                    payload = fetch_ml_predictions(model, symbol, limit=200)
+                    if not payload:
+                        continue
+                    text = txt.p2_predictions_report(payload)
+                    if not text:
+                        continue
+                    snap_id = self._save_raw(payload, "ml", f"p2_{model}", symbol)
+                    if self._inject(
+                        text,
+                        file_source=f"ml:p2:{model}:{symbol.lower()}:daily",
+                        snap_id=snap_id,
+                    ):
+                        success = True
+            return success
+        except Exception:
+            logger.debug("inject_p2_predictions failed", exc_info=True)
+            return False
+
     # ─── 配置化解析注入（DC / Collector raw data） ──
 
     def inject_parsed(self, source: str, limit: int = 100) -> list[dict]:
@@ -650,6 +687,9 @@ class GraphInjector:
             # consensus 为跨模型共识（ml-service 聚合三路信号），
             # 无快照时 fail-silent 返回 False
             "consensus",
+            # p2_predictions 为 P2 单模型预测历史（data-service ml_predictions 明细），
+            # 无历史（404）时 fail-silent 返回 False
+            "p2_predictions",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()

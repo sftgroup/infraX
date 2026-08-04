@@ -653,6 +653,67 @@ def consensus_report(payload: dict | None) -> str:
     return "\n".join(lines)
 
 
+def p2_predictions_report(payload: dict | None) -> str:
+    """P2 单模型预测历史报告（data-service /ml/predictions）→ 文本。
+
+    参数:
+        payload: {"model", "symbol", "count", "predictions": [{generated_at,
+                 direction, prob_up, uncertainty, point_forecast,
+                 quantiles}, ...]}，来自 data-service /ml/predictions
+                 （generated_at 升序）。
+
+    把模型对某资产的预测历史序列压缩成事实摘要：最新一次输出、
+    方向分布、近期方向序列、prob_up 统计。只描述历史事实，不做投资建议。
+    """
+    if not payload or not isinstance(payload, dict):
+        return ""
+    predictions = payload.get("predictions") or []
+    if not predictions:
+        return ""
+    model = payload.get("model", "?")
+    symbol = payload.get("symbol", "?")
+    lines = [f"[ML P2 {model}] {symbol} prediction history ({len(predictions)} points):"]
+
+    # 最新一次预测
+    latest = predictions[-1]
+    latest_parts = [f"latest direction {latest.get('direction') or 'unknown'}"]
+    prob_up = latest.get("prob_up")
+    if isinstance(prob_up, (int, float)):
+        latest_parts.append(f"prob_up {float(prob_up):.0%}")
+    uncertainty = latest.get("uncertainty")
+    if isinstance(uncertainty, (int, float)):
+        latest_parts.append(f"uncertainty {float(uncertainty):.2f}")
+    pf = latest.get("point_forecast")
+    if isinstance(pf, (int, float)):
+        if abs(float(pf)) < 100:
+            latest_parts.append(f"forecast {float(pf):.4g}")
+        else:
+            latest_parts.append(f"forecast {float(pf):,.0f}")
+    lines.append("  " + ", ".join(latest_parts))
+
+    # 方向分布
+    dir_counts: dict[str, int] = {}
+    for p in predictions:
+        d = p.get("direction") or "unknown"
+        dir_counts[d] = dir_counts.get(d, 0) + 1
+    dist = ", ".join(f"{d} {n}" for d, n in sorted(dir_counts.items(), key=lambda kv: -kv[1]))
+    lines.append(f"  direction distribution: {dist}")
+
+    # 最近 5 次方向序列
+    recent = [p.get("direction") or "?" for p in predictions[-5:]]
+    lines.append(f"  recent directions: {' → '.join(recent)}")
+
+    # prob_up 统计
+    probs = [float(p["prob_up"]) for p in predictions if isinstance(p.get("prob_up"), (int, float))]
+    if len(probs) > 1:
+        lines.append(
+            f"  prob_up avg {sum(probs) / len(probs):.0%}, "
+            f"min {min(probs):.0%}, max {max(probs):.0%}"
+        )
+
+    return "\n".join(lines)
+
+
 # ─── 全球宏观（多区域） ───────────────────────────────
 
 _REGION_NAMES = {

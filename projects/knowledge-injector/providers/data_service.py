@@ -178,3 +178,49 @@ def fetch_tree_predictions() -> dict[str, Any] | None:
     except Exception as exc:
         logger.debug("data-service tree_predictions parse failed: %s", exc)
         return None
+
+
+def fetch_ml_predictions(
+    model: str,
+    symbol: str,
+    limit: int = 200,
+) -> dict[str, Any] | None:
+    """拉取 data-service P2 单模型预测历史（/ml/predictions 明细表）。
+
+    参数:
+        model:  "bolt" | "moirai" | "timesfm"
+        symbol: 资产代号（BTC/ETH/SPY/QQQ，与 ml_predictions 表对齐）
+
+    返回 {"model", "symbol", "count", "predictions": [{generated_at,
+          direction, prob_up, uncertainty, point_forecast, quantiles}]}，
+    或 None（未配置/失败/无历史记录）。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/ml/predictions",
+            params={"model": model, "symbol": symbol, "limit": limit},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        # 404 = 该 model×symbol 无历史（P2MlCollector 尚未落库），fail-silent
+        if resp.status_code != 200:
+            logger.debug("data-service /ml/predictions %s/%s → %s", model, symbol, resp.status_code)
+            return None
+        payload = resp.json()
+        if not isinstance(payload, dict) or not (payload.get("predictions") or []):
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service /ml/predictions %s/%s timeout (%ss)", model, symbol, _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /ml/predictions %s/%s request failed: %s", model, symbol, exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /ml/predictions %s/%s parse failed: %s", model, symbol, exc)
+        return None

@@ -421,3 +421,39 @@ class TestTreeMlReport:
         assert txt.tree_ml_report(None) == ""
         assert txt.tree_ml_report({}) == ""
         assert txt.tree_ml_report({"predictions": []}) == ""
+
+
+class TestP2PredictionsReport:
+    _PAYLOAD = {
+        "model": "bolt",
+        "symbol": "BTC",
+        "count": 4,
+        "predictions": [
+            {"generated_at": 1, "direction": "up", "prob_up": 0.55,
+             "uncertainty": 0.2, "point_forecast": 65000.0, "quantiles": None},
+            {"generated_at": 2, "direction": "up", "prob_up": 0.6,
+             "uncertainty": 0.25, "point_forecast": 67000.0, "quantiles": None},
+            {"generated_at": 3, "direction": "down", "prob_up": 0.4,
+             "uncertainty": 0.3, "point_forecast": 66000.0, "quantiles": None},
+            {"generated_at": 4, "direction": "up", "prob_up": 0.58,
+             "uncertainty": 0.28, "point_forecast": 68000.0, "quantiles": None},
+        ],
+    }
+
+    def test_normal(self):
+        result = txt.p2_predictions_report(self._PAYLOAD)
+        assert "[ML P2 bolt]" in result
+        assert "BTC prediction history (4 points)" in result
+        assert "latest direction up" in result
+        assert "prob_up 58%" in result
+        assert "uncertainty 0.28" in result
+        assert "forecast 68,000" in result
+        assert "direction distribution: up 3, down 1" in result
+        assert "recent directions: up → down → up" in result or "up → up → down → up" in result
+        assert "prob_up avg 53%" in result
+        assert "min 40%, max 60%" in result
+
+    def test_no_predictions(self):
+        assert txt.p2_predictions_report(None) == ""
+        assert txt.p2_predictions_report({}) == ""
+        assert txt.p2_predictions_report({"predictions": []}) == ""
