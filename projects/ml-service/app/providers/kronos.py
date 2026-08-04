@@ -84,10 +84,18 @@ def _load_predictor():
 
 
 def _fetch_klines(symbol: str) -> list[dict]:
-    """拉取日线（升序）：data-service /bars 优先 → yfinance 回退。"""
-    rows = data_client.fetch_bars(symbol, timeframe="1d", limit=config.KRONOS_LOOKBACK + 60)
-    if rows:
-        return rows
+    """拉取日线（升序）：data-service /bars 优先 → yfinance 回退。
+
+    data-service 内 crypto 符号为交易所对格式（BTC/USDT），目标符号为裸
+    代号（BTC）时先尝试别名候选再回退 yfinance。
+    """
+    candidates = [symbol]
+    if "/" not in symbol:
+        candidates += [f"{symbol}/USDT", f"{symbol}USDT"]
+    for cand in candidates:
+        rows = data_client.fetch_bars(cand, timeframe="1d", limit=config.KRONOS_LOOKBACK + 60)
+        if rows:
+            return rows
     try:
         import yfinance as yf
 

@@ -92,3 +92,35 @@ class TestDisabledBehavior:
     def test_predictor_not_loaded(self):
         assert kronos._load_predictor() is None
         assert kronos._predictor is None
+
+
+class TestFetchKlinesAlias:
+    """符号别名候选：BTC → BTC/USDT / BTCUSDT 再回退 yfinance。"""
+
+    def test_crypto_uses_pair_format(self, monkeypatch):
+        """裸代号先尝试 /USDT 对格式，命中后不再探测。"""
+        called = []
+
+        def fake(symbol, timeframe="1d", limit=500):
+            called.append(symbol)
+            return [{"ts": 1, "close": 1.0}] if symbol == "BTC/USDT" else []
+
+        monkeypatch.setattr(kronos.data_client, "fetch_bars", fake)
+        rows = kronos._fetch_klines("BTC")
+        assert rows and called == ["BTC", "BTC/USDT"]
+
+    def test_pair_symbol_direct(self, monkeypatch):
+        called = []
+
+        def fake(symbol, timeframe="1d", limit=500):
+            called.append(symbol)
+            return [{"ts": 1, "close": 1.0}]
+
+        monkeypatch.setattr(kronos.data_client, "fetch_bars", fake)
+        assert kronos._fetch_klines("BTC/USDT")
+        assert called == ["BTC/USDT"]
+
+    def test_no_data_no_crash(self, monkeypatch):
+        monkeypatch.setattr(kronos.data_client, "fetch_bars", lambda *a, **k: [])
+        monkeypatch.setattr("yfinance.Ticker", lambda *a, **k: type("T", (), {"history": lambda *a, **k: None})())
+        assert kronos._fetch_klines("SPY") == []
