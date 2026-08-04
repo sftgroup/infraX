@@ -33,6 +33,7 @@ const EMB_FIELDS: Array<[string, string]> = [
 ];
 // 数据源 API Key（data-service 侧，多 key 逗号分隔、采集时轮询取用）
 const DATA_SRC_FIELDS: Array<[string, string]> = [
+  ['FRED_API_KEY', 'FRED'],
   ['NEWSAPI_API_KEY', 'NewsAPI'],
   ['ADANOS_API_KEY', 'Adanos'],
   ['FINNHUB_API_KEY', 'Finnhub'],

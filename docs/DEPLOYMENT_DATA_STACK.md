@@ -217,7 +217,7 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 
 ### 4.4 多市场采集配置（data/data_config.json）
 
-`multi_kline` 段驱动美股/期货/A股/港股/外汇日线采集，`timeframes` 当前仅 `1d`（akshare 免费源仅日线）。**外汇 `symbols` 在 yfinance 限流期间留空**，恢复后填回 `EURUSD=X` 等 Yahoo 代码。
+`multi_kline` 段驱动美股/期货/A股/港股/外汇日线采集，`timeframes` 当前仅 `1d`（免费源仅日线）。**外汇 `symbols` 已填回**（EURUSD=X 等 6 对）：优先走 Twelve Data（配置 `TWELVE_DATA_API_KEY` 后），否则回退 yfinance——yfinance 仍受限流影响时该对日采集会失败并计入 failed 告警。**A股/港股走腾讯日线**（`web.ifzq.gtimg.cn`，独立于新浪风控），新浪仅作回退。
 
 ### 4.5 管理后台（infrax-admin）
 
@@ -265,18 +265,18 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 |---|---|---|---|
 | 美股 K线 | akshare 新浪 `stock_us_daily` | — | 记 warning 跳过 |
 | 期货 K线 | akshare 东财 `futures_foreign_hist` | — | 记 warning 跳过 |
-| A股 K线 | akshare 新浪 `stock_zh_a_daily` | — | 记 warning 跳过 |
-| 港股 K线 | akshare 新浪 `stock_hk_daily` | — | 记 warning 跳过 |
-| 外汇 K线 | （留空，yfinance 恢复后填回） | | |
+| A股 K线 | **腾讯日线（不复权）** | akshare 新浪 `stock_zh_a_daily` | 记 warning 跳过 |
+| 港股 K线 | **腾讯日线（前复权）** | akshare 新浪 `stock_hk_daily` | 记 warning 跳过 |
+| 外汇 K线 | Twelve Data（需 key） | yfinance | 记 warning 跳过 |
 | Crypto K线 | ccxt binance | | |
 | VIX | **CBOE 官方 CSV** | yfinance | 最近快照 stale |
 | US10Y | **akshare 东财美债收益率** | yfinance | 最近快照 stale |
-| DXY | yfinance | — | 最近快照 stale |
+| DXY | yfinance | Twelve Data（需 key）→ FRED DTWEXBGS（需 key） | 最近快照 stale |
 | 美股指数 | akshare 新浪 `index_us_stock_sina` | yfinance（非美指数） | 跳过 |
 | Fear&Greed | alternative.me | | |
 
 **实现位置**：
-- 多市场 K线：`projects/data/app/kline_store.py`（`_fetch_akshare_us/cn/hk/futures`，2s symbol 间节流 + 3 次退避重试）
+- 多市场 K线：`projects/data/app/kline_store.py`（`_fetch_akshare_us/futures`、`_fetch_tencent_daily`（A股/港股，腾讯源）+ 新浪回退，2s symbol 间节流 + 3 次退避重试）
 - 因子：`projects/data/app/collectors/external_factors.py`（CBOE CSV / akshare bond_zh_us_rate / stale 快照回退）
 - 指数：`projects/data/app/collectors/market_data.py`（`_SINA_INDEX_MAP`）
 
@@ -284,7 +284,7 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 - 给 `requests.Session.request` 注入默认 12s 超时（akshare 内部请求大多不传 timeout，无响应会无限挂起）
 - `socket.setdefaulttimeout(10)` 兜底非 requests 连接
 
-**已知限制**：新浪对连续快速请求有 IP 风控（约 10+ 次后返回空，静默 30s 恢复）。受风控时该批 symbol 会快速失败并留待下一采集周期（300s），不会阻塞整个周期。
+**已知限制**：新浪对连续快速请求有 IP 风控（约 10+ 次后返回空，静默 30s 恢复）。A股/港股已切腾讯源（独立域名，不受新浪风控影响），仅美股/指数仍走新浪；受风控时该批 symbol 快速失败并留待下一采集周期（300s），不阻塞整个周期。东财 `stock_zh_a_hist`/`stock_hk_hist`（push2his 端点）对本机 IP 连接被重置，已弃用。
 
 ---
 
@@ -370,7 +370,7 @@ sudo journalctl -u infrax-knowledge-injector -f
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `/bars` 返回空 | 采集周期未完成/新浪风控 | 等 300s 下轮周期，或 `journalctl -u infrax-data` 看 `multi-market failed` 明细 |
-| 日志 `akshare ... fetch failed xxx: empty` | 新浪/东财 IP 风控 | 静默后自动恢复；减少 `data_config.json` 中标的数可降低触发概率 |
+| 日志 `akshare ... fetch failed xxx: empty` | 新浪/东财 IP 风控或断连 | A股/港股已切腾讯源（不受新浪风控）；美股受风控时静默后自动恢复，减少 `data_config.json` 中标的数可降低触发概率 |
 | 服务卡死不输出日志 | 旧代码无 requests 超时 | 确保代码为最新（已内置 12s 超时补丁）并重启 |
 | 注入返回 403 | ragservicer `ADMIN_API_KEY`/桥接 key 未配置或与注入器不一致 | 按 4.3 配置后重启两个服务 |
 | 注入失败 `LLM/embedding` 错误 | ragservicer 密钥未填 | 填 `LLM_BINDING_API_KEY` / `EMBEDDING_API_KEY` 后重启 |

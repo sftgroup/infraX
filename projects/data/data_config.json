@@ -95,7 +95,7 @@
   },
 
   "multi_kline": {
-    "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；外汇 yfinance 限流期间留空，恢复后填回。采集周期共用 KL_INTERVAL_SEC。",
+    "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；A股/港股切腾讯日线（规避新浪批量风控）；外汇 Twelve Data（配置 key 后优先）→ yfinance 回退。采集周期共用 KL_INTERVAL_SEC。",
     "fetch_bars": 200,
     "us_stocks": {
       "symbols": [
@@ -113,8 +113,15 @@
       "timeframes": ["1d"]
     },
     "forex": {
-      "_comment": "yfinance 限流期间留空；恢复后填回 EURUSD=X 等 Yahoo 代码。",
-      "symbols": [],
+      "_comment": "Twelve Data（配置 TWELVE_DATA_API_KEY 后优先）→ yfinance 回退。仅 1d。",
+      "symbols": [
+        {"symbol": "EURUSD=X", "name": "EUR/USD"},
+        {"symbol": "GBPUSD=X", "name": "GBP/USD"},
+        {"symbol": "USDJPY=X", "name": "USD/JPY"},
+        {"symbol": "AUDUSD=X", "name": "AUD/USD"},
+        {"symbol": "USDCAD=X", "name": "USD/CAD"},
+        {"symbol": "USDCHF=X", "name": "USD/CHF"}
+      ],
       "timeframes": ["1d"]
     },
     "futures": {
@@ -131,6 +138,7 @@
       "timeframes": ["1d"]
     },
     "cn_stocks": {
+      "_comment": "腾讯日线（不复权）优先 → akshare 新浪 stock_zh_a_daily 回退。market: sh/sz。",
       "symbols": [
         {"symbol": "600519", "name": "贵州茅台", "market": "sh"},
         {"symbol": "000858", "name": "五粮液",   "market": "sz"},
@@ -141,6 +149,7 @@
       "timeframes": ["1d"]
     },
     "hk_stocks": {
+      "_comment": "腾讯日线（前复权）优先 → akshare 新浪 stock_hk_daily 回退。",
       "symbols": [
         {"symbol": "00700", "name": "腾讯控股"},
         {"symbol": "09988", "name": "阿里巴巴"},

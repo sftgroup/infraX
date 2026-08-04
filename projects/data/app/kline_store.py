@@ -310,7 +310,9 @@ class KlineStore:
         数据源（绕过 Yahoo 限流）：
           - us_stocks → akshare 新浪日线（stock_us_daily）
           - futures   → akshare 东财外盘期货日线（futures_foreign_hist）
-          - forex     → yfinance（Yahoo 限流期间在配置中留空）
+          - forex     → Twelve Data（需 key）→ yfinance 回退
+          - cn_stocks → 腾讯日线（不复权）→ akshare 新浪回退
+          - hk_stocks → 腾讯日线（前复权）→ akshare 新浪回退
         """
         cfg = self._get_multi_config()
         if not cfg:
@@ -346,14 +348,16 @@ class KlineStore:
             else:
                 failed.append(sym["symbol"])
 
-        # Forex → yfinance（Yahoo 恢复后把 symbol 配置回来即可；限流期间跳过）
+        # Forex → Twelve Data（配置 key 时优先）→ yfinance 回退
         fx = cfg.get("forex") or {}
         for sym in fx.get("symbols", []):
             time.sleep(_THROTTLE)
-            rows = self._fetch_yfinance(sym["symbol"], "1d", fetch_bars)
+            rows = self._fetch_forex(sym["symbol"], fetch_bars)
             if rows:
                 self._upsert_ohlcv(sym["symbol"], "1d", rows)
                 total += 1
+            else:
+                failed.append(sym["symbol"])
 
         # A-shares → akshare
         cn = cfg.get("cn_stocks") or {}
@@ -381,6 +385,69 @@ class KlineStore:
             logger.info("KlineStore: multi-market saved %d symbol(s)", total)
         if failed:
             logger.warning("KlineStore: multi-market failed %d symbol(s): %s", len(failed), ", ".join(failed))
+
+    @staticmethod
+    def _fetch_forex(symbol: str, bars: int) -> list:
+        """外汇日线：Twelve Data（配置 key 时优先）→ yfinance 回退。
+
+        symbol 为 Yahoo 代码（如 EURUSD=X）；Twelve Data 需要 EUR/USD 格式。
+        """
+        rows = KlineStore._fetch_forex_twelve(symbol, bars)
+        if rows:
+            return rows
+        return KlineStore._fetch_yfinance(symbol, "1d", bars)
+
+    @staticmethod
+    def _fetch_forex_twelve(symbol: str, bars: int) -> list:
+        """外汇日线 from Twelve Data (api.twelvedata.com, 需 TWELVE_DATA_API_KEY)."""
+        try:
+            from app.config import APIKeys
+            key = APIKeys.rotate("TWELVE_DATA_API_KEY")
+            if not key:
+                return []
+            pair = symbol.upper().replace("=X", "").replace("=", "")
+            if len(pair) != 6 or pair not in (
+                "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
+                "NZDUSD", "EURJPY", "GBPJPY", "EURGBP", "USDCNH",
+            ):
+                return []
+            td_symbol = f"{pair[:3]}/{pair[3:]}"
+            resp = requests.get(
+                "https://api.twelvedata.com/time_series",
+                params={
+                    "symbol": td_symbol,
+                    "interval": "1day",
+                    "outputsize": min(bars, 800),
+                    "apikey": key,
+                },
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                logger.warning("Forex (Twelve Data) fetch failed %s: status=%d", symbol, resp.status_code)
+                return []
+            values = (resp.json().get("values") or [])[-bars:]
+            if not values:
+                logger.warning("Forex (Twelve Data) fetch empty %s", symbol)
+                return []
+            from datetime import datetime as _dt
+            rows = []
+            for v in values:
+                try:
+                    ts = int(_dt.strptime(v["datetime"][:10], "%Y-%m-%d").timestamp() * 1000)
+                except (ValueError, KeyError):
+                    continue
+                rows.append((
+                    ts,
+                    round(float(v["open"]), 6),
+                    round(float(v["high"]), 6),
+                    round(float(v["low"]), 6),
+                    round(float(v["close"]), 6),
+                    round(float(v.get("volume", 0) or 0), 6),
+                ))
+            return rows
+        except Exception as exc:
+            logger.warning("Forex (Twelve Data) fetch failed %s: %s", symbol, exc)
+            return []
 
     @staticmethod
     def _fetch_yfinance(symbol: str, timeframe: str, bars: int) -> list:
@@ -484,9 +551,59 @@ class KlineStore:
         return []
 
     @staticmethod
+    def _fetch_tencent_daily(market: str, symbol: str, bars: int) -> list:
+        """腾讯日线（web.ifzq.gtimg.cn），规避新浪批量风控与东财 push2his 断连。
+
+        market: 'hk' → 前复权（腾讯港股接口仅支持复权）；'sh'/'sz' → 不复权。
+        单请求返回 bars 根，行格式 [date, open, close, high, low, volume, ...]。
+        """
+        try:
+            if market == "hk":
+                qid = f"hk{symbol}"
+                url = "https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
+                params = {"param": f"{qid},day,,,{bars},qfq"}
+            else:
+                qid = f"{market}{symbol}"
+                url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+                params = {"param": f"{qid},day,,,{bars},"}
+            resp = requests.get(
+                url, params=params, timeout=12,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                       "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            )
+            if resp.status_code != 200:
+                return []
+            data = (resp.json().get("data") or {}).get(qid) or {}
+            kd = data.get("qfqday") or data.get("day") or []
+            rows = []
+            for item in kd:
+                if len(item) < 6:
+                    continue
+                ts = KlineStore._ts_ms(item[0])
+                if ts is None:
+                    continue
+                rows.append((ts,
+                             round(float(item[1]), 4),   # open
+                             round(float(item[3]), 4),   # high
+                             round(float(item[4]), 4),   # low
+                             round(float(item[2]), 4),   # close
+                             round(float(item[5] or 0), 0)))  # volume
+            return rows[-bars:]
+        except Exception as exc:
+            logger.warning("Tencent fetch failed %s%s: %s", market, symbol, exc)
+            return []
+
+    @staticmethod
     def _fetch_akshare_cn(symbol: str, market: str, bars: int) -> list:
-        """A-shares daily OHLCV from akshare (新浪源, 绕过东财断连)。empty 或异常退避 3s 重试。"""
-        last_err = ""
+        """A-shares daily: 腾讯日线（不复权）优先 → akshare 新浪（stock_zh_a_daily）回退。
+
+        新浪源在批量周期内会被 IP 风控（约 10+ 次请求后返回空），腾讯源独立于新浪，
+        可稳定支撑 A股采集；东财 stock_zh_a_hist 对本机 IP 连接被重置，不可用。
+        """
+        rows = KlineStore._fetch_tencent_daily(market, symbol, bars)
+        if rows:
+            return rows
+        last_err = "tencent empty"
         for attempt in range(3):
             try:
                 import akshare as ak
@@ -512,8 +629,11 @@ class KlineStore:
 
     @staticmethod
     def _fetch_akshare_hk(symbol: str, bars: int) -> list:
-        """HK stocks daily OHLCV from akshare (新浪源, 绕过东财断连)。empty 或异常退避 3s 重试。"""
-        last_err = ""
+        """HK stocks daily: 腾讯日线（前复权）优先 → akshare 新浪（stock_hk_daily）回退。"""
+        rows = KlineStore._fetch_tencent_daily("hk", symbol, bars)
+        if rows:
+            return rows
+        last_err = "tencent empty"
         for attempt in range(3):
             try:
                 import akshare as ak

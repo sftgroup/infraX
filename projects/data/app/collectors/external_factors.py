@@ -124,6 +124,60 @@ def _fetch_dxy() -> Optional[float]:
     return None
 
 
+def _fetch_dxy_twelve() -> Optional[float]:
+    """US Dollar Index from Twelve Data (需 TWELVE_DATA_API_KEY，与外汇共用)."""
+    try:
+        from app.config import APIKeys
+        key = APIKeys.rotate("TWELVE_DATA_API_KEY")
+        if not key:
+            return None
+        resp = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params={"symbol": "DXY", "interval": "1day", "outputsize": 2, "apikey": key},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.warning("DXY (Twelve Data) fetch failed: status=%d", resp.status_code)
+            return None
+        values = resp.json().get("values") or []
+        if values:
+            return round(float(values[0]["close"]), 4)
+        return None
+    except Exception as exc:
+        logger.warning("DXY (Twelve Data) fetch failed: %s", exc)
+        return None
+
+
+def _fetch_dxy_fred() -> Optional[float]:
+    """Trade-weighted US Dollar Index from FRED (DTWEXBGS, 需 FRED_API_KEY).
+
+    与 DX-Y.NYB 同向（广义贸易加权美元指数），作为 yfinance/Twelve Data 之后的兜底。
+    """
+    try:
+        from app.config import APIKeys
+        key = APIKeys.rotate("FRED_API_KEY")
+        if not key:
+            return None
+        resp = requests.get(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params={"series_id": "DTWEXBGS", "api_key": key, "file_type": "json",
+                    "sort_order": "desc", "limit": 2},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.warning("DXY (FRED) fetch failed: status=%d", resp.status_code)
+            return None
+        for obs in (resp.json().get("observations") or []):
+            try:
+                return round(float(obs["value"]), 4)
+            except (TypeError, ValueError):
+                continue
+        return None
+    except Exception as exc:
+        logger.warning("DXY (FRED) fetch failed: %s", exc)
+        return None
+
+
 def _fetch_us10y_bond() -> Optional[float]:
     """US 10Y Treasury yield from akshare (东财美债收益率, free)."""
     try:
@@ -204,12 +258,16 @@ class ExternalFactorCollector:
             save_snapshot("macro", "vix", {"value": vix})
             logger.debug("VIX: %.2f", vix)
 
-        # DXY: yfinance → DB 最近快照
+        # DXY: yfinance → Twelve Data → FRED → DB 最近快照
         dxy = _fetch_dxy()
+        if dxy is None:
+            dxy = _fetch_dxy_twelve()
+        if dxy is None:
+            dxy = _fetch_dxy_fred()
         if dxy is None:
             dxy = _last_snapshot_value("macro", "dxy")
             if dxy is not None:
-                logger.warning("DXY: yfinance rate-limited, using stale snapshot %.2f", dxy)
+                logger.warning("DXY: all sources failed, using stale snapshot %.2f", dxy)
         if dxy is not None:
             save_snapshot("macro", "dxy", {"value": dxy})
             logger.debug("DXY: %.2f", dxy)
