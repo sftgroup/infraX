@@ -508,7 +508,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 ## 9. 统一任务清单（唯一 tasklist 维护点）
 
-> **唯一维护点**：数据栈全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
+> **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
 > 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
 
 ### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md）
@@ -546,3 +546,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
 - [ ] DS-9~DS-12 排期与完成时间（见 9.1）
+
+### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
+
+> 独立微服务（:3500，Fastify + PostgreSQL + Redis，pnpm monorepo：core/evm/server/react 四包）。**仓库暂无代码，全部未开始**；排期约 4-6 天。
+
+| # | 任务 | 预估 | 依赖 | 状态 |
+|---|------|------|------|:---:|
+| 1 | `core` 包：类型 + AES-256-GCM 加解密 + 错误码 | 0.5天 | — | 🔲 |
+| 2 | `evm` 包：EIP-712 签名验证 + RPC 注册表 | 0.5天 | 1 | 🔲 |
+| 3 | `server` 数据库 Migration（session_keys / session_executions）+ repo 层 | 0.5天 | 1 | 🔲 |
+| 4 | `server` API 路由（/nonce /sessions /execute /health）+ service 层 | 1天 | 1,2,3 | 🔲 |
+| 5 | `server` 集成测试（Vitest + Testcontainers，全部端点） | 0.5天 | 4 | 🔲 |
+| 6 | `react` 前端组件库（SessionKeyAuth / List / Detail / ExpirySelector / ContractSelector） | 1天 | 1 | 🔲 |
+| 7 | Docker 部署（Dockerfile + docker-compose + 环境变量清单） | 0.5天 | 5 | 🔲 |
+| 8 | 各项目接入适配（Python / Node / React，每项目 0.5 天） | 每项目 0.5天 | 5,6 | 🔲 |
+
+**交付要求**：单测/集成/E2E 覆盖（core/evm >90%，Playwright 创建→撤销全流程）；安全措施 S-01~S-07（私钥 AES-256-GCM 加密、execute 需 Bearer、Redis 分布式锁、白名单+额度三重校验、Nonce 30min 一次性、敏感操作日志）
