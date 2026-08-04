@@ -1,17 +1,19 @@
-"""Tree ML — LightGBM 方向预测（真实训练，无模拟回退）。
+"""Tree ML — LightGBM / XGBoost / RandomForest 方向预测（真实训练，无模拟回退）。
 
 归属：ml-service 算法层（独立推理服务）。数据经 data_client 走
 data-service /bars + /symbols（HTTP），不直连 SQLite。
 
 从 data-service 拉取日线历史（含技术指标列），构造特征 + 未来
-horizon 日收益方向标签（三分类 up/flat/down），训练 LightGBM
-分类器，对每个 symbol 最新特征预测：
+horizon 日收益方向标签（三分类 up/flat/down），对每个启用家族
+（lightgbm / xgboost / random_forest）在**同一数据集、同一切分**上
+训练分类器，对每个 symbol 最新特征预测：
 
     direction（prob_up/prob_flat/prob_down）+ 机会评分（0-100）
     + 波动率档位（基于该 symbol 历史 vol_20 分位数）
 
-TREE_ML_ENABLED=false（默认）时 predict_payload() 返回 None
-（不产生任何数据）；模型文件存 ml-service/models/（joblib）。
+家族开关：TREE_ML_ENABLED（lightgbm，主模型）/ XGB_ENABLED /
+RF_ENABLED，全部默认 false。禁用/不可用时 predict_payload() 返回
+None（不产生任何数据）；模型文件存 ml-service/models/（joblib）。
 """
 from __future__ import annotations
 
@@ -40,24 +42,64 @@ _DIR_NAME = {DIR_UP: "up", DIR_FLAT: "flat", DIR_DOWN: "down"}
 TIMEFRAME = "1d"
 
 _MODEL_DIR = Path(config.TREE_ML_MODEL_DIR)
-_MODEL_FILE = _MODEL_DIR / "tree_direction.joblib"
-_META_FILE = _MODEL_DIR / "meta.json"
 
-_LGB_IMPORT_ERROR = None
+# 模型家族注册：文件 / meta 文件名 / 展示名（lightgbm 保持原文件名兼容）
+_FAMILIES = {
+    "lightgbm": {
+        "file": "tree_direction.joblib",
+        "meta": "meta.json",
+        "name": "lightgbm-direction",
+        "enabled": lambda: config.TREE_ML_ENABLED,
+    },
+    "xgboost": {
+        "file": "xgb_direction.joblib",
+        "meta": "xgb_meta.json",
+        "name": "xgboost-direction",
+        "enabled": lambda: config.XGB_ENABLED,
+    },
+    "random_forest": {
+        "file": "rf_direction.joblib",
+        "meta": "rf_meta.json",
+        "name": "random-forest-direction",
+        "enabled": lambda: config.RF_ENABLED,
+    },
+}
+
+_IMPORT_ERRORS: dict[str, Exception] = {}
 
 
-def _enabled() -> bool:
-    """TREE_ML_ENABLED=true 且 lightgbm 可导入才启用（懒加载，不崩）。"""
-    global _LGB_IMPORT_ERROR
-    if not config.TREE_ML_ENABLED:
+def _import_ok(family: str) -> bool:
+    """按家族做依赖导入检查（懒加载，失败置 flag 不再重试）。"""
+    if family in _IMPORT_ERRORS:
         return False
-    if _LGB_IMPORT_ERROR is None:
-        try:
+    try:
+        if family == "lightgbm":
             import lightgbm  # noqa: F401
-        except Exception as exc:  # 未安装/损坏
-            _LGB_IMPORT_ERROR = exc
-            logger.warning("tree_ml disabled: lightgbm unavailable (%s)", exc)
-    return _LGB_IMPORT_ERROR is None
+        elif family == "xgboost":
+            import xgboost  # noqa: F401
+        else:  # random_forest
+            from sklearn.ensemble import RandomForestClassifier  # noqa: F401
+    except Exception as exc:  # 未安装/损坏
+        _IMPORT_ERRORS[family] = exc
+        logger.warning("tree_ml family %s disabled: %s", family, exc)
+        return False
+    return True
+
+
+def _enabled(family: str = "lightgbm") -> bool:
+    """某家族是否启用（env 开关 + 依赖可导入，懒加载不崩）。"""
+    spec = _FAMILIES.get(family)
+    if spec is None or not spec["enabled"]():
+        return False
+    return _import_ok(family)
+
+
+def _family_path(family: str) -> Path:
+    return _MODEL_DIR / _FAMILIES[family]["file"]
+
+
+def _family_meta_file(family: str) -> Path:
+    return _MODEL_DIR / _FAMILIES[family]["meta"]
 
 
 # ── 特征工程（纯函数，可单测） ──────────────────────────────
@@ -202,22 +244,24 @@ def build_dataset() -> Optional[list[tuple[str, pd.DataFrame]]]:
 
 # ── 训练 / 持久化 ──────────────────────────────────────────
 
-def _load_meta() -> Optional[dict]:
+def _load_meta(family: str = "lightgbm") -> Optional[dict]:
     try:
-        if _META_FILE.exists():
-            return json.loads(_META_FILE.read_text())
+        p = _family_meta_file(family)
+        if p.exists():
+            return json.loads(p.read_text())
     except Exception:
         pass
     return None
 
 
-def _load_model() -> Optional[Any]:
+def _load_model(family: str = "lightgbm") -> Optional[Any]:
     try:
-        if _MODEL_FILE.exists():
+        p = _family_path(family)
+        if p.exists():
             import joblib
-            return joblib.load(_MODEL_FILE)
+            return joblib.load(p)
     except Exception as exc:
-        logger.warning("tree_ml load model failed: %s", exc)
+        logger.warning("tree_ml load model (%s) failed: %s", family, exc)
     return None
 
 
@@ -228,12 +272,45 @@ def _is_stale(meta: Optional[dict]) -> bool:
     return time.time() * 1000 - meta.get("trained_at_ms", 0) > config.TREE_ML_RETRAIN_HOURS * 3600 * 1000
 
 
-def train_models() -> Optional[dict]:
-    """构建数据集 → 时序切分（每 symbol 后 20% 验证）→ 训练 LightGBM → 存盘。
+def _fit_family(family: str, X_train, y_train, X_val, y_val) -> tuple[Any, float]:
+    """按家族构造并训练分类器，返回 (model, val_acc)。
 
-    返回 meta dict；禁用/数据不足/训练失败返回 None（无模拟数据）。
+    三个家族共用同一训练/验证切分，保证横向可比（对照基线）。
     """
-    if not _enabled():
+    if family == "lightgbm":
+        from lightgbm import LGBMClassifier
+        clf = LGBMClassifier(
+            n_estimators=200, learning_rate=0.05, num_leaves=15,
+            subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
+            verbose=-1, random_state=42,
+        )
+    elif family == "xgboost":
+        import xgboost as xgb
+        clf = xgb.XGBClassifier(
+            n_estimators=200, learning_rate=0.05, max_depth=6,
+            subsample=0.8, colsample_bytree=0.8, random_state=42,
+            tree_method="hist", eval_metric="mlogloss",
+        )
+    else:  # random_forest — 对照基线（sklearn 自带）
+        from sklearn.ensemble import RandomForestClassifier
+        clf = RandomForestClassifier(
+            n_estimators=200, max_depth=8, min_samples_leaf=10,
+            random_state=42, n_jobs=2,
+        )
+    clf.fit(X_train, y_train)
+    from sklearn.metrics import accuracy_score
+    val_acc = float(accuracy_score(y_val, clf.predict(X_val)))
+    return clf, val_acc
+
+
+def train_models() -> Optional[dict]:
+    """构建数据集 → 时序切分（每 symbol 后 20% 验证）→ 训练全部启用家族 → 存盘。
+
+    返回 lightgbm（主家族）meta dict；禁用/数据不足/主家族训练失败返回
+    None（无模拟数据）。其余启用家族即使成功也照常落盘，供对比读取。
+    """
+    enabled_fams = [f for f in _FAMILIES if _enabled(f)]
+    if not enabled_fams:
         return None
     frames = build_dataset()
     if not frames:
@@ -250,51 +327,42 @@ def train_models() -> Optional[dict]:
     X_val = pd.concat([v for _, _, v in parts])
     y_val = X_val.pop("direction")
 
-    try:
-        from lightgbm import LGBMClassifier
-    except Exception as exc:
-        logger.warning("tree_ml train skipped: lightgbm unavailable (%s)", exc)
-        return None
-
     X_train = X_train.fillna(X_train.median())
     X_val = X_val.fillna(X_train.median())  # 用训练集中位数填充验证集
 
-    clf = LGBMClassifier(
-        n_estimators=200, learning_rate=0.05, num_leaves=15,
-        subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
-        verbose=-1, random_state=42,
-    )
-    try:
-        clf.fit(X_train, y_train)
-    except Exception as exc:
-        logger.warning("tree_ml training failed: %s", exc)
-        return None
-
-    from sklearn.metrics import accuracy_score
-    val_acc = float(accuracy_score(y_val, clf.predict(X_val)))
-
-    _MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    import joblib
-    joblib.dump(clf, _MODEL_FILE)
-    meta = {
-        "name": "lightgbm-direction",
-        "version": 1,
-        "trained_at_ms": int(time.time() * 1000),
-        "horizon": config.TREE_ML_HORIZON,
-        "up_thr": config.TREE_ML_UP_THR,
-        "n_samples": int(len(X_train)),
-        "n_val": int(len(X_val)),
-        "val_accuracy": round(val_acc, 4),
-        "n_symbols": len(frames),
-        "symbols": [s for s, _, _ in parts],
-        "features": list(X_train.columns),
-    }
-    _META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
-    logger.info(
-        "tree_ml trained: %d samples/%d symbols, val_acc=%.3f",
-        meta["n_samples"], meta["n_symbols"], meta["val_accuracy"],
-    )
-    return meta
+    features = list(X_train.columns)
+    symbols = [s for s, _, _ in parts]
+    meta_primary: Optional[dict] = None
+    for family in enabled_fams:
+        try:
+            model, val_acc = _fit_family(family, X_train, y_train, X_val, y_val)
+        except Exception as exc:
+            logger.warning("tree_ml family %s training failed: %s", family, exc)
+            continue
+        _MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        import joblib
+        joblib.dump(model, _family_path(family))
+        meta = {
+            "name": _FAMILIES[family]["name"],
+            "version": 1,
+            "trained_at_ms": int(time.time() * 1000),
+            "horizon": config.TREE_ML_HORIZON,
+            "up_thr": config.TREE_ML_UP_THR,
+            "n_samples": int(len(X_train)),
+            "n_val": int(len(X_val)),
+            "val_accuracy": round(val_acc, 4),
+            "n_symbols": len(parts),
+            "symbols": symbols,
+            "features": features,
+        }
+        _family_meta_file(family).write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+        logger.info(
+            "tree_ml %s trained: %d samples/%d symbols, val_acc=%.3f",
+            family, meta["n_samples"], meta["n_symbols"], meta["val_accuracy"],
+        )
+        if family == "lightgbm":
+            meta_primary = meta
+    return meta_primary
 
 
 # ── 预测 ────────────────────────────────────────────────────
@@ -337,22 +405,22 @@ def _predict_one(model: Any, meta: dict, symbol: str) -> Optional[dict]:
     }
 
 
-def predict_all() -> Optional[list[dict]]:
-    """对所有已训练 symbol 预测；无模型或过期时先训练。
+def predict_all(family: str = "lightgbm") -> Optional[list[dict]]:
+    """对某家族已训练 symbol 预测；无模型或过期时触发全家族重训。
 
     返回 [{symbol, direction, prob_*, opportunity_score, volatility_level}]；
     禁用/无模型且无法训练时返回 None。
     """
-    if not _enabled():
+    if not _enabled(family):
         return None
-    meta = _load_meta()
-    model = _load_model()
+    meta = _load_meta(family)
+    model = _load_model(family)
     if _is_stale(meta) or model is None:
-        meta = train_models()
-        if meta is None:
-            return None
-        model = _load_model()
-        if model is None:
+        # 共享数据集，任一家族过期即整体重训；随后重读本家族模型
+        train_models()
+        meta = _load_meta(family)
+        model = _load_model(family)
+        if meta is None or model is None:
             return None
 
     results = []
@@ -363,19 +431,56 @@ def predict_all() -> Optional[list[dict]]:
     return results or None
 
 
+def _primary_family() -> Optional[str]:
+    """主家族（优先 lightgbm，其次启用顺序）。"""
+    for fam in ("lightgbm", "xgboost", "random_forest"):
+        if _enabled(fam):
+            return fam
+    return None
+
+
 def predict_payload() -> Optional[dict]:
-    """训练（如需）+ 预测 → 快照 payload（与 data-service 原快照结构一致）。"""
-    predictions = predict_all()
+    """训练（如需）+ 主家族预测 → 快照 payload。
+
+    结构（与 data-service 原快照兼容）：
+      {"generated_at", "model": {主家族}, "predictions": [主家族],
+       "families": {"xgboost": {"model", "predictions"},
+                    "random_forest": {...}}}   # 仅启用的对比家族
+    """
+    primary = _primary_family()
+    if primary is None:
+        return None
+    predictions = predict_all(primary)
     if not predictions:
         return None
-    meta = _load_meta() or {}
-    return {
+    meta = _load_meta(primary) or {}
+    payload = {
         "generated_at": int(time.time() * 1000),
         "model": {
-            "name": "lightgbm-direction",
+            "name": _FAMILIES[primary]["name"],
             "horizon": config.TREE_ML_HORIZON,
             "n_samples": meta.get("n_samples"),
             "val_accuracy": meta.get("val_accuracy"),
         },
         "predictions": predictions,
     }
+    families: dict[str, dict] = {}
+    for family in _FAMILIES:
+        if family == primary or not _enabled(family):
+            continue
+        fam_meta = _load_meta(family) or {}
+        fam_preds = predict_all(family) or []
+        if not fam_preds:
+            continue
+        families[family] = {
+            "model": {
+                "name": _FAMILIES[family]["name"],
+                "horizon": config.TREE_ML_HORIZON,
+                "n_samples": fam_meta.get("n_samples"),
+                "val_accuracy": fam_meta.get("val_accuracy"),
+            },
+            "predictions": fam_preds,
+        }
+    if families:
+        payload["families"] = families
+    return payload

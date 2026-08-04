@@ -33,6 +33,11 @@ TREE_ML_MAX_BARS = int(os.getenv("TREE_ML_MAX_BARS", "2000"))
 TREE_ML_RETRAIN_HOURS = float(os.getenv("TREE_ML_RETRAIN_HOURS", "24"))
 TREE_ML_MODEL_DIR = os.getenv("TREE_ML_MODEL_DIR", "models")
 
+# ── XGBoost / Random Forest 方向预测（P1 对比家族，默认关闭） ──
+# 与 LightGBM 同数据集/同切分训练，作为方向预测的对照模型。
+XGB_ENABLED = os.getenv("XGB_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+RF_ENABLED = os.getenv("RF_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+
 # ── FinBERT 文本情绪（FINBERT_ENABLED） ─────────────────
 FINBERT_ENABLED = os.getenv("FINBERT_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 FINBERT_MODEL = os.getenv("FINBERT_MODEL", "ProsusAI/finbert")

@@ -17,6 +17,7 @@ os.environ["TREE_ML_ENABLED"] = "false"  # 测试环境默认禁用（模块加�
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
 
 from app.analytics import tree_models as tm  # noqa: E402
 
@@ -125,3 +126,93 @@ class TestDisabledBehavior:
 
     def test_enabled_flag(self):
         assert tm._enabled() is False
+
+    def test_unknown_family_not_enabled(self):
+        assert tm._enabled("nope") is False
+
+
+def _synthetic_xy(n=400):
+    """构造带方向标签的合成特征（供训练冒烟测试，不依赖网络）。"""
+    rng = np.random.default_rng(7)
+    df = _mk_df(n=n)
+    feats = tm.build_features(df)
+    labels = tm.make_labels(df).dropna()
+    labels.name = "direction"
+    Xy = pd.concat([feats, labels], axis=1).dropna(subset=["direction"])
+    mid = int(len(Xy) * 0.8)
+    Xy_tr, Xy_va = Xy.iloc[:mid], Xy.iloc[mid:]
+    return Xy_tr.drop(columns=["direction"]), Xy_tr["direction"], Xy_va.drop(columns=["direction"]), Xy_va["direction"]
+
+
+class TestFitFamily:
+    """三家族在同一合成数据上训练冒烟（真实训练，验证对照基线可用）。"""
+
+    def test_lightgbm(self):
+        Xt, yt, Xv, yv = _synthetic_xy()
+        model, acc = tm._fit_family("lightgbm", Xt, yt, Xv, yv)
+        assert hasattr(model, "predict_proba")
+        assert 0.0 <= acc <= 1.0
+
+    def test_xgboost(self):
+        pytest.importorskip("xgboost")
+        Xt, yt, Xv, yv = _synthetic_xy()
+        model, acc = tm._fit_family("xgboost", Xt, yt, Xv, yv)
+        assert hasattr(model, "predict_proba")
+        assert 0.0 <= acc <= 1.0
+
+    def test_random_forest(self):
+        Xt, yt, Xv, yv = _synthetic_xy()
+        model, acc = tm._fit_family("random_forest", Xt, yt, Xv, yv)
+        assert hasattr(model, "predict_proba")
+        assert 0.0 <= acc <= 1.0
+
+
+class TestPrimaryFamily:
+    def test_lightgbm_first_when_enabled(self, monkeypatch):
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": f == "lightgbm")
+        assert tm._primary_family() == "lightgbm"
+
+    def test_falls_back_to_xgboost(self, monkeypatch):
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": f in ("xgboost", "random_forest"))
+        assert tm._primary_family() == "xgboost"
+
+    def test_none_when_all_disabled(self, monkeypatch):
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": False)
+        assert tm._primary_family() is None
+
+
+class TestPayloadFamilies:
+    """predict_payload 包含启用的对比家族（lightgbm 主模型兼容原结构）。"""
+
+    def _fake_predict(self, family="lightgbm"):
+        return [{"symbol": "AAPL", "direction": "up", "prob_up": 0.7,
+                 "prob_flat": 0.2, "prob_down": 0.1,
+                 "opportunity_score": 80, "volatility_level": "moderate"}]
+
+    def test_no_families_when_only_lightgbm(self, monkeypatch):
+        monkeypatch.setattr(tm, "_primary_family", lambda: "lightgbm")
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": f == "lightgbm")
+        monkeypatch.setattr(tm, "predict_all", self._fake_predict)
+        monkeypatch.setattr(tm, "_load_meta", lambda f="lightgbm": {"n_samples": 100, "val_accuracy": 0.5})
+        payload = tm.predict_payload()
+        assert payload["model"]["name"] == "lightgbm-direction"
+        assert payload["predictions"]
+        assert "families" not in payload
+
+    def test_includes_xgboost_family(self, monkeypatch):
+        monkeypatch.setattr(tm, "_primary_family", lambda: "lightgbm")
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": f in ("lightgbm", "xgboost"))
+        monkeypatch.setattr(tm, "predict_all", self._fake_predict)
+        monkeypatch.setattr(tm, "_load_meta", lambda f="lightgbm": {"n_samples": 100, "val_accuracy": 0.5})
+        payload = tm.predict_payload()
+        assert "families" in payload
+        assert payload["families"]["xgboost"]["model"]["name"] == "xgboost-direction"
+        assert payload["families"]["xgboost"]["predictions"][0]["symbol"] == "AAPL"
+
+    def test_xgboost_primary_when_lightgbm_disabled(self, monkeypatch):
+        monkeypatch.setattr(tm, "_primary_family", lambda: "xgboost")
+        monkeypatch.setattr(tm, "_enabled", lambda f="lightgbm": f in ("xgboost", "random_forest"))
+        monkeypatch.setattr(tm, "predict_all", self._fake_predict)
+        monkeypatch.setattr(tm, "_load_meta", lambda f="lightgbm": {"n_samples": 100, "val_accuracy": 0.5})
+        payload = tm.predict_payload()
+        assert payload["model"]["name"] == "xgboost-direction"
