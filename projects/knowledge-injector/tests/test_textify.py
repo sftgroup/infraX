@@ -152,6 +152,37 @@ class TestMlPrediction:
         assert "uncertainty high" in result
 
 
+class TestMlVolatilityReport:
+    _RESULTS = [
+        {"symbol": "BTC", "volatility_level": "high", "volatility_score": 0.72,
+         "direction_consensus": 0.53, "uncertainty": "high"},
+        {"symbol": "ETH", "volatility_level": "moderate", "volatility_score": 0.55,
+         "direction_consensus": 0.6, "uncertainty": "moderate"},
+    ]
+
+    def test_with_sentiment(self):
+        result = txt.ml_volatility_report(self._RESULTS, sentiment={"value": -0.5, "ts": 1})
+        assert "[ML Volatility]" in result
+        assert "BTC: volatility high" in result
+        assert "sentiment_score -0.50 → bearish" in result
+        # 高波动 + 负面情绪 → 联动风险提示
+        assert "elevated market-stress risk" in result
+
+    def test_with_neutral_sentiment(self):
+        result = txt.ml_volatility_report(self._RESULTS, sentiment={"value": 0.1, "ts": 1})
+        assert "sentiment_score +0.10 → neutral" in result
+        assert "market-stress risk" not in result
+
+    def test_without_sentiment(self):
+        result = txt.ml_volatility_report(self._RESULTS)
+        assert "Market sentiment_score: unavailable" in result
+        assert "sentiment_score -" not in result
+
+    def test_empty(self):
+        assert txt.ml_volatility_report([]) == ""
+        assert txt.ml_volatility_report(None) == ""
+
+
 class TestVolatilitySnapshot:
     def test_all_fields(self):
         result = txt.volatility_snapshot(

@@ -241,11 +241,18 @@ async def _startup():
     init_db()
     from app.kline_store import get_kline_store
     get_kline_store().start()
-    from app.collectors import ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector
+    from app.collectors import (
+        ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
+        NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
+    )
     ExternalFactorCollector().start()
     CalendarCollector().start()
     SnapshotCollector().start()
     HeatmapCollector().start()
+    NewsCollector().start()
+    SentimentCollector().start()
+    AdanosCollector().start()
+    OpportunityCollector().start()
     logger.info("InfraX Data Service startup complete")
 
 

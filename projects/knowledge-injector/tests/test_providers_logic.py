@@ -164,3 +164,21 @@ class TestStats:
         assert summary["injectors"]["sentiment"]["failure"] == 1
         recent = s.recent(limit=5)
         assert len(recent) == 2
+
+
+class TestDataServiceClient:
+    """providers/data_service.py 联动客户端（离线 fail-silent 测试）。"""
+
+    def test_fetch_unconfigured(self, monkeypatch):
+        """未配置 DATA_SERVICE_URL → None，不发网络请求。"""
+        from config import SETTINGS
+        from providers.data_service import fetch_sentiment_score
+        monkeypatch.setattr(SETTINGS, "data_service_url", "")
+        assert fetch_sentiment_score() is None
+
+    def test_fetch_invalid_url(self, monkeypatch):
+        """非法 URL → 捕获请求异常返回 None，不抛错。"""
+        from config import SETTINGS
+        from providers.data_service import fetch_sentiment_score
+        monkeypatch.setattr(SETTINGS, "data_service_url", "not-a-url")
+        assert fetch_sentiment_score() is None

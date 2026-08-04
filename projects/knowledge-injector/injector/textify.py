@@ -508,6 +508,59 @@ def ml_prediction(
     return "\n".join(parts)
 
 
+def ml_volatility_report(
+    results: list[dict],
+    sentiment: dict | None = None,
+) -> str:
+    """Kronos-mini 多资产波动率预测 + market sentiment_score 联动 → 文本。
+
+    参数:
+        results:   predict_all_volatility() 的输出列表（每项含 symbol /
+                   volatility_level / volatility_score / direction_consensus /
+                   uncertainty）。
+        sentiment: fetch_sentiment_score() 的输出 {"value": [-1,1], "ts": ...}
+                   或 None（未配置 data-service / 拉取失败）。
+
+    sentiment_score ∈ [-1, 1]，来自 data-service SentimentCollector：
+      正值 = 偏多，负值 = 偏空。报告末尾输出联动解读（高波动 + 负面情绪
+      → 市场承压风险上升）。
+    """
+    if not results:
+        return ""
+    lines = ["[ML Volatility] Kronos-mini 多资产波动率与市场情绪联动:"]
+    for r in results:
+        sym = r.get("symbol", "?")
+        level = r.get("volatility_level", "unknown")
+        score = r.get("volatility_score", 0)
+        consensus = r.get("direction_consensus", 0)
+        uncertainty = r.get("uncertainty", "unknown")
+        lines.append(
+            f"  {sym}: volatility {level} (score {float(score):.2f}), "
+            f"direction_consensus {float(consensus):.2f}, uncertainty {uncertainty}"
+        )
+
+    score = None
+    if sentiment and isinstance(sentiment.get("value"), (int, float)):
+        score = float(sentiment["value"])
+    if score is not None:
+        if score > 0.2:
+            label = "bullish"
+        elif score < -0.2:
+            label = "bearish"
+        else:
+            label = "neutral"
+        lines.append(f"  Market sentiment_score {score:+.2f} → {label}")
+
+        # 联动解读：高波动 + 负面情绪 = 市场承压
+        avg_vol = sum(float(r.get("volatility_score", 0) or 0) for r in results) / max(len(results), 1)
+        if score < -0.2 and avg_vol >= 0.6:
+            lines.append("  Note: elevated volatility + negative sentiment "
+                         "→ elevated market-stress risk")
+    else:
+        lines.append("  Market sentiment_score: unavailable")
+    return "\n".join(lines)
+
+
 # ─── 全球宏观（多区域） ───────────────────────────────
 
 _REGION_NAMES = {

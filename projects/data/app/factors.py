@@ -76,6 +76,13 @@ def get_catalog() -> list[dict]:
 
 _CATEGORY_MAP = {
     "external":   [("sentiment", "fear_greed"), ("macro", "vix"), ("macro", "dxy"), ("macro", "us10y")],
+    "sentiment":  [
+        ("sentiment", "yield_curve"), ("sentiment", "put_call_ratio"),
+        ("sentiment", "adanos_sentiment"), ("sentiment", "sentiment_score"),
+        ("sentiment", "fear_greed"),
+    ],
+    "news":       [("news", "news")],
+    "opportunities": [("opportunities", "opportunities")],
     "heatmap":    [("market", "heatmap")],
     "calendar":   [("calendar", "calendar")],
     "snapshot":   [
@@ -86,7 +93,7 @@ _CATEGORY_MAP = {
     ],
 }
 # Flatten: data_type → category
-_SIMPLE_FACTOR_IDS = {"fear_greed", "vix", "dxy", "us10y", "btc_difficulty"}
+_SIMPLE_FACTOR_IDS = {"fear_greed", "vix", "dxy", "us10y", "btc_difficulty", "sentiment_score"}
 
 
 def get_current_factors(
@@ -258,6 +265,7 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
 # Map: factor_id → raw_json field name (only when differs from first-numeric heuristic)
 _FACTOR_FIELD = {
     "fear_greed": "value",
+    "sentiment_score": "value",
 }
 
 # Technical factors come from kline table

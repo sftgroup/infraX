@@ -41,6 +41,9 @@ class Settings:
     collector_url: str = field(default_factory=lambda: os.getenv("COLLECTOR_URL", ""))
     collector_api_key: str = field(default_factory=lambda: os.getenv("COLLECTOR_API_KEY", ""))
 
+    # ── data-service 联动（sentiment_score 等聚合因子） ──
+    data_service_url: str = field(default_factory=lambda: os.getenv("DATA_SERVICE_URL", ""))
+
     # ── Injection schedule ──
     injector_interval_sec: int = int(os.getenv("INJECTOR_INTERVAL_SEC", "21600"))
     injector_startup_delay: int = int(os.getenv("INJECTOR_STARTUP_DELAY", "120"))

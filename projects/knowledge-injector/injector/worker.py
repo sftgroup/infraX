@@ -500,6 +500,35 @@ class GraphInjector:
             logger.warning("inject_tech_analysis failed", exc_info=True)
             return False
 
+    def inject_ml_predictions(self) -> bool:
+        """注入 Kronos-mini ML 波动率预测（与 data-service sentiment_score 联动）。
+
+        providers/ml.py 默认 MODEL_ENABLED=False 返回模拟数据；目标机
+        `pip install kronos-pytorch` 并置 MODEL_ENABLED=True 后即用真实预测。
+        未配置 DATA_SERVICE_URL 时跳过 sentiment 联动，仍注入波动率预测。
+        """
+        try:
+            from providers.ml import predict_all_volatility
+            from providers.data_service import fetch_sentiment_score
+
+            results = predict_all_volatility()
+            if not results:
+                return False
+
+            sentiment = fetch_sentiment_score()  # 联动（可选，fail-silent）
+            text = txt.ml_volatility_report(results, sentiment=sentiment)
+            if not text:
+                return False
+
+            snap_id = self._save_raw(
+                {"predictions": results, "sentiment_score": sentiment},
+                "ml", "volatility_prediction",
+            )
+            return self._inject(text, file_source="ml:volatility:daily", snap_id=snap_id)
+        except Exception:
+            logger.debug("inject_ml_predictions failed", exc_info=True)
+            return False
+
     # ─── 配置化解析注入（DC / Collector raw data） ──
 
     def inject_parsed(self, source: str, limit: int = 100) -> list[dict]:
@@ -571,6 +600,7 @@ class GraphInjector:
             "onchain", "defi_tvl", "macro_trend",
             "fred_economics", "earnings_index", "evm",
             "global_macro", "indices", "tech_analysis",
+            "ml_predictions",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()

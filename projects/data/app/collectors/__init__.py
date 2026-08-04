@@ -3,3 +3,7 @@ from .external_factors import ExternalFactorCollector
 from .calendar import CalendarCollector
 from .market_data import SnapshotCollector
 from .heatmap import HeatmapCollector
+from .news import NewsCollector
+from .sentiment import SentimentCollector
+from .adanos import AdanosCollector
+from .opportunities import OpportunityCollector

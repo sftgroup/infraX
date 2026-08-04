@@ -52,6 +52,8 @@ def create_app() -> Flask:
         "volatility", "news_sentiment", "major_events",
         "onchain", "defi_tvl", "macro_trend",
         "fred_economics", "earnings_index", "evm",
+        "global_macro", "indices", "tech_analysis",
+        "ml_predictions",
     ]
 
     def _injector_methods() -> list[str]:
