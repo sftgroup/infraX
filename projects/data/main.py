@@ -329,6 +329,26 @@ async def symbols(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/symbols/search")
+async def symbols_search(
+    keyword: str = Query(..., description="模糊关键字，如 btc / eth/"),
+    market: str = Query("crypto", description="crypto | usstock | forex | futures"),
+    limit: int = Query(20, ge=1, le=100, description="返回条数，默认 20，上限 100"),
+):
+    """符号模糊搜索（DS-9，P0）。
+
+    对标单体 market.py 符号搜索：ccxt 全量市场（binance spot+swap，quote=USDT
+    且 active）4h TTL 缓存 + 种子回退；usstock/forex/futures 走本地种子。
+    """
+    try:
+        from app.symbol_search import search_symbols as _search
+
+        return {"keyword": keyword, "symbols": _search(keyword, market, limit)}
+    except Exception as e:
+        logger.error(f"/symbols/search failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Snapshots (complex data: heatmap, calendar, indices, etc.) ─
 
 @app.get("/snapshots")
