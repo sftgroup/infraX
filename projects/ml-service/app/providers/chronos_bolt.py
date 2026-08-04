@@ -154,18 +154,19 @@ def predict_symbol(symbol: str) -> dict[str, Any] | None:
     pred_len = config.BOLT_PRED_LEN
 
     import torch
-    forecast = pipeline.predict_quantiles(
-        context=torch.tensor(closes, dtype=torch.float32),
-        prediction_length=pred_len,
-        quantile_levels=_parse_quantiles(),
-    )
-    # shape (1, n_quantiles, pred_len)
     levels = _parse_quantiles()
+    # chronos>=2.x: predict_quantiles(inputs, ...) → (point, quantiles)
+    # point (1, pred_len)；quantiles (1, pred_len, n_quantiles)
+    point_t, quantiles_t = pipeline.predict_quantiles(
+        inputs=torch.tensor(closes, dtype=torch.float32),
+        prediction_length=pred_len,
+        quantile_levels=levels,
+    )
     idx = {lv: i for i, lv in enumerate(levels)}
-    q10 = forecast[0, idx.get(0.1, 0)].numpy()
-    q50 = forecast[0, idx.get(0.5, 1)].numpy()
-    q90 = forecast[0, idx.get(0.9, 2)].numpy()
-    point = q50
+    q10 = quantiles_t[0, :, idx.get(0.1, 0)].numpy()
+    q50 = quantiles_t[0, :, idx.get(0.5, 1)].numpy()
+    q90 = quantiles_t[0, :, idx.get(0.9, 2)].numpy()
+    point = point_t[0].numpy()
 
     stats = _stats_from_paths(point, q10, q50, q90, last_close)
     if not stats:
