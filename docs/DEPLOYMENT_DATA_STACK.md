@@ -378,6 +378,47 @@ sudo journalctl -u infrax-knowledge-injector -f
 
 ---
 
+## 8.5 ML 模型（Kronos / FinBERT / Tree ML）
+
+三个模型均默认关闭、懒加载，启用不影响现有服务。生产服务器已部署就绪（2026-08-04 实测）。
+
+| 模型 | 归属服务 | 开关 | 用途 | 生产状态 |
+|---|---|---|---|---|
+| **Kronos-mini**（P0） | knowledge-injector | `KRONOS_ENABLED` | 金融 K 线波动率/方向预测（真实模型推理，约 42s/周期） | ✅ 已启用 |
+| **FinBERT**（P1a） | data-service | `FINBERT_ENABLED` | 新闻文本情绪分类（需新闻输入） | ✅ 已启用（待新闻 key） |
+| **LightGBM**（P1） | data-service | `TREE_ML_ENABLED` | 方向三分类 + 机会评分（自训，24h 重训） | ✅ 已启用 |
+
+### Kronos-mini 启用（已完成于生产）
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install transformers huggingface-hub
+git clone https://github.com/shiyu-coder/Kronos /home/ubuntu/Kronos
+# 依赖与版本：pip install einops（Kronos 固定 hub/safetensors 版本已放宽以兼容 transformers 5.x）
+```
+
+- systemd unit（`infrax-knowledge-injector.service`）加 `Environment=PYTHONPATH=...:/home/ubuntu/Kronos`
+- injector `.env`：`KRONOS_ENABLED=true`
+- **数据前提**：crypto 需采日线（data `.env` 设 `KL_TIMEFRAMES=1m,1d`），否则 `Kronos: BTC 历史K线不足`；SPY/QQQ 走 yfinance 回退（本机受限流，BTC/ETH 已够用）
+- 预测结果：`/inject/ml_predictions`（Kronos 真实预测，`volatility_level`/`direction_consensus`/`uncertainty`）
+
+### FinBERT 启用
+
+- data `.env`：`FINBERT_ENABLED=true`（`FINBERT_MODEL` 默认 `ProsusAI/finbert`，可换 `yiyanghkust/finbert-tone` 支持中英）
+- **数据前提**：需 `NEWSAPI_API_KEY`（管理后台 Data Stack 页可热配）——无新闻快照时 collector 空转不产生数据
+- 输出：`raw_snapshots`（provider=sentiment, data_type=finbert_sentiment）
+
+### LightGBM（Tree ML）启用
+
+- data `.env`：`TREE_ML_ENABLED=true`（依赖 lightgbm/scikit-learn/joblib）
+- 自动流程：启动/24h 后训练（kline 日线 ≥300 样本，时序切分验证，2C4G 秒级）→ 每 30min 预测全部 symbol → 快照 `provider=ml, data_type=tree_predictions`
+- 模型文件：`projects/data/models/`（git 忽略）；手动重训：`TREE_ML_RETRAIN_HOURS=24`
+- 注入：knowledge-injector `inject_tree_ml` 已在默认注入列表（真实模型，data-service 未启用时 fail-silent）
+
+> 内存预算（2C4G + 2G swap）：三个模型均懒加载，常驻内存增量 ~200MB（Torch 库加载）；推理峰值 FinBERT ~1.5G / Kronos ~0.5G，不同时高峰即可。
+
+---
+
 ## 9. 待办
 
 - [ ] ragservicer 配置 LLM / embedding / admin 密钥（见 4.3），跑通端到端注入 → `POST /query` 命中验证
