@@ -353,3 +353,45 @@ def save_snapshot(provider: str, data_type: str, data: dict, symbol: str = ""):
             "save_snapshot failed provider=%s data_type=%s symbol=%s: %s",
             provider, data_type, symbol, exc,
         )
+
+
+def query_ml_predictions(
+    model: str,
+    symbol: str,
+    start: Optional[int] = None,
+    end: Optional[int] = None,
+    limit: int = 500,
+) -> list[dict]:
+    """P2 单模型预测历史查询（ml_predictions 明细表，§5.7）。
+
+    符号归一化（BTC/USDT → BTC），generated_at 升序，start/end 区间过滤。
+    """
+    sym = symbol.split("/")[0].strip()
+    db = get_db()
+    sql = (
+        "SELECT generated_at, direction, prob_up, uncertainty, "
+        "point_forecast, quantiles FROM ml_predictions "
+        "WHERE model=? AND symbol=?"
+    )
+    params: list = [model, sym]
+    if start is not None:
+        sql += " AND generated_at >= ?"
+        params.append(start)
+    if end is not None:
+        sql += " AND generated_at <= ?"
+        params.append(end)
+    sql += " ORDER BY generated_at ASC LIMIT ?"
+    params.append(limit)
+
+    rows = db.execute(sql, params).fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            "generated_at": r["generated_at"],
+            "direction": r["direction"],
+            "prob_up": r["prob_up"],
+            "uncertainty": r["uncertainty"],
+            "point_forecast": json.loads(r["point_forecast"]) if r["point_forecast"] else None,
+            "quantiles": json.loads(r["quantiles"]) if r["quantiles"] else None,
+        })
+    return result

@@ -109,3 +109,57 @@ def post_sentiment(articles: list[dict]) -> dict | None:
     except Exception as exc:
         logger.debug("ml-service sentiment parse failed: %s", exc)
         return None
+
+
+# ── P2 时序模型（Bolt / Moirai / TimesFM） ─────────────────
+
+_P2_ENDPOINTS = {
+    "bolt": "/ml/bolt",
+    "moirai": "/ml/moirai",
+    "timesfm": "/ml/timesfm",
+}
+
+
+def _fetch_p2(kind: str) -> list[dict] | None:
+    """拉取 ml-service P2 模型预测列表（[{symbol, direction, prob_up, ...}] 或 None）。
+
+    端点返回 data: [{symbol, point_forecast, quantiles, direction, prob_up,
+    uncertainty, ...}]；列表为空或解析失败返回 None（fail-silent）。
+    """
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    path = _P2_ENDPOINTS.get(kind)
+    if not base or not path:
+        return None
+    try:
+        resp = requests.get(f"{base}{path}", headers=_headers(), timeout=_TIMEOUT_CONSENSUS)
+        if resp.status_code != 200:
+            logger.debug("ml-service %s → %s", path, resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, list) or not data:
+            return None
+        return data
+    except requests.Timeout:
+        logger.debug("ml-service %s timeout (%ss)", path, _TIMEOUT_CONSENSUS)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("ml-service %s request failed: %s", path, exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service %s parse failed: %s", path, exc)
+        return None
+
+
+def fetch_bolt() -> list[dict] | None:
+    """Chronos-Bolt 单变量概率预测列表（或 None，fail-silent）。"""
+    return _fetch_p2("bolt")
+
+
+def fetch_moirai() -> list[dict] | None:
+    """Moirai 2.0 多变量联动预测列表（或 None，fail-silent）。"""
+    return _fetch_p2("moirai")
+
+
+def fetch_timesfm() -> list[dict] | None:
+    """TimesFM 2.5 长上下文点预测列表（或 None，fail-silent）。"""
+    return _fetch_p2("timesfm")

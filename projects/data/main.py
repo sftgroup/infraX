@@ -178,6 +178,32 @@ async def ticker(
     return data
 
 
+# ── P2 单模型预测历史（ml_predictions 明细，§5.7） ────────────
+
+@app.get("/ml/predictions")
+async def ml_predictions(
+    model: str = Query(..., pattern="^(bolt|moirai|timesfm)$", description="P2 model: bolt|moirai|timesfm"),
+    symbol: str = Query(..., description="Symbol, e.g. BTC or BTC/USDT"),
+    start: Optional[int] = Query(None, description="Start unix ms"),
+    end: Optional[int] = Query(None, description="End unix ms"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """P2 单模型预测历史（明细表 ml_predictions）。
+
+    返回 {model, symbol, count, predictions: [{generated_at, direction, prob_up,
+    uncertainty, point_forecast, quantiles}, ...]}，按 generated_at 升序。
+    """
+    try:
+        from app.factors import query_ml_predictions
+        rows = query_ml_predictions(model=model, symbol=symbol, start=start, end=end, limit=limit)
+    except Exception as e:
+        logger.error(f"/ml/predictions failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No predictions for model={model} symbol={symbol}")
+    return {"model": model, "symbol": symbol, "count": len(rows), "predictions": rows}
+
+
 # ── Factors Catalog ────────────────────────────────────────────
 
 @app.get("/factors/catalog")
@@ -466,7 +492,7 @@ async def _startup():
     from app.collectors import (
         ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
-        FinbertSentimentCollector, TreeMlCollector, ConsensusCollector,
+        FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
     )
     ExternalFactorCollector().start()
     CalendarCollector().start()
@@ -479,6 +505,7 @@ async def _startup():
     FinbertSentimentCollector().start()
     TreeMlCollector().start()
     ConsensusCollector().start()
+    P2MlCollector().start()
     logger.info("InfraX Data Service startup complete")
 
 

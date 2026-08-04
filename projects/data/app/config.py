@@ -75,6 +75,11 @@ LIGHTRAG_URL = os.getenv("LIGHTRAG_URL", "")
 ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "")  # 未配置则 ML 类 collector 空转
 ML_API_KEY = os.getenv("ML_API_KEY", "")           # ml-service 自身鉴权（可选）
 
+# ── P2 单模型快照落库（§5.7）：30min 拉 bolt/moirai/timesfm → ml_predictions ──
+P2_COLLECT_ENABLED = os.getenv("P2_COLLECT_ENABLED", "true").lower() == "true"
+P2_COLLECT_INTERVAL_SEC = int(os.getenv("P2_COLLECT_INTERVAL_SEC", "1800"))
+P2_RETENTION_DAYS = int(os.getenv("P2_RETENTION_DAYS", "90"))
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

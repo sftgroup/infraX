@@ -236,6 +236,60 @@ ml-service 内（现拉自己的三类预测）：
 - **P2 投票（第二意见交叉验证）**：`prob_up ≥ 0.55` 投 +1、`≤ 0.45` 投 -1、中间置信不投票；`consensus_score` = 主导方向票数 / 有方向票数（单票 1.0、N 票反向各半 0.5）；`divergence` = 票集同时存在 up 与 down；风险项新增任一 P2 模型 `uncertainty=high`
 - **实测（P2 整合后）**：33 symbols，六信号全开，avg_consensus 0.5455 / market_risk elevated / 31 项分歧；BTC 4 票 3:1 = 0.75（bolt up + timesfm up vs sentiment down，moirai 中间置信不投）；缓存命中 1.8ms
 
+### 5.7 P2 单模型快照落库 + 历史查询（v2 新增，2026-08-05）
+
+**背景**：`consensus` 快照只有最新一份（聚合视图），调用方无法按 模型 × 标的 × 时间范围 查询 P2 单模型（bolt/moirai/timesfm）的历史预测序列。
+
+**目标**：P2 预测明细落库，提供历史可追溯的单模型视图，与 consensus（聚合最新视图）互补。
+
+```
+ml-service /ml/bolt|moirai|timesfm（实时推理，fail-silent）
+   → data-service P2MlCollector（30min 轮询，独立 try/except）
+   → ml_predictions 表（逐 symbol 一行，明细可追溯）
+   → GET /ml/predictions?model=&symbol=&start=&end=&limit=（历史查询，DATA_API_KEY 鉴权）
+```
+
+**存储设计**（明细表，启动自动建表；按 symbol 序列查询，与 kline 同构）：
+
+```sql
+CREATE TABLE IF NOT EXISTS ml_predictions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    model         TEXT    NOT NULL,   -- bolt | moirai | timesfm
+    symbol        TEXT    NOT NULL,   -- 归一化裸代号（BTC/USDT → BTC）
+    generated_at  INTEGER NOT NULL,   -- unix ms（预测时间）
+    direction     TEXT,               -- up / down
+    prob_up       REAL,
+    uncertainty   TEXT,               -- low / moderate / high
+    point_forecast TEXT,              -- JSON 数组
+    quantiles     TEXT,               -- JSON（{0.1,0.5,0.9} 或 {min,max}）
+    fetched_at    REAL NOT NULL       -- 落库时间（unix ms）
+);
+CREATE INDEX idx_mlpred_model_sym_ts ON ml_predictions(model, symbol, generated_at);
+```
+
+**采集器**（`collectors/p2_ml.py`，模板同 consensus_ml）：
+- `ml_client` 新增 `fetch_bolt() / fetch_moirai() / fetch_timesfm()`（解析 `data: [{symbol,...}]`，timeout 300s）
+- 每 `P2_COLLECT_INTERVAL_SEC`（默认 1800s）拉三端点，**逐 symbol** 写 `ml_predictions`；任一模型失败跳过不影响其他
+- 幂等：`INSERT OR IGNORE` + `UNIQUE(model, symbol, generated_at)`（ml-service 25min 缓存 TTL 内重复拉取不产生重复行）
+- **滚动清理**：保留 `P2_RETENTION_DAYS`（默认 90）天内数据，采集时顺带删除更早行
+
+**查询端点**（data-service）：
+
+```
+GET /ml/predictions?model=bolt&symbol=BTC&start=<unix ms>&end=<unix ms>&limit=500
+→ {model, symbol, count, predictions: [
+     {generated_at, direction, prob_up, uncertainty, point_forecast, quantiles}, ...]}
+```
+
+- `model` 必填（枚举 bolt/moirai/timesfm）；`symbol` 交易对/裸代号归一化；`start/end` 区间过滤；按 `generated_at` 升序
+- 走现有 `DATA_API_KEY` 鉴权；无数据返回 404 `{"detail": ...}`
+
+**配置**：`P2_COLLECT_ENABLED`（默认 true） / `P2_COLLECT_INTERVAL_SEC`（1800） / `P2_RETENTION_DAYS`（90）；未配 `ML_SERVICE_URL` 时整线程空转
+
+**与共识/RAG 关系**：consensus（聚合视图，最新一份）与 ml_predictions（明细视图，历史可追溯）并存各司其职；injector 可后续将 P2 预测历史文本化注入 RAG（事实层扩展，可选）
+
+**验收**：部署后 30min 内 `/ml/predictions?model=timesfm&symbol=BTC` 返回非空序列；三模型均可查；`start/end` 区间过滤生效；90 天前数据被清理
+
 ---
 
 ## 6. RAG 链路

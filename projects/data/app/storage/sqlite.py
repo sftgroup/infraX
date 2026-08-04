@@ -113,4 +113,20 @@ CREATE TABLE IF NOT EXISTS raw_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_snap_provider_ts ON raw_snapshots(provider, fetched_at);
+
+CREATE TABLE IF NOT EXISTS ml_predictions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    model          TEXT    NOT NULL,   -- bolt | moirai | timesfm
+    symbol         TEXT    NOT NULL,   -- 归一化裸代号（BTC/USDT → BTC）
+    generated_at   INTEGER NOT NULL,   -- unix ms（预测时间）
+    direction      TEXT,               -- up / down
+    prob_up        REAL,
+    uncertainty    TEXT,               -- low / moderate / high
+    point_forecast TEXT,               -- JSON 数组
+    quantiles      TEXT,               -- JSON（{0.1,0.5,0.9} 或 {min,max}）
+    fetched_at     REAL NOT NULL,      -- 落库时间（unix ms）
+    UNIQUE(model, symbol, generated_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mlpred_model_sym_ts ON ml_predictions(model, symbol, generated_at);
 """
