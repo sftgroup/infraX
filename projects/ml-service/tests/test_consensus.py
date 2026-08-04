@@ -89,6 +89,17 @@ class TestAggregateRules:
         assert p["n_divergence"] == 1
         assert p["market_risk_flag"] in ("low", "moderate", "elevated")
 
+    def test_symbol_normalization_aligns_tree_kronos(self):
+        # tree 用交易所对格式（BTC/USDT），Kronos 用裸代号（BTC）→ 应合并为同一标的
+        p = cs.aggregate(
+            _tree_payload(direction="up", symbol="BTC/USDT"),
+            _vol_results(level="high", symbol="BTC"),
+            _sentiment(0.5),
+        )
+        assert p["n_symbols"] == 1
+        assert p["symbols"][0]["symbol"] == "BTC"
+        assert p["symbols"][0]["consensus_score"] == 1.0
+
 
 # ── fail-silent ──────────────────────────────────────────
 

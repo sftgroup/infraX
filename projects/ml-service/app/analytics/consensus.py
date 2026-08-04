@@ -41,13 +41,21 @@ def _sentiment_vote(score: float) -> float:
     return 0.0
 
 
+def _normalize_symbol(symbol: str) -> str:
+    """符号归一化：data-service crypto 用交易所对格式（BTC/USDT），
+    Kronos 用裸代号（BTC）。对齐时去掉 /XXX 交易对后缀。"""
+    if not symbol:
+        return symbol
+    return symbol.split("/")[0].strip()
+
+
 def _kronos_by_symbol(volatility_results: list[dict]) -> dict[str, dict]:
-    return {v.get("symbol"): v for v in (volatility_results or []) if v.get("symbol")}
+    return {_normalize_symbol(v.get("symbol")): v for v in (volatility_results or []) if v.get("symbol")}
 
 
 def _tree_by_symbol(tree_payload: Optional[dict]) -> dict[str, dict]:
     preds = (tree_payload or {}).get("predictions") or []
-    return {p.get("symbol"): p for p in preds if p.get("symbol")}
+    return {_normalize_symbol(p.get("symbol")): p for p in preds if p.get("symbol")}
 
 
 def aggregate(

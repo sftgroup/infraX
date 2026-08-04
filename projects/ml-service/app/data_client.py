@@ -62,41 +62,52 @@ def fetch_bars(symbol: str, timeframe: str = "1d", limit: int = 500) -> list[dic
 
 
 def fetch_sentiment_score() -> dict | None:
-    """拉取 data-service 最新 FinBERT 聚合情绪分（/snapshots?type=finbert_sentiment）。
+    """拉取 data-service 最新市场情绪分。
 
+    回退链：finbert_sentiment（FinBERT 真实分类）→ sentiment_score
+    （market-rule 情绪快照 {"value": [-1,1]}）。两者均为 [-1,1]。
     返回 {"score": float, "ts": int} 或 None（未配置/失败/无快照）。
     """
+    for data_type, score_field in (("finbert_sentiment", "sentiment_score"), ("sentiment_score", "value")):
+        score, ts = _fetch_snapshot_score(data_type, score_field)
+        if score is not None:
+            return {"score": score, "ts": ts}
+    return None
+
+
+def _fetch_snapshot_score(data_type: str, score_field: str) -> tuple[float | None, int]:
+    """拉单个 data-service 快照中的数值字段（fail-silent）。"""
     base = _base_url()
     if not base:
-        return None
+        return None, 0
     try:
         resp = requests.get(
             f"{base}/snapshots",
-            params={"type": "finbert_sentiment"},
+            params={"type": data_type},
             headers=_headers(),
             timeout=_TIMEOUT,
         )
         if resp.status_code != 200:
-            logger.debug("data-service finbert_sentiment → %s", resp.status_code)
-            return None
+            logger.debug("data-service %s → %s", data_type, resp.status_code)
+            return None, 0
         data = resp.json()
-        raw = (data.get("snapshots") or {}).get("finbert_sentiment")
+        raw = (data.get("snapshots") or {}).get(data_type)
         if isinstance(raw, dict):
-            score = raw.get("sentiment_score")
+            value = raw.get(score_field)
         else:
-            score = raw
-        if not isinstance(score, (int, float)):
-            return None
-        return {"score": float(score), "ts": data.get("ts", 0)}
+            value = raw
+        if not isinstance(value, (int, float)):
+            return None, data.get("ts", 0)
+        return float(value), data.get("ts", 0)
     except requests.Timeout:
-        logger.debug("data-service finbert_sentiment timeout (%ss)", _TIMEOUT)
-        return None
+        logger.debug("data-service %s timeout (%ss)", data_type, _TIMEOUT)
+        return None, 0
     except requests.RequestException as exc:
-        logger.debug("data-service finbert_sentiment request failed: %s", exc)
-        return None
+        logger.debug("data-service %s request failed: %s", data_type, exc)
+        return None, 0
     except Exception as exc:
-        logger.debug("data-service finbert_sentiment parse failed: %s", exc)
-        return None
+        logger.debug("data-service %s parse failed: %s", data_type, exc)
+        return None, 0
 
 
 def fetch_symbols(timeframe: str = "1d", min_bars: int = 120) -> list[str]:
