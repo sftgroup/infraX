@@ -45,7 +45,7 @@ def __init__(self):
 def _init_clients(self):
     """初始化外部API客户端"""
     # Finnhub
-    finnhub_key = APIKeys.FINNHUB_API_KEY
+    finnhub_key = APIKeys.rotate("FINNHUB_API_KEY")
     if finnhub_key:
         try:
             import finnhub

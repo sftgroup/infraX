@@ -19,8 +19,8 @@ def _get_api_key() -> str:
     global _FINNHUB_API_KEY
     if _FINNHUB_API_KEY is None:
         # Delayed import to avoid circular dependency at module level
-        from app.config.api_keys import APIKeys
-        _FINNHUB_API_KEY = APIKeys.FINNHUB_API_KEY or ""
+        from app.config import APIKeys
+        _FINNHUB_API_KEY = APIKeys.rotate("FINNHUB_API_KEY") or ""
     return _FINNHUB_API_KEY
 
 

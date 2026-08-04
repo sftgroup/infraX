@@ -132,8 +132,8 @@ def _fetch_single_local_stock_quote(market: str, item: Dict[str, Any], *, fast: 
     if m == "USStock":
         # Check if Finnhub key is configured; skip otherwise to avoid
         # burning time on a guaranteed None.  Free tier: 60 req/min.
-        from app.config.api_keys import APIKeys
-        _finnhub_key = APIKeys.FINNHUB_API_KEY or ""
+        from app.config import APIKeys
+        _finnhub_key = APIKeys.rotate("FINNHUB_API_KEY") or ""
         if _finnhub_key:
             from app.data_providers.finnhub import fetch_quote
             fh = fetch_quote(symbol)

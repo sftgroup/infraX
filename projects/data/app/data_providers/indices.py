@@ -43,8 +43,8 @@ def _safe_round(v, n=2):
 def _finnhub_quote(symbol: str) -> Optional[Dict[str, Any]]:
     """Fetch a single quote from Finnhub free tier."""
     try:
-        from app.config.api_keys import APIKeys
-        key = APIKeys.FINNHUB_API_KEY
+        from app.config import APIKeys
+        key = APIKeys.rotate("FINNHUB_API_KEY")
         if not key:
             return None
         url = "https://finnhub.io/api/v1/quote?symbol=%s&token=%s" % (symbol, key)

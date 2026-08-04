@@ -60,10 +60,10 @@ def fetch_vix() -> Dict[str, Any]:
 
     # Tier 1: Finnhub VXX (quickest — single HTTP request, no Pandas)
     try:
-        from app.config.api_keys import APIKeys
+        from app.config import APIKeys
         import urllib.request as _ur
         import json
-        key = APIKeys.FINNHUB_API_KEY
+        key = APIKeys.rotate("FINNHUB_API_KEY")
         if key:
             url = "https://finnhub.io/api/v1/quote?symbol=VXX&token=" + key
             req = _ur.Request(url, headers={"User-Agent": "AItrader/1.0"})

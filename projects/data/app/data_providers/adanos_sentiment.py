@@ -166,7 +166,7 @@ def fetch_adanos_market_sentiment(
         result["error"] = "No valid stock tickers provided"
         return result
 
-    selected_key = str(api_key if api_key is not None else APIKeys.ADANOS_API_KEY).strip()
+    selected_key = str(api_key if api_key is not None else APIKeys.rotate("ADANOS_API_KEY")).strip()
     if not selected_key:
         result["error"] = "ADANOS_API_KEY is not configured"
         return result

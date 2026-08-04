@@ -30,7 +30,7 @@ def _fetch_td(pairs: list) -> List[Dict[str, Any]]:
     """Fetch forex quotes from Twelve Data."""
     try:
         from app.config import APIKeys
-        api_key = (APIKeys.TWELVE_DATA_API_KEY or "").strip()
+        api_key = APIKeys.rotate("TWELVE_DATA_API_KEY")
         if not api_key:
             return []
         result = []
@@ -110,7 +110,7 @@ def _fetch_tiingo(pairs: list) -> List[Dict[str, Any]]:
     """Fetch forex quotes from Tiingo FX (Tier 3 fallback)."""
     try:
         from app.config import TiingoConfig, APIKeys
-        api_key = APIKeys.TIINGO_API_KEY
+        api_key = APIKeys.rotate("TIINGO_API_KEY")
         if not api_key:
             return []
         result = []

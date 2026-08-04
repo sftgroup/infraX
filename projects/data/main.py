@@ -16,6 +16,7 @@ import os
 import logging
 import time
 import hmac
+import threading
 
 # ── Load .env (must happen before any app imports) ─────────
 from pathlib import Path
@@ -238,6 +239,9 @@ async def snapshots(
 
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
 
+# 序列化 .env 的 read-modify-write，避免并发 PUT 丢更新
+_env_write_lock = threading.Lock()
+
 # 数据源 API key 变量（多 key 用逗号分隔，轮询取用）
 _DATA_KEY_FIELDS = [
     "NEWSAPI_API_KEY", "ADANOS_API_KEY", "FINNHUB_API_KEY",
@@ -267,25 +271,34 @@ def _admin_authorized(request) -> bool:
 
 
 def _write_env_file(updates: dict[str, str]) -> None:
-    """行级 replace-or-append 写 .env（与 ragservicer admin 一致）。"""
-    if not _ENV_PATH.exists():
-        _ENV_PATH.write_text("")
-    lines = _ENV_PATH.read_text().splitlines()
-    remaining = set(updates)
-    out = []
-    for line in lines:
-        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
-            out.append(line)
-            continue
-        key = line.split("=", 1)[0].strip()
-        if key in updates:
+    """行级 replace-or-append 写 .env（与 ragservicer admin 一致）。
+
+    加锁 + 原子写（临时文件 + os.replace）：
+    - 并发 PUT 串行化 read-modify-write，避免丢更新
+    - 写入中途进程崩溃不会损坏 .env（替换是原子的）
+    """
+    with _env_write_lock:
+        if not _ENV_PATH.exists():
+            _ENV_PATH.write_text("")
+        lines = _ENV_PATH.read_text().splitlines()
+        remaining = set(updates)
+        out = []
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                out.append(line)
+                continue
+            key = line.split("=", 1)[0].strip()
+            if key in updates:
+                out.append(f"{key}={updates[key]}")
+                remaining.discard(key)
+            else:
+                out.append(line)
+        for key in remaining:
             out.append(f"{key}={updates[key]}")
-            remaining.discard(key)
-        else:
-            out.append(line)
-    for key in remaining:
-        out.append(f"{key}={updates[key]}")
-    _ENV_PATH.write_text("\n".join(out) + "\n")
+        content = "\n".join(out) + "\n"
+        tmp = _ENV_PATH.with_suffix(_ENV_PATH.suffix + ".tmp")
+        tmp.write_text(content)
+        os.replace(tmp, _ENV_PATH)
 
 
 def _data_config_snapshot() -> dict:
