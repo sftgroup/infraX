@@ -171,15 +171,16 @@ def predict_volatility(symbol: str) -> dict[str, Any] | None:
     for col in ("volume", "amount"):  # 可选列，缺省补 0
         if col not in df.columns:
             df[col] = 0.0
-    x_ts = pd.to_datetime(df["ts"], unit="ms")
+    # Kronos 的 calc_time_stamps 使用 .dt 访问器 → 需 Series，不能是 DatetimeIndex
+    x_ts = pd.Series(pd.to_datetime(df["ts"], unit="ms").values)
 
     # 未来时间戳：按历史中位日线间隔外推
     gaps = np.diff([b["ts"] for b in hist])
     step = int(np.median(gaps)) if len(gaps) else 86400000
     last_ts = int(hist[-1]["ts"])
-    y_ts = pd.to_datetime(
+    y_ts = pd.Series(pd.to_datetime(
         [last_ts + step * (i + 1) for i in range(SETTINGS.kronos_pred_len)], unit="ms"
-    )
+    ))
 
     last_close = float(hist[-1]["close"])
     paths: list[np.ndarray] = []
