@@ -13,9 +13,29 @@ from app.storage import get_db
 from app.factors import _TECH_FACTORS as TECHNICAL_COLUMNS
 
 
+def _normalize_kline_symbol(symbol: str, market_type: str) -> str:
+    """crypto spot/swap 存储键规范化（DS-8 方案 A）。
+
+    - spot：原样（``BTC/USDT``）
+    - swap：ccxt 惯例 ``BTC/USDT:USDT``；symbol 已带 ``:quote`` 后缀则视为 swap 保持原样
+    - 非交易对符号（美股/外汇/期货等）不受影响
+    """
+    if market_type != "swap":
+        return symbol
+    if ":" in symbol:
+        return symbol
+    if "/" in symbol:
+        base, quote = symbol.split("/", 1)
+        if ":" in quote:
+            return symbol
+        return f"{base}/{quote}:{quote}"
+    return symbol
+
+
 def query_bars(
     symbol: str,
     timeframe: str = "1m",
+    market_type: str = "spot",
     start: Optional[int] = None,
     end: Optional[int] = None,
     limit: int = 500,
@@ -24,9 +44,13 @@ def query_bars(
 
     Bars already contain OHLCV + pre-computed indicators.
     External factors (from raw_snapshots) are joined by nearest timestamp.
+
+    market_type: crypto spot|swap —— swap 用 ccxt 惯例存储键 ``BTC/USDT:USDT``
+    （symbol 已带 ``:quote`` 后缀时视为 swap，保持原样，数据不混淆）。
     """
+    q_symbol = _normalize_kline_symbol(symbol, market_type)
     db = get_db()
-    params: list = [symbol, timeframe]
+    params: list = [q_symbol, timeframe]
 
     where = "WHERE symbol = ? AND timeframe = ?"
     if start is not None:

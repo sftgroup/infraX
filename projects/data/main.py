@@ -130,18 +130,52 @@ async def _api_auth(request, call_next):
 async def get_bars(
     symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
     timeframe: str = Query("1m", description="Timeframe: 1m/5m/15m/1h/4h/1D"),
+    market_type: str = Query("spot", pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
     start: Optional[int] = Query(None, description="Start unix ms"),
     end: Optional[int] = Query(None, description="End unix ms"),
     limit: int = Query(500, ge=1, le=5000),
 ):
-    """Unified bar data: OHLCV + pre-computed indicators + external factors."""
+    """Unified bar data: OHLCV + pre-computed indicators + external factors.
+
+    market_type=swap 时 symbol 按 ccxt 惯例 ``BTC/USDT:USDT`` 存储键查询
+    （spot/swap 数据互不混淆，DS-8 方案 A）。
+    """
     try:
         from app.enrich import query_bars
-        bars = query_bars(symbol=symbol, timeframe=timeframe, start=start, end=end, limit=limit)
-        return {"symbol": symbol, "timeframe": timeframe, "count": len(bars), "bars": bars}
+        bars = query_bars(symbol=symbol, timeframe=timeframe, market_type=market_type,
+                          start=start, end=end, limit=limit)
+        return {"symbol": symbol, "timeframe": timeframe, "market_type": market_type,
+                "count": len(bars), "bars": bars}
     except Exception as e:
         logger.error(f"/bars failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Ticker (realtime quote, DS-7) ──────────────────────────────
+
+@app.get("/ticker")
+async def ticker(
+    symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
+    market_type: str = Query("spot", pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
+    exchange_id: Optional[str] = Query(None, description="Crypto exchange (default: binance)"),
+    market: Optional[str] = Query(None, description="Market hint: crypto/usstock/forex/futures/cnstock/hkstock"),
+):
+    """Realtime quote aligned with AItrader KlineService.get_realtime_price.
+
+    Returns {symbol, price, change, changePercent, high, low, open, previousClose, ts}.
+    Data sources: crypto → ccxt; usstock/forex/futures → yfinance; cnstock/hkstock → Tencent.
+    Falls back to latest 1d kline bar when realtime source unavailable (fail-silent).
+    """
+    try:
+        from app.ticker import get_ticker
+        data = get_ticker(symbol=symbol, market_type=market_type,
+                          exchange_id=exchange_id, market=market)
+    except Exception as e:
+        logger.error(f"/ticker failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"No quote data for {symbol}")
+    return data
 
 
 # ── Factors Catalog ────────────────────────────────────────────
