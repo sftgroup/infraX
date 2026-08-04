@@ -1,6 +1,7 @@
 # ── 核心（必须） ────────────────────────────────
 requests>=2.31
 PyYAML>=6.0                     # 可配置解析规则 parsers/*.yaml
+python-dotenv>=1.0              # config.py 加载 .env（缺失会导致环境变量读不到）
 
 # ── 数据源（可选，按需安装） ──────────────────────
 yfinance>=0.2                  # VIX/DXY/US10Y
