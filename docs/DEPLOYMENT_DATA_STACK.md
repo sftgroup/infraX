@@ -269,6 +269,7 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 | `DATA_API_KEY` | 空 | 主栈 data 的鉴权 key（主栈未配置 key 可留空） |
 | `ML_API_KEY` | 空 | 本服务自身鉴权（主栈 data/injector 侧 `ML_API_KEY` 需同步） |
 | `TREE_ML_ENABLED` / `TREE_ML_HORIZON`(7) / `TREE_ML_UP_THR`(0.01) / `TREE_ML_MIN_SAMPLES`(300) / `TREE_ML_MIN_BARS`(120) / `TREE_ML_MAX_BARS`(2000) / `TREE_ML_RETRAIN_HOURS`(24) | false / … | LightGBM 方向预测开关与训练参数；模型文件 `models/`（git 忽略） |
+| `XGB_ENABLED` / `RF_ENABLED` | false | XGBoost / Random Forest 方向预测对比家族开关；与 LightGBM **同一数据集/同一切分**训练，仅作对照（RF 用 sklearn 自带） |
 | `FINBERT_ENABLED` / `FINBERT_MODEL` | false / `ProsusAI/finbert` | FinBERT 新闻情绪开关与模型名（可换 `yiyanghkust/finbert-tone` 支持中英） |
 | `KRONOS_ENABLED` / `KRONOS_MODEL` / `KRONOS_LOOKBACK`(400) / `KRONOS_PRED_LEN`(30) / `KRONOS_SAMPLE_COUNT`(12) | false / `NeoQuasar/Kronos-mini` / … | Kronos 波动率预测开关与参数；需 systemd `PYTHONPATH` 指向 Kronos 源码 |
 
@@ -410,14 +411,16 @@ sudo journalctl -u infrax-knowledge-injector -f
 
 ## 8.5 ML 模型服务（独立 ml-service，:9120）
 
-三个模型（Kronos / FinBERT / LightGBM）已从主数据栈拆分到**独立 ml-service**，部署在另一台 2C4G 服务器上常开。主栈（data / injector）仅通过 HTTP 拉取结果，不承载推理。
+四个模型（Kronos / FinBERT / LightGBM 三家族）已从主数据栈拆分到**独立 ml-service**，部署在另一台 2C4G 服务器上常开。主栈（data / injector）仅通过 HTTP 拉取结果，不承载推理。
 
 ```
                  ┌──────────────────────────────┐
   data :9112 ──▶ │  ml-service :9120            │
-  (HTTP /bars    │  ├─ LightGBM  TREE_ML_ENABLED │  LightGBM 自训→预测
-   + /symbols) ─▶│  ├─ FinBERT   FINBERT_ENABLED │  FinBERT 新闻情绪
-                 │  └─ Kronos    KRONOS_ENABLED  │  Kronos 波动率预测
+  (HTTP /bars    │  ├─ LightGBM   TREE_ML_ENABLED│  方向三分类（主模型）
+   + /symbols) ─▶│  ├─ XGBoost    XGB_ENABLED   │  同上（对照，同数据集）
+                 │  ├─ RandomForest RF_ENABLED  │  同上（sklearn 基线）
+                 │  ├─ FinBERT    FINBERT_ENABLED│  新闻情绪
+                 │  └─ Kronos     KRONOS_ENABLED│  波动率预测
   injector :9113 ──▶ GET /ml/volatility          │
   data :9112    ──▶ GET /ml/tree_predictions     │
   data :9112    ──▶ POST /ml/sentiment           │
@@ -426,12 +429,14 @@ sudo journalctl -u infrax-knowledge-injector -f
 
 | 模型 | 开关 | 用途 | 数据源 |
 |---|---|---|---|
-| **LightGBM**（P1） | `TREE_ML_ENABLED` | 方向三分类 + 机会评分（自训，24h 重训） | 经 data-service `GET /symbols` + `GET /bars` 拉 K 线 |
+| **LightGBM**（P1 主） | `TREE_ML_ENABLED` | 方向三分类 + 机会评分（自训，24h 重训） | 经 data-service `GET /symbols` + `GET /bars` 拉 K 线 |
+| **XGBoost**（P1 对照） | `XGB_ENABLED` | 同 LightGBM，作对照（**同一数据集/同一切分**训练，仅对比 val_acc） | 同上 |
+| **Random Forest**（P1 基线） | `RF_ENABLED` | 同 LightGBM，sklearn 自带对照基线 | 同上 |
 | **FinBERT**（P1a） | `FINBERT_ENABLED` | 新闻文本情绪分类 | 由 data-service `POST /ml/sentiment` 传入文章 |
 | **Kronos-mini**（P0） | `KRONOS_ENABLED` | K 线波动率/方向预测 | 经 data-service `/bars`（yfinance 回退） |
 
 **端点**（全部 `{"code":0,"message":"ok","data":...}` 信封，异常 data=None）：
-- `GET /ml/tree_predictions` — LightGBM 快照（model 含 n_samples/val_accuracy + predictions）
+- `GET /ml/tree_predictions` — 主家族（LightGBM）快照（model 含 n_samples/val_accuracy + predictions），另含 `families` 字段：启用对比家族（xgboost / random_forest）各自的 model + predictions
 - `POST /ml/sentiment` — body `{"articles":[...]}`，返回聚合情绪 stats
 - `GET /ml/volatility` — Kronos 对 BTC/ETH/SPY/QQQ 的波动率预测列表
 - `GET /health` — 健康检查（`/health` `/docs` 免鉴权）
@@ -473,7 +478,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now infrax-ml-service
 ```
 
-> 生产已部署（2026-08-05 实测）：服务器 **43.156.25.197**，三个模型全部启用。LightGBM 训练 5849 样本 / val_acc 0.47 / 33 symbols；FinBERT 实测分类正确；Kronos BTC/ETH 真实预测（SPY/QQQ 无数据 fail-silent）。
+> 生产已部署（2026-08-05 实测）：服务器 **43.156.25.197**，三家族（LightGBM / XGBoost / RF）+ FinBERT + Kronos 全部启用。LightGBM 5849 样本 val_acc 0.474 / XGBoost 0.477 / RF 0.467（同一数据集/同一切分 1434 验证，33 symbols）；FinBERT 实测分类正确；Kronos BTC/ETH 真实预测（SPY/QQQ 无数据 fail-silent）。
 
 ### 主栈切换（ml-service 就绪后）
 
