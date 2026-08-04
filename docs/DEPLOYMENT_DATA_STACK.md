@@ -500,7 +500,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - LightGBM 自动流程：启动/24h 后训练（kline 日线 ≥300 样本，时序切分验证，2C4G 秒级）→ 每 30min 预测全部 symbol；模型文件 `projects/ml-service/models/`（git 忽略）
 - FinBERT 数据前提：主栈需 `NEWSAPI_API_KEY`（管理后台 Data Stack 页可热配）——无新闻快照时 collector 空转不产生数据；输出 `raw_snapshots`（provider=sentiment, data_type=finbert_sentiment）
 - Kronos 数据前提：crypto 需采日线（主栈 data `.env` 设 `KL_TIMEFRAMES=1m,1d`）；SPY/QQQ 走 yfinance 回退
-- 注入：injector `inject_ml_predictions`（Kronos）与 `inject_tree_ml`（LightGBM，拉主栈 tree_predictions 快照）均在默认注入列表，ml-service 未启用时 fail-silent
+- 注入：injector `inject_ml_predictions`（Kronos）、`inject_tree_ml`（LightGBM，拉主栈 tree_predictions 快照）、`inject_consensus`（跨模型共识）、`inject_p2_predictions`（P2 历史，拉主栈 /ml/predictions）均在默认注入列表，ml-service/无数据时 fail-silent
 
 > 内存预算（2C4G + 2G swap）：三模型均懒加载；常驻增量 ~200MB（Torch 库），推理峰值 FinBERT ~1.5G / Kronos ~0.5G，不同时高峰即可。独立服务器常开不影响主栈稳定性。
 

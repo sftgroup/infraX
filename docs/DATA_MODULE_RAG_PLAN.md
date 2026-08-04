@@ -288,7 +288,7 @@ GET /ml/predictions?model=bolt&symbol=BTC&start=<unix ms>&end=<unix ms>&limit=50
 
 **与共识/RAG 关系**：consensus（聚合视图，最新一份）与 ml_predictions（明细视图，历史可追溯）并存各司其职；injector 已将 P2 预测历史文本化注入 RAG（`inject_p2_predictions` + `textify.p2_predictions_report`，3 模型 × 4 标的，无历史 404 fail-silent，已实现）
 
-**验收**：部署后 30min 内 `/ml/predictions?model=timesfm&symbol=BTC` 返回非空序列；三模型均可查；`start/end` 区间过滤生效；90 天前数据被清理
+**验收**：部署后 30min 内 `/ml/predictions?model=timesfm&symbol=BTC` 返回非空序列；三模型均可查；`start/end` 区间过滤生效；90 天前数据被清理；`POST /inject/p2_predictions` 将历史文本化注入 RAG（3 模型 × 4 标的，实测 2026-08-05 已落图 4 篇，`ml:p2:moirai:btc` 等 key 可查）
 
 ---
 
