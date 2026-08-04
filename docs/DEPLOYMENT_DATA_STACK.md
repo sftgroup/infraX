@@ -614,3 +614,16 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 3.5 | 其他市场适配 | 1d | 🔲 |
 
 > **发布物**（§6.1，随 Phase 2-3 实施）：ClawHub SKILL / MCP Hub = P0；OpenAI GPT Store / Cursor / Claude / GitHub = P1。非功能目标（§8）：hub 启动 <5s、查询 P95<2s、交易 P95<10s、TEE 签名 <500ms。
+
+### 9.7 各模块 SDK / MCP / API 端点能力审查（待排期）
+
+> 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
+
+| # | 消费方需求 | 审查范围 | 状态 |
+|:---:|------|------|:---:|
+| 7.1 | 外部应用集成 | 各服务 REST API 契约/鉴权/版本（data :9112、injector :9113、ragservicer :9721、ml-service :9120） | 🔲 |
+| 7.2 | 数据查询 | `/bars` `/factors/*` `/snapshots` `/ticker` `/query` 等数据面端点覆盖与返回契约核对 | 🔲 |
+| 7.3 | Agent 使用 | MCP / Skill 接入面（ragservicer query、dc-index、hub-index）是否满足 agent 调用 | 🔲 |
+| 7.4 | 第三方监控 | `/health` `/stats` 端点、metrics 暴露（prometheus/opentelemetry）与告警接入 | 🔲 |
+| 7.5 | 管理 Agent | admin 端点（injector `/admin/config`、ragservicer admin 等）可编程化管理能力 | 🔲 |
+| 7.6 | SDK 交付 | 是否提供官方 SDK/客户端（Python/Node），或需生成 OpenAPI 契约供外部生成 | 🔲 |
