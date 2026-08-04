@@ -182,6 +182,13 @@ class TestMlVolatilityReport:
         assert txt.ml_volatility_report([]) == ""
         assert txt.ml_volatility_report(None) == ""
 
+    def test_simulated_flag(self):
+        simulated_results = [{**r, "simulated": True} for r in self._RESULTS]
+        result = txt.ml_volatility_report(simulated_results)
+        assert "[SIMULATED] 模拟数据（占位实现，非真实预测，仅供参考框架）" in result
+        # 非模拟数据不带标注
+        assert "[SIMULATED]" not in txt.ml_volatility_report(self._RESULTS)
+
 
 class TestVolatilitySnapshot:
     def test_all_fields(self):

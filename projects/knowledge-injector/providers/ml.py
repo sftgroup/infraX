@@ -1,12 +1,15 @@
 """Kronos-mini 波动率预测 — 预训练模型，无需微调。
 
+⚠️ 占位实现（未接入真实模型前禁止作为生产预测使用）：
+  - MODEL_ENABLED=False 时返回**随机模拟数据**，且每项带 simulated=True 标记；
+    默认注入列表已移除 ml_predictions，避免模拟数据污染 RAG 知识图谱。
+  - 部署真实模型：`pip install kronos-pytorch` 后置 MODEL_ENABLED=True 并实装
+    KronosPredictor 调用（见 predict_volatility 内 TODO）。
+
 Kronos-mini 在波动率预测任务上表现扎实（MAE 比基线低 9%），
 但价格方向预测仅略高于随机（约 53%），因此本模块仅用于：
   - 波动率水平预测 + 趋势判断
   - 路径离散度 → 市场不确定性（uncertainty）指标
-
-等你在目标机器上 pip install kronos 后，
-改 MODEL_ENABLED = True 即可生效。
 
 资源占用（CPU 推理）：
   - 内存：~300MB
@@ -56,8 +59,9 @@ def predict_volatility(symbol: str) -> dict[str, Any] | None:
         # ...
         pass
 
-    # 占位：返回模拟数据
+    # 占位：返回模拟数据（带 simulated=True 标记，严禁作为真实预测消费）
     import random
+    logger.warning("Kronos MODEL_ENABLED=False：%s 返回模拟波动率数据（simulated=True）", symbol)
     levels = ("very_low", "low", "moderate", "high", "very_high")
     return {
         "symbol": symbol,
@@ -66,6 +70,7 @@ def predict_volatility(symbol: str) -> dict[str, Any] | None:
         "volatility_score": round(random.uniform(0.1, 0.95), 2),
         "direction_consensus": round(random.uniform(0.4, 0.8), 2),
         "uncertainty": random.choice(("low", "moderate", "high")),
+        "simulated": True,
     }
 
 

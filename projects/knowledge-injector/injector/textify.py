@@ -527,7 +527,12 @@ def ml_volatility_report(
     """
     if not results:
         return ""
-    lines = ["[ML Volatility] Kronos-mini 多资产波动率与市场情绪联动:"]
+    simulated = any(r.get("simulated") for r in results)
+    if simulated:
+        lines = ["[ML Volatility] Kronos-mini 多资产波动率与市场情绪联动:",
+                 "[SIMULATED] 模拟数据（占位实现，非真实预测，仅供参考框架）"]
+    else:
+        lines = ["[ML Volatility] Kronos-mini 多资产波动率与市场情绪联动:"]
     for r in results:
         sym = r.get("symbol", "?")
         level = r.get("volatility_level", "unknown")

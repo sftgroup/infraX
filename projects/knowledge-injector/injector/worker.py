@@ -593,14 +593,14 @@ class GraphInjector:
         返回 {injector_name: success}。
         """
         results: dict[str, bool] = {}
-        # 所有已实现的方法
+        # 所有已实现的方法（ml_predictions 为占位实现返回模拟数据，未接入真实模型前
+        # 不加入默认列表，避免随机数据污染 RAG；如需手动触发：POST /inject/ml_predictions）
         for name in (
             "macro", "sentiment", "crypto_overview",
             "volatility", "news_sentiment", "major_events",
             "onchain", "defi_tvl", "macro_trend",
             "fred_economics", "earnings_index", "evm",
             "global_macro", "indices", "tech_analysis",
-            "ml_predictions",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()
