@@ -524,7 +524,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
 | DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；遗留见 9.3 |
 | DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
-| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ⚠️ | P1 | 2d78050 已部署：market_overview ✅（crypto 15 项实测）；commodities/forex_pairs 待上游 TD/Tiingo key |
+| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ⚠️ | P1 | 2d78050 已部署：market_overview ✅（crypto 15 项实测）；commodities/forex_pairs 走 TD→yfinance→Tiingo 多源兜底（无 key 时 yfinance 免费源，采集器过滤占位价）待实测非空后标 ✅ |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
 | DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | 🔲 | P1 | 与 AItrader 侧联动 |
 
@@ -537,6 +537,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] M4 P2 三件套（Bolt / Moirai / TimesFM，懒加载，全部署）
 - [x] P2 历史落库（`ml_predictions` 表 + P2MlCollector 30min 轮询 + `/ml/predictions` 历史查询，90 天滚动清理）
 - [x] P2 历史注入 RAG（`inject_p2_predictions` + `p2_predictions_report`，2026-08-05 实测落图 4 篇）
+- [ ] BTC 转账流量/巨鲸大额转账注入 RAG（injector：`fetch_btc_transfers` + `onchain_transfers` + `inject_onchain` 扩展已写未提交；data：`_fetch_btc_transfers` 已定义未接入 `_collect`；待提交 + 单测 + 实测落图）
 - [x] 默认注入列表 18 项（含 tree_ml / consensus / p2_predictions）
 
 ### 9.3 部署 / 运维待办（源：本文件 §3~§8）
