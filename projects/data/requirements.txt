@@ -11,3 +11,8 @@ ccxt>=4.0.0
 numpy>=1.24.0
 finnhub-python>=2.4.0
 akshare>=1.11.0
+
+# ── ML（可选，FINBERT_ENABLED=true 时启用本地文本情绪）────
+# 部署机启用需另装 torch：pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers>=4.40.0
+huggingface-hub>=0.23.0

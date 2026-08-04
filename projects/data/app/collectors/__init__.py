@@ -7,3 +7,4 @@ from .news import NewsCollector
 from .sentiment import SentimentCollector
 from .adanos import AdanosCollector
 from .opportunities import OpportunityCollector
+from .finbert_sentiment import FinbertSentimentCollector
