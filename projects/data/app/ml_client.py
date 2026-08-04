@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 60  # ml-service 首次训练/加载模型可能较慢
 
+# consensus 首次聚合触发 tree 训练判定 + Kronos 全量推理（可达 ~200s）；
+# 命中 ml-service 25min TTL 缓存后秒回。给足首次预算。
+_TIMEOUT_CONSENSUS = 300
+
 
 def _headers() -> dict:
     return {"X-API-Key": ML_API_KEY} if ML_API_KEY else {}
@@ -60,7 +64,7 @@ def fetch_consensus() -> dict | None:
     if not base:
         return None
     try:
-        resp = requests.get(f"{base}/ml/consensus", headers=_headers(), timeout=_TIMEOUT)
+        resp = requests.get(f"{base}/ml/consensus", headers=_headers(), timeout=_TIMEOUT_CONSENSUS)
         if resp.status_code != 200:
             logger.debug("ml-service /ml/consensus → %s", resp.status_code)
             return None

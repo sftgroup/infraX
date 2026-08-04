@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Optional
 
@@ -39,6 +40,30 @@ def _sentiment_vote(score: float) -> float:
     if score < -0.1:
         return -1.0
     return 0.0
+
+
+# ── 结果缓存（TTL） ────────────────────────────────────
+# 共识聚合会触发 tree 训练判定 + Kronos 全量推理（~200s），
+# 不能每次调用都重算。缓存 TTL 内直接返回上次结果；
+# data-service collector 30min 拉一次，缓存 25min 保证错峰。
+_CACHE_TTL_MS = int(os.getenv("CONSENSUS_CACHE_TTL_SEC", "1500")) * 1000
+_cache: Optional[dict] = None
+_cache_at_ms = 0
+
+
+def _cached() -> Optional[dict]:
+    global _cache, _cache_at_ms
+    if _cache is not None and (time.time() * 1000 - _cache_at_ms) < _CACHE_TTL_MS:
+        return _cache
+    return None
+
+
+def _set_cache(payload: Optional[dict]) -> None:
+    global _cache, _cache_at_ms
+    if payload is None:
+        return
+    _cache = payload
+    _cache_at_ms = int(time.time() * 1000)
 
 
 def _normalize_symbol(symbol: str) -> str:
@@ -163,8 +188,13 @@ def aggregate(
 def build_consensus() -> Optional[dict]:
     """主入口：在 ml-service 内现拉三路信号（本地计算）→ 聚合。
 
-    三路信号全部不可用时返回 None（fail-silent，无模拟数据）。
+    TTL 缓存（默认 25min）内直接返回上次结果，避免每次调用都触发
+    Kronos 全量推理（~200s）。三路信号全部不可用时返回 None
+    （fail-silent，无模拟数据）。
     """
+    cached = _cached()
+    if cached is not None:
+        return cached
     tree_payload = None
     volatility_results = None
     sentiment = None
@@ -182,4 +212,6 @@ def build_consensus() -> Optional[dict]:
         sentiment = data_client.fetch_sentiment_score()
     except Exception as exc:
         logger.debug("consensus sentiment signal unavailable: %s", exc)
-    return aggregate(tree_payload, volatility_results, sentiment)
+    payload = aggregate(tree_payload, volatility_results, sentiment)
+    _set_cache(payload)
+    return payload

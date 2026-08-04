@@ -126,3 +126,22 @@ class TestBuildConsensus:
         monkeypatch.setattr(kr, "predict_all_volatility", _fail)
         monkeypatch.setattr(cs.data_client, "fetch_sentiment_score", _fail)
         assert cs.build_consensus() is None
+
+    def test_cache_returns_without_recompute(self, monkeypatch):
+        called = {"n": 0}
+
+        def _boom():
+            called["n"] += 1
+            raise AssertionError("不应触发信号拉取（命中缓存）")
+
+        import app.analytics.tree_models as tm
+        import app.providers.kronos as kr
+        monkeypatch.setattr(tm, "predict_payload", _boom)
+        monkeypatch.setattr(kr, "predict_all_volatility", _boom)
+        monkeypatch.setattr(cs.data_client, "fetch_sentiment_score", _boom)
+        cs._set_cache({"generated_at": 1, "cached": True, "symbols": [{"symbol": "T"}]})
+        assert cs.build_consensus()["cached"] is True
+        assert called["n"] == 0
+        cs._set_cache(None)  # 清缓存（None 不覆盖）
+        cs._cache = None
+        cs._cache_at_ms = 0
