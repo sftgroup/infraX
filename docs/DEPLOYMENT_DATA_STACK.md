@@ -508,7 +508,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 ## 9. 统一任务清单（唯一 tasklist 维护点）
 
-> **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
+> **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / `docs/MERGE_PLAN_AITRADER.md` / `prd/PRD.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
 > 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
 
 ### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md）
@@ -563,3 +563,51 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 8 | 各项目接入适配（Python / Node / React，每项目 0.5 天） | 每项目 0.5天 | 5,6 | 🔲 |
 
 **交付要求**：单测/集成/E2E 覆盖（core/evm >90%，Playwright 创建→撤销全流程）；安全措施 S-01~S-07（私钥 AES-256-GCM 加密、execute 需 Bearer、Redis 分布式锁、白名单+额度三重校验、Nonce 30min 一次性、敏感操作日志）
+
+### 9.5 AItrader 合并计划（源：docs/MERGE_PLAN_AITRADER.md）
+
+| 里程碑 | 内容 | 状态 |
+|--------|------|:---:|
+| M1 迁入 data | `projects/data` 落盘 :9112，删 `/api/v1/*`，systemd，health 对齐 | ✅ 生产运行中 |
+| M2 迁入 injector | `projects/knowledge-injector` 落盘 :9113，RAGservicer 客户端适配 | ✅ 生产运行中 |
+| M3 可配置解析层 | `parser.py` + `parsers/*.yaml` + `/inject/parsed` 端点 | ✅ 代码核验通过 |
+| M4 DC/Collector 注入 | `providers/infrax_dc.py` / `infrax_collector.py`，端到端注入 | ✅ 代码核验通过 |
+| M5 平台收尾 | 文档、图谱、根 README 更新 | ✅ |
+
+> 验收清单（9.2）：图谱实体/关系命中、dedup 去重、YAML 规则免重启生效为系统保障项，随 9.2/9.3 数据栈持续运行验证。
+
+### 9.6 MCP & Skill 产品需求（源：prd/PRD.md v1.1，状态：待审阅，2026-07-30）
+
+> 品牌化 MCP & Skill（hub-index 统一入口 + TEE 钱包 + DC 事件分类 + 多市场发布）。**PRD 待审阅，任务未排期实施。**
+
+**Phase 1: DC 数据强化（1 周）**
+
+| # | 任务 | 估计 | 状态 |
+|:---:|------|:---:|:---:|
+| 1.1 | `event_categories` 表 + 分类数据 | 1d | 🔲 |
+| 1.2 | `events` 表加 `category_id`/`label_id` 列 | 0.5d | 🔲 |
+| 1.3 | collector 事件分类逻辑 | 2d | 🔲 |
+| 1.4 | dc-index.ts 扩展 → v2（+2 tools） | 2d | 🔲 |
+| 1.5 | DC API v3（/api/v3/data/*） | 2d | 🔲 |
+
+**Phase 2: TEE 钱包 + 品牌 MCP Hub（2 周）**
+
+| # | 任务 | 估计 | 状态 |
+|:---:|------|:---:|:---:|
+| 2.1 | TEE Enclave 环境搭建（SGX/Nitro） | 2d | 🔲 |
+| 2.2 | MPC API 底层切 TEE | 3d | 🔲 |
+| 2.3 | mpc-index.ts → tee-index.ts（改名+swap+approve） | 2d | 🔲 |
+| 2.4 | 新增 `hub-index.ts` 统一入口 | 2d | 🔲 |
+| 2.5 | hub-index systemd unit | 0.5d | 🔲 |
+
+**Phase 3: SkillHub + 多市场发布（1 周）**
+
+| # | 任务 | 估计 | 状态 |
+|:---:|------|:---:|:---:|
+| 3.1 | SKILL.md + mcp-config.json 编写 | 1d | 🔲 |
+| 3.2 | OpenAPI 3.1 自动生成（从 hub-index.ts） | 1d | 🔲 |
+| 3.3 | ClawHub 发布 | 0.5d | 🔲 |
+| 3.4 | MCP Hub (mcp.so) 注册 | 0.5d | 🔲 |
+| 3.5 | 其他市场适配 | 1d | 🔲 |
+
+> **发布物**（§6.1，随 Phase 2-3 实施）：ClawHub SKILL / MCP Hub = P0；OpenAI GPT Store / Cursor / Claude / GitHub = P1。非功能目标（§8）：hub 启动 <5s、查询 P95<2s、交易 P95<10s、TEE 签名 <500ms。
