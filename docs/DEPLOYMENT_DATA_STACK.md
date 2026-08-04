@@ -55,7 +55,7 @@
 ssh ubuntu@43.163.105.172
 ```
 
-**ML 推理服务器**（ml-service，待提供后填入）：独立 2C4G 服务器，常开承载三模型（详见 8.5 部署步骤）。
+**ML 推理服务器**（ml-service，**43.156.25.197**）：独立 2C4G 服务器，常开承载三模型（详见 8.5 部署步骤）。
 
 > 注：旧的区块链服务栈（9100-9111）部署在另一台服务器 **43.156.99.215**，见 [DEPLOYMENT.md](../DEPLOYMENT.md)。
 
@@ -273,8 +273,8 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 | `KRONOS_ENABLED` / `KRONOS_MODEL` / `KRONOS_LOOKBACK`(400) / `KRONOS_PRED_LEN`(30) / `KRONOS_SAMPLE_COUNT`(12) | false / `NeoQuasar/Kronos-mini` / … | Kronos 波动率预测开关与参数；需 systemd `PYTHONPATH` 指向 Kronos 源码 |
 
 **主栈联动配置**（见 8.5 主栈切换）：
-- data `.env`：`ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）
-- injector `.env`：`ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）
+- data `.env`：`ML_SERVICE_URL=http://43.156.25.197:9120`（可选 `ML_API_KEY`）
+- injector `.env`：`ML_SERVICE_URL=http://43.156.25.197:9120`（可选 `ML_API_KEY`）
 
 ---
 
@@ -461,7 +461,7 @@ git clone https://github.com/shiyu-coder/Kronos /home/ubuntu/Kronos
 
 # ④ 配置 .env（DATA_SERVICE_URL 指向主栈）
 cp .env.example .env
-# .env:  DATA_SERVICE_URL=http://<主服务器IP>:9112
+# .env:  DATA_SERVICE_URL=http://43.163.105.172:9112
 #        DATA_API_KEY=<与主栈 data 一致的 key>（主栈未配置 key 可留空）
 #        TREE_ML_ENABLED=true  FINBERT_ENABLED=true  KRONOS_ENABLED=true
 #        ML_API_KEY=<可选，主栈侧需同步>
@@ -473,10 +473,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now infrax-ml-service
 ```
 
+> 生产已部署（2026-08-05 实测）：服务器 **43.156.25.197**，三个模型全部启用。LightGBM 训练 5849 样本 / val_acc 0.47 / 33 symbols；FinBERT 实测分类正确；Kronos BTC/ETH 真实预测（SPY/QQQ 无数据 fail-silent）。
+
 ### 主栈切换（ml-service 就绪后）
 
-- **data `.env`**：设 `ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）；原 `TREE_ML_ENABLED`/`FINBERT_ENABLED` 本地推理开关不再使用（推理已在 ml-service），未配置 `ML_SERVICE_URL` 时 ML 类 collector 空转 fail-silent
-- **injector `.env`**：设 `ML_SERVICE_URL=http://<ml-server>:9120`（可选 `ML_API_KEY`）；Kronos 推理已从 injector 移除，改 HTTP 联动
+- **data `.env`**：设 `ML_SERVICE_URL=http://43.156.25.197:9120`（可选 `ML_API_KEY`）；原 `TREE_ML_ENABLED`/`FINBERT_ENABLED` 本地推理开关不再使用（推理已在 ml-service），未配置 `ML_SERVICE_URL` 时 ML 类 collector 空转 fail-silent
+- **injector `.env`**：设 `ML_SERVICE_URL=http://43.156.25.197:9120`（可选 `ML_API_KEY`）；Kronos 推理已从 injector 移除，改 HTTP 联动
 - 重启 `infrax-data` / `infrax-knowledge-injector` 后生效
 
 ### 验证清单
