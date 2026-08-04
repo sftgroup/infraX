@@ -13,6 +13,10 @@ from pathlib import Path
 
 from flask import Flask, g, jsonify, request
 
+# 统一鉴权契约（app_auth）：import config 先触发 sys.path 引导（../shared）
+import config  # noqa: E402
+import app_auth  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 # 序列化 .env 的 read-modify-write，避免并发 PUT 丢更新（模块级，跨请求共享）
@@ -53,22 +57,18 @@ def create_app() -> Flask:
         return response
 
     # ─── 业务端点鉴权（/inject/*、/query、/status、/stats 等） ───
-    # 配置了 key（INJECTOR_API_KEY 或回退 RAGSERVICER_API_KEY）则强制
-    # Authorization: Bearer / X-API-Key 校验；未配置保持开放（向后兼容）。
-    # /health 与 /admin/* 除外（admin 沿用 ADMIN_API_KEY）。
+    # 统一契约（app_auth）：配置了 key（INJECTOR_API_KEY 或回退
+    # RAGSERVICER_API_KEY）则强制 Bearer / X-API-Key / X-Service-Key 任一
+    # 匹配校验；未配置保持开放（向后兼容）。/health 与 /admin/* 除外
+    # （admin 沿用 ADMIN_API_KEY）。统一 401 响应 {"detail": "unauthorized"}。
 
     @app.before_request
     def _require_api_key():
-        if request.path == "/health" or request.path.startswith("/admin/"):
+        if app_auth.is_exempt(request.path, prefixes=("/admin/",)):
             return None
-        from config import SETTINGS
-        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
-        if not key:
-            return None
-        auth = request.headers.get("Authorization", "")
-        token = auth[7:] if auth.startswith("Bearer ") else request.headers.get("X-API-Key", "")
-        if not token or not hmac.compare_digest(token, key):
-            return jsonify({"code": 401, "message": "Missing or invalid API key", "data": None}), 401
+        key = config.SETTINGS.injector_api_key or config.SETTINGS.ragservicer_api_key
+        if not app_auth.is_authorized(request.headers.get, key):
+            return jsonify(app_auth.UNAUTHORIZED), 401
         return None
 
     # ─── 注入器列表 ────────────────────────────────

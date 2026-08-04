@@ -40,6 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 import config  # noqa: E402
+import app_auth  # noqa: E402
 
 logging.basicConfig(level=config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -59,26 +60,24 @@ app.add_middleware(
 )
 
 
-# ── 鉴权（可选）：配置 ML_API_KEY 后强制 X-API-Key ──────
+# ── 鉴权（可选）：配置 ML_API_KEY 后强制 Bearer / X-API-Key / X-Service-Key ──
+# 统一契约（app_auth）：/health、/docs、/redoc、/openapi.json 豁免；
+# 401 响应体统一 {"detail": "unauthorized"}。
 
 def _authorized(request: Request) -> bool:
-    if not config.ML_API_KEY:
-        return True
-    import hmac
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        return hmac.compare_digest(auth[7:], config.ML_API_KEY)
-    api_key = request.headers.get("X-API-Key", "")
-    return bool(api_key) and hmac.compare_digest(api_key, config.ML_API_KEY)
+    return app_auth.is_authorized(request.headers.get, config.ML_API_KEY)
 
 
 @app.middleware("http")
 async def _api_auth(request: Request, call_next):
-    if request.url.path not in ("/health", "/docs", "/redoc", "/openapi.json"):
+    if not app_auth.is_exempt(
+        request.url.path,
+        exact={"/health", "/docs", "/redoc", "/openapi.json"},
+    ):
         if not _authorized(request):
             return JSONResponse(
                 status_code=401,
-                content={"code": 401, "message": "Missing or invalid API key", "data": None},
+                content=app_auth.UNAUTHORIZED,
             )
     return await call_next(request)
 

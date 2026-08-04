@@ -26,6 +26,9 @@ __pycache__/
 # Allow Python files in ML Service (FastAPI)
 !projects/ml-service/*.py
 !projects/ml-service/**/*.py
+# Allow Python files in Shared (app_auth 统一鉴权契约，单来源)
+!projects/shared/*.py
+!projects/shared/**/*.py
 create_release.ps1
 release_body.json
 deploy_remote.sh

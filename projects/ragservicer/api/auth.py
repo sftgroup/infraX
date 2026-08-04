@@ -11,6 +11,9 @@ from config import get_config
 from tenants import manager as tm
 from api.code_refactor import build_error
 
+# 统一 header 提取契约（app_auth，projects/shared/app_auth.py）
+import app_auth
+
 logger = logging.getLogger("ragservicer.auth")
 
 
@@ -21,20 +24,13 @@ def extract_tenant():
     Valid credentials:
       1. Bearer token matching RAGSERVICER_API_KEY env var → tenant "default" (internal bridge)
       2. Bearer token matching Admin key → tenant "admin"
-      3. Bearer token or X-API-Key validated against DB → bound tenant
+      3. Bearer token or X-API-Key / X-Service-Key validated against DB → bound tenant
       4. Any valid key + X-Tenant-ID header → uses header tenant (service accounts)
     
     Returns None if authentication fails.
     """
-    # Extract key from Bearer or X-API-Key
-    auth = request.headers.get("Authorization", "")
-    api_key_header = request.headers.get("X-API-Key", "")
-    key = ""
-    if auth.startswith("Bearer "):
-        key = auth[7:]
-    elif api_key_header:
-        key = api_key_header
-
+    # 统一 header 提取：Bearer / X-API-Key / X-Service-Key（app_auth 契约）
+    key = app_auth.extract_api_key(request.headers.get)
     if not key:
         return None
 

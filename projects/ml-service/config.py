@@ -10,6 +10,16 @@
 """
 import os
 
+# ── 统一鉴权契约（app_auth）─────────────────────────────────
+# 优先加载仓库级共享实现（../shared，systemd/本地 git checkout 路径）；
+# Docker 构建无共享目录时回退到项目根同名副本。必须在 import app_auth 前执行。
+import sys as _sys
+from pathlib import Path as _Path
+
+_SHARED_DIR = _Path(__file__).resolve().parents[1] / "shared"
+if _SHARED_DIR.is_dir():
+    _sys.path.insert(0, str(_SHARED_DIR))
+
 # ── 服务 ───────────────────────────────────────────────────
 ML_SERVICE_PORT = int(os.getenv("ML_SERVICE_PORT", "9120"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -20,8 +30,13 @@ DATA_SERVICE_URL = os.getenv("DATA_SERVICE_URL", "")
 DATA_API_KEY = os.getenv("DATA_API_KEY", "")
 
 # ── ml-service 自身鉴权（可选） ──────────────────────────
-# 配置后要求客户端带 X-API-Key；未配置保持开放（内网部署建议配置）。
-ML_API_KEY = os.getenv("ML_API_KEY", "")
+# 收敛为平台 bridge key（RAGSERVICER_API_KEY → DOC_API_KEY →
+# LIGHTRAG_API_KEY 回退链，统一契约见 app_auth）；配置后要求客户端带
+# Bearer / X-API-Key / X-Service-Key；未配置保持开放（内网部署建议配置）。
+ML_API_KEY = os.getenv(
+    "ML_API_KEY",
+    os.getenv("RAGSERVICER_API_KEY", os.getenv("DOC_API_KEY", os.getenv("LIGHTRAG_API_KEY", ""))),
+)
 
 # ── LightGBM 方向预测（TREE_ML_ENABLED） ─────────────────
 TREE_ML_ENABLED = os.getenv("TREE_ML_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")

@@ -39,6 +39,10 @@ from typing import Optional
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))  # .env loaded above
 logger = logging.getLogger(__name__)
 
+# 统一鉴权契约（app_auth）：先导入 app.config 触发 sys.path 引导（../shared）
+import app.config  # noqa: E402
+import app_auth  # noqa: E402
+
 app = FastAPI(
     title="InfraX Data Service",
     version="1.0.0",
@@ -90,34 +94,24 @@ async def _access_log(request, call_next):
 # ── Business endpoint auth (Bearer / X-API-Key / X-Service-Key) ─
 # 业务端点统一鉴权（DS-12，契约见 AITRADER_DATA_SERVICE_REQ.md）：
 #   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 或
-#     X-Service-Key 三者任一匹配，否则 401 {"detail": "unauthorized"}
+#     X-Service-Key 任一匹配，否则 401 {"detail": "unauthorized"}
 #   - 未配置 → 保持开放（向后兼容，配置 key 即启用强制校验）
 # /health 豁免；/admin/* 沿用 ADMIN_API_KEY 校验。
-
-_PUBLIC_PATHS = {"/health"}
+# 实现复用全平台统一契约 app_auth（projects/shared/app_auth.py）。
 
 
 def _api_authorized(request) -> bool:
     from app.config import DATA_API_KEY
-    if not DATA_API_KEY:
-        return True
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        return hmac.compare_digest(auth[7:], DATA_API_KEY)
-    for header in ("X-API-Key", "X-Service-Key"):
-        api_key = request.headers.get(header, "")
-        if api_key:
-            return hmac.compare_digest(api_key, DATA_API_KEY)
-    return False
+    return app_auth.is_authorized(request.headers.get, DATA_API_KEY)
 
 
 @app.middleware("http")
 async def _api_auth(request, call_next):
-    if request.url.path not in _PUBLIC_PATHS and not request.url.path.startswith("/admin/"):
+    if not app_auth.is_exempt(request.url.path, prefixes=("/admin/",)):
         if not _api_authorized(request):
             return JSONResponse(
                 status_code=401,
-                content={"detail": "unauthorized"},
+                content=app_auth.UNAUTHORIZED,
             )
     return await call_next(request)
 

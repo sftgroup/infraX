@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ── Application ────────────────────────────────────────────────
 
 COPY main.py .
+COPY app_auth.py .
 COPY app/ ./app/
 
 # ── Runtime ────────────────────────────────────────────────────

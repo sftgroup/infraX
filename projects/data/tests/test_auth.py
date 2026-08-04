@@ -1,10 +1,10 @@
-"""DS-12 入站鉴权单元测试。
+"""DS-12 入站鉴权单元测试（统一契约 app_auth）。
 
 覆盖 _api_authorized：
   - 未配置 DATA_API_KEY → 开放（True）
   - 配置后：X-Service-Key / X-API-Key / Bearer 任一匹配 → True
   - 无头 / 不匹配 → False
-  - /health 豁免（_PUBLIC_PATHS）
+  - /health 豁免（app_auth.is_exempt）
 """
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ os.environ.setdefault("DATA_CONFIG_PATH", "data_config.json")
 
 import pytest  # noqa: E402
 
-from main import _api_authorized, _PUBLIC_PATHS  # noqa: E402
+import app_auth  # noqa: E402
+from main import _api_authorized  # noqa: E402
 
 
 def _req(**headers):
@@ -58,4 +59,6 @@ def test_wrong_key_rejected(monkeypatch):
 
 
 def test_health_exempt():
-    assert "/health" in _PUBLIC_PATHS
+    assert app_auth.is_exempt("/health") is True
+    # admin 前缀豁免（admin 沿用 ADMIN_API_KEY）
+    assert app_auth.is_exempt("/admin/config", prefixes=("/admin/",)) is True

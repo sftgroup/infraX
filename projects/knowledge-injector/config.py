@@ -13,6 +13,16 @@ try:
 except Exception:
     pass
 
+# ── 统一鉴权契约（app_auth）─────────────────────────────────
+# 优先加载仓库级共享实现（../shared，systemd/本地 git checkout 路径）；
+# Docker 构建无共享目录时回退到项目根同名副本。必须在 import app_auth 前执行。
+import sys as _sys
+from pathlib import Path as _Path
+
+_SHARED_DIR = _Path(__file__).resolve().parents[1] / "shared"
+if _SHARED_DIR.is_dir():
+    _sys.path.insert(0, str(_SHARED_DIR))
+
 
 # ── 多 key 轮询池 ─────────────────────────────────────────────
 # 数据源 API key 支持逗号分隔多 key（如 FINNHUB_API_KEY=k1,k2），

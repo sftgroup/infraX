@@ -7,6 +7,22 @@ No hardcoded IPs, credentials, or API keys in defaults.
 import os
 import threading
 
+# ── 统一鉴权契约（app_auth）─────────────────────────────────
+# 优先加载仓库级共享实现（../shared，systemd/本地 git checkout 路径）；
+# Docker 构建无共享目录时回退到项目根同名副本。必须在 import app_auth 前执行。
+import sys as _sys
+from pathlib import Path as _Path
+
+_SHARED_DIR: _Path | None = None
+_p = _Path(__file__).resolve().parent
+for _ in range(3):  # 上溯最多 3 层找 shared/（本文件在 app/ 子目录）
+    if (_p / "shared").is_dir():
+        _SHARED_DIR = _p / "shared"
+        break
+    _p = _p.parent
+if _SHARED_DIR is not None:
+    _sys.path.insert(0, str(_SHARED_DIR))
+
 # ── Database ───────────────────────────────────────────────────
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -31,8 +47,9 @@ ADANOS_API_KEY = os.getenv("ADANOS_API_KEY", "")
 # 管理后台鉴权（PUT/GET /admin/config 需 Bearer ADMIN_API_KEY）
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
-# 业务端点鉴权（/bars /factors/* /snapshots /stats；Bearer 或 X-API-Key）。
-# 兼容回退链与 ragservicer/injector 一致：RAGSERVICER_API_KEY → DOC_API_KEY → LIGHTRAG_API_KEY。
+# 业务端点鉴权（/bars /factors/* /snapshots /stats；Bearer 或 X-API-Key 或
+# X-Service-Key，统一契约见 app_auth）。收敛为平台 bridge key：
+# RAGSERVICER_API_KEY → DOC_API_KEY → LIGHTRAG_API_KEY 回退链。
 # 未配置任何 key 时保持开放（向后兼容）；配置后强制校验。
 DATA_API_KEY = os.getenv(
     "DATA_API_KEY",
