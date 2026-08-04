@@ -11,3 +11,4 @@ from .finbert_sentiment import FinbertSentimentCollector
 from .tree_ml import TreeMlCollector
 from .consensus_ml import ConsensusCollector
 from .p2_ml import P2MlCollector
+from .global_market import GlobalMarketCollector

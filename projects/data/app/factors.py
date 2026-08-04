@@ -90,6 +90,8 @@ _CATEGORY_MAP = {
         ("onchain", "btc_difficulty"), ("defi", "tvl"),
         ("volatility", "volatility"), ("macro", "us_indicators"),
         ("fundamental", "earnings"),
+        ("global_market", "commodities"), ("global_market", "forex_pairs"),
+        ("global_market", "market_overview"),
     ],
 }
 # Flatten: data_type → category

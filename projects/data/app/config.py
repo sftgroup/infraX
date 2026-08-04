@@ -80,6 +80,10 @@ P2_COLLECT_ENABLED = os.getenv("P2_COLLECT_ENABLED", "true").lower() == "true"
 P2_COLLECT_INTERVAL_SEC = int(os.getenv("P2_COLLECT_INTERVAL_SEC", "1800"))
 P2_RETENTION_DAYS = int(os.getenv("P2_RETENTION_DAYS", "90"))
 
+# ── 全局市场快照（DS-10）：commodities / forex_pairs 30min、market_overview 15min ──
+GLOBAL_MARKET_COLLECT_ENABLED = os.getenv("GLOBAL_MARKET_COLLECT_ENABLED", "true").lower() == "true"
+GLOBAL_MARKET_COLLECT_INTERVAL_SEC = int(os.getenv("GLOBAL_MARKET_COLLECT_INTERVAL_SEC", "900"))
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

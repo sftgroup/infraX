@@ -513,6 +513,7 @@ async def _startup():
         ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
         FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
+        GlobalMarketCollector,
     )
     ExternalFactorCollector().start()
     CalendarCollector().start()
@@ -526,6 +527,7 @@ async def _startup():
     TreeMlCollector().start()
     ConsensusCollector().start()
     P2MlCollector().start()
+    GlobalMarketCollector().start()
     logger.info("InfraX Data Service startup complete")
 
 
