@@ -124,11 +124,11 @@ def _stats_from_paths(point: np.ndarray, q10: np.ndarray, q50: np.ndarray, q90: 
         "direction": direction,
         "prob_up": _prob_up_from_quantiles(q10_end, q50_end, q90_end, last_close),
         "uncertainty": _uncertainty_level(interval / last_close),
-        "point_forecast": [round(x, 6) for x in point],
+        "point_forecast": [round(float(x), 6) for x in point],
         "quantiles": {
-            "0.1": [round(x, 6) for x in q10],
-            "0.5": [round(x, 6) for x in q50],
-            "0.9": [round(x, 6) for x in q90],
+            "0.1": [round(float(x), 6) for x in q10],
+            "0.5": [round(float(x), 6) for x in q50],
+            "0.9": [round(float(x), 6) for x in q90],
         },
     }
 

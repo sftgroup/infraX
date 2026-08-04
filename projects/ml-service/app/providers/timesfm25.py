@@ -104,8 +104,8 @@ def predict_symbol(symbol: str) -> dict[str, Any] | None:
     stats = bolt._stats_from_paths(q50, q_min, q50, q_max, last_close)
     if not stats:
         return None
-    stats["quantiles"] = {"min": [round(x, 6) for x in q_min],
-                          "max": [round(x, 6) for x in q_max]}
+    stats["quantiles"] = {"min": [round(float(x), 6) for x in q_min],
+                          "max": [round(float(x), 6) for x in q_max]}
     stats.update({
         "symbol": symbol,
         "model": config.TIMESFM_MODEL.split("/")[-1],
