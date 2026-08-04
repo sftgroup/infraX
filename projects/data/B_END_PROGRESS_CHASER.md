@@ -16,7 +16,7 @@ AItrader 侧**服务间鉴权（WS-A）与配置统一下发（WS-B）已全部�
 
 | 编号 | 需求 | 状态 | 优先级 | 阻塞范围 | 请 B 端确认 |
 |---|---|---|---|---|---|
-| **DS-8** | `/bars` 数据覆盖保证 + spot/swap 区分 | ⚠️ 接口已补（market_type 参数），数据采集待补 | **P0** | backtest/trading/analysis **3 个微服务已依赖**；当前仅 `BTC/USDT 4h` 有数据，`1m`/`1D` 为空 = **功能实际不可用** | 排期与完成时间 |
+| **DS-8** | `/bars` 数据覆盖保证 + spot/swap 区分 | ✅ 已实现（da2cd34，2026-08-05 已部署实测） | **P0** | backtest/trading/analysis **3 个微服务已依赖**；当前仅 `BTC/USDT 4h` 有数据，`1m`/`1D` 为空 = **功能实际不可用** | swap 采集器已上线（BTC/ETH/SOL 1m 各 500 根，`/bars?market_type=swap` 已通）；5m/15m/30m/1h/4h 覆盖待配置 `KL_TIMEFRAMES` |
 | **DS-7** | 实时报价 `GET /ticker` | ✅ 已实现（1375a38，2026-08-05 已部署实测） | **P0** | 单体持仓现价、持仓盈亏告警、快交易、全局行情页（`KlineService.get_realtime_price` 依赖） | 验收：BTC spot+swap / 美股 / 外汇已通，A股港股走腾讯源 |
 | **DS-9** | 符号搜索 `GET /symbols/search` | 🔲 待补 | **P0** | 单体符号搜索（前端"添加自选/搜索交易对"），现有 `/symbol/resolve` 不支持模糊搜索 | 排期与完成时间 |
 | **DS-10** | `/snapshots` 补齐 `commodities`/`forex_pairs`/`market_overview` | 🔲 待补 | P1 | 单体全局市场页"商品/外汇/顶部概览"板块 | 排期与完成时间 |

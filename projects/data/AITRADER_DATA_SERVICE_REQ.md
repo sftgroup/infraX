@@ -17,7 +17,7 @@
 | DS-5 | 券商市场策略 `/api/v1/policy/broker-market` | ✅ 已实现 | P1 |
 | DS-6 | 统计/健康 `/stats` `/health` | ✅ 已实现 | — |
 | DS-7 | 实时报价 `/ticker` | ✅ 已实现（1375a38，2026-08-05 已部署） | **P0** |
-| DS-8 | `/bars` 数据覆盖保证 + spot/swap 区分 | ⚠️ 接口已补 `market_type`（spot/swap，方案 A），swap 数据采集待补 | **P0** |
+| DS-8 | `/bars` 数据覆盖保证 + spot/swap 区分 | ✅ 已实现（da2cd34，2026-08-05 已部署） | **P0** |
 | DS-9 | 符号搜索 `/symbols/search` | 🔲 待补 | **P0** |
 | DS-10 | `/snapshots` 类型补齐（commodities/forex_pairs/market_overview） | 🔲 待补 | P1 |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 待 B 端确认 | P1 |
