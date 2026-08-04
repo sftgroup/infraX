@@ -62,6 +62,10 @@ RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", "60"))
 DATA_DB_PATH = os.getenv("DATA_DB_PATH", "data/data.db")
 KL_SYMBOLS = os.getenv("KL_SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT")
 KL_TIMEFRAMES = os.getenv("KL_TIMEFRAMES", "1m")  # comma-separated, e.g. "1m,5m,15m,1h,4h,1D"
+# swap 合约采集（DS-8）：独立开关/标的/周期，存储键 base/quote:quote（如 BTC/USDT:USDT）
+KL_SWAP_ENABLED = os.getenv("KL_SWAP_ENABLED", "false").lower() == "true"
+KL_SWAP_SYMBOLS = os.getenv("KL_SWAP_SYMBOLS", "")
+KL_SWAP_TIMEFRAMES = os.getenv("KL_SWAP_TIMEFRAMES", "1m")
 KL_FETCH_LIMIT = int(os.getenv("KL_FETCH_LIMIT", "500"))
 KL_INTERVAL_SEC = int(os.getenv("KL_INTERVAL_SEC", "300"))
 KL_EXCHANGE = os.getenv("KL_EXCHANGE", "binance")

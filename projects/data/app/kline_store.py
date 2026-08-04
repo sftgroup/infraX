@@ -37,6 +37,9 @@ requests.Session.request = _session_request_with_timeout
 from app.config import (
     KL_SYMBOLS,
     KL_TIMEFRAMES,
+    KL_SWAP_ENABLED,
+    KL_SWAP_SYMBOLS,
+    KL_SWAP_TIMEFRAMES,
     KL_FETCH_LIMIT,
     KL_INTERVAL_SEC,
     KL_EXCHANGE,
@@ -48,6 +51,25 @@ logger = logging.getLogger(__name__)
 # Parse config strings
 _SYMBOLS = [s.strip() for s in KL_SYMBOLS.split(",") if s.strip()]
 _TIMEFRAMES = [t.strip() for t in KL_TIMEFRAMES.split(",") if t.strip()]
+# swap 合约采集（DS-8）：独立标的/周期，存储键 base/quote:quote
+_SWAP_SYMBOLS = [s.strip() for s in KL_SWAP_SYMBOLS.split(",") if s.strip()]
+_SWAP_TIMEFRAMES = [t.strip() for t in KL_SWAP_TIMEFRAMES.split(",") if t.strip()]
+
+
+def _swap_ccxt_symbol(symbol: str) -> str:
+    """crypto 交易对 → ccxt swap 符号（BTC/USDT → BTC/USDT:USDT）。
+
+    与 enrich._normalize_kline_symbol(market_type=swap) 的存储键约定一致，
+    采集落库键与 /bars 查询键天然对齐。
+    """
+    if ":" in symbol:
+        return symbol
+    if "/" in symbol:
+        base, quote = symbol.split("/", 1)
+        if ":" in quote:
+            return symbol
+        return f"{base}/{quote}:{quote}"
+    return symbol
 
 # ── Indicator params from data_config.json ──────────────────
 
@@ -192,8 +214,9 @@ class KlineStore:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="kline-collector")
         self._thread.start()
-        logger.info("KlineStore started (symbols=%s, timeframes=%s, interval=%ds)",
-                     _SYMBOLS, _TIMEFRAMES, KL_INTERVAL_SEC)
+        swap_note = f", swap={KL_SWAP_ENABLED and (f'{_SWAP_SYMBOLS}@{_SWAP_TIMEFRAMES}' or '') or 'off'}"
+        logger.info("KlineStore started (symbols=%s, timeframes=%s, interval=%ds%s)",
+                     _SYMBOLS, _TIMEFRAMES, KL_INTERVAL_SEC, swap_note)
 
     def stop(self):
         self._running = False
@@ -202,6 +225,8 @@ class KlineStore:
         while self._running:
             try:
                 self._collect_all()
+                if KL_SWAP_ENABLED:
+                    self._collect_swap()
                 self._collect_multi_market()
             except Exception:
                 logger.warning("KlineStore cycle failed", exc_info=True)
@@ -219,12 +244,38 @@ class KlineStore:
                     logger.warning("KlineStore fetch failed for %s %s", symbol, tf, exc_info=True)
 
     def _collect_one(self, ex: ccxt.Exchange, symbol: str, timeframe: str):
-        """Fetch → compute → upsert for one symbol+timeframe."""
+        """Fetch → compute → upsert for one symbol+timeframe (spot)."""
         ohlcv = ex.fetch_ohlcv(symbol, timeframe, limit=KL_FETCH_LIMIT)
         if not ohlcv or len(ohlcv) < 30:
             logger.debug("KlineStore: %s returned %d bars (skip)", symbol, len(ohlcv) if ohlcv else 0)
             return
+        self._upsert_bars_with_indicators(symbol, timeframe, ohlcv)
 
+    def _collect_swap(self):
+        """Fetch swap（永续合约）K-lines → compute → upsert（DS-8）。
+
+        ccxt 符号 ``base/quote:quote``（BTC/USDT:USDT）显式路由 swap 市场，
+        存储键与 ``/bars?market_type=swap`` 查询键一致。独立 try/except，
+        失败不影响 spot 采集。
+        """
+        if not KL_SWAP_ENABLED or not _SWAP_SYMBOLS:
+            return
+        ex = self._get_exchange()
+        for sym in _SWAP_SYMBOLS:
+            ccxt_sym = _swap_ccxt_symbol(sym)
+            for tf in _SWAP_TIMEFRAMES:
+                try:
+                    ohlcv = ex.fetch_ohlcv(ccxt_sym, tf, limit=KL_FETCH_LIMIT)
+                    if not ohlcv or len(ohlcv) < 30:
+                        logger.debug("KlineStore swap: %s returned %d bars (skip)",
+                                     ccxt_sym, len(ohlcv) if ohlcv else 0)
+                        continue
+                    self._upsert_bars_with_indicators(ccxt_sym, tf, ohlcv)
+                except Exception:
+                    logger.warning("KlineStore swap fetch failed %s %s", ccxt_sym, tf, exc_info=True)
+
+    def _upsert_bars_with_indicators(self, symbol: str, timeframe: str, ohlcv: list) -> int:
+        """OHLCV → 指标 → upsert（spot/swap 共用）。返回落库 bar 数。"""
         # Convert to numpy columns
         cols = np.array(ohlcv, dtype=float)  # [ts, open, high, low, close, volume]
         ts   = cols[:, 0].astype(int)
@@ -279,6 +330,7 @@ class KlineStore:
             (symbol, timeframe),
         ).fetchone()[0]
         logger.info("KlineStore: %s %s upserted %d bars (total=%d)", symbol, timeframe, len(rows), total)
+        return len(rows)
 
     # ── exchange (lazy) ─────────────────────────────────────
 
