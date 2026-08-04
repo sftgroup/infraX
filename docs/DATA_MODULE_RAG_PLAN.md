@@ -225,13 +225,16 @@ ml-service 内（现拉自己的三类预测）：
 - [x] data-service 新增 `ConsensusCollector` 拉 consensus 快照落库（30min）
 - [x] injector 新增 `inject_consensus` + `textify.consensus_report` 文本化
 - [x] 单测 12 项（规则边界 / fail-silent / 缓存命中 / 符号归一化）
+- [x] **P2 整合（v2，M4 后）**：聚合扩展到六路信号（tree + volatility + sentiment + bolt + moirai + timesfm）
+- [x] P2 投票规则 + 阈值单测 + textify 展示 P2 方向（ff2bad5，2026-08-05 已部署实测）
 
 **实现要点（与设计一致）**：
-- 聚合在 ml-service（信号源头），`/ml/consensus` 确定性规则，三路信号全不可用返回 null
-- **TTL 缓存**（`CONSENSUS_CACHE_TTL_SEC=1500`）：首次聚合触发 Kronos 全量推理（~200s），25min 内秒回缓存；data-service 侧超时 300s 覆盖首算
+- 聚合在 ml-service（信号源头），`/ml/consensus` 确定性规则，六路信号全不可用返回 null
+- **TTL 缓存**（`CONSENSUS_CACHE_TTL_SEC=1500`）：首次聚合触发 Kronos 全量推理（~200s）+ P2 推理（TimesFM 首次 ~70s），25min 内秒回缓存；data-service 侧超时 300s 覆盖首算
 - **情绪回退链**：`finbert_sentiment`（FinBERT 真实分类）→ `sentiment_score`（市场情绪快照），生产无 FinBERT 快照时仍可用
-- **符号归一化**：tree 的 `BTC/USDT` ↔ Kronos 的 `BTC` 对齐为同一标的
-- **实测**：33 symbols，三信号全开，avg_consensus 0.06 / market_risk elevated（当前数据树模型集体看多 vs 情绪偏空 → 31 项分歧）
+- **符号归一化**：tree 的 `BTC/USDT` ↔ Kronos/P2 的 `BTC` 对齐为同一标的
+- **P2 投票（第二意见交叉验证）**：`prob_up ≥ 0.55` 投 +1、`≤ 0.45` 投 -1、中间置信不投票；`consensus_score` = 主导方向票数 / 有方向票数（单票 1.0、N 票反向各半 0.5）；`divergence` = 票集同时存在 up 与 down；风险项新增任一 P2 模型 `uncertainty=high`
+- **实测（P2 整合后）**：33 symbols，六信号全开，avg_consensus 0.5455 / market_risk elevated / 31 项分歧；BTC 4 票 3:1 = 0.75（bolt up + timesfm up vs sentiment down，moirai 中间置信不投）；缓存命中 1.8ms
 
 ---
 
