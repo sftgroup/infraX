@@ -69,7 +69,7 @@ def _get_td_api_key() -> str:
             return key
     except Exception:
         pass
-    return (os.getenv("TWELVE_DATA_API_KEY") or "").strip()
+    return APIKeys.rotate("TWELVE_DATA_API_KEY")
 
 
 def _td_forex_symbol(symbol: str) -> str:
@@ -122,7 +122,7 @@ class ForexDataSource(BaseDataSource):
     def __init__(self):
         self.base_url = TiingoConfig.BASE_URL
         td_key = _get_td_api_key()
-        tiingo_key = APIKeys.TIINGO_API_KEY
+        tiingo_key = APIKeys.rotate("TIINGO_API_KEY")
         if not td_key and not tiingo_key:
             logger.warning("Neither Twelve Data nor Tiingo API key configured; FX data will be limited")
     
@@ -184,7 +184,7 @@ class ForexDataSource(BaseDataSource):
 
     def _get_ticker_tiingo(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch forex quote from Tiingo (legacy fallback)."""
-        api_key = APIKeys.TIINGO_API_KEY
+        api_key = APIKeys.rotate("TIINGO_API_KEY")
         if not api_key:
             return None
 
@@ -395,7 +395,7 @@ class ForexDataSource(BaseDataSource):
         self, symbol: str, timeframe: str, limit: int, before_time: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Fetch forex K-lines from Tiingo (legacy fallback)."""
-        api_key = APIKeys.TIINGO_API_KEY
+        api_key = APIKeys.rotate("TIINGO_API_KEY")
         if not api_key:
             return []
             

@@ -8,10 +8,11 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import requests
+
+from config import rotate_key
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def fetch_news_sentiment_aggregate(
             "source": "Finnhub",
         }
     """
-    api_key = os.getenv("FINNHUB_API_KEY", "")
+    api_key = rotate_key("FINNHUB_API_KEY")
     if not api_key:
         logger.debug("News sentiment skipped: FINNHUB_API_KEY not set")
         return None

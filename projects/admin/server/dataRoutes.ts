@@ -30,6 +30,23 @@ function readRagAdminKey(): string {
 }
 const RAGSERVICER_ADMIN_KEY = readRagAdminKey();
 
+// data-service / knowledge-injector .env 路径（各自数据源 key 管理配置落点）
+const DATA_ENV_PATH = process.env.DATA_ENV_PATH || '/home/ubuntu/infraX-1/projects/data/.env';
+const INJECTOR_ENV_PATH = process.env.INJECTOR_ENV_PATH || '/home/ubuntu/infraX-1/projects/knowledge-injector/.env';
+
+// 从指定 .env 读取 ADMIN_API_KEY（用于调用各服务 /admin/config；env 可覆盖，改 key 后无需重启 admin）
+function readAdminKeyFromEnv(envPath: string): string {
+  try {
+    const env = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    const line = env.split('\n').find(l => l.startsWith('ADMIN_API_KEY='));
+    return line ? line.split('=').slice(1).join('=').trim() : '';
+  } catch {
+    return '';
+  }
+}
+const DATA_ADMIN_KEY = readAdminKeyFromEnv(DATA_ENV_PATH);
+const INJECTOR_ADMIN_KEY = readAdminKeyFromEnv(INJECTOR_ENV_PATH);
+
 const TIMEOUT_MS = 8000;
 
 async function getJson<T = any>(url: string, headers: Record<string, string> = {}, timeout = TIMEOUT_MS): Promise<T> {
@@ -174,6 +191,88 @@ router.post('/llm-keys', async (req: any, res: any) => {
     return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
   }
   res.json({ code: 0, message: 'success', data: { config: r.data, hot_reload: true } });
+});
+
+// ── 数据源 API Key 转发（data-service / knowledge-injector 的 /admin/config，Bearer 鉴权） ──
+// 两个服务各自管理数据源 key（多 key 逗号分隔，采集时轮询取用），admin 仅做透传转发。
+async function dataStackConfigReq(base: string, adminKey: string, method: 'GET' | 'PUT', body?: any): Promise<{ status: number; data?: any; message?: string }> {
+  if (!adminKey) {
+    return { status: 503, message: '服务 admin key 未配置（对应服务 .env 的 ADMIN_API_KEY）' };
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(`${base}/admin/config`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminKey}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: r.status, message: j?.message || `HTTP ${r.status}` };
+    return { status: r.status, data: (j?.data ?? j) as any };
+  } catch (e: any) {
+    return { status: 0, message: `连接服务失败: ${e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── 数据源 API Key：读取（并行拉两个服务配置，任一失败不影响其他） ──
+router.get('/data-source-keys', async (_req: any, res: any) => {
+  const [dataR, injR] = await Promise.all([
+    dataStackConfigReq(DATA_BASE, DATA_ADMIN_KEY, 'GET'),
+    dataStackConfigReq(INJECTOR_BASE, INJECTOR_ADMIN_KEY, 'GET'),
+  ]);
+  const dataOk = dataR.status === 200 && !!dataR.data;
+  const injOk = injR.status === 200 && !!injR.data;
+  res.json({
+    code: 0,
+    message: 'success',
+    data: {
+      data: { ok: dataOk, config: dataR.data ?? null, adminKeySet: !!DATA_ADMIN_KEY, error: dataOk ? undefined : dataR.message },
+      injector: { ok: injOk, config: injR.data ?? null, adminKeySet: !!INJECTOR_ADMIN_KEY, error: injOk ? undefined : injR.message },
+    },
+  });
+});
+
+// ── 数据源 API Key：更新（分别转发 PUT，支持逗号分隔多 key / 数组，热生效） ──
+router.post('/data-source-keys', async (req: any, res: any) => {
+  const { data, injector } = req.body || {};
+
+  const pick = (src: any): Record<string, any> | undefined => {
+    if (!src || typeof src !== 'object') return undefined;
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(src)) {
+      if (v === undefined || v === null || v === '') continue;
+      out[k] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  };
+
+  const payload: Record<string, any> = {};
+  const pData = pick(data);
+  if (pData) payload.data = pData;
+  const pInj = pick(injector);
+  if (pInj) payload.injector = pInj;
+  if (!Object.keys(payload).length) {
+    return res.status(400).json({ code: -1, message: 'nothing to update', data: null });
+  }
+
+  const results: Record<string, any> = {};
+  if (pData) {
+    const r = await dataStackConfigReq(DATA_BASE, DATA_ADMIN_KEY, 'PUT', { keys: pData });
+    results.data = r.status === 200 && r.data ? { ok: true, config: r.data } : { ok: false, message: r.message };
+  }
+  if (pInj) {
+    const r = await dataStackConfigReq(INJECTOR_BASE, INJECTOR_ADMIN_KEY, 'PUT', { keys: pInj });
+    results.injector = r.status === 200 && r.data ? { ok: true, config: r.data } : { ok: false, message: r.message };
+  }
+  res.json({ code: 0, message: 'success', data: results });
 });
 
 export default router;

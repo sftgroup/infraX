@@ -42,7 +42,7 @@ def _get_td_api_key() -> str:
             return key
     except Exception:
         pass
-    return (os.getenv("TWELVE_DATA_API_KEY") or "").strip()
+    return APIKeys.rotate("TWELVE_DATA_API_KEY")
 
 
 # Tiingo FX covers precious metals as spot forex (XAUUSD, XAGUSD)
@@ -186,7 +186,7 @@ class FuturesDataSource(BaseDataSource):
         tiingo_sym = _TIINGO_PRECIOUS_METALS_MAP.get(symbol.replace("=F", ""))
         if not tiingo_sym:
             return None
-        api_key = APIKeys.TIINGO_API_KEY
+        api_key = APIKeys.rotate("TIINGO_API_KEY")
         if not api_key:
             return None
         try:
@@ -367,7 +367,7 @@ class FuturesDataSource(BaseDataSource):
         tiingo_sym = _TIINGO_PRECIOUS_METALS_MAP.get(symbol.replace("=F", ""))
         if not tiingo_sym:
             return []
-        api_key = APIKeys.TIINGO_API_KEY
+        api_key = APIKeys.rotate("TIINGO_API_KEY")
         if not api_key:
             return []
         resample = _TIINGO_TIMEFRAME_MAP.get(timeframe)

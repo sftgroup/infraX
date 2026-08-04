@@ -23,6 +23,7 @@ from app.utils.logger import get_logger
 from app.utils.db import get_db_connection
 from app.data.market_symbols_seed import get_symbol_name as seed_get_symbol_name
 from app.data_sources.tencent import normalize_cn_code, normalize_hk_code
+from app.config import APIKeys
 
 logger = get_logger(__name__)
 
@@ -193,7 +194,7 @@ def _resolve_name_from_finnhub(symbol: str) -> Optional[str]:
     https://finnhub.io/docs/api/company-profile2
     """
     try:
-        api_key = (os.getenv('FINNHUB_API_KEY') or '').strip()
+        api_key = APIKeys.rotate('FINNHUB_API_KEY')
         if not api_key:
             return None
         url = "https://finnhub.io/api/v1/stock/profile2"

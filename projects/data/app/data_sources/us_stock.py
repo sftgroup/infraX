@@ -56,7 +56,7 @@ class USStockDataSource(BaseDataSource):
         try:
             import finnhub
             if APIKeys.is_configured('FINNHUB_API_KEY'):
-                self.finnhub_client = finnhub.Client(api_key=APIKeys.FINNHUB_API_KEY)
+                self.finnhub_client = finnhub.Client(api_key=APIKeys.rotate('FINNHUB_API_KEY'))
                 logger.info("Finnhub client initialized")
         except Exception as e:
             logger.warning(f"Finnhub init failed: {e}")

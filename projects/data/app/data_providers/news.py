@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from app.utils.logger import get_logger
+from app.config import APIKeys
 
 logger = get_logger(__name__)
 
@@ -278,8 +279,8 @@ def _purge_old_news():
 # ── NewsAPI fetchers ─────────────────────────────────────────────────────
 
 def _get_api_key() -> str:
-    """Read API key from env directly."""
-    return os.getenv("NEWSAPI_API_KEY", "")
+    """Read API key from the rotation pool (multi-key round-robin)."""
+    return APIKeys.rotate("NEWSAPI_API_KEY")
 
 
 def _article_to_dict(art: dict, category: str, lang: str) -> dict:

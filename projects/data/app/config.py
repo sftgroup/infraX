@@ -5,6 +5,7 @@ No hardcoded IPs, credentials, or API keys in defaults.
 """
 
 import os
+import threading
 
 # ── Database ───────────────────────────────────────────────────
 
@@ -15,6 +16,8 @@ DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
 DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "20"))
 
 # ── API Keys ───────────────────────────────────────────────────
+# 支持多 key 轮询：KEY_NAME=key1,key2,key3（逗号分隔），采集器运行时通过
+# APIKeys.rotate(name) 轮询取用；管理后台 PUT /admin/config 可热更新。
 
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
@@ -24,6 +27,9 @@ TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 CRYPTOCOMPARE_API_KEY = os.getenv("CRYPTOCOMPARE_API_KEY", "")
 NEWSAPI_API_KEY = os.getenv("NEWSAPI_API_KEY", "")
 ADANOS_API_KEY = os.getenv("ADANOS_API_KEY", "")
+
+# 管理后台鉴权（PUT/GET /admin/config 需 Bearer ADMIN_API_KEY）
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
 # ── Caching ────────────────────────────────────────────────────
 
@@ -77,7 +83,12 @@ def _resolve_proxy() -> str:
 
 
 class APIKeys:
-    """API 密钥配置类（data_sources 兼容）。"""
+    """API 密钥配置类（data_sources 兼容）。
+
+    支持多 key 轮询：env 值以逗号分隔（``FINNHUB_API_KEY=k1,k2``），
+    调用 ``APIKeys.rotate(name)`` 线程安全地轮询取下一个 key。
+    运行时从 ``os.environ`` 读取，因此管理后台热更新无需重启。
+    """
 
     FINNHUB_API_KEY = FINNHUB_API_KEY
     TIINGO_API_KEY = TIINGO_API_KEY
@@ -85,6 +96,30 @@ class APIKeys:
     ALPHA_VANTAGE_API_KEY = ALPHA_VANTAGE_KEY
     NEWSAPI_API_KEY = NEWSAPI_API_KEY
     ADANOS_API_KEY = ADANOS_API_KEY
+
+    _lock = threading.Lock()
+    _counters: dict[str, int] = {}
+
+    @classmethod
+    def _parse(cls, key_name: str) -> list[str]:
+        raw = os.environ.get(key_name, "") or ""
+        return [k.strip() for k in raw.split(",") if k.strip()]
+
+    @classmethod
+    def all(cls, key_name: str) -> list[str]:
+        """返回某个 key 变量配置的全部 key（逗号分隔解析）。"""
+        return cls._parse(key_name)
+
+    @classmethod
+    def rotate(cls, key_name: str, default: str = "") -> str:
+        """Round-robin 轮询取下一个 key。未配置返回 default。"""
+        keys = cls._parse(key_name)
+        if not keys:
+            return default
+        with cls._lock:
+            idx = cls._counters.get(key_name, 0)
+            cls._counters[key_name] = idx + 1
+        return keys[idx % len(keys)]
 
     @classmethod
     def get(cls, key_name: str, default: str = "") -> str:
@@ -97,7 +132,13 @@ class APIKeys:
     @classmethod
     def is_configured(cls, key_name: str) -> bool:
         """Check whether an API key is configured."""
-        return bool(cls.get(key_name).strip())
+        return bool(cls._parse(key_name))
+
+    @classmethod
+    def reload(cls) -> None:
+        """重置轮询计数（管理后台热更新后调用）。"""
+        with cls._lock:
+            cls._counters.clear()
 
 
 class CCXTConfig:

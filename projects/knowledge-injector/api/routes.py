@@ -4,8 +4,11 @@
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 import time
+from pathlib import Path
 
 from flask import Flask, g, jsonify, request
 
@@ -165,5 +168,101 @@ def create_app() -> Flask:
         """最近注入记录。"""
         limit = request.args.get("limit", 20, type=int)
         return jsonify(STATS.recent(limit=min(limit, 100)))
+
+    # ─── Admin Config (data-source API keys, hot-reload) ──────
+
+    _INJECTOR_KEY_FIELDS = [
+        "FRED_API_KEY", "ETHERSCAN_API_KEY", "FINNHUB_API_KEY",
+        "TUSHARE_API_KEY", "NEWSAPI_KEY",
+    ]
+    _MASK = "********"
+    _ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+
+    def _mask_secret(v: str) -> str:
+        if not v:
+            return ""
+        if len(v) <= 8:
+            return _MASK
+        return f"{v[:4]}{_MASK}{v[-4:]}"
+
+    def _admin_authorized() -> bool:
+        from config import SETTINGS
+        if not SETTINGS.admin_api_key:
+            return False
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return False
+        return hmac.compare_digest(auth[7:], SETTINGS.admin_api_key)
+
+    def _write_env_file(updates: dict[str, str]) -> None:
+        if not _ENV_PATH.exists():
+            _ENV_PATH.write_text("")
+        lines = _ENV_PATH.read_text().splitlines()
+        remaining = set(updates)
+        out = []
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                out.append(line)
+                continue
+            key = line.split("=", 1)[0].strip()
+            if key in updates:
+                out.append(f"{key}={updates[key]}")
+                remaining.discard(key)
+            else:
+                out.append(line)
+        for key in remaining:
+            out.append(f"{key}={updates[key]}")
+        _ENV_PATH.write_text("\n".join(out) + "\n")
+
+    def _key_snapshot() -> dict:
+        from config import all_keys
+        keys = {}
+        for name in _INJECTOR_KEY_FIELDS:
+            pool = all_keys(name)
+            keys[name] = {
+                "set": bool(pool),
+                "key_count": len(pool),
+                "keys": [_mask_secret(k) for k in pool],
+            }
+        return {"keys": keys, "env_file": str(_ENV_PATH), "hot_reload": True}
+
+    @app.route("/admin/config", methods=["GET"])
+    def admin_get_config():
+        if not _admin_authorized():
+            return jsonify({"code": 401, "message": "Missing or invalid admin key", "data": None}), 401
+        return jsonify({"code": 0, "message": "ok", "data": _key_snapshot()})
+
+    @app.route("/admin/config", methods=["PUT"])
+    def admin_put_config():
+        if not _admin_authorized():
+            return jsonify({"code": 401, "message": "Missing or invalid admin key", "data": None}), 401
+        body = request.get_json(silent=True) or {}
+        payload = body.get("keys") if isinstance(body, dict) else None
+        if not isinstance(payload, dict):
+            return jsonify({"code": 400, "message": "config.keys object required", "data": None}), 400
+
+        from config import reset_key_pools
+        updates: dict[str, str] = {}
+        for name, value in payload.items():
+            if name not in _INJECTOR_KEY_FIELDS:
+                continue
+            if value is None:
+                continue
+            if isinstance(value, list):
+                joined = ",".join(str(v).strip() for v in value if str(v).strip())
+            else:
+                s = str(value).strip()
+                if s == _MASK:
+                    continue
+                joined = s
+            updates[name] = joined
+
+        if updates:
+            _write_env_file(updates)
+            for k, v in updates.items():
+                os.environ[k] = v
+            reset_key_pools()
+            logger.info("Admin config updated: %s", ", ".join(sorted(updates)))
+        return jsonify({"code": 0, "message": "ok", "data": _key_snapshot()})
 
     return app

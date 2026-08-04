@@ -16,7 +16,7 @@ from typing import Any
 
 import requests
 
-from config import SETTINGS
+from config import rotate_key
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def fetch_earnings(ticker: str, limit: int = 2) -> dict[str, Any] | None:
             "beat": True,
         }
     """
-    api_key = SETTINGS.finnhub_api_key
+    api_key = rotate_key("FINNHUB_API_KEY")
     if not api_key:
         return None
 
@@ -109,7 +109,7 @@ def fetch_all_megacap_earnings() -> dict[str, Any]:
             "updated": "2026Q2",
         }
     """
-    api_key = SETTINGS.finnhub_api_key
+    api_key = rotate_key("FINNHUB_API_KEY")
     if not api_key:
         return {"total": 0, "error": "FINNHUB_API_KEY not set"}
 

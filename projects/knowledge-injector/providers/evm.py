@@ -15,7 +15,7 @@ from typing import Any
 
 import requests
 
-from config import SETTINGS
+from config import rotate_key
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def fetch_eth_supply() -> dict[str, Any] | None:
     Returns:
         {"total_supply": 120_500_000, "burned_since_eip1559": 4_200_000, ...}
     """
-    api_key = SETTINGS.etherscan_api_key
+    api_key = rotate_key("ETHERSCAN_API_KEY")
     if not api_key:
         return None
 
@@ -72,7 +72,7 @@ def fetch_eth_supply() -> dict[str, Any] | None:
 
 def _fetch_burned_eth() -> int | None:
     """Fetch ETH burned since EIP-1559 via Etherscan stats."""
-    api_key = SETTINGS.etherscan_api_key
+    api_key = rotate_key("ETHERSCAN_API_KEY")
     if not api_key:
         return None
 

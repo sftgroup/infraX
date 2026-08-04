@@ -13,6 +13,12 @@ interface DataStackOverview {
   rag: { ok: boolean; error?: string; health?: any; instances?: any[]; adminKeySet?: boolean };
   fetched_at: number;
 }
+interface SourceKeyInfo { set: boolean; key_count: number; keys: string[] }
+interface SourceKeysSnapshot { keys: Record<string, SourceKeyInfo>; env_file: string; hot_reload: boolean }
+interface SourceKeysOverview {
+  data: { ok: boolean; config: SourceKeysSnapshot | null; adminKeySet?: boolean; error?: string };
+  injector: { ok: boolean; config: SourceKeysSnapshot | null; adminKeySet?: boolean; error?: string };
+}
 
 const LLM_FIELDS: Array<[string, string]> = [
   ['llm_api_key', 'LLM API Key (DeepSeek)'],
@@ -25,6 +31,25 @@ const EMB_FIELDS: Array<[string, string]> = [
   ['embedding_model_name', 'Embedding Model'],
   ['embedding_base_url', 'Embedding Base URL'],
 ];
+// 数据源 API Key（data-service 侧，多 key 逗号分隔、采集时轮询取用）
+const DATA_SRC_FIELDS: Array<[string, string]> = [
+  ['NEWSAPI_API_KEY', 'NewsAPI'],
+  ['ADANOS_API_KEY', 'Adanos'],
+  ['FINNHUB_API_KEY', 'Finnhub'],
+  ['TIINGO_API_KEY', 'Tiingo'],
+  ['TWELVE_DATA_API_KEY', 'Twelve Data'],
+  ['ALPHA_VANTAGE_KEY', 'Alpha Vantage'],
+  ['COINGECKO_API_KEY', 'CoinGecko'],
+  ['CRYPTOCOMPARE_API_KEY', 'CryptoCompare'],
+];
+// 数据源 API Key（knowledge-injector 侧）
+const INJ_SRC_FIELDS: Array<[string, string]> = [
+  ['FRED_API_KEY', 'FRED'],
+  ['ETHERSCAN_API_KEY', 'Etherscan'],
+  ['FINNHUB_API_KEY', 'Finnhub'],
+  ['TUSHARE_API_KEY', 'TuShare'],
+  ['NEWSAPI_KEY', 'NewsAPI'],
+];
 
 export default function DataStack() {
   const [overview, setOverview] = useState<DataStackOverview | null>(null);
@@ -34,20 +59,29 @@ export default function DataStack() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [srcKeys, setSrcKeys] = useState<SourceKeysOverview | null>(null);
+  const [srcForm, setSrcForm] = useState<Record<string, string>>({});
+  const [srcSaving, setSrcSaving] = useState(false);
+  const [srcMsg, setSrcMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [srcErr, setSrcErr] = useState('');
   const [ts, setTs] = useState(new Date());
 
   const fetchAll = useCallback(async () => {
     try {
-      const [ov, k] = await Promise.all([
+      const [ov, k, sk] = await Promise.all([
         api<DataStackOverview>('/data/overview'),
         api<{ config: RagConfig }>('/data/llm-keys'),
+        api<SourceKeysOverview>('/data/data-source-keys'),
       ]);
       setOverview(ov);
       setCfg(k.config || null);
+      setSrcKeys(sk);
       setCfgErr('');
+      setSrcErr('');
       setTs(new Date());
     } catch (e: any) {
       setCfgErr(e.message);
+      setSrcErr(e.message);
     }
     try { setFactors(await api('/data/factors')); } catch {}
   }, []);
@@ -86,6 +120,30 @@ export default function DataStack() {
       setMsg({ ok: false, text: e.message });
     }
     setSaving(false);
+  };
+
+  const saveSrcKeys = async () => {
+    const data: Record<string, string> = {};
+    const injector: Record<string, string> = {};
+    DATA_SRC_FIELDS.forEach(([k]) => { const v = srcForm[`data.${k}`]; if (v?.trim()) data[k] = v.trim(); });
+    INJ_SRC_FIELDS.forEach(([k]) => { const v = srcForm[`inj.${k}`]; if (v?.trim()) injector[k] = v.trim(); });
+
+    const payload: Record<string, any> = {};
+    if (Object.keys(data).length) payload.data = data;
+    if (Object.keys(injector).length) payload.injector = injector;
+    if (!Object.keys(payload).length) { setSrcMsg({ ok: false, text: '请至少填写一个数据源 Key' }); return; }
+
+    setSrcSaving(true);
+    setSrcMsg(null);
+    try {
+      const r = await api<SourceKeysOverview>('/data/data-source-keys', { method: 'POST', body: JSON.stringify(payload) });
+      setSrcKeys(r);
+      setSrcMsg({ ok: true, text: '已保存并热生效（无需重启服务）' });
+      setSrcForm({});
+    } catch (e: any) {
+      setSrcMsg({ ok: false, text: e.message });
+    }
+    setSrcSaving(false);
   };
 
   const fmtTime = (t?: number) => (t ? new Date(t * 1000).toLocaleTimeString() : '-');
@@ -201,6 +259,68 @@ export default function DataStack() {
           <button className="btn btn-primary btn-sm" onClick={saveKeys} disabled={saving}>
             {saving ? <span className="spin" style={{ marginRight: 6 }} /> : <Save size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />}
             {saving ? 'Saving...' : '保存配置'}
+          </button>
+        </div>
+      </div>
+
+      {/* 数据源 API Key 配置（data-service / knowledge-injector，多 key 轮询 · 热生效） */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> 数据源 API Key 配置（多 key 英文逗号分隔 · 采集时轮询 · 保存后热生效）</div>
+          {srcErr && <span className="badge yellow">{srcErr}</span>}
+        </div>
+
+        <div className="form-row" style={{ marginBottom: 6 }}>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+              Data Service :9112{srcKeys?.data.ok ? '' : ` · ${srcKeys?.data.error || '无法读取'}`}
+            </div>
+            {DATA_SRC_FIELDS.map(([k, label]) => {
+              const info = srcKeys?.data.config?.keys[k];
+              return (
+                <div key={`data.${k}`}>
+                  <label className="form-label">{label} <span className="mono" style={{ opacity: 0.55, fontSize: 11 }}>{k}</span></label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder={info?.set ? `已配置 ${info.key_count} 个：${info.keys.join('，')}` : '未配置 · 多 key 用英文逗号分隔'}
+                    value={srcForm[`data.${k}`] || ''}
+                    onChange={e => setSrcForm(f => ({ ...f, [`data.${k}`]: e.target.value }))}
+                    autoComplete="new-password"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+              Knowledge Injector :9113{srcKeys?.injector.ok ? '' : ` · ${srcKeys?.injector.error || '无法读取'}`}
+            </div>
+            {INJ_SRC_FIELDS.map(([k, label]) => {
+              const info = srcKeys?.injector.config?.keys[k];
+              return (
+                <div key={`inj.${k}`}>
+                  <label className="form-label">{label} <span className="mono" style={{ opacity: 0.55, fontSize: 11 }}>{k}</span></label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder={info?.set ? `已配置 ${info.key_count} 个：${info.keys.join('，')}` : '未配置 · 多 key 用英文逗号分隔'}
+                    value={srcForm[`inj.${k}`] || ''}
+                    onChange={e => setSrcForm(f => ({ ...f, [`inj.${k}`]: e.target.value }))}
+                    autoComplete="new-password"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex-between">
+          <span className="tooltip" style={{ color: srcMsg?.ok ? 'var(--green)' : srcMsg ? 'var(--red)' : 'var(--dim)' }}>
+            {srcMsg?.text || '多个 key 用英文逗号分隔（如 key1,key2），请求自动轮询取用；留空的字段保持不变'}
+          </span>
+          <button className="btn btn-primary btn-sm" onClick={saveSrcKeys} disabled={srcSaving}>
+            {srcSaving ? <span className="spin" style={{ marginRight: 6 }} /> : <Save size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />}
+            {srcSaving ? 'Saving...' : '保存数据源 Key'}
           </button>
         </div>
       </div>

@@ -25,6 +25,8 @@ from typing import Any
 
 import requests
 
+from config import rotate_key
+
 logger = logging.getLogger(__name__)
 
 # ─── 事件检测模式 ────────────────────────────────────
@@ -100,12 +102,10 @@ def _detect_event_type(text: str) -> str | None:
 
 def _search_news(query: str, max_results: int = 3) -> list[dict[str, Any]]:
     """用 NewsAPI 搜索新闻。无 API Key 时返回空列表。"""
-    import os
-
-    api_key = os.getenv("NEWSAPI_KEY", "")
+    api_key = rotate_key("NEWSAPI_KEY")
     if not api_key:
         # 尝试用 Finnhub 替代
-        api_key = os.getenv("FINNHUB_API_KEY", "")
+        api_key = rotate_key("FINNHUB_API_KEY")
         if api_key:
             return _search_finnhub(query, max_results)
         return []
@@ -145,9 +145,7 @@ def _search_news(query: str, max_results: int = 3) -> list[dict[str, Any]]:
 
 def _search_finnhub(query: str, max_results: int = 3) -> list[dict[str, Any]]:
     """用 Finnhub 新闻作为事件检测的备选。"""
-    import os
-
-    api_key = os.getenv("FINNHUB_API_KEY", "")
+    api_key = rotate_key("FINNHUB_API_KEY")
     if not api_key:
         return []
     try:

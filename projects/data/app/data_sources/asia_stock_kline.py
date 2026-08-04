@@ -25,6 +25,7 @@ import pandas as pd
 import requests
 
 from app.utils.logger import get_logger
+from app.config import APIKeys
 
 logger = get_logger(__name__)
 
@@ -133,7 +134,7 @@ def _get_twelve_data_api_key() -> str:
             return key
     except Exception:
         pass
-    return (os.getenv("TWELVE_DATA_API_KEY") or "").strip()
+    return APIKeys.rotate("TWELVE_DATA_API_KEY")
 
 
 _TD_INTERVAL_MAP = {

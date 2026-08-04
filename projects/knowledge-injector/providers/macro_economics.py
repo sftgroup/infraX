@@ -22,7 +22,7 @@ from typing import Any
 
 import requests
 
-from config import SETTINGS
+from config import rotate_key
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _fred_get(series_id: str, limit: int = 24) -> list[dict] | None:
     返回 [{"date": "2026-06-01", "value": 3.2}, ...]。
     API Key 为空时返回 None。
     """
-    api_key = SETTINGS.fred_api_key
+    api_key = rotate_key("FRED_API_KEY")
     if not api_key:
         return None
 

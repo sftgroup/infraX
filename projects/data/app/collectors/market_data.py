@@ -18,6 +18,7 @@ from typing import Optional
 import requests
 
 from app.factors import save_snapshot
+from app.config import APIKeys
 from app.collectors.urls import (
     COINGECKO_SIMPLE_PRICE_URL, BLOCKCHAIN_INFO_DIFFICULTY_URL,
     BLOCKCHAIN_INFO_LATEST_BLOCK_URL, DEFILLAMA_CHAINS_URL,
@@ -221,7 +222,7 @@ def _fetch_volatility() -> Optional[dict]:
 
 
 def _fetch_macro_indicators() -> Optional[dict]:
-    api_key = os.getenv("FRED_API_KEY", "")
+    api_key = APIKeys.rotate("FRED_API_KEY")
     if not api_key:
         return None
     cfg = _get_config().get("macro", {})
@@ -257,7 +258,7 @@ def _fetch_macro_indicators() -> Optional[dict]:
 
 
 def _fetch_earnings() -> Optional[list[dict]]:
-    api_key = os.getenv("FINNHUB_API_KEY", "")
+    api_key = APIKeys.rotate("FINNHUB_API_KEY")
     if not api_key:
         return None
     cfg = _get_config().get("earnings", {})

@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import requests
 
-from app.config import ADANOS_API_KEY
+from app.config import APIKeys
 from app.factors import save_snapshot
 from app.utils.logger import get_logger
 
@@ -173,7 +173,7 @@ def fetch_adanos_market_sentiment(
         result["error"] = "No valid stock tickers provided"
         return result
 
-    selected_key = str(api_key if api_key is not None else ADANOS_API_KEY).strip()
+    selected_key = str(api_key if api_key is not None else APIKeys.rotate("ADANOS_API_KEY")).strip()
     if not selected_key:
         result["error"] = "ADANOS_API_KEY is not configured"
         return result

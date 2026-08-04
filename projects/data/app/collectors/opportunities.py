@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app import config as app_config
+from app.config import APIKeys
 from app.factors import save_snapshot
 from app.utils.logger import get_logger
 
@@ -125,7 +126,7 @@ def _forex_row(pair: dict, price: float, change: float) -> Dict[str, Any]:
 
 def _fetch_forex_twelve_data(pairs: list) -> List[Dict[str, Any]]:
     """Tier 1: Twelve Data quote API."""
-    api_key = (app_config.TWELVE_DATA_API_KEY or "").strip()
+    api_key = APIKeys.rotate("TWELVE_DATA_API_KEY")
     if not api_key:
         return []
     result: List[Dict[str, Any]] = []
@@ -181,7 +182,7 @@ def _fetch_forex_yfinance(pairs: list) -> List[Dict[str, Any]]:
 
 def _fetch_forex_tiingo(pairs: list) -> List[Dict[str, Any]]:
     """Tier 3: Tiingo FX (requires key)."""
-    api_key = (app_config.TIINGO_API_KEY or "").strip()
+    api_key = APIKeys.rotate("TIINGO_API_KEY")
     if not api_key:
         return []
     base_url = (app_config.TiingoConfig.BASE_URL or "https://api.tiingo.com/tiingo").rstrip("/")

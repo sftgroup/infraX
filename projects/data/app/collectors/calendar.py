@@ -20,6 +20,7 @@ from typing import Optional
 
 import requests
 
+from app.config import APIKeys
 from app.factors import save_snapshot
 from app.collectors.urls import FINNHUB_CALENDAR_URL
 
@@ -83,7 +84,7 @@ def _static_fomc_events() -> list[dict]:
 
 def _fetch_finnhub_calendar() -> Optional[list[dict]]:
     """Fetch economic calendar from Finnhub (free tier)."""
-    api_key = os.getenv("FINNHUB_API_KEY", "").strip()
+    api_key = APIKeys.rotate("FINNHUB_API_KEY")
     if not api_key:
         return None
     cfg = _get_calendar_config()
@@ -162,7 +163,7 @@ class CalendarCollector:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="calendar-collector")
         self._thread.start()
         cfg = _get_calendar_config()
-        source = "finnhub" if os.getenv("FINNHUB_API_KEY") else "static"
+        source = "finnhub" if APIKeys.is_configured("FINNHUB_API_KEY") else "static"
         logger.info("CalendarCollector started (interval=%ds, source=%s)", COLLECT_INTERVAL, source)
 
     def stop(self):

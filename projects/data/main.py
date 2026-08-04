@@ -15,6 +15,7 @@ Configuration: .env file at project root, or environment variables.
 import os
 import logging
 import time
+import hmac
 
 # ── Load .env (must happen before any app imports) ─────────
 from pathlib import Path
@@ -29,7 +30,7 @@ if _env_path.exists():
                 key, val = key.strip(), val.strip().strip("\"'")
                 if key and key not in os.environ:
                     os.environ[key] = val
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 
@@ -231,6 +232,119 @@ async def snapshots(
     except Exception as e:
         logger.error(f"/snapshots failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Admin Config (data-source API keys, hot-reload) ──────────
+
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+
+# 数据源 API key 变量（多 key 用逗号分隔，轮询取用）
+_DATA_KEY_FIELDS = [
+    "NEWSAPI_API_KEY", "ADANOS_API_KEY", "FINNHUB_API_KEY",
+    "TIINGO_API_KEY", "TWELVE_DATA_API_KEY", "ALPHA_VANTAGE_KEY",
+    "COINGECKO_API_KEY", "CRYPTOCOMPARE_API_KEY",
+]
+_MASK = "********"
+
+
+def _mask_secret(v: str) -> str:
+    if not v:
+        return ""
+    if len(v) <= 8:
+        return _MASK
+    return f"{v[:4]}{_MASK}{v[-4:]}"
+
+
+def _admin_authorized(request) -> bool:
+    """校验 Bearer ADMIN_API_KEY。"""
+    from app.config import ADMIN_API_KEY
+    if not ADMIN_API_KEY:
+        return False
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(auth[7:], ADMIN_API_KEY)
+
+
+def _write_env_file(updates: dict[str, str]) -> None:
+    """行级 replace-or-append 写 .env（与 ragservicer admin 一致）。"""
+    if not _ENV_PATH.exists():
+        _ENV_PATH.write_text("")
+    lines = _ENV_PATH.read_text().splitlines()
+    remaining = set(updates)
+    out = []
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+            out.append(line)
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key in updates:
+            out.append(f"{key}={updates[key]}")
+            remaining.discard(key)
+        else:
+            out.append(line)
+    for key in remaining:
+        out.append(f"{key}={updates[key]}")
+    _ENV_PATH.write_text("\n".join(out) + "\n")
+
+
+def _data_config_snapshot() -> dict:
+    from app.config import APIKeys
+    keys = {}
+    for name in _DATA_KEY_FIELDS:
+        all_keys = APIKeys.all(name)
+        keys[name] = {
+            "set": bool(all_keys),
+            "key_count": len(all_keys),
+            "keys": [_mask_secret(k) for k in all_keys],
+        }
+    return {
+        "keys": keys,
+        "env_file": str(_ENV_PATH),
+        "hot_reload": True,
+    }
+
+
+@app.get("/admin/config")
+async def admin_get_config(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    return {"code": 0, "message": "ok", "data": _data_config_snapshot()}
+
+
+@app.put("/admin/config")
+async def admin_put_config(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    body = await request.json()
+    payload = body.get("keys") if isinstance(body, dict) else None
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="config.keys object required")
+
+    updates: dict[str, str] = {}
+    from app.config import APIKeys
+    for name, value in payload.items():
+        if name not in _DATA_KEY_FIELDS:
+            continue
+        if value is None:
+            continue
+        # 掩码占位 = 保持不变；列表/逗号串 → 多 key 池
+        if isinstance(value, list):
+            joined = ",".join(str(v).strip() for v in value if str(v).strip())
+        else:
+            s = str(value).strip()
+            if s == _MASK:
+                continue
+            joined = s
+        updates[name] = joined
+
+    if updates:
+        _write_env_file(updates)
+        for k, v in updates.items():
+            os.environ[k] = v
+        APIKeys.reload()
+        logger.info("Admin config updated: %s", ", ".join(sorted(updates)))
+    return {"code": 0, "message": "ok", "data": _data_config_snapshot()}
 
 
 # ── Startup ────────────────────────────────────────────────────

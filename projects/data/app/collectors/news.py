@@ -17,7 +17,7 @@ from typing import Any, Dict, List
 
 import requests
 
-from app.config import NEWSAPI_API_KEY
+from app.config import APIKeys
 from app.factors import save_snapshot
 from app.utils.logger import get_logger
 
@@ -66,7 +66,7 @@ def _fetch_newsapi_business(lang: str) -> List[Dict[str, Any]]:
     try:
         resp = requests.get(
             f"{NEWSAPI_BASE}/top-headlines",
-            params={"apiKey": NEWSAPI_API_KEY, "language": api_lang, "category": "business", "pageSize": 20},
+            params={"apiKey": APIKeys.rotate("NEWSAPI_API_KEY"), "language": api_lang, "category": "business", "pageSize": 20},
             timeout=8,
         )
         if resp.status_code == 200:
@@ -92,7 +92,7 @@ def _fetch_newsapi_crypto(lang: str) -> List[Dict[str, Any]]:
     try:
         resp = requests.get(
             f"{NEWSAPI_BASE}/everything",
-            params={"apiKey": NEWSAPI_API_KEY, "q": query, "language": api_lang, "sortBy": "publishedAt", "pageSize": 10},
+            params={"apiKey": APIKeys.rotate("NEWSAPI_API_KEY"), "q": query, "language": api_lang, "sortBy": "publishedAt", "pageSize": 10},
             timeout=10,
         )
         if resp.status_code == 200:
@@ -139,7 +139,7 @@ class NewsCollector:
             time.sleep(COLLECT_INTERVAL)
 
     def _collect(self):
-        if not NEWSAPI_API_KEY:
+        if not APIKeys.is_configured("NEWSAPI_API_KEY"):
             if not self._warned_no_key:
                 self._warned_no_key = True
                 logger.warning("NEWSAPI_API_KEY not configured — news collection disabled")

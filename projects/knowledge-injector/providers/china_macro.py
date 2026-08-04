@@ -18,14 +18,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from config import SETTINGS
+from config import rotate_key
 
 logger = logging.getLogger(__name__)
 
 
 def _get_api() -> Any | None:
     """获取 tushare pro API 实例。"""
-    token = SETTINGS.tushare_api_key
+    token = rotate_key("TUSHARE_API_KEY")
     if not token:
         return None
     try:
