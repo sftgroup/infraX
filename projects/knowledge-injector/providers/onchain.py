@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import requests
@@ -97,3 +98,135 @@ def fetch_whale_balances() -> list[dict[str, Any]]:
     if results:
         logger.info("Fetched %d whale balances", len(results))
     return results
+
+
+# ─── BTC 转账流量 / 巨鲸大额转账 ─────────────────────────
+
+_MEMPOOL_SPACE = "https://mempool.space/api"
+
+# 大额转账阈值（BTC）
+_WHALE_TX_THRESHOLD_BTC = 100.0
+# 监控窗口：最近 24 小时
+_WHALE_TX_WINDOW_SEC = 24 * 3600
+
+
+def fetch_btc_transfers() -> dict[str, Any] | None:
+    """Fetch BTC transfer flow indicators + whale large transfers.
+
+    数据源 mempool.space 免费 API（无需 Key）：
+      - /api/mempool                → 未确认交易数与 mempool 深度
+      - /api/blocks/tip/height      → 最新区块高度
+      - /api/v1/mining/blocks/recent → 近 15 区块（含每区块 tx_count）
+      - /api/address/:addr/txs      → 已知巨鲸地址最近交易（识别 ≥100 BTC 大额转账）
+
+    Returns:
+        {
+          "height": 961073,
+          "mempool_txs": 42000,
+          "mempool_vsize_mb": 210.5,
+          "avg_tx_24h": 380000,
+          "whale_movements": [
+              {"name": "Binance Cold", "direction": "out", "amount_btc": 1250.0,
+               "txid": "...", "time": 1785870000}, ...
+          ],
+        }
+    """
+    result: dict[str, Any] = {}
+
+    # 1. mempool 深度（未确认交易）
+    try:
+        m = requests.get(f"{_MEMPOOL_SPACE}/mempool", timeout=10).json()
+        result["mempool_txs"] = int(m.get("count", 0))
+        result["mempool_vsize_mb"] = round(m.get("vsize", 0) / 1e6, 1)
+    except Exception:
+        logger.debug("mempool depth fetch failed", exc_info=True)
+
+    # 2. 最新高度
+    try:
+        result["height"] = int(requests.get(
+            f"{_MEMPOOL_SPACE}/blocks/tip/height", timeout=10
+        ).text.strip())
+    except Exception:
+        logger.debug("mempool tip height fetch failed", exc_info=True)
+
+    # 3. 近 15 区块 tx 数 → 近 24h 平均交易量
+    try:
+        blocks = requests.get(
+            f"{_MEMPOOL_SPACE}/v1/mining/blocks/recent", timeout=10
+        ).json()
+        if isinstance(blocks, list):
+            tx_counts = [b.get("tx_count", 0) for b in blocks if b.get("tx_count")]
+            if tx_counts:
+                result["avg_tx_24h"] = int(sum(tx_counts) / len(tx_counts))
+            if blocks:
+                result["block_time"] = blocks[0].get("timestamp")
+    except Exception:
+        logger.debug("mempool recent blocks fetch failed", exc_info=True)
+
+    # 4. 巨鲸地址大额转账（最近 24h，≥100 BTC）
+    movements = _fetch_whale_movements()
+    if movements:
+        result["whale_movements"] = movements
+
+    if not result:
+        return None
+    logger.info(
+        "BTC transfers: height=%s, mempool=%s, movements=%d",
+        result.get("height", "?"), result.get("mempool_txs", "?"), len(movements),
+    )
+    return result
+
+
+def _fetch_whale_movements() -> list[dict[str, Any]]:
+    """扫描已知巨鲸地址最近交易，识别 ≥100 BTC 的大额转账。"""
+    movements: list[dict[str, Any]] = []
+    now = int(time.time())
+    cutoff = now - _WHALE_TX_WINDOW_SEC
+
+    for name, address in _WHALE_ADDRESSES.items():
+        try:
+            txs = requests.get(
+                f"{_MEMPOOL_SPACE}/address/{address}/txs", timeout=10
+            ).json()
+            if not isinstance(txs, list):
+                continue
+            for tx in txs:
+                status = tx.get("status", {}) or {}
+                if not status.get("confirmed"):
+                    continue
+                block_time = status.get("block_time", 0)
+                if block_time < cutoff:
+                    continue
+                txid = tx.get("txid", "")
+                # 转出：该地址作为输入（prevout 地址匹配）
+                out_btc = sum(
+                    v.get("prevout", {}).get("value", 0)
+                    for v in tx.get("vin", [])
+                    if v.get("prevout", {}).get("scriptpubkey_address") == address
+                ) / 1e8
+                # 转入：该地址作为输出
+                in_btc = sum(
+                    v.get("value", 0)
+                    for v in tx.get("vout", [])
+                    if v.get("scriptpubkey_address") == address
+                ) / 1e8
+                if out_btc >= _WHALE_TX_THRESHOLD_BTC:
+                    movements.append({
+                        "name": name,
+                        "direction": "out",
+                        "amount_btc": round(out_btc, 1),
+                        "txid": txid[:16],
+                        "time": block_time,
+                    })
+                elif in_btc >= _WHALE_TX_THRESHOLD_BTC:
+                    movements.append({
+                        "name": name,
+                        "direction": "in",
+                        "amount_btc": round(in_btc, 1),
+                        "txid": txid[:16],
+                        "time": block_time,
+                    })
+        except Exception:
+            logger.debug("Whale movements fetch failed for %s", name, exc_info=True)
+
+    return movements

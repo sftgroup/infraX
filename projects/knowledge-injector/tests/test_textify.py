@@ -457,3 +457,44 @@ class TestP2PredictionsReport:
         assert txt.p2_predictions_report(None) == ""
         assert txt.p2_predictions_report({}) == ""
         assert txt.p2_predictions_report({"predictions": []}) == ""
+
+
+class TestOnchainTransfers:
+    def test_full(self):
+        result = txt.onchain_transfers({
+            "mempool_txs": 42000,
+            "mempool_vsize_mb": 210.5,
+            "height": 961073,
+            "avg_tx_24h": 380000,
+            "whale_movements": [
+                {"name": "Binance Cold", "direction": "out",
+                 "amount_btc": 1250.0, "txid": "a" * 16},
+                {"name": "MicroStrategy", "direction": "in",
+                 "amount_btc": 500.0, "txid": "b" * 16},
+            ],
+        })
+        assert "[On-chain BTC Transfer]" in result
+        assert "mempool 42,000 unconfirmed tx, 210.5 MB" in result
+        assert "height 961,073" in result
+        assert "~380,000 tx per block (24h avg)" in result
+        assert "Binance Cold out 1250.0 BTC" in result
+        assert "MicroStrategy in 500.0 BTC" in result
+
+    def test_partial_fields(self):
+        result = txt.onchain_transfers({"mempool_txs": 1000, "height": 900000})
+        assert "[On-chain BTC Transfer]" in result
+        assert "mempool 1,000 unconfirmed tx" in result
+        assert "no whale moves" in result
+        assert "24h avg" not in result
+
+    def test_empty_data(self):
+        result = txt.onchain_transfers({})
+        assert result == "[On-chain BTC Transfer]. no whale moves ≥100 BTC in 24h."
+
+    def test_whale_capped_at_five(self):
+        movements = [
+            {"name": f"W{i}", "direction": "out", "amount_btc": 100.0 + i, "txid": ""}
+            for i in range(8)
+        ]
+        result = txt.onchain_transfers({"mempool_txs": 1, "whale_movements": movements})
+        assert result.count("BTC (tx") == 5

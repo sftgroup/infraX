@@ -304,14 +304,20 @@ class GraphInjector:
             return False
 
     def inject_onchain(self) -> bool:
-        """注入 BTC 链上数据（挖矿难度 + 巨鲸余额）。"""
+        """注入 BTC 链上数据（挖矿难度 + 巨鲸余额 + 转账流量）。"""
         try:
-            from providers.onchain import fetch_btc_difficulty, fetch_whale_balances
+            from providers.onchain import (
+                fetch_btc_difficulty,
+                fetch_whale_balances,
+                fetch_btc_transfers,
+            )
 
             btc = fetch_btc_difficulty()
             whales = fetch_whale_balances()
+            transfers = fetch_btc_transfers()
 
             self._save_raw(whales, "onchain", "whale_balances", "BTC")
+            self._save_raw(transfers, "onchain", "btc_transfers", "BTC")
 
             success = False
             if btc:
@@ -323,6 +329,13 @@ class GraphInjector:
                     snap_id = self._save_raw(btc, "onchain", "btc_difficulty", "BTC")
                     if self._inject(text, file_source="onchain:btc:daily", snap_id=snap_id):
                         success = True
+
+            if transfers:
+                text = txt.onchain_transfers(transfers)
+                if text and self._inject(
+                    text, file_source="onchain:btc_transfers:daily", namespace="onchain"
+                ):
+                    success = True
 
             for w in whales:
                 text = (

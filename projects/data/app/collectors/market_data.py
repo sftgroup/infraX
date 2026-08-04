@@ -170,6 +170,42 @@ def _fetch_onchain() -> Optional[dict]:
     return None
 
 
+def _fetch_btc_transfers() -> Optional[dict]:
+    """Fetch BTC transfer flow indicators.
+
+    Source: mempool.space free API (no key required).
+    Returns {"mempool_txs", "mempool_vsize_mb", "height", "avg_tx_24h"} or None.
+    """
+    result = {}
+    try:
+        m = requests.get(
+            "https://mempool.space/api/mempool", timeout=COLLECTOR_HTTP_TIMEOUT_SHORT
+        ).json()
+        result["mempool_txs"] = int(m.get("count", 0))
+        result["mempool_vsize_mb"] = round(m.get("vsize", 0) / 1e6, 1)
+    except Exception as exc:
+        logger.warning("mempool depth fetch failed: %s", exc)
+    try:
+        result["height"] = int(requests.get(
+            "https://mempool.space/api/blocks/tip/height",
+            timeout=COLLECTOR_HTTP_TIMEOUT_SHORT,
+        ).text.strip())
+    except Exception as exc:
+        logger.warning("mempool tip fetch failed: %s", exc)
+    try:
+        blocks = requests.get(
+            "https://mempool.space/api/v1/mining/blocks/recent",
+            timeout=COLLECTOR_HTTP_TIMEOUT_SHORT,
+        ).json()
+        if isinstance(blocks, list):
+            tx_counts = [b.get("tx_count", 0) for b in blocks if b.get("tx_count")]
+            if tx_counts:
+                result["avg_tx_24h"] = int(sum(tx_counts) / len(tx_counts))
+    except Exception as exc:
+        logger.warning("mempool blocks fetch failed: %s", exc)
+    return result or None
+
+
 def _fetch_defi_tvl() -> Optional[list[dict]]:
     cfg = _get_config().get("defi", {})
     top_n = cfg.get("top_chains", 0)
@@ -342,6 +378,11 @@ class SnapshotCollector:
             save_snapshot("onchain", "btc_difficulty", onchain)
             count += 1
 
+        transfers = _fetch_btc_transfers()
+        if transfers:
+            save_snapshot("onchain", "btc_transfers", transfers)
+            count += 1
+
         tvl = _fetch_defi_tvl()
         if tvl:
             save_snapshot("defi", "tvl", {"chains": tvl})
@@ -365,4 +406,4 @@ class SnapshotCollector:
         if count:
             logger.info("SnapshotCollector: saved %d snapshot(s)", count)
         else:
-            logger.warning("SnapshotCollector: cycle produced 0 snapshots — all 7 sources failed")
+            logger.warning("SnapshotCollector: cycle produced 0 snapshots — all 8 sources failed")

@@ -448,6 +448,36 @@ def onchain_btc(difficulty: float, block_height: int) -> str:
     return f"[On-chain BTC] Difficulty {difficulty:.1f}T. Block height {block_height:,}."
 
 
+def onchain_transfers(data: dict) -> str:
+    """BTC 转账流量 + 巨鲸大额转账 → 文本。
+
+    参数:
+        data: fetch_btc_transfers() 的返回值
+    """
+    parts = ["[On-chain BTC Transfer]"]
+
+    if data.get("mempool_txs") is not None:
+        vsize = data.get("mempool_vsize_mb")
+        vsize_txt = f", {vsize} MB" if vsize else ""
+        parts.append(f"mempool {data['mempool_txs']:,} unconfirmed tx{vsize_txt}")
+    if data.get("height"):
+        parts.append(f"height {data['height']:,}")
+    if data.get("avg_tx_24h"):
+        parts.append(f"~{data['avg_tx_24h']:,} tx per block (24h avg)")
+
+    movements = data.get("whale_movements") or []
+    if movements:
+        for mv in movements[:5]:
+            parts.append(
+                f"{mv.get('name', '?')} {mv.get('direction', '?')} "
+                f"{mv.get('amount_btc', 0):.1f} BTC (tx {mv.get('txid', '')})"
+            )
+    else:
+        parts.append("no whale moves ≥100 BTC in 24h")
+
+    return ". ".join(parts) + "."
+
+
 def defi_tvl(chain: str, tvl_usd: float, change_24h: Optional[float] = None) -> str:
     """DeFi TVL → 文本。"""
     chg = f" ({change_24h:+.1f}% 24h)" if change_24h is not None else ""
