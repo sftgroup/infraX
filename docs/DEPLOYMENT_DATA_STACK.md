@@ -506,8 +506,43 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 ---
 
-## 9. 待办
+## 9. 统一任务清单（唯一 tasklist 维护点）
 
-- [ ] ragservicer 配置 LLM / embedding / admin 密钥（见 4.3），跑通端到端注入 → `POST /query` 命中验证
-- [ ] 腾讯云安全组放行 9112/9113/9721（如需公网访问）
-- [ ] yfinance 限流解除后，恢复外汇 `symbols`（`data_config.json`）并评估切换回 yfinance 主源
+> **唯一维护点**：数据栈全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
+> 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
+
+### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md）
+
+| 编号 | 需求 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|
+| DS-1 | `/bars` K 线（OHLCV+指标+因子） | ✅ | P0 | 契约确认 |
+| DS-2 | `/factors/*` 因子目录/最新/历史 | ✅ | P0 | |
+| DS-3 | `/snapshots` 复杂快照 | ⚠️ | P0 | 缺 3 类 → DS-10 |
+| DS-4 | `/symbol/resolve` 符号解析 | ⚠️ | P1 | 多市场覆盖待确认 → DS-11 |
+| DS-5 | `/policy/broker-market` 券商市场策略 | ✅ | P1 | |
+| DS-6 | `/stats` `/health` | ✅ | — | |
+| DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
+| DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；遗留见 9.3 |
+| DS-9 | `/symbols/search` 符号搜索 | 🔲 | P0 | 待排期 |
+| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | 🔲 | P1 | 待排期 |
+| DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
+| DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | 🔲 | P1 | 与 AItrader 侧联动 |
+
+### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
+
+- [x] M0 基础数据栈（data :9112 + injector :9113 + ragservicer :9721 生产部署）
+- [x] M1 ml-service 独立服务器（:9120）
+- [x] M2 P1 三家族（LightGBM/XGBoost/RF 同数据集对照）
+- [x] M3 共识分层（`/ml/consensus` + ConsensusCollector + `inject_consensus`）
+- [x] M4 P2 三件套（Bolt / Moirai / TimesFM，懒加载，全部署）
+- [x] P2 历史落库（`ml_predictions` 表 + P2MlCollector 30min 轮询 + `/ml/predictions` 历史查询，90 天滚动清理）
+- [x] P2 历史注入 RAG（`inject_p2_predictions` + `p2_predictions_report`，2026-08-05 实测落图 4 篇）
+- [x] 默认注入列表 18 项（含 tree_ml / consensus / p2_predictions）
+
+### 9.3 部署 / 运维待办（源：本文件 §3~§8）
+
+- [x] ragservicer 配置 LLM / embedding 密钥，端到端注入跑通 → `POST /query` 命中（2026-08-05 实测命中 count=4）
+- [x] 安全组放行 9112/9113/9721（公网已可访问实测）
+- [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
+- [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
+- [ ] DS-9~DS-12 排期与完成时间（见 9.1）
