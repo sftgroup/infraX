@@ -155,9 +155,9 @@ def predict_symbol(symbol: str) -> dict[str, Any] | None:
 
     import torch
     levels = _parse_quantiles()
-    # chronos>=2.x: predict_quantiles(inputs, ...) → (point, quantiles)
-    # point (1, pred_len)；quantiles (1, pred_len, n_quantiles)
-    point_t, quantiles_t = pipeline.predict_quantiles(
+    # chronos>=2.x: predict_quantiles(inputs, ...) → (quantiles, mean)
+    # quantiles (1, pred_len, n_quantiles)；mean (1, pred_len)
+    quantiles_t, point_t = pipeline.predict_quantiles(
         inputs=torch.tensor(closes, dtype=torch.float32),
         prediction_length=pred_len,
         quantile_levels=levels,
