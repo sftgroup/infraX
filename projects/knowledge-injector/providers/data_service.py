@@ -25,6 +25,43 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 8
 
 
+def fetch_klines(symbol: str, timeframe: str = "1d", limit: int = 500) -> list[dict] | None:
+    """拉取 data-service K 线（/bars），返回升序 [{ts, open, high, low, close, volume}, ...]。
+
+    失败/无数据返回 None（fail-silent）。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/bars",
+            params={"symbol": symbol, "timeframe": timeframe, "limit": limit},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service /bars %s → %s", symbol, resp.status_code)
+            return None
+        bars = (resp.json().get("bars") or [])
+        bars = [b for b in bars if all(k in b for k in ("ts", "open", "high", "low", "close"))]
+        if not bars:
+            return None
+        bars.sort(key=lambda b: b["ts"])
+        return bars
+    except requests.Timeout:
+        logger.debug("data-service /bars %s timeout (%ss)", symbol, _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /bars %s request failed: %s", symbol, exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /bars %s parse failed: %s", symbol, exc)
+        return None
+
+
 def fetch_sentiment_score() -> dict[str, Any] | None:
     """拉取 data-service 最新 sentiment_score（[-1, 1]）。
 

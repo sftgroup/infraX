@@ -2,9 +2,13 @@
 requests>=2.31
 PyYAML>=6.0                     # 可配置解析规则 parsers/*.yaml
 python-dotenv>=1.0              # config.py 加载 .env（缺失会导致环境变量读不到）
+numpy>=1.26                     # injector/textify.py 模块级 import（服务启动必需）
 
 # ── 数据源（可选，按需安装） ──────────────────────
 yfinance>=0.2                  # VIX/DXY/US10Y
+
+# ── ML（可选，KRONOS_ENABLED=true 时启用） ────────
+pandas>=2.0                     # providers/ml.py Kronos 推理（懒加载，不影响启动）
 
 # ── REST API（可选，仅 --api 模式需要） ────────────
 flask>=3.0
