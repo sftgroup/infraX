@@ -529,6 +529,27 @@ class GraphInjector:
             logger.debug("inject_ml_predictions failed", exc_info=True)
             return False
 
+    def inject_tree_ml(self) -> bool:
+        """注入 LightGBM 方向预测（data-service tree_predictions 快照）。
+
+        真实模型（训练于 kline 日线历史），非模拟数据。
+        data-service 未启用 TREE_ML_ENABLED / 无快照时返回 False（fail-silent）。
+        """
+        try:
+            from providers.data_service import fetch_tree_predictions
+
+            payload = fetch_tree_predictions()
+            if not payload:
+                return False
+            text = txt.tree_ml_report(payload)
+            if not text:
+                return False
+            snap_id = self._save_raw(payload, "ml", "tree_predictions")
+            return self._inject(text, file_source="ml:tree_direction:daily", snap_id=snap_id)
+        except Exception:
+            logger.debug("inject_tree_ml failed", exc_info=True)
+            return False
+
     # ─── 配置化解析注入（DC / Collector raw data） ──
 
     def inject_parsed(self, source: str, limit: int = 100) -> list[dict]:
@@ -601,6 +622,9 @@ class GraphInjector:
             "onchain", "defi_tvl", "macro_trend",
             "fred_economics", "earnings_index", "evm",
             "global_macro", "indices", "tech_analysis",
+            # tree_ml 为真实 LightGBM 模型（训练于 kline 历史），
+            # data-service 未启用时 fail-silent 返回 False，不污染
+            "tree_ml",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()

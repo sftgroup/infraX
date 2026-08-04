@@ -8,3 +8,4 @@ from .sentiment import SentimentCollector
 from .adanos import AdanosCollector
 from .opportunities import OpportunityCollector
 from .finbert_sentiment import FinbertSentimentCollector
+from .tree_ml import TreeMlCollector

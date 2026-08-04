@@ -566,6 +566,47 @@ def ml_volatility_report(
     return "\n".join(lines)
 
 
+def tree_ml_report(payload: dict | None) -> str:
+    """LightGBM 方向预测报告（data-service tree_predictions 快照）→ 文本。
+
+    参数:
+        payload: {"generated_at", "model": {"horizon", "n_samples",
+                 "val_accuracy"}, "predictions": [{symbol, direction,
+                 prob_up/prob_flat/prob_down, opportunity_score,
+                 volatility_level}]}，来自 data-service
+                 /snapshots?type=tree_predictions（TREE_ML_ENABLED=true 时生成）。
+
+    只描述模型输出的事实（方向/概率/评分），不做投资建议。
+    """
+    if not payload or not isinstance(payload, dict):
+        return ""
+    predictions = payload.get("predictions") or []
+    if not predictions:
+        return ""
+    model = payload.get("model") or {}
+    lines = [
+        "[ML Tree Direction] LightGBM 多资产方向预测:",
+        (f"  trained on {model.get('n_samples', '?')} samples "
+         f"({model.get('n_symbols', '?')} symbols), "
+         f"val_acc {float(model.get('val_accuracy', 0) or 0):.2%}, "
+         f"horizon {model.get('horizon', '?')}d"),
+    ]
+    for p in predictions:
+        sym = p.get("symbol", "?")
+        direction = p.get("direction", "unknown")
+        prob_up = float(p.get("prob_up", 0) or 0)
+        prob_flat = float(p.get("prob_flat", 0) or 0)
+        prob_down = float(p.get("prob_down", 0) or 0)
+        score = int(p.get("opportunity_score", 0) or 0)
+        vol = p.get("volatility_level", "unknown")
+        lines.append(
+            f"  {sym}: direction {direction} "
+            f"(up {prob_up:.0%}/flat {prob_flat:.0%}/down {prob_down:.0%}), "
+            f"opportunity {score}/100, volatility {vol}"
+        )
+    return "\n".join(lines)
+
+
 # ─── 全球宏观（多区域） ───────────────────────────────
 
 _REGION_NAMES = {

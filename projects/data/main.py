@@ -405,7 +405,7 @@ async def _startup():
     from app.collectors import (
         ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
-        FinbertSentimentCollector,
+        FinbertSentimentCollector, TreeMlCollector,
     )
     ExternalFactorCollector().start()
     CalendarCollector().start()
@@ -416,6 +416,7 @@ async def _startup():
     AdanosCollector().start()
     OpportunityCollector().start()
     FinbertSentimentCollector().start()
+    TreeMlCollector().start()
     logger.info("InfraX Data Service startup complete")
 
 

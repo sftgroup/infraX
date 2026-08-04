@@ -103,3 +103,40 @@ def fetch_sentiment_score() -> dict[str, Any] | None:
     except Exception as exc:  # JSON 解析等
         logger.debug("data-service sentiment_score parse failed: %s", exc)
         return None
+
+
+def fetch_tree_predictions() -> dict[str, Any] | None:
+    """拉取 data-service LightGBM 方向预测快照（/snapshots?type=tree_predictions）。
+
+    返回 {"generated_at", "model": {...}, "predictions": [...]}，
+    或 None（未配置/失败/未启用 TREE_ML_ENABLED 无快照）。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/snapshots",
+            params={"type": "tree_predictions"},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service tree_predictions → %s", resp.status_code)
+            return None
+        data = resp.json()
+        payload = (data.get("snapshots") or {}).get("tree_predictions")
+        if not isinstance(payload, dict) or not (payload.get("predictions") or []):
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service tree_predictions timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service tree_predictions request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service tree_predictions parse failed: %s", exc)
+        return None

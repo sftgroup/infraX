@@ -390,3 +390,34 @@ class TestStockIndices:
     def test_empty(self):
         result = txt.stock_indices([])
         assert "No data" in result
+
+
+class TestTreeMlReport:
+    _PAYLOAD = {
+        "generated_at": 1,
+        "model": {"horizon": 7, "n_samples": 1200, "n_symbols": 3, "val_accuracy": 0.56},
+        "predictions": [
+            {"symbol": "BTC/USDT", "direction": "up", "prob_up": 0.62,
+             "prob_flat": 0.2, "prob_down": 0.18,
+             "opportunity_score": 72, "volatility_level": "high"},
+            {"symbol": "ETH/USDT", "direction": "down", "prob_up": 0.3,
+             "prob_flat": 0.2, "prob_down": 0.5,
+             "opportunity_score": 40, "volatility_level": "moderate"},
+        ],
+    }
+
+    def test_normal(self):
+        result = txt.tree_ml_report(self._PAYLOAD)
+        assert "[ML Tree Direction]" in result
+        assert "LightGBM" in result
+        assert "1200 samples" in result
+        assert "56.00%" in result
+        assert "BTC/USDT: direction up" in result
+        assert "up 62%/flat 20%/down 18%" in result
+        assert "opportunity 72/100" in result
+        assert "volatility high" in result
+
+    def test_no_predictions(self):
+        assert txt.tree_ml_report(None) == ""
+        assert txt.tree_ml_report({}) == ""
+        assert txt.tree_ml_report({"predictions": []}) == ""

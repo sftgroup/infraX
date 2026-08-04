@@ -16,3 +16,9 @@ akshare>=1.11.0
 # 部署机启用需另装 torch：pip install torch --index-url https://download.pytorch.org/whl/cpu
 transformers>=4.40.0
 huggingface-hub>=0.23.0
+
+# ── Tree ML（可选，TREE_ML_ENABLED=true 时启用 LightGBM 方向预测）────
+# 纯 CPU 训练，2C4G 足够（样本数千行 × 数十特征，秒级训练）
+lightgbm>=4.0.0
+scikit-learn>=1.3.0
+joblib>=1.2.0
