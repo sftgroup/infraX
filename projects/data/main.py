@@ -87,13 +87,14 @@ async def _access_log(request, call_next):
     return response
 
 
-# ── Business endpoint auth (Bearer / X-API-Key) ────────────────
-# 业务端点（/bars /factors/* /snapshots /stats）统一鉴权：
-#   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 匹配，否则 401
+# ── Business endpoint auth (Bearer / X-API-Key / X-Service-Key) ─
+# 业务端点统一鉴权（DS-12，契约见 AITRADER_DATA_SERVICE_REQ.md）：
+#   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 或
+#     X-Service-Key 三者任一匹配，否则 401 {"detail": "unauthorized"}
 #   - 未配置 → 保持开放（向后兼容，配置 key 即启用强制校验）
-# /health 与 /admin/* 不受影响（后者沿用 ADMIN_API_KEY 校验）。
+# /health 豁免；/admin/* 沿用 ADMIN_API_KEY 校验。
 
-_PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
+_PUBLIC_PATHS = {"/health"}
 
 
 def _api_authorized(request) -> bool:
@@ -103,9 +104,10 @@ def _api_authorized(request) -> bool:
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return hmac.compare_digest(auth[7:], DATA_API_KEY)
-    api_key = request.headers.get("X-API-Key", "")
-    if api_key:
-        return hmac.compare_digest(api_key, DATA_API_KEY)
+    for header in ("X-API-Key", "X-Service-Key"):
+        api_key = request.headers.get(header, "")
+        if api_key:
+            return hmac.compare_digest(api_key, DATA_API_KEY)
     return False
 
 
@@ -115,7 +117,7 @@ async def _api_auth(request, call_next):
         if not _api_authorized(request):
             return JSONResponse(
                 status_code=401,
-                content={"code": 401, "message": "Missing or invalid API key", "data": None},
+                content={"detail": "unauthorized"},
             )
     return await call_next(request)
 
