@@ -35,9 +35,13 @@ def fetch_sentiment_score() -> dict[str, Any] | None:
     if not base_url:
         return None
     try:
+        # data-service 业务端点鉴权（DATA_API_KEY）：用本服务同一把 bridge key
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
         resp = requests.get(
             f"{base_url}/snapshots",
             params={"type": "sentiment_score"},
+            headers=headers,
             timeout=_TIMEOUT,
         )
         if resp.status_code != 200:

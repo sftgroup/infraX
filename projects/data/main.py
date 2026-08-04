@@ -33,6 +33,7 @@ if _env_path.exists():
                     os.environ[key] = val
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import Optional
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))  # .env loaded above
@@ -48,7 +49,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # "*" 与 credentials=True 是不安全组合（违反 CORS 规范）
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -84,6 +85,39 @@ async def _access_log(request, call_next):
         client,
     )
     return response
+
+
+# ── Business endpoint auth (Bearer / X-API-Key) ────────────────
+# 业务端点（/bars /factors/* /snapshots /stats）统一鉴权：
+#   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 匹配，否则 401
+#   - 未配置 → 保持开放（向后兼容，配置 key 即启用强制校验）
+# /health 与 /admin/* 不受影响（后者沿用 ADMIN_API_KEY 校验）。
+
+_PUBLIC_PATHS = {"/health", "/docs", "/redoc", "/openapi.json"}
+
+
+def _api_authorized(request) -> bool:
+    from app.config import DATA_API_KEY
+    if not DATA_API_KEY:
+        return True
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return hmac.compare_digest(auth[7:], DATA_API_KEY)
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key:
+        return hmac.compare_digest(api_key, DATA_API_KEY)
+    return False
+
+
+@app.middleware("http")
+async def _api_auth(request, call_next):
+    if request.url.path not in _PUBLIC_PATHS and not request.url.path.startswith("/admin/"):
+        if not _api_authorized(request):
+            return JSONResponse(
+                status_code=401,
+                content={"code": 401, "message": "Missing or invalid API key", "data": None},
+            )
+    return await call_next(request)
 
 
 # ═══════════════════════════════════════════════════════════════

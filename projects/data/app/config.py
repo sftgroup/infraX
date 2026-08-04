@@ -31,6 +31,14 @@ ADANOS_API_KEY = os.getenv("ADANOS_API_KEY", "")
 # 管理后台鉴权（PUT/GET /admin/config 需 Bearer ADMIN_API_KEY）
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 
+# 业务端点鉴权（/bars /factors/* /snapshots /stats；Bearer 或 X-API-Key）。
+# 兼容回退链与 ragservicer/injector 一致：RAGSERVICER_API_KEY → DOC_API_KEY → LIGHTRAG_API_KEY。
+# 未配置任何 key 时保持开放（向后兼容）；配置后强制校验。
+DATA_API_KEY = os.getenv(
+    "DATA_API_KEY",
+    os.getenv("RAGSERVICER_API_KEY", os.getenv("DOC_API_KEY", os.getenv("LIGHTRAG_API_KEY", ""))),
+)
+
 # ── Caching ────────────────────────────────────────────────────
 
 CACHE_TTL_SHORT = int(os.getenv("CACHE_TTL_SHORT", "60"))

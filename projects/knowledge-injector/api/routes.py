@@ -52,6 +52,25 @@ def create_app() -> Flask:
                     response.status_code, duration_ms)
         return response
 
+    # ─── 业务端点鉴权（/inject/*、/query、/status、/stats 等） ───
+    # 配置了 key（INJECTOR_API_KEY 或回退 RAGSERVICER_API_KEY）则强制
+    # Authorization: Bearer / X-API-Key 校验；未配置保持开放（向后兼容）。
+    # /health 与 /admin/* 除外（admin 沿用 ADMIN_API_KEY）。
+
+    @app.before_request
+    def _require_api_key():
+        if request.path == "/health" or request.path.startswith("/admin/"):
+            return None
+        from config import SETTINGS
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        if not key:
+            return None
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else request.headers.get("X-API-Key", "")
+        if not token or not hmac.compare_digest(token, key):
+            return jsonify({"code": 401, "message": "Missing or invalid API key", "data": None}), 401
+        return None
+
     # ─── 注入器列表 ────────────────────────────────
 
     _ALL_INJECTORS = [

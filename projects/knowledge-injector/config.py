@@ -68,6 +68,13 @@ class Settings:
         default_factory=lambda: os.getenv("DEFAULT_NAMESPACE", "market")
     )
 
+    # 本服务业务端点鉴权（/inject/*、/query、/status、/stats 等）。
+    # 独立 env INJECTOR_API_KEY；未设置时回退到 bridge key（RAGSERVICER_API_KEY），
+    # 未配置任何 key 时保持开放（向后兼容）。配置后强制校验。
+    injector_api_key: str = field(
+        default_factory=lambda: os.getenv("INJECTOR_API_KEY", "")
+    )
+
     # ── DC / Collector 数据源（raw data 注入） ──
     dc_url: str = field(default_factory=lambda: os.getenv("DC_URL", ""))
     dc_api_key: str = field(default_factory=lambda: os.getenv("DC_API_KEY", ""))

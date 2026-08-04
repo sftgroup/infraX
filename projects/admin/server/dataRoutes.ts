@@ -61,6 +61,11 @@ async function getJson<T = any>(url: string, headers: Record<string, string> = {
   }
 }
 
+// 业务端点调用头：key 为空时不出头（对应服务兼容模式仍开放）
+function apiKeyHeader(key: string): Record<string, string> {
+  return key ? { 'X-API-Key': key } : {};
+}
+
 // ── RAGservicer 配置 API 转发（替代原 .env 直接读写 + systemctl 重启） ──
 // ragservicer 自身管理 LLM/embedding 配置：GET/PUT /api/v1/admin/config（热生效）。
 async function ragConfigReq<T = any>(method: 'GET' | 'PUT', path: string, body?: any): Promise<{ status: number; data?: T; message?: string }> {
@@ -145,8 +150,8 @@ router.get('/overview', async (_req: any, res: any, next: any) => {
 router.get('/factors', async (_req: any, res: any, next: any) => {
   try {
     const [catalog, current] = await Promise.all([
-      getJson(`${DATA_BASE}/factors/catalog`),
-      getJson(`${DATA_BASE}/factors/current?category=external`),
+      getJson(`${DATA_BASE}/factors/catalog`, apiKeyHeader(DATA_API_KEY)),
+      getJson(`${DATA_BASE}/factors/current?category=external`, apiKeyHeader(DATA_API_KEY)),
     ]);
     res.json({ code: 0, message: 'success', data: { catalog, current } });
   } catch (e: any) {
