@@ -544,7 +544,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 - [x] ragservicer 配置 LLM / embedding 密钥，端到端注入跑通 → `POST /query` 命中（2026-08-05 实测命中 count=4）
 - [x] 统一鉴权契约 + 共享 app_auth（`projects/shared/app_auth.py` 唯一来源；data/injector/ragservicer/ml-service 同一实现：Bearer/X-API-Key/X-Service-Key、统一 401、/health 豁免、bridge key 回退链收敛，1f4deea）
-- [ ] 生产拉取最新代码重启 data/injector/ragservicer/ml-service，实测四服务 X-Service-Key 鉴权闭环（验收 5：无 key → 401，有 key → 200）
+- [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 未部署（代码已随 1f4deea 到位）
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
