@@ -215,13 +215,20 @@ ml-service 内（现拉自己的三类预测）：
 - 高级调用方：可从图谱拉原始信号节点**自行调权重重算**（共识逻辑可演进，不需重灌 RAG）
 - 共识是辅助字段，**不作为最终判断**——最终研判仍由消费方综合
 
-### 5.6 待实现清单（consensus 模块）
+### 5.6 实现记录（consensus 模块，M3 已完成）
 
-- [ ] ml-service 新增 `GET /ml/consensus`（聚合 tree + volatility + sentiment）
-- [ ] 确定性规则：consensus_score / divergence / risk_flag
-- [ ] data-service 新增 collector 拉 consensus 快照落库
-- [ ] injector 新增 `inject_consensus` + `textify.consensus_report` 文本化
-- [ ] 单测（规则边界 / fail-silent / 快照结构）
+- [x] ml-service 新增 `GET /ml/consensus`（聚合 tree + volatility + sentiment）
+- [x] 确定性规则：consensus_score / divergence / risk_flag
+- [x] data-service 新增 `ConsensusCollector` 拉 consensus 快照落库（30min）
+- [x] injector 新增 `inject_consensus` + `textify.consensus_report` 文本化
+- [x] 单测 12 项（规则边界 / fail-silent / 缓存命中 / 符号归一化）
+
+**实现要点（与设计一致）**：
+- 聚合在 ml-service（信号源头），`/ml/consensus` 确定性规则，三路信号全不可用返回 null
+- **TTL 缓存**（`CONSENSUS_CACHE_TTL_SEC=1500`）：首次聚合触发 Kronos 全量推理（~200s），25min 内秒回缓存；data-service 侧超时 300s 覆盖首算
+- **情绪回退链**：`finbert_sentiment`（FinBERT 真实分类）→ `sentiment_score`（市场情绪快照），生产无 FinBERT 快照时仍可用
+- **符号归一化**：tree 的 `BTC/USDT` ↔ Kronos 的 `BTC` 对齐为同一标的
+- **实测**：33 symbols，三信号全开，avg_consensus 0.06 / market_risk elevated（当前数据树模型集体看多 vs 情绪偏空 → 31 项分歧）
 
 ---
 
@@ -278,7 +285,7 @@ ml-service 内（现拉自己的三类预测）：
 | **M0 基础数据栈** | data-service + injector + ragservicer 三服务生产部署 | ✅ 完成 |
 | **M1 模型拆分** | ml-service 独立服务器，Kronos/FinBERT/LightGBM 拆分 | ✅ 完成 |
 | **M2 P1 三家族** | XGBoost + RandomForest 对照家族（同数据集同切分） | ✅ 完成（be86dec） |
-| **M3 共识分层** | ml-service `/ml/consensus` + 快照 + RAG 注入 | ⏳ 待实现（§5.6） |
+| **M3 共识分层** | ml-service `/ml/consensus` + 快照 + RAG 注入 | ✅ 完成（8c1f772） |
 | **M4 P2 备选** | Bolt-small → Moirai-small → TimesFM-200m（择一/逐个） | 📌 可选 |
 
 ---
