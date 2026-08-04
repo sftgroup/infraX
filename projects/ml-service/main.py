@@ -150,6 +150,24 @@ async def volatility():
         return {"code": 0, "message": "ok", "data": None}
 
 
+# ── Cross-model consensus ─────────────────────────────────
+
+@app.get("/ml/consensus")
+async def consensus():
+    """跨模型信号共识聚合（tree + Kronos + FinBERT）。
+
+    确定性规则：consensus_score（方向一致度）/ divergence / risk_flag。
+    三路信号全部不可用时返回 data=null（fail-silent）。
+    """
+    try:
+        from app.analytics import consensus as cs
+        payload = cs.build_consensus()
+        return {"code": 0, "message": "ok", "data": payload}
+    except Exception as exc:
+        logger.warning("consensus failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": None}
+
+
 # ── Entry ──────────────────────────────────────────────────
 
 if __name__ == "__main__":

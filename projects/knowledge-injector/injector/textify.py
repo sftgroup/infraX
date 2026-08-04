@@ -607,6 +607,47 @@ def tree_ml_report(payload: dict | None) -> str:
     return "\n".join(lines)
 
 
+def consensus_report(payload: dict | None) -> str:
+    """跨模型共识报告（ml-service /ml/consensus 快照）→ 文本。
+
+    参数:
+        payload: {"generated_at", "signals": {"tree"/"volatility"/"sentiment"},
+                 "n_symbols", "avg_consensus_score", "market_risk_flag",
+                 "n_divergence", "symbols": [{symbol, consensus_score,
+                 divergence, risk_flag, tree_direction?, opportunity_score?,
+                 kronos_volatility_level?, sentiment_score?}]}，
+                 来自 data-service /snapshots?type=consensus。
+
+    只描述共识事实（信号一致度/分歧/风险档位），不做投资建议。
+    """
+    if not payload or not isinstance(payload, dict):
+        return ""
+    symbols = payload.get("symbols") or []
+    if not symbols:
+        return ""
+    signals = payload.get("signals") or {}
+    lines = ["[ML Consensus] 跨模型信号共识聚合:"]
+    present = [k for k in ("tree", "volatility", "sentiment") if signals.get(k)]
+    lines.append(f"  signals: {', '.join(present) if present else 'none'}"
+                 f" | market_risk {payload.get('market_risk_flag', 'unknown')}"
+                 f" | divergence {payload.get('n_divergence', 0)}"
+                 f" | avg_consensus {payload.get('avg_consensus_score') or 'n/a'}")
+    for s in symbols:
+        sym = s.get("symbol", "?")
+        parts = [f"consensus {s.get('consensus_score', 'n/a')}"]
+        if s.get("divergence"):
+            parts.append("DIVERGENCE")
+        parts.append(f"risk {s.get('risk_flag', 'unknown')}")
+        if s.get("tree_direction") is not None:
+            parts.append(f"tree {s.get('tree_direction')}")
+        if s.get("kronos_volatility_level") is not None:
+            parts.append(f"kronos_vol {s.get('kronos_volatility_level')}")
+        if s.get("sentiment_score") is not None:
+            parts.append(f"sentiment {s.get('sentiment_score'):+.2f}")
+        lines.append(f"  {sym}: {', '.join(parts)}")
+    return "\n".join(lines)
+
+
 # ─── 全球宏观（多区域） ───────────────────────────────
 
 _REGION_NAMES = {

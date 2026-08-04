@@ -105,6 +105,44 @@ def fetch_sentiment_score() -> dict[str, Any] | None:
         return None
 
 
+def fetch_consensus() -> dict[str, Any] | None:
+    """拉取 data-service 跨模型共识快照（/snapshots?type=consensus）。
+
+    返回 {"generated_at", "signals", "n_symbols", "avg_consensus_score",
+          "market_risk_flag", "n_divergence", "symbols"}，
+    或 None（未配置/失败/无快照）。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/snapshots",
+            params={"type": "consensus"},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service consensus → %s", resp.status_code)
+            return None
+        data = resp.json()
+        payload = (data.get("snapshots") or {}).get("consensus")
+        if not isinstance(payload, dict) or not (payload.get("symbols") or []):
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service consensus timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service consensus request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service consensus parse failed: %s", exc)
+        return None
+
+
 def fetch_tree_predictions() -> dict[str, Any] | None:
     """拉取 data-service LightGBM 方向预测快照（/snapshots?type=tree_predictions）。
 

@@ -61,6 +61,44 @@ def fetch_bars(symbol: str, timeframe: str = "1d", limit: int = 500) -> list[dic
         return []
 
 
+def fetch_sentiment_score() -> dict | None:
+    """拉取 data-service 最新 FinBERT 聚合情绪分（/snapshots?type=finbert_sentiment）。
+
+    返回 {"score": float, "ts": int} 或 None（未配置/失败/无快照）。
+    """
+    base = _base_url()
+    if not base:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/snapshots",
+            params={"type": "finbert_sentiment"},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service finbert_sentiment → %s", resp.status_code)
+            return None
+        data = resp.json()
+        raw = (data.get("snapshots") or {}).get("finbert_sentiment")
+        if isinstance(raw, dict):
+            score = raw.get("sentiment_score")
+        else:
+            score = raw
+        if not isinstance(score, (int, float)):
+            return None
+        return {"score": float(score), "ts": data.get("ts", 0)}
+    except requests.Timeout:
+        logger.debug("data-service finbert_sentiment timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service finbert_sentiment request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service finbert_sentiment parse failed: %s", exc)
+        return None
+
+
 def fetch_symbols(timeframe: str = "1d", min_bars: int = 120) -> list[str]:
     """拉取 data-service 中满足最少 bar 数的 symbol 列表（升序）。
 

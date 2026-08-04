@@ -50,6 +50,35 @@ def fetch_tree_predictions() -> dict | None:
         return None
 
 
+def fetch_consensus() -> dict | None:
+    """拉取 ml-service 跨模型共识 payload（/ml/consensus）。
+
+    返回 {"generated_at", "signals", "n_symbols", "avg_consensus_score",
+          "market_risk_flag", "n_divergence", "symbols"} 或 None（fail-silent）。
+    """
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return None
+    try:
+        resp = requests.get(f"{base}/ml/consensus", headers=_headers(), timeout=_TIMEOUT)
+        if resp.status_code != 200:
+            logger.debug("ml-service /ml/consensus → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict) or not (data.get("symbols") or []):
+            return None
+        return data
+    except requests.Timeout:
+        logger.debug("ml-service consensus timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("ml-service consensus request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service consensus parse failed: %s", exc)
+        return None
+
+
 def post_sentiment(articles: list[dict]) -> dict | None:
     """POST 新闻文章到 ml-service /ml/sentiment，返回聚合情绪统计（或 None）。"""
     base = (ML_SERVICE_URL or "").strip().rstrip("/")

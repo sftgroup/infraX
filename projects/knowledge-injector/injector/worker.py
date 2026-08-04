@@ -550,6 +550,28 @@ class GraphInjector:
             logger.debug("inject_tree_ml failed", exc_info=True)
             return False
 
+    def inject_consensus(self) -> bool:
+        """注入跨模型信号共识（data-service consensus 快照，M3）。
+
+        ml-service 聚合 tree + Kronos + FinBERT 三路信号，输出确定性共识
+        （consensus_score / divergence / risk_flag）。原始信号仍各自独立注入，
+        本条只补充共识维度的快照描述。data-service 无快照时 fail-silent。
+        """
+        try:
+            from providers.data_service import fetch_consensus
+
+            payload = fetch_consensus()
+            if not payload:
+                return False
+            text = txt.consensus_report(payload)
+            if not text:
+                return False
+            snap_id = self._save_raw(payload, "ml", "consensus")
+            return self._inject(text, file_source="ml:consensus:daily", snap_id=snap_id)
+        except Exception:
+            logger.debug("inject_consensus failed", exc_info=True)
+            return False
+
     # ─── 配置化解析注入（DC / Collector raw data） ──
 
     def inject_parsed(self, source: str, limit: int = 100) -> list[dict]:
@@ -625,6 +647,9 @@ class GraphInjector:
             # tree_ml 为真实 LightGBM 模型（训练于 kline 历史），
             # data-service 未启用时 fail-silent 返回 False，不污染
             "tree_ml",
+            # consensus 为跨模型共识（ml-service 聚合三路信号），
+            # 无快照时 fail-silent 返回 False
+            "consensus",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()
