@@ -545,7 +545,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
-- [ ] DS-9~DS-12 排期与完成时间（见 9.1）
+- [ ] DS-10~DS-12 排期与完成时间（见 9.1）
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
