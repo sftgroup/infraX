@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import requests
 
@@ -13,8 +14,10 @@ from config import SETTINGS
 
 logger = logging.getLogger(__name__)
 
-_INJECT_TIMEOUT = 30  # RAGservicer 内部调用 LLM 做实体提取
+_INJECT_TIMEOUT = 30  # 提交注入请求的超时（写入已异步化，提交即返回）
 _QUERY_TIMEOUT = 15
+_TASK_POLL_TIMEOUT = 300  # 等待单个注入任务完成的最长时间（秒）
+_TASK_POLL_INTERVAL = 3  # 任务状态轮询间隔（秒）
 
 
 class LightRAGClient:
@@ -53,7 +56,8 @@ class LightRAGClient:
     ) -> bool:
         """注入文本到 RAGservicer 知识图谱（doc_id 幂等去重）。
 
-        返回 True 表示注入成功。
+        读写分离：提交 `async: true`，RAGservicer 立即返回 202 + task_id，
+        然后轮询任务状态直至成功/失败/超时。返回 True 表示注入成功。
         失败则静默返回 False，不抛异常。
         """
         if not self._enabled:
@@ -67,6 +71,7 @@ class LightRAGClient:
             payload: dict = {
                 "text": text,
                 "doc_id": resolved_doc_id,
+                "async": True,
             }
             resp = requests.post(
                 f"{self._base_url}/api/v1/namespaces/{ns}/documents",
@@ -74,7 +79,16 @@ class LightRAGClient:
                 headers=self._headers(),
                 timeout=_INJECT_TIMEOUT,
             )
-            # 2xx=success, 409=already exists (skip)
+            # 202 = 已入队，轮询任务状态
+            if resp.status_code == 202:
+                data = resp.json().get("data") or {}
+                task_id = data.get("task_id")
+                if task_id:
+                    return self._poll_task(ns, task_id)
+                logger.warning("RAGservicer inject 202 without task_id ns=%s", ns)
+                return False
+
+            # 非异步路径（旧版 ragservicer / 显式同步）：2xx=success, 409=already exists
             ok = resp.status_code < 300 or resp.status_code == 409
             if ok:
                 logger.debug(
@@ -99,6 +113,43 @@ class LightRAGClient:
         except Exception as exc:
             logger.warning("RAGservicer inject failed ns=%s doc_id=%s: %s", ns, resolved_doc_id, exc)
             return False
+
+    # ─── task polling ──────────────────────────────────
+
+    def _poll_task(self, ns: str, task_id: str) -> bool:
+        """轮询写任务直到 success/failed/超时。"""
+        url = f"{self._base_url}/api/v1/namespaces/{ns}/tasks/{task_id}"
+        deadline = time.time() + _TASK_POLL_TIMEOUT
+        while time.time() < deadline:
+            try:
+                resp = requests.get(url, headers=self._headers(), timeout=15)
+            except requests.RequestException as exc:
+                logger.warning("RAGservicer task poll failed task_id=%s: %s", task_id, exc)
+                time.sleep(_TASK_POLL_INTERVAL)
+                continue
+
+            if resp.status_code != 200:
+                time.sleep(_TASK_POLL_INTERVAL)
+                continue
+
+            data = (resp.json().get("data") or {})
+            status = data.get("status")
+            if status == "success":
+                logger.debug("RAGservicer inject task done task_id=%s", task_id)
+                return True
+            if status == "failed":
+                logger.warning(
+                    "RAGservicer inject task failed task_id=%s error=%s",
+                    task_id, data.get("error"),
+                )
+                return False
+            time.sleep(_TASK_POLL_INTERVAL)
+
+        logger.warning(
+            "RAGservicer inject task timeout (%ss) task_id=%s ns=%s",
+            _TASK_POLL_TIMEOUT, task_id, ns,
+        )
+        return False
 
     # ─── query ────────────────────────────────────────
 

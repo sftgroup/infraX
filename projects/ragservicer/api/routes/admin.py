@@ -6,6 +6,7 @@ from pathlib import Path
 from flask import request, Blueprint, jsonify
 from api.engine import list_instances, reload_runtime_config
 from api.auth import require_admin
+from api.tasks import task_stats, list_tasks as list_write_tasks
 from tenants import manager as tm
 from config import get_config, reload_config
 from api.code_refactor import parse_json, handle_errors, build_success, build_error
@@ -96,6 +97,21 @@ def register(api: Blueprint):
     @require_admin
     def api_list_instances():
         return jsonify({"instances": list_instances()})
+
+    # ── 写任务统计（读写分离可观测性） ─────────────────
+
+    @api.route("/admin/tasks", methods=["GET"])
+    @require_admin
+    @handle_errors(logger, "List write tasks failed", fallback_status=500)
+    def api_admin_tasks():
+        try:
+            limit = max(1, min(200, int(request.args.get("limit", 20))))
+        except (TypeError, ValueError):
+            return build_error("limit must be an integer", 400)
+        return build_success({
+            "stats": task_stats(),
+            "tasks": list_write_tasks(limit),
+        })
 
     # ── Tenant CRUD ───────────────────────────────────
 

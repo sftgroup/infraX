@@ -59,6 +59,10 @@ def main():
     loop_thread.start()
     logger.info("Started async event loop")
 
+    # 写路径后台队列（读写分离：注入异步化，不占用请求线程）
+    from api.tasks import init_write_queue
+    init_write_queue()
+
     # Embedding model
     load_embedding_model()
 

@@ -98,41 +98,75 @@ def get_rag(tenant_id: str, namespace: str = "default"):
 
 # ── Public CRUD API (stable signatures — used by routes + MCP) ──
 
-def insert_document(tenant_id: str, namespace: str, text: str, doc_id: str) -> dict:
-    rag = get_rag(tenant_id, namespace)
+# 写操作 coroutine 工厂：实际执行逻辑唯一实现，供同步（MCP/legacy）与
+# 异步（REST 写队列）两条路径复用。所有 LightRAG 调用仍在全局循环执行。
 
+def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
     async def _do():
+        rag = get_rag(tenant_id, namespace)
         try:
             await rag.adelete_by_doc_id(doc_id)
         except Exception:
             logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
         await rag.ainsert(text, ids=doc_id)
-
-    _run_async(_do())
-    return {"doc_id": doc_id, "tenant": tenant_id, "namespace": namespace}
+    return _do
 
 
-def insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]) -> dict:
-    rag = get_rag(tenant_id, namespace)
+def _insert_batch_coro(tenant_id: str, namespace: str, documents: list[dict]):
     texts = [d["text"] for d in documents]
     ids = [d.get("doc_id", f"doc_{i}") for i, d in enumerate(documents)]
 
     async def _do():
+        rag = get_rag(tenant_id, namespace)
         combined = "\n\n---\n\n".join(texts)
         await rag.ainsert(combined, ids="|".join(ids))
+    return _do
 
-    _run_async(_do())
-    return {"count": len(texts), "tenant": tenant_id, "namespace": namespace}
+
+def _delete_coro(tenant_id: str, namespace: str, doc_id: str):
+    async def _do():
+        rag = get_rag(tenant_id, namespace)
+        await rag.adelete_by_doc_id(doc_id)
+    return _do
+
+
+def insert_document(tenant_id: str, namespace: str, text: str, doc_id: str) -> dict:
+    """同步插入（MCP / legacy 使用，请求线程会阻塞到完成）。"""
+    _run_async(_insert_coro(tenant_id, namespace, text, doc_id))
+    return {"doc_id": doc_id, "tenant": tenant_id, "namespace": namespace}
+
+
+def insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]) -> dict:
+    """同步批量插入（MCP / legacy 使用）。"""
+    _run_async(_insert_batch_coro(tenant_id, namespace, documents))
+    return {"count": len(documents), "tenant": tenant_id, "namespace": namespace}
 
 
 def delete_document(tenant_id: str, namespace: str, doc_id: str) -> dict:
-    rag = get_rag(tenant_id, namespace)
-
-    async def _do():
-        await rag.adelete_by_doc_id(doc_id)
-
-    _run_async(_do())
+    """同步删除（MCP / legacy 使用）。"""
+    _run_async(_delete_coro(tenant_id, namespace, doc_id))
     return {"doc_id": doc_id, "deleted": True}
+
+
+# 异步写路径：提交到后台写队列，立即返回 task_id（读写分离）。
+# 慢注入在队列后台串行执行，不占用请求线程、不阻塞查询。
+
+def submit_insert_document(tenant_id: str, namespace: str, text: str, doc_id: str) -> str:
+    from api.tasks import submit
+    return submit(_insert_coro(tenant_id, namespace, text, doc_id),
+                  kind="insert", tenant=tenant_id, namespace=namespace)
+
+
+def submit_insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]) -> str:
+    from api.tasks import submit
+    return submit(_insert_batch_coro(tenant_id, namespace, documents),
+                  kind="batch_insert", tenant=tenant_id, namespace=namespace)
+
+
+def submit_delete_document(tenant_id: str, namespace: str, doc_id: str) -> str:
+    from api.tasks import submit
+    return submit(_delete_coro(tenant_id, namespace, doc_id),
+                  kind="delete", tenant=tenant_id, namespace=namespace)
 
 
 def query(tenant_id: str, namespace: str, query_text: str, mode: str = "mix") -> dict:

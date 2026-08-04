@@ -43,6 +43,10 @@ class RAGConfig:
     insert_timeout: int = 300
     default_doc_id: str = "document.txt"
     page_limit_max: int = 200
+    # 读写分离：写路径后台队列
+    write_workers: int = 2        # 后台注入 worker 数（写串行化，保护 LLM/embedding 配额）
+    task_queue_size: int = 200    # 写队列容量（满时返回 503）
+    task_ttl_seconds: int = 3600  # 任务记录保留时间
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,9 @@ def load_config() -> AppConfig:
             top_k=int(os.getenv("TOP_K", str(RAGConfig.top_k))),
             chunk_top_k=int(os.getenv("CHUNK_TOP_K", str(RAGConfig.chunk_top_k))),
             summary_language=os.getenv("SUMMARY_LANGUAGE", RAGConfig.summary_language),
+            write_workers=int(os.getenv("WRITE_WORKERS", str(RAGConfig.write_workers))),
+            task_queue_size=int(os.getenv("TASK_QUEUE_SIZE", str(RAGConfig.task_queue_size))),
+            task_ttl_seconds=int(os.getenv("TASK_TTL_SECONDS", str(RAGConfig.task_ttl_seconds))),
         ),
         server=ServerConfig(
             host=os.getenv("REST_HOST", ServerConfig.host),
