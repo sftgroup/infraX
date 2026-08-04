@@ -523,8 +523,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-6 | `/stats` `/health` | ✅ | — | |
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
 | DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；遗留见 9.3 |
-| DS-9 | `/symbols/search` 符号搜索 | 🔲 | P0 | 待排期 |
-| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | 🔲 | P1 | 待排期 |
+| DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
+| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ⚠️ | P1 | 2d78050 已部署：market_overview ✅（crypto 15 项实测）；commodities/forex_pairs 待上游 TD/Tiingo key |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
 | DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | 🔲 | P1 | 与 AItrader 侧联动 |
 
