@@ -563,8 +563,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **批量 API key 配置（2026-08-06，B 端提供 6 个）** 生产 `.env` 全部启用：CoinGecko demo key `CG-oXL…Wrfi`（heatmap/价格请求带 `x_cg_demo_api_key`，commit bbf0400，实测 BTC 64513/ETH 1890.69）、NewsAPI `d7d5…be4a`（实测 top-headlines 54 条，新闻采集恢复）、Tiingo `0c39…69c`（实测 fx EURUSD 1.15446；IEX 美股 quote free tier 无权限→美股仍走 akshare/腾讯）、Alpha Vantage `5E5K…HYV`（实测 GLOBAL_QUOTE AAPL 309.38，DXY 备源）、CryptoCompare `38a6…9c8e`（预留，实测 BTC 64516.08）、Tushare（见下条）。至此 9 个 key 全配置（Finnhub/Firecrawl/FRED/Twelve Data 之前已配）
 - [x] **Tushare provider 接入（2026-08-06 完成，commit 4ddb657 + a6a603b）** 新增 `data/app/data_sources/tushare.py`（HTTP POST `api.tushare.pro` + token 鉴权，多 key 轮换 `TUSHARE_TOKEN`；仅日线 daily，ts_code 转换 SH600519→600519.SH）；接入 `cn_stock.py` Tier 1.5（Twelve Data 之后、Tencent 之前）；`TUSHARE_TOKEN` 纳入 APIKeys + admin 白名单 + 生产 `.env`。⚠️ **当前 token 积分不足（所有接口 40203，需 ≥2000 才有 daily 权限）→ 实测 fail-silent 返回 0 行，回退腾讯正常（600519 1D 出 5 行）**；积分到位即自动生效无需改码。期间修复：config.py 模块级定义并行编辑丢失导致启动 NameError（a6a603b）
 - [x] **多 key 轮换补齐（2026-08-06 完成，commit bbe8201）** 基础设施 `APIKeys.rotate()`（逗号分隔 key 池，admin PUT /admin/config 支持 list 输入）已覆盖：FINNHUB/TWELVE/TIINGO/NEWSAPI/ADANOS/FRED/FIRECRAWL/COINGECKO/TUSHARE；本轮修复 finnhub 相关 3 处单 key 缓存：`data_providers/finnhub.py` 解除模块级 key 缓存、`data_sources/us_stock.py` 每次请求前 `_rotate_finnhub()`（quote/stock_candles 调用点）。注：`app/market_data/*` legacy 补丁包未被运行时引用，未改
-- [ ] **数据源状态监控端点 `GET /admin/status`（2026-08-06，需求登记）** 现状缺口：仅 /stats（DB 行数+时间跨度）；熔断器 `circuit_breaker.get_status()` 未暴露 HTTP；无 last_collect/成功率/新鲜度。目标：返回各采集器运行状态 + 各数据源熔断状态/失败数/最后错误 + 最近落库时间（raw_snapshots/kline 按 provider 分组 MAX(ts)）
-- [ ] **交易对热管理 API `PUT /admin/symbols`（2026-08-06，需求登记）** 现状缺口：crypto 标的/周期走 `.env`（KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_*）、非 crypto 标的在 `data_config.json`，均需改文件+重启。目标：交易对热更新（重启后生效或支持 reload），纳入 /admin 鉴权
+- [x] **数据源状态监控端点 `GET /admin/status`（2026-08-06 完成，commit 538795e）** 已实现并生产实测：返回采集器运行状态（13 个全 running+thread_alive）+ 熔断器状态 + 数据新鲜度（raw_snapshots 按 provider/data_type 最近落库 ms；kline 按 timeframe rows/ts_start/ts_end）+ key 配置概览（10 个全 set）；鉴权 Bearer ADMIN_API_KEY。实测数据：kline 7 个 timeframe 全部有数（5m 31.1万行/1m 26万行），25 个快照类别新鲜度秒级~30min 内
+- [x] **交易对热管理 API `PUT /admin/symbols`（2026-08-06 完成，commit 9a1fffa + 43dc6bd）** 支持 `action: add|remove|set` 动态增删交易对（免重启）：crypto/swap 热更 `.env`（KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_*）+ `kline_store.set_runtime_symbols()` 运行时列表；us_stocks/forex/futures/cn_stocks/hk_stocks 热更 `data_config.json` multi_kline.<market> + `reload_multi_config()` 缓存失效。鉴权 Bearer ADMIN_API_KEY。生产实测：add us_stocks INTC（11 个）、remove crypto XRP/USDT（回 3 个）、add futures TF=F（9 个）全部成功且持久化（.env + data_config.json 验证）；数据落地随采集周期（crypto 5min / multi 30min）自动生效。期间修复：main.py 缺 json import 导致 multi 500（43dc6bd）
 
 **后端管理需求总览（2026-08-06，B 端提）**
 
@@ -573,7 +573,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | API key 查看/热更新 | ✅ 已实现（10 个 key 白名单，脱敏，list/逗号串→多 key 池，写入 .env 免重启） | `GET/PUT /admin/config` |
 | 多 key 轮换 | ✅ 已实现+已补齐（APIKeys.rotate 全源覆盖） | — |
 | 数据源状态监控 | ✅ 已实现（commit 538795e，生产实测） | `GET /admin/status` |
-| 交易对管理 | ⏳ 待开发（见上方待办） | `PUT /admin/symbols` |
+| 交易对管理 | ✅ 已实现（commit 9a1fffa + 43dc6bd，生产实测） | `PUT /admin/symbols` |
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
