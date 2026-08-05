@@ -625,7 +625,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | # | 消费方需求 | 审查范围 | 状态 |
 |:---:|------|------|:---:|
 | 7.1 | 外部应用集成 | 各服务 REST API 契约/鉴权/版本（data :9112、injector :9113、ragservicer :9721、ml-service :9120） | 🔲 |
-| 7.2 | 数据查询 | `/bars` `/factors/*` `/snapshots` `/ticker` `/query` 等数据面端点覆盖与返回契约核对 | 🔲 |
+| 7.2 | 数据查询 | `/bars` `/factors/*` `/snapshots` `/ticker` `/query` 等数据面端点覆盖与返回契约核对 | 🔲 进度：`/bars` `/factors/*` 已实测并修复（commit 57050f1）；`/snapshots` `/ticker` `/query` 待核对 |
 | 7.3 | Agent 使用 | MCP / Skill 接入面（ragservicer query、dc-index、hub-index）是否满足 agent 调用 | 🔲 |
 | 7.4 | 第三方监控 | `/health` `/stats` 端点、metrics 暴露（prometheus/opentelemetry）与告警接入 | 🔲 |
 | 7.5 | 管理 Agent | admin 端点（injector `/admin/config`、ragservicer admin 等）可编程化管理能力 | 🔲 |

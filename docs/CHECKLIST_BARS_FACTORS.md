@@ -40,7 +40,7 @@
 ### 1.3 核对项
 
 - [ ] ① `symbol` 输入接受 `BTC/USDT` 与 `BTCUSDT` 两种形式（`_normalize_kline_symbol` 归一化）实测
-- [ ] ② `timeframe` 大小写：`1d` vs `1D` 查询一致性实测（存储键实际大小写）
+- [x] ② `timeframe` 大小写：`1d` vs `1D` 查询一致性实测（存储键实际大小写）—— **确认大小写敏感**：`1d` count=3、`1D` 返回空（count=0）；docstring 已修正为 `1d`（commit 57050f1）
 - [ ] ③ `market_type=swap` 的 `BTC/USDT:USDT` 存储键查询实测
 - [ ] ④ `start`/`end` 时间过滤边界（含端点）实测
 - [ ] ⑤ `limit` 上界 5000 与默认 500 实测
@@ -77,7 +77,7 @@
 
 ### 2.3 核对项
 
-- [ ] ① 目录共 18 项内置因子，与实际 /factors/current、/factors/history 可用因子一致
+- [x] ① 目录共 18 项内置因子，与实际 /factors/current、/factors/history 可用因子一致 —— **实测 18 项**：technical 11 + macro 3 + sentiment 2 + onchain 2（external 0，因 config extra 未配置）
 - [ ] ② `range` 值正确（rsi_14 [0,100]、fear_greed [0,100] int、atr_14 [0,∞]、us10y [0,10]、dxy [50,150]）
 - [ ] ③ `FACTORS_CONFIG_PATH` 未配置时目录不含 extra 项
 - [ ] ④ 目录字段与 `_CATEGORY_MAP` 分类映射一致（catalog.category vs current 的 category 过滤）
@@ -107,16 +107,17 @@
 
 ### 3.3 核对项
 
-- [ ] ① `symbols` 默认 `BTC` 与显式 `BTC/USDT` 的取值差异实测（技术因子归属 symbol 键）
-- [ ] ② `category` 7 类过滤（external/sentiment/news/opportunities/heatmap/calendar/snapshot）各实测
+- [x] ① `symbols` 默认 `BTC` 与显式 `BTC/USDT` 的取值差异实测（技术因子归属 symbol 键）—— **已修复**：默认 `BTC` 现通过候选回退（`BTC` → `BTC/USDT`）附加技术因子（rsi_14/macd/macd_hist 等，commit 57050f1）
+- [x] ② `category` 7 类过滤（external/sentiment/news/opportunities/heatmap/calendar/snapshot）各实测 —— external→us10y、sentiment→sentiment_score+`_complex`、news 无数据、opportunities/heatmap/calendar→`_complex`、snapshot→btc_difficulty+`_complex`，7 类均可用
 - [ ] ③ `_SIMPLE_FACTOR_IDS` 简单因子值、6 位舍入实测
 - [ ] ④ `_complex` 解包行为（单 key 数据 unwrap）实测
 - [ ] ⑤ 空库时 `ts=0`、factors 仅含 symbol 空对象的行为实测
-- [ ] ⑥ ⚠️ 路由 docstring 与 `_CATEGORY_MAP` 枚举不一致 —— 文档同步修正
+- [x] ⑥ ⚠️ 路由 docstring 与 `_CATEGORY_MAP` 枚举不一致 —— **已修复**（docstring 补全 7 类，commit 57050f1）
 
 ### 3.4 实测记录
 
-- ⬜ 待实测（2026-08-05 未调用）
+- ✅ 2026-08-05：默认 `symbols=BTC` 返回简单因子 + 技术因子 + `_complex.heatmap`；`ts` 已归一为 int（1785945503454）
+- ✅ 2026-08-05：`symbols=BTC/USDT` 返回完整字段（fear_greed/vix/dxy/us10y + 11 技术因子）
 
 ---
 
@@ -142,24 +143,27 @@
 ### 4.3 核对项
 
 - [ ] ① 无数据时 `count=0`、`series=[]`（返回 200 而非 404）实测
-- [ ] ② `ids` 过滤：仅返回请求因子字段，未知 id 忽略实测
+- [x] ② `ids` 过滤：仅返回请求因子字段，未知 id 忽略实测 —— **实测** `ids=rsi_14,macd` 仅返回 `{ts, rsi_14, macd}`
 - [ ] ③ symbol 无 `/` 数据时自动回退基础符号逻辑实测
 - [ ] ④ 时间窗口 `start`/`end` 与 limit 组合分页行为实测
-- [ ] ⑤ series 升序/降序与 /bars 一致性核对（`ORDER BY ts DESC` 后未反转，⚠️ 需实测确认）
+- [x] ⑤ series 升序/降序与 /bars 一致性核对 —— **已修复**：`ORDER BY ts ASC`，series 升序与 /bars 对齐（commit 57050f1，实测 1785727500000→…→1785729000000 递增）
 
 ### 4.4 实测记录
 
-- ⬜ 待实测（2026-08-05 未调用）
+- ✅ 2026-08-05：`limit=6` 输出 ts 递增（升序）
+- ✅ 2026-08-05：`ids=rsi_14,macd` 字段过滤正确
 
 ---
 
 ## 5. 审查发现汇总（差距/待确认）
 
+> 2026-08-05 生产实测 + 修复（commit `57050f1`）：D1/D3/D4/D5 已闭环，D2/D6 保留待办。
+
 | # | 级别 | 发现 | 处理 |
 |:---:|:---:|------|------|
-| D1 | ⚠️ | `/bars` timeframe 文档描述 `1D`（大写）与 `.env` `1d`（小写）不一致 | 实测存储键大小写后修正文档或归一化 |
-| D2 | ⚠️ | `/bars` 500 错误体为 FastAPI 默认 `{"detail":...}`，无 `{code,message,data}` 包装（data 数据面端点整体无统一包装） | 联动 7.1-⑥ 统一响应体核对 |
-| D3 | ⚠️ | `/factors/current` docstring 仅列 4 类 category，实现支持 7 类 | 同步文档枚举 |
-| D4 | ⚠️ | `/factors/history` `ORDER BY ts DESC` 后未反转，series 顺序待实测确认（与 /bars 升序不一致风险） | 实测后决定是否补反转 |
-| D5 | ⚠️ | `/factors/current` 默认 `symbols=BTC` 与 kline 存储符号规范（BTC/USDT）语义差异 | 实测后明确调用方约定 |
-| D6 | ℹ️ | swap 符号 `BTC/USDT:USDT` 存储键约定未在 OpenAPI/文档显式说明 | 补充文档 |
+| D1 | ✅ | `/bars` timeframe 文档描述 `1D`（大写）与 `.env` `1d`（小写）不一致 | **已修复**：实测确认大小写敏感（`1d` 有数据 / `1D` 空），docstring 修正为 `1m/5m/15m/30m/1h/4h/1d`；客户端须用小写 |
+| D2 | ⚠️ | `/bars` 500 错误体为 FastAPI 默认 `{"detail":...}`，无 `{code,message,data}` 包装（data 数据面端点整体无统一包装） | 保留 —— 联动 7.1-⑥ 统一响应体核对 |
+| D3 | ✅ | `/factors/current` docstring 仅列 4 类 category，实现支持 7 类 | **已修复**：docstring 补全为 external/sentiment/news/opportunities/heatmap/calendar/snapshot |
+| D4 | ✅ | `/factors/history` `ORDER BY ts DESC` 未反转，series 降序与 /bars 升序不一致 | **已修复**：`ORDER BY ts ASC`，series 升序对齐 /bars |
+| D5 | ✅ | `/factors/current` 默认 `symbols=BTC` 查不到 kline 技术因子（存储键 `BTC/USDT`） | **已修复**：技术因子查询候选回退（`BTC` → `BTC/USDT`），默认值现带 rsi_14/macd 等 |
+| D6 | ℹ️ | swap 符号 `BTC/USDT:USDT` 存储键约定未在 OpenAPI/文档显式说明；且 swap 当前 `count=0` 无数据 | 保留 —— 补充文档 + 确认 swap 数据覆盖（KL_SWAP_* 是否启用） |
