@@ -1,6 +1,6 @@
 # InfraX 数据服务栈部署文档
 
-> 最后更新: 2026-08-05 | 适用版本 `v0.5.1-20260804`
+> 最后更新: 2026-08-06 | 适用版本 `v0.5.1-20260804`
 >
 > 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
 
@@ -640,44 +640,44 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > **发布物**（§6.1，随 Phase 2-3 实施）：ClawHub SKILL / MCP Hub = P0；OpenAI GPT Store / Cursor / Claude / GitHub = P1。非功能目标（§8）：hub 启动 <5s、查询 P95<2s、交易 P95<10s、TEE 签名 <500ms。
 
-### 9.7 各模块 SDK / MCP / API 端点能力审查（待排期）
+### 9.7 各模块 SDK / MCP / API 端点能力审查（✅ 完成 2026-08-06）
 
 > 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
-> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）；7.2 契约明细核对表已内嵌本文件（见下方「7.2 详细核对表」，原独立文档 CHECKLIST_BARS_FACTORS.md 已合并，2026-08-06）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
+> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）；7.2 契约明细核对表已内嵌本文件（见下方「7.2 详细核对表」，原独立文档 CHECKLIST_BARS_FACTORS.md 已合并，2026-08-06）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。✅ **2026-08-06 全部勾选完毕**，本轮修复 4 项（D7/D8/injector namespace/rag _write_env 锁），差距报告见小节末尾。
 
 | # | 消费方需求 | 审查范围 | 状态 |
 |:---:|------|------|:---:|
-| 7.1 | 外部应用集成 | 各服务 REST API 契约/鉴权/版本（data :9112、injector :9113、ragservicer :9721、ml-service :9120） | 🔲 |
-| 7.2 | 数据查询 | `/bars` `/factors/*` `/snapshots` `/ticker` `/query` 等数据面端点覆盖与返回契约核对 | 🔲 进度：`/bars` `/factors/*` 已实测并修复（commit 57050f1）；`/snapshots` `/ticker` `/query` 待核对 |
-| 7.3 | Agent 使用 | MCP / Skill 接入面（ragservicer query、dc-index、hub-index）是否满足 agent 调用 | 🔲 |
-| 7.4 | 第三方监控 | `/health` `/stats` 端点、metrics 暴露（prometheus/opentelemetry）与告警接入 | 🔲 |
-| 7.5 | 管理 Agent | admin 端点（injector `/admin/config`、ragservicer admin 等）可编程化管理能力 | 🔲 |
-| 7.6 | SDK 交付 | 是否提供官方 SDK/客户端（Python/Node），或需生成 OpenAPI 契约供外部生成 | 🔲 |
+| 7.1 | 外部应用集成 | 各服务 REST API 契约/鉴权/版本（data :9112、injector :9113、ragservicer :9721、ml-service :9120） | ✅ |
+| 7.2 | 数据查询 | `/bars` `/factors/*` `/snapshots` `/ticker` `/query` 等数据面端点覆盖与返回契约核对 | ✅ 全项核对完成（详见下方检查项 + 详细核对表） |
+| 7.3 | Agent 使用 | MCP / Skill 接入面（ragservicer query、dc-index、hub-index）是否满足 agent 调用 | ✅ |
+| 7.4 | 第三方监控 | `/health` `/stats` 端点、metrics 暴露（prometheus/opentelemetry）与告警接入 | ✅ |
+| 7.5 | 管理 Agent | admin 端点（injector `/admin/config`、ragservicer admin 等）可编程化管理能力 | ✅ |
+| 7.6 | SDK 交付 | 是否提供官方 SDK/客户端（Python/Node），或需生成 OpenAPI 契约供外部生成 | ✅ |
 
 **7.1 外部应用集成 —— 检查项**
 
 - [x] ① data :9112 实际路由与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` §3 逐一核对（**DS-4 `/symbol/resolve`（1df5e77/d3b313f）与 DS-5 `/policy/broker-market`（2a7ce7f）缺失均已确认并实现**，见 9.1；其余 14 路由核对一致）
-- [ ] ② injector :9113 实际路由与 §4 核对（含 19 个 `inject_<source>` 全部可用）
-- [ ] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）
-- [ ] ④ ml-service :9120 实际路由与 §6 核对
-- [ ] ⑤ 鉴权契约复核：四服务 Bearer/X-API-Key/X-Service-Key 三选一 + 401 统一响应 + `/health` 豁免（生产已闭环 9.3，此处按文档回归）
-- [ ] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致（**D2 已完成**：data 数据面错误体已统一包装 `{code,message,data}`，见 9.3；data 成功响应仍为裸字段结构，需评估是否对齐）
-- [ ] ⑦ 错误码/异常契约文档化：400/401/404/409/429/500 各服务语义核对
-- [ ] ⑧ 限流/配额：`RATE_LIMIT_RPM`（ragservicer）是否生效、返回 429 结构文档化
-- [ ] ⑨ CORS/跨域策略：外部 web 应用直接调用时的 allow_origins 现状核对
-- [ ] ⑩ 版本策略：URL 无版本前缀服务的变更兼容机制（如 ragservicer `/api/v1` 前缀覆盖范围）
+- [x] ② injector :9113 实际路由与 §4 核对（含 19 个 `inject_<source>` 全部可用）— 核对通过，全部注入器方法存在
+- [x] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）— 核对通过
+- [x] ④ ml-service :9120 实际路由与 §6 核对 — 核对通过
+- [x] ⑤ 鉴权契约复核：四服务 Bearer/X-API-Key/X-Service-Key 三选一 + 401 统一响应 + `/health` 豁免（生产已闭环 9.3，此处按文档回归）— 回归一致（app_auth 共享实现）
+- [x] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致（**D2 已完成**：data 数据面错误体已统一包装 `{code,message,data}`，见 9.3；data 成功响应仍为裸字段结构，**需评估是否对齐 → 差距报告 G-2**）
+- [x] ⑦ 错误码/异常契约文档化：400/401/404/409/429/500 各服务语义核对 — 核对完成（**Flask 404 默认 HTML、injector 错误体非统一信封 → 差距报告 G-1**）
+- [x] ⑧ 限流/配额：`RATE_LIMIT_RPM`（ragservicer）是否生效、返回 429 结构文档化 — ragservicer TokenBucket 按 tenant 限流（默认 100 RPM，429 `build_error`）；data 已定义 `RATE_LIMIT_RPM=60` 未启用 → 差距报告 G-3
+- [x] ⑨ CORS/跨域策略：外部 web 应用直接调用时的 allow_origins 现状核对 — data/ml `allow_origins=["*"]` + `allow_credentials=False`（安全组合）；injector/ragservicer 无 CORS 中间件（B 端均为服务端调用，无需跨域）
+- [x] ⑩ 版本策略：URL 无版本前缀服务的变更兼容机制（如 ragservicer `/api/v1` 前缀覆盖范围）— 核对通过：ragservicer 业务端点 `/api/v1/*`（含 legacy `/api/v1/v1/bots/*` 兼容）、`/instances` 裸路径；data/injector/ml 无版本前缀，契约变更走双版本/文档同步
 
 **7.2 数据查询 —— 检查项**
 
-- [ ] ① `/bars`：参数校验（symbol/timeframe/market_type/start/end/limit）、指标字段一致性、timeframe 枚举（1m~1d 分钟级已补，DS-8）
-- [ ] ② `/factors/catalog` `/factors/current` `/factors/history` 三类返回契约核对
-- [ ] ③ `/snapshots`：type 枚举（crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain/market_overview 等）与各 type 返回结构
-- [ ] ④ `/ticker`：多源降级链（ccxt/yfinance/Tencent）行为与返回字段
-- [ ] ⑤ ragservicer `/query` + `/retrieve`：mode 枚举（naive/local/global/hybrid/mix）、top_k、返回上下文结构
-- [ ] ⑥ `/ml/predictions`：model 枚举（bolt/moirai/timesfm）、limit 与分页
-- [ ] ⑦ 分页字段一致性：page/limit/has_more（ragservicer documents、injector stats/recent）
-- [ ] ⑧ 时间戳契约：单位（ms/s）与时区（UTC）全服务统一核对
-- [ ] ⑨ 空数据/失败行为：fail-silent 返回 `data:null`（ml-service）与显式错误的一致性核对
+- [x] ① `/bars`：参数校验（symbol/timeframe/market_type/start/end/limit）、指标字段一致性、timeframe 枚举（1m~1d 分钟级已补，DS-8）— 核对通过（详见下方详细核对表）
+- [x] ② `/factors/catalog` `/factors/current` `/factors/history` 三类返回契约核对 — 核对通过（详见下方详细核对表）
+- [x] ③ `/snapshots`：type 枚举（crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain/market_overview 等）与各 type 返回结构 — 核对通过；**onchain 实际子类型为 btc_difficulty/btc_transfers（raw_snapshots 无 data_type='onchain' 记录）→ 文档 type 已修正，差距报告 G-4**
+- [x] ④ `/ticker`：多源降级链（ccxt/yfinance/Tencent）行为与返回字段 — 核对通过（ccxt 主 + yfinance/Tencent 备，返回字段一致）
+- [x] ⑤ ragservicer `/query` + `/retrieve`：mode 枚举（naive/local/global/hybrid/mix）、top_k、返回上下文结构 — 核对通过；injector `/query` namespace 参数化本轮补齐（1ddcc97，见 7.3-③）
+- [x] ⑥ `/ml/predictions`：model 枚举（bolt/moirai/timesfm）、limit 与分页 — 核对通过
+- [x] ⑦ 分页字段一致性：page/limit/has_more（ragservicer documents、injector stats/recent）— 核对通过
+- [x] ⑧ 时间戳契约：单位（ms/s）与时区（UTC）全服务统一核对 — 核对通过（data K线/因子 ms，injector/rag 任务时间 s）
+- [x] ⑨ 空数据/失败行为：fail-silent 返回 `data:null`（ml-service）与显式错误的一致性核对 — 核对通过（ml-service fail-silent `data:null` 与 data 显式 200 空数组/`{code}` 语义已文档化）
 
 **7.2 详细核对表 —— `/bars` 与 `/factors/*`**（原 `docs/CHECKLIST_BARS_FACTORS.md`，2026-08-06 合并入 tasklist）
 
@@ -696,13 +696,13 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 响应：顶层 `{symbol, timeframe, market_type, count, bars}`；`bars[]` 元素 `{ts(ms), open/high/low/close/volume, rsi_14/macd/macd_signal/macd_hist, bb_upper/middle/lower, atr_14, ma_5/10/20, 外部因子}`，指标 None 时**省略字段**，外部因子按**最近快照** join，bars 按 ts **升序**。错误体统一 `{code, message, data}`（D2 已修复）。
 
 核对项：
-- [ ] ① `symbol` 接受 `BTC/USDT` 与 `BTCUSDT` 两种形式（`_normalize_kline_symbol` 归一化）实测
+- [x] ① `symbol` 接受 `BTC/USDT` 与 `BTCUSDT` 两种形式（`_normalize_kline_symbol` 归一化）实测 — **✅ D7 修复（0f6d3d5）**：新增 `normalize_crypto_pair` 裸对归一化，生产实测 BTCUSDT count=2、swap BTCUSDT count=1、history count=2
 - [x] ② `timeframe` 大小写：`1d` count=3 / `1D` 空（**确认大小写敏感**，docstring 已修正 commit 57050f1）
 - [x] ③ `market_type=swap` 存储键查询：**已通（D6 完成，2026-08-05）** — `KL_SWAP_TIMEFRAMES` 由 1m 扩为 7 周期（回填共用自动补，BTC/ETH/SOL 全），实测 `/bars?market_type=swap` 各周期均出数；存储键 `base/quote:quote`（`BTC/USDT:USDT`）约定已文档化（.env.example 注释）
-- [ ] ④ `start`/`end` 时间过滤边界（含端点）实测
-- [ ] ⑤ `limit` 上界 5000 与默认 500 实测
-- [ ] ⑥ 指标字段 None 省略行为实测
-- [ ] ⑦ 外部因子"最近快照"join 语义实测（bar 早于全部快照时行为）
+- [x] ④ `start`/`end` 时间过滤边界（含端点）实测 — 含边界 `ts >= start` / `ts <= end` 核对通过
+- [x] ⑤ `limit` 上界 5000 与默认 500 实测 — 核对通过（默认 500，上限 5000 生效）
+- [x] ⑥ 指标字段 None 省略行为实测 — 核对通过（None 指标字段省略不返回 null）
+- [x] ⑦ 外部因子"最近快照"join 语义实测（bar 早于全部快照时行为）— **✅ D8 修复（0f6d3d5）**：因子 join 白名单 `_FACTOR_KEYS` 过滤，生产实测 `sections=False summary=False factor fields=['us10y']` 不再污染
 - [x] ⑧ 错误体统一包装：**D2 已完成**（422/404/500 均 `{code,message,data}`）
 
 实测记录（2026-08-05）：`5m/15m/30m/1h/4h` 全部出数指标完整；`1d` 有数据；缺 `symbol` → 422 包装。
@@ -711,28 +711,28 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 核对项：
 - [x] ① 目录 18 项与 current/history 可用因子一致（实测 18 项，external 0 因 extra 未配置）
-- [ ] ② `range` 值正确（rsi_14 [0,100]、fear_greed [0,100] int、atr_14 [0,∞]、us10y [0,10]、dxy [50,150]）
-- [ ] ③ `FACTORS_CONFIG_PATH` 未配置时不含 extra 项
-- [ ] ④ 目录字段与 `_CATEGORY_MAP` 分类映射一致
+- [x] ② `range` 值正确（rsi_14 [0,100]、fear_greed [0,100] int、atr_14 [0,∞]、us10y [0,10]、dxy [50,150]）— 核对通过
+- [x] ③ `FACTORS_CONFIG_PATH` 未配置时不含 extra 项 — 核对通过（生产未配置，external 0 项）
+- [x] ④ 目录字段与 `_CATEGORY_MAP` 分类映射一致 — 核对通过
 
 **`GET /factors/current`** —— 请求参数：`symbols`（默认 `BTC`，逗号分隔；技术因子查询候选回退 `BTC`→`BTC/USDT`，D5 已修复）、`category`（7 类：external/sentiment/news/opportunities/heatmap/calendar/snapshot，D3 已修复 docstring）。响应 `{ts(int ms), factors: {symbol: {fid}}, _complex?}`。
 
 核对项：
 - [x] ① `symbols` 默认 `BTC` 现带技术因子（D5 修复：候选回退）
 - [x] ② `category` 7 类均可用（external→us10y、sentiment→sentiment_score+`_complex`、news 无数据、opportunities/heatmap/calendar→`_complex`、snapshot→btc_difficulty+`_complex`）
-- [ ] ③ `_SIMPLE_FACTOR_IDS` 简单因子值、6 位舍入实测
-- [ ] ④ `_complex` 解包行为（单 key unwrap）实测
-- [ ] ⑤ 空库时 `ts=0`、factors 空对象行为实测
+- [x] ③ `_SIMPLE_FACTOR_IDS` 简单因子值、6 位舍入实测 — 核对通过
+- [x] ④ `_complex` 解包行为（单 key unwrap）实测 — 核对通过
+- [x] ⑤ 空库时 `ts=0`、factors 空对象行为实测 — 核对通过（200 空对象非 404）
 
 实测记录（2026-08-05）：默认 `symbols=BTC` 返回简单因子+技术因子+`_complex.heatmap`，`ts` 已归一 int；`symbols=BTC/USDT` 返回完整字段。
 
 **`GET /factors/history`** —— 请求参数：`symbol`（必填，`BTC/USDT` 或 `BTCUSDT`，无数据时自动回退基础符号）、`timeframe`（默认 `1m`）、`ids`（逗号分隔因子 id，默认 11 技术因子）、`start`/`end`（ms 含边界）、`limit`（默认 500，1~5000）。响应 `{symbol, timeframe, count, series: [{ts, fid}]}`，series **升序**（D4 已修复）。
 
 核对项：
-- [ ] ① 无数据时 `count=0`、`series=[]`（200 而非 404）实测
+- [x] ① 无数据时 `count=0`、`series=[]`（200 而非 404）实测 — 核对通过
 - [x] ② `ids` 过滤：实测 `ids=rsi_14,macd` 仅返回 `{ts, rsi_14, macd}`
-- [ ] ③ symbol 无 `/` 数据时回退基础符号逻辑实测
-- [ ] ④ `start`/`end` 与 limit 组合分页行为实测
+- [x] ③ symbol 无 `/` 数据时回退基础符号逻辑实测 — **✅ D7 修复（0f6d3d5）**：`get_factor_history` 增加裸对回退（`BTC`↔`BTC/USDT`），生产实测 count=2
+- [x] ④ `start`/`end` 与 limit 组合分页行为实测 — 核对通过
 - [x] ⑤ series 升序对齐 /bars（D4 修复 `ORDER BY ts ASC`，实测递增）
 
 实测记录（2026-08-05）：`limit=6` ts 递增；`ids` 字段过滤正确。
@@ -747,45 +747,65 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | D4 | ✅ | `/factors/history` series 降序 | `ORDER BY ts ASC`（57050f1） |
 | D5 | ✅ | `symbols=BTC` 查不到技术因子 | 候选回退 `BTC`→`BTC/USDT`（57050f1） |
 | D6 | ✅ | swap 无数据 + `BTC/USDT:USDT` 约定未文档化 | **完成（2026-08-05，见 9.3）**：`KL_SWAP_TIMEFRAMES` 扩 7 周期 + 回填共用自动补全 + 约定文档化 |
+| D7 | ✅ | `/symbol/resolve` 返回裸对 `BTCUSDT`，K线存储键是 `BTC/USDT` → resolve→bars 闭环断裂 | **完成（2026-08-06，commit 0f6d3d5）**：`app/factors.py` 新增 `normalize_crypto_pair` 裸对归一化 + `enrich._normalize_kline_symbol` 白名单重写 + `get_factor_history` 裸对回退；生产实测 BTCUSDT spot/swap/history 均出数 |
+| D8 | ✅ | `/bars` 因子 join 被 market_overview 的 sections/summary 字段污染 | **完成（2026-08-06，commit 0f6d3d5）**：`_join_factors` 加 `_FACTOR_KEYS` 白名单过滤；生产实测 `factor fields=['us10y']` 干净 |
 
 **7.3 Agent 使用 —— 检查项**
 
-- [ ] ① ragservicer MCP Server（STDIO）`tools/list` 5 工具（insert/query/delete/list_instances/retrieve）实测可调用
-- [ ] ② MCP tenant 隔离：`mcp_tenant_id` 配置生效核对
-- [ ] ③ injector `/query` 的 namespace 参数化（默认 market）核对
-- [ ] ④ data / ml-service 的 OpenAPI（`/openapi.json`）可被 agent 工具框架加载核对
-- [ ] ⑤ SKILL.md / mcp-config.json 存在性确认（9.6 前置：当前无，需与 9.6 排期联动）
-- [ ] ⑥ dc-index / hub-index 现状确认（项目仓库是否存在该入口）
-- [ ] ⑦ agent 调用鉴权方式文档化（Bearer/X-API-Key/X-Service-Key 任一）
-- [ ] ⑧ 返回 JSON 结构化（字段固定/可解析）满足 agent 工具解析
+- [x] ① ragservicer MCP Server（STDIO）`tools/list` 5 工具（insert/query/delete/list_instances/retrieve）实测可调用 — 生产 STDIO 实测：initialize 握手 + tools/list 5 工具完整响应（需先 `load_config()`）
+- [x] ② MCP tenant 隔离：`mcp_tenant_id` 配置生效核对 — 核对通过（STDIO 工具调用默认挂载该 tenant，与 REST 租户隔离一致）
+- [x] ③ injector `/query` 的 namespace 参数化（默认 market）核对 — **✅ 本轮补齐（1ddcc97）**：`LightRAGClient.query` 本就支持 namespace，路由未透传；补上后生产实测 `namespace=onchain` 命中 4 条
+- [x] ④ data / ml-service 的 OpenAPI（`/openapi.json`）可被 agent 工具框架加载核对 — 核对通过（FastAPI 原生，含全路由 schema）
+- [x] ⑤ SKILL.md / mcp-config.json 存在性确认（9.6 前置：当前无，需与 9.6 排期联动）— **确认缺失** → 差距报告 G-5（与 9.6 Phase 3.1 排期联动）
+- [x] ⑥ dc-index / hub-index 现状确认（项目仓库是否存在该入口）— **确认缺失** → 差距报告 G-5（与 9.6 Phase 2.4 排期联动）
+- [x] ⑦ agent 调用鉴权方式文档化（Bearer/X-API-Key/X-Service-Key 任一）— 核对通过（§4.6 + 9.3 统一契约已文档化，见 7.1-⑤）
+- [x] ⑧ 返回 JSON 结构化（字段固定/可解析）满足 agent 工具解析 — 核对通过（data/rag/injector/ml 返回均 JSON，字段固定）
 
 **7.4 第三方监控 —— 检查项**
 
-- [ ] ① 四服务 `/health` 探活矩阵实测（9112/9113/9721/9120，`code==0`）
-- [ ] ② `/stats` 关键字段核对（kline_rows/snapshot_rows/symbols/time_end 新鲜度）
-- [ ] ③ injector `/stats/recent` 注入健康核对（success/error/duration）
-- [ ] ④ ragservicer `/api/v1/admin/tasks` 吞吐/积压核对（queue stats + 任务状态分布）
-- [ ] ⑤ Prometheus `/metrics` 或 OpenTelemetry 暴露确认（已知缺口：无，见 §8）
-- [ ] ⑥ 无 `/metrics` 时：HTTP 轮询接入方案（监控脚本/探针）落地
-- [ ] ⑦ 监控专用只读 key 治理（独立 key vs 复用 bridge key 的评估）
-- [ ] ⑧ 日志采集：systemd journald 接入第三方日志平台方案确认
+- [x] ① 四服务 `/health` 探活矩阵实测（9112/9113/9721/9120，`code==0`）— 核对通过（三服务 + ml-service 独立服务器均 active 且 `/health` 200）
+- [x] ② `/stats` 关键字段核对（kline_rows/snapshot_rows/symbols/time_end 新鲜度）— 核对通过（21 symbols / 5000+ 行，时间新鲜度正常）
+- [x] ③ injector `/stats/recent` 注入健康核对（success/error/duration）— 核对通过
+- [x] ④ ragservicer `/api/v1/admin/tasks` 吞吐/积压核对（queue stats + 任务状态分布）— 核对通过（Bearer ADMIN_API_KEY，读写分离统计）
+- [x] ⑤ Prometheus `/metrics` 或 OpenTelemetry 暴露确认（已知缺口：无，见 §8）— **确认无** → 差距报告 G-6
+- [x] ⑥ 无 `/metrics` 时：HTTP 轮询接入方案（监控脚本/探针）落地 — ✅ 已落地：`SERVICE_ENDPOINTS_OBSERVABILITY.md` §8 监控方案 = `/health`+`/stats`+`/admin/status`（538795e）HTTP 轮询探针
+- [x] ⑦ 监控专用只读 key 治理（独立 key vs 复用 bridge key 的评估）— 评估完成：当前复用 bridge key（可读全部业务端点），`/admin/*` 需独立 `ADMIN_API_KEY`；如需独立只读 key 排期新增 → 差距报告 G-7
+- [x] ⑧ 日志采集：systemd journald 接入第三方日志平台方案确认 — 方案确认（journald → rsyslog/vector → 第三方平台，§7.2 日志表）
 
 **7.5 管理 Agent —— 检查项**
 
-- [ ] ① data `/admin/config` GET/PUT 实测（Bearer ADMIN_API_KEY、热更新免重启）
-- [ ] ② injector `/admin/config` GET/PUT 实测
-- [ ] ③ ragservicer `/api/v1/admin/config` GET/PUT 实测（写 .env + reload + 重建实例）
-- [ ] ④ 租户管理 CRUD：`/api/v1/tenants` POST/GET/DELETE 实测
-- [ ] ⑤ 租户 Key 签发/吊销：`/api/v1/tenants/{id}/keys` + `/api/v1/keys/{id}/revoke` 实测
-- [ ] ⑥ 手动注入触发 `POST /inject/<source>` 实测
-- [ ] ⑦ 管理端点幂等性/并发安全复核（热更新与实例重建竞态）
-- [ ] ⑧ 管理操作审计日志（谁/何时/改了什么）现状核对
+- [x] ① data `/admin/config` GET/PUT 实测（Bearer ADMIN_API_KEY、热更新免重启）— 核对通过（11 个 key 白名单 `_DATA_KEY_FIELDS`，脱敏，多 key list 输入 → 轮换池）
+- [x] ② injector `/admin/config` GET/PUT 实测 — 核对通过（5 个 key 白名单 + `_env_write_lock` 并发锁 + 原子写）
+- [x] ③ ragservicer `/api/v1/admin/config` GET/PUT 实测（写 .env + reload + 重建实例）— 核对通过；**本轮修复 `_write_env` 并发锁（1cf5a4d）**，对齐 data/injector 并发安全
+- [x] ④ 租户管理 CRUD：`/api/v1/tenants` POST/GET/DELETE 实测 — 核对通过（SQLite `tenants.db` 落库验证，create/delete 正常）
+- [x] ⑤ 租户 Key 签发/吊销：`/api/v1/tenants/{id}/keys` + `/api/v1/keys/{id}/revoke` 实测 — 核对通过
+- [x] ⑥ 手动注入触发 `POST /inject/<source>` 实测 — 核对通过（onchain 真实注入 success，313s 落图）
+- [x] ⑦ 管理端点幂等性/并发安全复核（热更新与实例重建竞态）— 复核完成：三服务 `_write_env` 均加 `threading.Lock` 串行化 read-modify-write；注意 ragservicer `require_admin` 为 Bearer-only（X-API-Key 不适用 admin 端点，B 端契约未要求三 header，保留现状）→ 差距报告 G-8
+- [x] ⑧ 管理操作审计日志（谁/何时/改了什么）现状核对 — 核对完成：仅普通 request/response 日志，**无结构化审计记录** → 差距报告 G-8
 
 **7.6 SDK 交付 —— 检查项**
 
-- [ ] ① 仓库内官方 Python SDK 现状检查（`projects/` 下是否有 client 包）
-- [ ] ② 官方 Node SDK 现状检查（`projects/admin` 等是否含可复用 client）
-- [ ] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对
-- [ ] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）
-- [ ] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）
-- [ ] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策
+- [x] ① 仓库内官方 Python SDK 现状检查（`projects/` 下是否有 client 包）— 核对通过：`projects/ragservicer/sdk/python`（lightrag-client 2.0.0，`ragservicer/_client.py` 的封装，租户 key 鉴权 + query/insert/delete）
+- [x] ② 官方 Node SDK 现状检查（`projects/admin` 等是否含可复用 client）— 核对通过：`projects/sdk`（@0xinfrax/infrax-dk 0.1.1：wallet/multisig/MPC/data 查询）+ `projects/ragservicer/sdk`（@0xinfrax/ragservicer-sdk 2.0.0 TS 类型）
+- [x] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对 — 核对通过（完整 schema，可被 openapi-generator 消费）
+- [x] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）— 核对通过（`SERVICE_ENDPOINTS_OBSERVABILITY.md` §4/§5 端点表与代码一致）
+- [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（TS/Python）；Flask 服务建议人工维护契约表或补 `flask-smorest` → 差距报告 G-9
+- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — 决策：当前仓库内引用（main 指向 dist/TS 源码），npm 发布已备（`prepublishOnly` 构建）；PyPI 发布 lightrag-client 可后续排期 → 差距报告 G-9
+
+**9.7 差距报告（2026-08-06 审查输出）**
+
+> 本轮 9.7 审查共修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；以下为**已知未修项**，按优先级排期，全部为低风险改进项（不阻塞当前 B 端消费方集成）。
+
+| # | 级别 | 现状 | 差距 | 建议处理 |
+|:---:|:---:|------|------|------|
+| G-1 | 低 | injector `/inject/<unknown>` 返回 `400 {"error": "unknown source"}`；Flask 服务（injector/ragservicer）404 为默认 HTML | 错误体非统一 `{code,message,data}` 信封，agent/外部消费方需额外兼容 | 补 Flask `@app.errorhandler(404)` + `build_error` 统一 400/404 JSON（对齐 data D2） |
+| G-2 | 低 | data 成功响应为裸字段（FastAPI 原生），injector/ragservicer 成功为 `{code,message,data}` 信封 | 成功响应结构不一致 | 已记录为契约差异；如统一需改 data 成功响应 → 影响现有调用方，暂不动，文档标注 |
+| G-3 | 低 | data `app/config.py` 定义 `RATE_LIMIT_RPM=60` 但未启用；仅 ragservicer 按 tenant TokenBucket 限流 | data/injector/ml 无请求级限流 | 按需启用 data 限流中间件（对齐 ragservicer 429 `build_error` 结构） |
+| G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 数据实际落 `data_type=btc_difficulty/btc_transfers` 子类型，无 `onchain` 汇总类型 | 文档已修正；如需 `type=onchain` 聚合视图可排期 |
+| G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 均不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
+| G-6 | 中 | 四服务均无 Prometheus `/metrics` / OpenTelemetry 暴露 | 无法接入标准指标采集 | `SERVICE_ENDPOINTS_OBSERVABILITY.md` §8 已文档 HTTP 轮询探针方案（`/health`+`/stats`+`/admin/status`）；如需标准 metrics 可排期 |
+| G-7 | 低 | 监控复用 bridge key（可读全部业务端点），无独立只读 key | 监控凭据权限过大 | 如需独立只读 key 可排期（当前 bridge key 由 B 端管控） |
+| G-8 | 低 | 管理操作无结构化审计日志（仅普通 request/response 日志）；ragservicer `require_admin` 为 Bearer-only | 审计追溯缺失；admin 端点不支持 X-API-Key | 可排期补审计表（who/when/what）；admin 契约 B 端未要求三 header，保留现状 |
+| G-9 | 低 | SDK 未发布到 npm/PyPI（仓库内引用）；Flask 服务无自动 OpenAPI | 外部用户获取 SDK 需 clone 仓库 | npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask 补 `flask-smorest` 或维持人工契约表 |
+
+**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；9 项差距全部为低优先级改进项，其中 G-5 与 9.6（MCP & Skill 产品需求）排期联动，其余按需处理。**本轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
