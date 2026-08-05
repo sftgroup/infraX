@@ -59,6 +59,23 @@ _TIMEFRAMES = [t.strip() for t in KL_TIMEFRAMES.split(",") if t.strip()]
 _SWAP_SYMBOLS = [s.strip() for s in KL_SWAP_SYMBOLS.split(",") if s.strip()]
 _SWAP_TIMEFRAMES = [t.strip() for t in KL_SWAP_TIMEFRAMES.split(",") if t.strip()]
 
+
+def set_runtime_symbols(symbols=None, timeframes=None, swap_symbols=None, swap_timeframes=None) -> None:
+    """运行时更新采集交易对（PUT /admin/symbols 调用）。
+
+    只更新内存中的模块级列表（采集循环下次迭代即生效），
+    持久化由调用方（main.py）写 .env 负责。
+    """
+    global _SYMBOLS, _TIMEFRAMES, _SWAP_SYMBOLS, _SWAP_TIMEFRAMES
+    if symbols is not None:
+        _SYMBOLS = [s.strip() for s in symbols if str(s).strip()]
+    if timeframes is not None:
+        _TIMEFRAMES = [t.strip() for t in timeframes if str(t).strip()]
+    if swap_symbols is not None:
+        _SWAP_SYMBOLS = [s.strip() for s in swap_symbols if str(s).strip()]
+    if swap_timeframes is not None:
+        _SWAP_TIMEFRAMES = [t.strip() for t in swap_timeframes if str(t).strip()]
+
 # ── 历史深度回填目标（天）────────────────────────────
 # 对齐 B 端验收标准（AITRADER_DATA_SERVICE_REQ.md §7）：
 #   1m≥30 天；5m/15m/30m≥180 天；1h/4h≥365 天；1d≥1095 天（3 年）
@@ -479,6 +496,11 @@ class KlineStore:
         except Exception:
             self._multi_config = {}
         return self._multi_config
+
+    def reload_multi_config(self) -> None:
+        """失效 multi 配置缓存，下次采集重新读取 data_config.json（PUT /admin/symbols 调用）。"""
+        if hasattr(self, "_multi_config"):
+            del self._multi_config
 
     def _collect_multi_market(self):
         """Fetch multi-market K-lines and write OHLCV (no indicators).

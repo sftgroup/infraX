@@ -661,6 +661,146 @@ async def admin_status(request: Request):
     return {"code": 0, "message": "ok", "data": data}
 
 
+# ── Admin symbols (交易对热管理，9.3 待办) ──────────────────
+# 支持动态添加/移除/全量替换交易对（无需重启）：
+#   - crypto/swap → 更新 .env KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_* + 运行时 set_runtime_symbols()
+#   - us_stocks/forex/futures/cn_stocks/hk_stocks → 更新 data_config.json multi_kline.<market>
+#     + kline_store.reload_multi_config()（下轮采集生效）
+# 鉴权与 /admin/config 一致（Bearer ADMIN_API_KEY）。
+# body: {"market": "crypto|swap|us_stocks|forex|futures|cn_stocks|hk_stocks",
+#        "action": "add|remove|set", "symbols": [...], "timeframes": [...]}
+
+_DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")
+_MULTI_MARKETS = {"us_stocks", "forex", "futures", "cn_stocks", "hk_stocks"}
+
+
+def _read_data_config() -> dict:
+    try:
+        return json.loads(Path(_DATA_CONFIG_PATH).read_text())
+    except Exception:
+        return {}
+
+
+def _write_data_config(config: dict) -> None:
+    tmp = Path(_DATA_CONFIG_PATH).with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+    os.replace(tmp, _DATA_CONFIG_PATH)
+
+
+def _symbols_current(market: str) -> tuple[list, list]:
+    """当前交易对/周期（crypto 系读 os.environ，multi 系读 data_config.json）。"""
+    if market == "crypto":
+        syms = [s.strip() for s in os.environ.get("KL_SYMBOLS", "").split(",") if s.strip()]
+        tfs = [t.strip() for t in os.environ.get("KL_TIMEFRAMES", "").split(",") if t.strip()]
+        return syms, tfs
+    if market == "swap":
+        syms = [s.strip() for s in os.environ.get("KL_SWAP_SYMBOLS", "").split(",") if s.strip()]
+        tfs = [t.strip() for t in os.environ.get("KL_SWAP_TIMEFRAMES", "").split(",") if t.strip()]
+        return syms, tfs
+    # multi 市场：data_config.json multi_kline.<market>.symbols
+    cfg = _read_data_config()
+    mk = (cfg.get("multi_kline") or {}).get(market) or {}
+    syms = [s["symbol"] for s in (mk.get("symbols") or [])]
+    tfs = list(mk.get("timeframes") or [])
+    return syms, tfs
+
+
+def _apply_symbol_changes(market: str, action: str, symbols: list, timeframes: list) -> tuple[list, list]:
+    """计算变更后的交易对/周期列表。"""
+    cur_syms, cur_tfs = _symbols_current(market)
+    if action == "add":
+        out_syms = list(cur_syms)
+        for s in symbols:
+            if s not in out_syms:
+                out_syms.append(s)
+        out_tfs = list(cur_tfs)
+        for t in timeframes:
+            if t not in out_tfs:
+                out_tfs.append(t)
+    elif action == "remove":
+        rm = set(symbols)
+        out_syms = [s for s in cur_syms if s not in rm]
+        out_tfs = [t for t in cur_tfs if t not in set(timeframes)]
+    elif action == "set":
+        out_syms = list(symbols)
+        out_tfs = list(timeframes) if timeframes else cur_tfs
+    else:
+        raise HTTPException(status_code=400, detail=f"action must be add|remove|set, got {action!r}")
+    return out_syms, out_tfs
+
+
+def _persist_crypto(market: str, symbols: list, timeframes: list) -> None:
+    """crypto/swap → 写 .env + os.environ + kline_store 运行时列表。"""
+    from app.kline_store import set_runtime_symbols
+    if market == "crypto":
+        updates = {"KL_SYMBOLS": ",".join(symbols)}
+        if timeframes:
+            updates["KL_TIMEFRAMES"] = ",".join(timeframes)
+        _write_env_file(updates)
+        for k, v in updates.items():
+            os.environ[k] = v
+        set_runtime_symbols(symbols=symbols, timeframes=(timeframes or None))
+    else:  # swap
+        updates = {"KL_SWAP_SYMBOLS": ",".join(symbols)}
+        if timeframes:
+            updates["KL_SWAP_TIMEFRAMES"] = ",".join(timeframes)
+        _write_env_file(updates)
+        for k, v in updates.items():
+            os.environ[k] = v
+        set_runtime_symbols(swap_symbols=symbols, swap_timeframes=(timeframes or None))
+    logger.info("Admin symbols updated %s: %s @ %s", market, symbols, timeframes)
+
+
+def _persist_multi(market: str, symbols: list, timeframes: list) -> None:
+    """multi 市场 → 更新 data_config.json multi_kline.<market> + 失效缓存。"""
+    from app.kline_store import get_kline_store
+    cfg = _read_data_config()
+    mk = cfg.setdefault("multi_kline", {}).setdefault(market, {})
+    merged = list(symbols)
+    # 保留 name 字段（新 symbol 用自身作 name）
+    new_symbols = []
+    for s in merged:
+        existing = next((x for x in (mk.get("symbols") or []) if x["symbol"] == s), None)
+        new_symbols.append(existing or {"symbol": s, "name": s})
+    mk["symbols"] = new_symbols
+    if timeframes:
+        mk["timeframes"] = list(timeframes)
+    cfg["multi_kline"][market] = mk
+    _write_data_config(cfg)
+    try:
+        get_kline_store().reload_multi_config()
+    except Exception as e:
+        logger.warning("reload_multi_config failed: %s", e)
+    logger.info("Admin symbols updated %s: %s @ %s", market, merged, timeframes)
+
+
+@app.put("/admin/symbols")
+async def admin_put_symbols(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    market = (body.get("market") or "").strip().lower()
+    action = (body.get("action") or "add").strip().lower()
+    symbols = [str(s).strip() for s in (body.get("symbols") or []) if str(s).strip()]
+    timeframes = [str(t).strip() for t in (body.get("timeframes") or []) if str(t).strip()]
+    if not market or market not in ({"crypto", "swap"} | _MULTI_MARKETS):
+        raise HTTPException(status_code=400, detail=f"market must be one of crypto|swap|{','.join(sorted(_MULTI_MARKETS))}")
+    if not symbols:
+        raise HTTPException(status_code=400, detail="symbols required")
+    new_syms, new_tfs = _apply_symbol_changes(market, action, symbols, timeframes)
+    if market in ("crypto", "swap"):
+        _persist_crypto(market, new_syms, new_tfs)
+    else:
+        _persist_multi(market, new_syms, new_tfs)
+    return {"code": 0, "message": "ok", "data": {
+        "market": market, "action": action,
+        "symbols": new_syms, "timeframes": new_tfs,
+    }}
+
+
 # ── Startup ────────────────────────────────────────────────────
 
 # 采集器实例注册表（/admin/status 查询运行状态用）
