@@ -522,7 +522,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-5 | `/policy/broker-market` 券商市场策略 | ⚠️ | P1 | **端点缺失（2026-08-05 生产实测 404，data-service 代码无此路由）**；REQ 文档标"已实现"与实际不符 → 需确认是否由 data-service 承接 |
 | DS-6 | `/stats` `/health` | ✅ | — | |
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
-| DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度未达标**（2026-08-05 实测 1m 仅 2.1 天/需≥30 天、1d 仅 500 天/需≥3 年，B 端验收第 2 条；回填待办见 9.3） |
+| DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度已对齐验收标准**（2026-08-05 aa3f1c1 回填：1d 1095 根/3 年、1m 43202 根/30 天、5m 180 天等，见 9.3） |
 | DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
 | DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ✅ | P1 | 2d78050 已部署；生产实测：market_overview ✅（crypto 15 项）、commodities ✅（SI=F 白银/CL=F 原油 WTI 等）、forex_pairs ✅（EUR/USD/GBP/USD 等），yfinance 免费源正常出数 |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
@@ -554,7 +554,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **D2（9.7-7.2 审查发现，关联 9.7-7.1-⑥）** data 数据面统一响应体：错误统一包装为 `{code, message, data}`（2026-08-05 完成，commit 05b02eb + eac3656）：新增 422 / HTTPException（StarletteHTTPException 基类，含 404）/ 未捕获异常三个 handler；实测 404/422/业务 401 均 `{code,message,data}`，鉴权 401 保持 `{"detail":"unauthorized"}` 契约，成功响应不受影响
 - [ ] **D6（9.7-7.2 审查发现）** swap 数据覆盖确认 + 约定文档化：核对生产 `KL_SWAP_ENABLED`/`KL_SWAP_SYMBOLS`/`KL_SWAP_TIMEFRAMES` 配置（当前 `/bars?market_type=swap&symbol=BTC/USDT` count=0 无数据）；`BTC/USDT:USDT` 存储键约定补入端点文档
 - [ ] **B 端契约缺口确认（DS-4/DS-5，2026-08-05 实测）** `/symbol/resolve` 与 `/policy/broker-market` 在 data-service 代码与生产均 **404 不存在**，REQ 文档标"已实现"不符 → 确认是否由 data-service 承接；DS-11 覆盖范围决策前需先解决端点存在性
-- [ ] **B 端验收数据深度回填（2026-08-05 实测）** `/bars` 深度未达标：1m 仅 2.1 天（验收 ≥30 天）、1d 仅 500 天（验收 ≥3 年）；需评估历史回填策略（首次回填窗口/数据源限流）并排期
+- [x] **B 端验收数据深度回填（2026-08-05 完成，commit aa3f1c1）** `/bars` 深度已对齐验收标准：KlineStore 新增 `_backfill_all/_backfill_gap` 分页回填（默认 1m≥30d、5m/15m/30m≥180d、1h/4h≥365d、1d≥1095d，`KL_BACKFILL_DAYS` 可覆盖；幂等 MIN(ts) 达标跳过；spot/swap 共用）。生产回填日志 total：1m 43202、5m 51840、15m 17280、30m 8640、1h 8576、4h 2185、1d 1095（ETH/SOL 同）；swap `BTC/USDT:USDT` 1m +42000。实测 `/bars?timeframe=1d` count=1095 span=1094 天、库 1m 30 天。注：`/bars` 单次查询 limit 上限 5000，30 天 1m 需 `start`/`end` 分段
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
