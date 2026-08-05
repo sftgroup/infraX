@@ -137,14 +137,21 @@ server.tool(
   "List or search supported trading symbols in the InfraX market data service.",
   {
     query: z.string().optional().describe("Search keyword, e.g. BTC or 600519; omit to list all"),
-    limit: z.coerce.number().optional().describe("Max results (default 100)"),
+    market: z.string().optional().describe("Market: crypto (default), usstock, forex, futures, cnstock, hkstock"),
+    limit: z.coerce.number().optional().describe("Max results (default 20, max 100)"),
   },
-  async ({ query, limit }) => {
+  async ({ query, market, limit }) => {
+    if (query) {
+      const q = new URLSearchParams({ keyword: query });
+      if (market) q.set("market", market);
+      if (limit) q.set("limit", String(limit));
+      return { content: [{ type: "text" as const, text: JSON.stringify(
+        await api(DATA_URL, DATA_API_KEY, `/symbols/search?${q.toString()}`), null, 2) }] };
+    }
     const q = new URLSearchParams();
-    if (query) q.set("q", query);
+    if (market) q.set("market", market);
     if (limit) q.set("limit", String(limit));
-    const path = query ? `/symbols/search?${q.toString()}` : `/symbols?${q.toString()}`;
-    const data = await api(DATA_URL, DATA_API_KEY, path);
+    const data = await api(DATA_URL, DATA_API_KEY, `/symbols?${q.toString()}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
   }
 );
