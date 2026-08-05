@@ -224,6 +224,7 @@ GET /stats
 | `TIINGO_API_KEY` | 已配置（2026-08-06） | 外汇/期货备源：实测 fx EURUSD bid 1.15446；IEX 美股 quote free tier 无权限（返回 None，美股走 akshare/腾讯） |
 | `ALPHA_VANTAGE_KEY` | 已配置（2026-08-06） | DXY 美元指数备源：实测 GLOBAL_QUOTE AAPL 309.38 |
 | `CRYPTOCOMPARE_API_KEY` | 已配置（2026-08-06） | 预留（当前 crypto 价格走 ccxt/CoinGecko）：实测 BTC/USD 64516.08 |
+| `TUSHARE_TOKEN` | 已配置（2026-08-06） | Tushare A股日线（POST+token，多 key 轮换）：接入 cn_stock Tier 1.5（Twelve Data 后、腾讯前）。⚠️ 当前 token 积分不足（40203，需 ≥2000），fail-silent 回退腾讯；积分到位自动生效 |
 | `LOG_LEVEL` | INFO | 日志级别 |
 
 ---
