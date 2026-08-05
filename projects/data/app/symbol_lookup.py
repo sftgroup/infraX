@@ -142,16 +142,25 @@ def _twelve_search(market: str, keyword: str) -> list[dict]:
 
 
 def _finnhub_search(keyword: str) -> list[dict]:
-    """Finnhub /api/v1/search（美股主源）。返回 [{symbol, name, market}]。"""
+    """Finnhub /api/v1/search（美股主源）。返回 [{symbol, name, market}]。
+
+    Finnhub search 是全市场搜索（含 .SS/.SZ/.HK/.L 等非美后缀），
+    只保留纯美股格式（字母 + 可选 -/.，如 AAPL / BRK-B / BF.B）。
+    """
     from app.data_providers.finnhub import _finnhub_get
+    import re
+    _US_TICKER_RE = re.compile(r"^[A-Za-z]+(?:[.\-][A-Za-z]+)*$")
     data = _finnhub_get("search", {"q": keyword})
     if not data:
         return []
     out = []
     for item in data.get("result") or []:
+        sym = item.get("symbol") or ""
+        if not _US_TICKER_RE.match(sym):
+            continue
         out.append({
-            "symbol": item.get("symbol"),
-            "name": item.get("description") or item.get("symbol"),
+            "symbol": sym,
+            "name": item.get("description") or sym,
             "market": "usstock",
         })
         if len(out) >= _TD_LIMIT:
