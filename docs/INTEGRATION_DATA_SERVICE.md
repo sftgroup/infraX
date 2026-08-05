@@ -204,11 +204,14 @@ https://infrax.0xainet.top/mcp/message
 {
   "mcpServers": {
     "infrax": {
-      "url": "https://infrax.0xainet.top/mcp/message"
+      "url": "https://infrax.0xainet.top/mcp/message",
+      "headers": { "X-API-Key": "mx_xxx" }
     }
   }
 }
 ```
+
+> MCP 端点入站强制鉴权：需携带 `mx_` MCP 专用 key（或平台 bridge key），三 header 任一；`/mcp/health` 免鉴权。key 在 admin 面板 **API Keys** 页签发。
 
 **data 相关工具：**
 

@@ -5,6 +5,7 @@ import { api } from '../lib';
 interface DataKey {
   id: number;
   label: string;
+  scope?: 'data' | 'mcp';
   key_masked: string;
   rate_limit: number;
   enabled: number;
@@ -13,7 +14,7 @@ interface DataKey {
   request_count: number;
   created_at: number;
   updated_at: number;
-  service?: 'data';
+  service?: 'data' | 'mcp';
 }
 interface RagKey {
   id: string;
@@ -60,7 +61,7 @@ export default function ApiKeys() {
   const [ts, setTs] = useState(new Date());
 
   // 签发表单
-  const [svc, setSvc] = useState<'data' | 'rag'>('data');
+  const [svc, setSvc] = useState<'data' | 'mcp' | 'rag'>('data');
   const [label, setLabel] = useState('');
   const [rateLimit, setRateLimit] = useState('600');
   const [tenantId, setTenantId] = useState('');
@@ -104,7 +105,7 @@ export default function ApiKeys() {
       const r = await api<any>('/data/keys', { method: 'POST', body: JSON.stringify(payload) });
       const key = r.service === 'rag' ? r.key : r.api_key;
       setNewKey({ label: r.service === 'rag' ? `${r.tenant_id}/${r.name}` : r.label, key });
-      setMsg({ ok: true, text: r.service === 'rag' ? '租户 key 已签发（仅显示一次）' : 'data key 已签发（仅显示一次）' });
+      setMsg({ ok: true, text: r.service === 'rag' ? '租户 key 已签发（仅显示一次）' : r.service === 'mcp' ? 'MCP key 已签发（仅显示一次）' : 'data key 已签发（仅显示一次）' });
       setLabel(''); setTenantId('');
       fetchAll();
     } catch (e: any) {
@@ -123,7 +124,8 @@ export default function ApiKeys() {
     try { await navigator.clipboard.writeText(newKey.key); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
   };
 
-  const dataKeys = ov?.data.keys || [];
+  const dataKeys = (ov?.data.keys || []).filter(k => k.scope !== 'mcp');
+  const mcpKeys = (ov?.data.keys || []).filter(k => k.scope === 'mcp');
   const tenants = ov?.rag.tenants || [];
 
   return (
@@ -145,10 +147,11 @@ export default function ApiKeys() {
             <label className="form-label">服务</label>
             <select className="form-input" value={svc} onChange={e => setSvc(e.target.value as any)}>
               <option value="data">Data Service（dx_ key · 行情/因子/快照）</option>
+              <option value="mcp">MCP Hub（mx_ key · AI Agent 入口）</option>
               <option value="rag">LightRAG（lr_ key · 知识库租户）</option>
             </select>
           </div>
-          {svc === 'data' ? (
+          {svc === 'data' || svc === 'mcp' ? (
             <>
               <div>
                 <label className="form-label">label（标识使用方，如 aitrader）</label>
@@ -231,6 +234,51 @@ export default function ApiKeys() {
                 </tr>
               ))}
               {!dataKeys.length && <tr><td colSpan={7} className="tooltip" style={{ textAlign: 'center', padding: 12 }}>暂无 data key</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MCP Hub keys */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> MCP Hub keys（mx_）</div>
+          <span className="tooltip">AI Agent / MCP 客户端调用 /mcp/message 时携带（Bearer / X-API-Key）</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>label</th><th>key</th><th>状态</th><th>RPM</th><th>请求数</th><th>最后使用</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {mcpKeys.map(k => (
+                <tr key={k.id}>
+                  <td style={{ fontWeight: 600 }}>{k.label}</td>
+                  <td className="mono">{k.key_masked}</td>
+                  <td><span className={`badge ${k.enabled ? 'green' : 'red'}`}>{k.enabled ? '启用' : '禁用'}</span></td>
+                  <td className="mono">{k.rate_limit}/min</td>
+                  <td className="mono">{k.request_count}</td>
+                  <td className="mono">{fmtMs(k.last_used_at)}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <button className="btn btn-sm" title={k.enabled ? '禁用' : '启用'} onClick={() => act(() => api(`/data/keys/data/${k.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !k.enabled }) }), k.enabled ? '已禁用' : '已启用')}>
+                        <Power size={13} />
+                      </button>
+                      <button className="btn btn-sm" title="轮换（旧 key 立即失效）" onClick={() => act(async () => {
+                        const r = await api<any>(`/data/keys/data/${k.id}/rotate`, { method: 'POST' });
+                        setNewKey({ label: `${k.label}（轮换后新 key）`, key: r.api_key });
+                        setMsg({ ok: true, text: '已轮换（新 key 仅显示一次）' });
+                      }, '')}>
+                        <RotateCw size={13} />
+                      </button>
+                      <button className="btn btn-sm" title="删除" onClick={() => { if (confirm(`确认删除 MCP key ${k.label}？删除后立即失效`)) act(() => api(`/data/keys/data/${k.id}`, { method: 'DELETE' }), '已删除'); }}>
+                        <Trash2 size={13} style={{ color: 'var(--red)' }} />
+                      </button>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!mcpKeys.length && <tr><td colSpan={7} className="tooltip" style={{ textAlign: 'center', padding: 12 }}>暂无 MCP key</td></tr>}
             </tbody>
           </table>
         </div>

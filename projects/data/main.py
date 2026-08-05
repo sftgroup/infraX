@@ -866,6 +866,9 @@ async def admin_create_api_key(request: Request):
     label = (body.get("label") or "").strip()
     if not label:
         raise HTTPException(status_code=400, detail="label required")
+    scope = str(body.get("scope") or "data").strip()
+    if scope not in ("data", "mcp"):
+        raise HTTPException(status_code=400, detail="scope must be 'data' or 'mcp'")
     rate_limit = body.get("rate_limit")
     if rate_limit in (None, ""):
         rate_limit = None
@@ -874,10 +877,27 @@ async def admin_create_api_key(request: Request):
             rate_limit = int(rate_limit)
         except (TypeError, ValueError):
             raise HTTPException(status_code=400, detail="rate_limit must be an integer")
-    raw, row = api_keys.create_key(label=label, rate_limit=rate_limit, created_by="admin")
+    raw, row = api_keys.create_key(label=label, rate_limit=rate_limit, created_by="admin", scope=scope)
     row["api_key"] = raw  # 完整 key 仅此一次可见
-    logger.info("Admin api-key created: id=%s label=%s", row["id"], label)
+    logger.info("Admin api-key created: id=%s label=%s scope=%s", row["id"], label, scope)
     return {"code": 0, "message": "ok", "data": row}
+
+
+@app.post("/api-keys/verify")
+async def verify_api_key(request: Request):
+    """校验 MCP 专用 key（scope=mcp）。供 hub-index 入站鉴权调用。
+
+    该端点为业务端点（非 /admin/*），由 _api_auth 中间件统一鉴权
+    （DATA_API_KEY / monitor / 签发的 dx_ key 任一放行），避免 ADMIN_API_KEY
+    跨服务扩散。返回 0/200 → 有效；401 无效 / 403 禁用 / 429 限流。
+    """
+    body = await request.json() or {}
+    api_key = str(body.get("api_key") or "").strip()
+    status = api_keys.verify(api_key, scope="mcp")
+    if status == 0:
+        return {"code": 0, "message": "ok", "data": {"valid": True}}
+    message = {403: "API key disabled", 429: "Rate limit exceeded"}.get(status, "unauthorized")
+    raise HTTPException(status_code=status, detail=message)
 
 
 @app.patch("/admin/api-keys/{key_id}")

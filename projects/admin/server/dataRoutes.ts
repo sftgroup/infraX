@@ -379,14 +379,14 @@ router.get('/keys', async (_req: any, res: any) => {
 // ── 统一签发：{service:'data', label, rate_limit} | {service:'rag', tenant_id, name, expires_days} ──
 router.post('/keys', async (req: any, res: any) => {
   const { service } = req.body || {};
-  if (service === 'data') {
+  if (service === 'data' || service === 'mcp') {
     const label = String(req.body.label || '').trim();
     if (!label) return res.status(400).json({ code: -1, message: 'label required', data: null });
-    const r = await dataKeyReq<any>('POST', '/admin/api-keys', { label, rate_limit: req.body.rate_limit });
+    const r = await dataKeyReq<any>('POST', '/admin/api-keys', { label, rate_limit: req.body.rate_limit, scope: service });
     if (r.status !== 201 && r.status !== 200) {
       return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
     }
-    return res.json({ code: 0, message: 'success', data: { ...r.data, service: 'data' } });
+    return res.json({ code: 0, message: 'success', data: { ...r.data, service } });
   }
   if (service === 'rag') {
     const tenant_id = String(req.body.tenant_id || '').trim();
@@ -414,7 +414,7 @@ router.post('/keys', async (req: any, res: any) => {
     }
     return res.json({ code: 0, message: 'success', data: { ...kR.data, service: 'rag' } });
   }
-  res.status(400).json({ code: -1, message: "service must be 'data' or 'rag'", data: null });
+  res.status(400).json({ code: -1, message: "service must be 'data', 'mcp' or 'rag'", data: null });
 });
 
 // ── data key：更新（label/enabled/rate_limit） ──

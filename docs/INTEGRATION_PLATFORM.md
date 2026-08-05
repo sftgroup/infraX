@@ -1,6 +1,6 @@
 # InfraX 平台整体集成文档
 
-> 最后更新：2026-08-06 | 适用版本：SDK `@0xinfrax/infrax-dk@0.3.0` · data v1.0.0 · ragservicer 2.0.0 · hub-index MCP 1.0.0
+> 最后更新：2026-08-06 | 适用版本：SDK `@0xinfrax/infrax-dk@0.3.0` · data v1.0.0 · ragservicer 2.0.0 · hub-index MCP 1.0.1
 > 本文是**平台总览**文档，面向接入 InfraX 能力的各项目方（金融量化平台、服务平台等）。
 > 各微服务单独文档：**[数据服务使用文档](INTEGRATION_DATA_SERVICE.md)** · **[LightRAG 知识库使用文档](INTEGRATION_LIGHTRAG.md)**
 
@@ -91,6 +91,7 @@ X-Service-Key: <key>      # 服务间调用约定
 | 只读监控 key | 自定义 | 仅 GET/HEAD/OPTIONS | InfraX 内部配置 |
 | **数据服务租户 key** | `dx_` | data 全部业务端点 | 管理员在 admin 面板 **API Keys** 页签发（见 §3.5） |
 | **LightRAG 租户 key** | `lr_` | 绑定的 ragservicer 租户 | 管理员在 admin 面板 **API Keys** 页创建租户后签发（见 §3.5） |
+| **MCP 专用 key** | `mx_` | 调用 `/mcp/message`（AI Agent / MCP 客户端） | 管理员在 admin 面板 **API Keys** 页签发（见 §3.5）；不可访问 data/rag 业务端点 |
 
 ### 3.4 开通流程（项目方）
 
@@ -105,23 +106,23 @@ X-Service-Key: <key>      # 服务间调用约定
 
 ### 3.5 管理端：统一 API Key 管理（admin 面板）
 
-管理员可在 admin 面板一处管理 **data（`dx_`）** 与 **LightRAG（`lr_`）** 两类 key，无需分别调用各服务管理端点。
+管理员可在 admin 面板一处管理 **data（`dx_`）**、**MCP（`mx_`）** 与 **LightRAG（`lr_`）** 三类 key，无需分别调用各服务管理端点。
 
 **入口**：`http://127.0.0.1:3002`（内网，登录 admin 账号）→ 侧边栏 **API Keys**。
 
-| 能力 | data（`dx_` key） | LightRAG（`lr_` key） |
-|---|---|---|
-| 签发 | label + RPM 限流 | 创建租户（不存在则自动建）→ 签发 name + 有效期（天） |
-| 查看 | 列表（掩码展示） | 租户列表 + 各租户 key（掩码 / 有效期） |
-| 变更 | 启用 / 禁用、轮换（返回新 key）、删除 | 吊销 key、删除租户（连带全部 key） |
-| 状态列 | enabled / RPM / 请求数 / 最后使用时间 | active / 过期时间 |
+| 能力 | data（`dx_` key） | MCP（`mx_` key） | LightRAG（`lr_` key） |
+|---|---|---|---|
+| 签发 | label + RPM 限流 | label + RPM 限流 | 创建租户（不存在则自动建）→ 签发 name + 有效期（天） |
+| 查看 | 列表（掩码展示） | 列表（掩码展示） | 租户列表 + 各租户 key（掩码 / 有效期） |
+| 变更 | 启用 / 禁用、轮换（返回新 key）、删除 | 启用 / 禁用、轮换、删除 | 吊销 key、删除租户（连带全部 key） |
+| 状态列 | enabled / RPM / 请求数 / 最后使用时间 | enabled / RPM / 请求数 / 最后使用时间 | active / 过期时间 |
 
 > ⚠️ **key 只完整展示一次**（签发与轮换时），请立即保存。
 > 页面 10s 自动刷新；签发新 key 后无需等待即可复制。
 
-**后端聚合说明**：admin 服务将请求转发到 data（`/admin/api-keys`，Bearer data 的 `ADMIN_API_KEY`）与 ragservicer（`/api/v1/tenants...`，Bearer ragservicer 的 `ADMIN_API_KEY`）。两个上游的 `ADMIN_API_KEY` 在 admin 服务启动时从各自 `.env` 读取；未配置时对应区块显示 `adminKeySet=false`，需在 admin 服务重启前补齐。
+**后端聚合说明**：admin 服务将请求转发到 data（`/admin/api-keys`，Bearer data 的 `ADMIN_API_KEY`）与 ragservicer（`/api/v1/tenants...`，Bearer ragservicer 的 `ADMIN_API_KEY`）。两个上游的 `ADMIN_API_KEY` 在 admin 服务启动时从各自 `.env` 读取；未配置时对应区块显示 `adminKeySet=false`，需在 admin 服务重启前补齐。MCP key 由 data 服务签发（scope=mcp，`mx_` 前缀），hub-index 入站时经 data 业务端点 `POST /api-keys/verify` 实时校验（Bearer bridge key）。
 
-**当前已签发**：`aitrader / aiservicer / aihunter-saas / aiops-saas` 各一把 `dx_` key（600 RPM）与一个 `lr_` 租户 key（365 天）。
+**当前已签发**：`aitrader / aiservicer / aihunter-saas / aiops-saas` 各一把 `dx_` key（600 RPM）、一个 `lr_` 租户 key（365 天）与一把 `mx_` MCP key（600 RPM）。
 
 ---
 
@@ -129,7 +130,7 @@ X-Service-Key: <key>      # 服务间调用约定
 
 ### 4.1 申请 key
 
-管理员会提供一把或多把 key（`dx_` / `lr_`）。**key 只显示一次，请立即保存**。
+管理员会提供一把或多把 key（`dx_` / `mx_` / `lr_`）。**key 只显示一次，请立即保存**。
 
 ### 4.2 配置环境变量（以 Node.js / 量化平台为例）
 
@@ -205,10 +206,15 @@ const stats = await ix.data.stats();
 ```json
 {
   "mcpServers": {
-    "infrax-hub": { "url": "https://infrax.0xainet.top/mcp/message" }
+    "infrax-hub": {
+      "url": "https://infrax.0xainet.top/mcp/message",
+      "headers": { "X-API-Key": "mx_xxx" }
+    }
   }
 }
 ```
+
+> MCP 端点自 v1.0.1 起**入站强制鉴权**：需携带 `mx_` MCP 专用 key（或平台 bridge key），携带方式同 §3.2 三选一；`/mcp/health` 免鉴权。无 key / 无效 key 返回 `401`。
 
 13 个工具：`data_bars` / `data_ticker` / `data_factors` / `data_factors_history` / `data_snapshots` / `data_symbols` / `data_symbol_search` / `data_symbol_resolve` / `data_broker_policy` / `data_stats` / `ml_predictions` / `injector_trigger` / `rag_query`。
 
