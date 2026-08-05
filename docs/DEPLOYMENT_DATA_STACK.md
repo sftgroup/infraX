@@ -638,7 +638,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）
 - [ ] ④ ml-service :9120 实际路由与 §6 核对
 - [ ] ⑤ 鉴权契约复核：四服务 Bearer/X-API-Key/X-Service-Key 三选一 + 401 统一响应 + `/health` 豁免（生产已闭环 9.3，此处按文档回归）
-- [ ] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致
+- [ ] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致（**含 D2 待办**：data 数据面 500 错误体统一包装，见 9.3）
 - [ ] ⑦ 错误码/异常契约文档化：400/401/404/409/429/500 各服务语义核对
 - [ ] ⑧ 限流/配额：`RATE_LIMIT_RPM`（ragservicer）是否生效、返回 429 结构文档化
 - [ ] ⑨ CORS/跨域策略：外部 web 应用直接调用时的 allow_origins 现状核对

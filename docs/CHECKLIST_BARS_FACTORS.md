@@ -162,8 +162,8 @@
 | # | 级别 | 发现 | 处理 |
 |:---:|:---:|------|------|
 | D1 | ✅ | `/bars` timeframe 文档描述 `1D`（大写）与 `.env` `1d`（小写）不一致 | **已修复**：实测确认大小写敏感（`1d` 有数据 / `1D` 空），docstring 修正为 `1m/5m/15m/30m/1h/4h/1d`；客户端须用小写 |
-| D2 | ⚠️ | `/bars` 500 错误体为 FastAPI 默认 `{"detail":...}`，无 `{code,message,data}` 包装（data 数据面端点整体无统一包装） | 保留 —— 联动 7.1-⑥ 统一响应体核对 |
+| D2 | ⚠️ | `/bars` 500 错误体为 FastAPI 默认 `{"detail":...}`，无 `{code,message,data}` 包装（data 数据面端点整体无统一包装） | **待办（9.3）**：data 数据面统一响应体包装，关联 7.1-⑥ |
 | D3 | ✅ | `/factors/current` docstring 仅列 4 类 category，实现支持 7 类 | **已修复**：docstring 补全为 external/sentiment/news/opportunities/heatmap/calendar/snapshot |
 | D4 | ✅ | `/factors/history` `ORDER BY ts DESC` 未反转，series 降序与 /bars 升序不一致 | **已修复**：`ORDER BY ts ASC`，series 升序对齐 /bars |
 | D5 | ✅ | `/factors/current` 默认 `symbols=BTC` 查不到 kline 技术因子（存储键 `BTC/USDT`） | **已修复**：技术因子查询候选回退（`BTC` → `BTC/USDT`），默认值现带 rsi_14/macd 等 |
-| D6 | ℹ️ | swap 符号 `BTC/USDT:USDT` 存储键约定未在 OpenAPI/文档显式说明；且 swap 当前 `count=0` 无数据 | 保留 —— 补充文档 + 确认 swap 数据覆盖（KL_SWAP_* 是否启用） |
+| D6 | ℹ️ | swap 符号 `BTC/USDT:USDT` 存储键约定未在 OpenAPI/文档显式说明；且 swap 当前 `count=0` 无数据 | **待办（9.3）**：swap 数据覆盖确认（KL_SWAP_*）+ 符号约定文档化 |
