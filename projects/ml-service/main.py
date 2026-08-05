@@ -75,7 +75,7 @@ def _authorized(request: Request) -> bool:
 async def _api_auth(request: Request, call_next):
     if not app_auth.is_exempt(
         request.url.path,
-        exact={"/health", "/docs", "/redoc", "/openapi.json"},
+        exact={"/health", "/docs", "/redoc", "/openapi.json", "/metrics"},
     ):
         if not _authorized(request):
             return JSONResponse(
