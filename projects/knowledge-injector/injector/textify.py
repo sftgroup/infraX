@@ -448,6 +448,58 @@ def onchain_btc(difficulty: float, block_height: int) -> str:
     return f"[On-chain BTC] Difficulty {difficulty:.1f}T. Block height {block_height:,}."
 
 
+def onchain_checkpoints_report(items: list[dict]) -> str:
+    """各链扫描位点聚合快照 → 文本（旧栈 rawdata 合并数据）。"""
+    if not items:
+        return ""
+    parts = ["[On-chain Scan]"]
+    for it in items:
+        chain = it.get("chain", "?")
+        height = it.get("last_block") or it.get("latest_block")
+        events = it.get("event_count")
+        status = it.get("status", "?")
+        line = f"{chain}: {status}"
+        if height:
+            line += f", height {height}"
+        if events:
+            line += f", {int(events):,} events"
+        parts.append(line)
+    return ". ".join(parts) + "."
+
+
+def okx_market_report(hot_items: list[dict], index_items: list[dict]) -> str:
+    """OKX ChainOS 行情快照 → 文本（热门代币 + 指数价格）。"""
+    if not hot_items and not index_items:
+        return ""
+    parts: list[str] = []
+
+    if hot_items:
+        # 按链聚合成一行摘要，避免单条注入过长
+        by_chain: dict[str, list[dict]] = {}
+        for it in hot_items:
+            chain = str(it.get("chain", "?"))
+            by_chain.setdefault(chain, []).append(it)
+        chain_names = {"1": "Ethereum", "56": "BSC", "8453": "Base"}
+        for chain, toks in by_chain.items():
+            name = chain_names.get(chain, f"chain {chain}")
+            top = toks[:3]
+            seg = ", ".join(
+                f"{t.get('symbol', '?')} ${float(t.get('price') or 0):,.4f}"
+                f"({float(t.get('change24h') or 0):+.2f}%)"
+                for t in top
+            )
+            parts.append(f"[OKX DEX] {name} hot tokens: {seg}")
+
+    if index_items:
+        prices = ", ".join(
+            f"{p.get('tokenContractAddress', '')[:8]} ${float(p.get('price') or 0):,.6f}"
+            for p in index_items[:9]
+        )
+        parts.append(f"[OKX Index] {prices}")
+
+    return ". ".join(parts) + "."
+
+
 def onchain_transfers(data: dict) -> str:
     """BTC 转账流量 + 巨鲸大额转账 → 文本。
 

@@ -845,7 +845,7 @@ async def _startup():
         ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
         FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
-        GlobalMarketCollector,
+        GlobalMarketCollector, OnchainCollector, OkxChainosCollector,
     )
     _collectors = [
         ("external_factors", ExternalFactorCollector()),
@@ -861,6 +861,8 @@ async def _startup():
         ("consensus_ml", ConsensusCollector()),
         ("p2_ml", P2MlCollector()),
         ("global_market", GlobalMarketCollector()),
+        ("onchain", OnchainCollector()),
+        ("okx_chainos", OkxChainosCollector()),
     ]
     for name, c in _collectors:
         _COLLECTORS[name] = c

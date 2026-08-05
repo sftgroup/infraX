@@ -622,6 +622,63 @@ class GraphInjector:
             logger.debug("inject_p2_predictions failed", exc_info=True)
             return False
 
+    def inject_onchain_checkpoints(self) -> bool:
+        """注入各链扫描位点聚合快照（旧栈 rawdata 合并 → data-service 快照）。
+
+        data-service OnchainCollector 每 60s 从旧栈 collector 拉取 /health + /stats
+        合并为 onchain_checkpoints（每链已扫高度 / 事件数 / 状态 / 最近抓取时间），
+        本条把该聚合快照文本化注入 RAG（namespace=onchain）。无快照时 fail-silent。
+        """
+        try:
+            from providers.data_service import fetch_onchain_checkpoints
+
+            snap = fetch_onchain_checkpoints()
+            if not snap:
+                return False
+            text = txt.onchain_checkpoints_report(snap.get("items") or [])
+            if not text:
+                return False
+            snap_id = self._save_raw(snap, "collector_onchain", "onchain_checkpoints")
+            return self._inject(
+                text, file_source="onchain:checkpoints:daily",
+                snap_id=snap_id, namespace="onchain",
+            )
+        except Exception:
+            logger.debug("inject_onchain_checkpoints failed", exc_info=True)
+            return False
+
+    def inject_okx_market(self) -> bool:
+        """注入 OKX ChainOS 行情快照（热门代币 + 指数价格，价格数据）。
+
+        data-service OkxChainosCollector 每 60s 拉取旧栈 OKX DEX Market v6
+        （hot-tokens 每链 10 个 + 头部代币指数价格），本条将快照文本化后注入
+        RAG（namespace=market），使 RAG 可检索到链上真实价格/涨跌/热度。
+        无快照或未配置 DATA_SERVICE_URL 时 fail-silent。
+        """
+        try:
+            from providers.data_service import (
+                fetch_okx_hot_tokens,
+                fetch_okx_index_prices,
+            )
+
+            hot = fetch_okx_hot_tokens() or []
+            index = fetch_okx_index_prices() or []
+            if not hot and not index:
+                return False
+            text = txt.okx_market_report(hot, index)
+            if not text:
+                return False
+            snap_id = self._save_raw(
+                {"hot_tokens": hot, "index_prices": index},
+                "okx_chainos", "okx_market_snapshot",
+            )
+            return self._inject(
+                text, file_source="okx:market:daily", snap_id=snap_id
+            )
+        except Exception:
+            logger.debug("inject_okx_market failed", exc_info=True)
+            return False
+
     # ─── 配置化解析注入（DC / Collector raw data） ──
 
     def inject_parsed(self, source: str, limit: int = 100) -> list[dict]:
@@ -703,6 +760,9 @@ class GraphInjector:
             # p2_predictions 为 P2 单模型预测历史（data-service ml_predictions 明细），
             # 无历史（404）时 fail-silent 返回 False
             "p2_predictions",
+            # onchain_checkpoints / okx_market 为旧栈 rawdata + OKX ChainOS 合并数据
+            # （data-service 快照），无快照时 fail-silent 返回 False
+            "onchain_checkpoints", "okx_market",
         ):
             method = getattr(self, f"inject_{name}")
             t0 = time.monotonic()

@@ -113,6 +113,8 @@ _CATEGORY_MAP = {
         ("fundamental", "earnings"),
         ("global_market", "commodities"), ("global_market", "forex_pairs"),
         ("global_market", "market_overview"),
+        ("collector_onchain", "onchain_checkpoints"),
+        ("okx_chainos", "okx_hot_tokens"), ("okx_chainos", "okx_index_prices"),
     ],
 }
 # Flatten: data_type → category
@@ -243,18 +245,24 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
     db = get_db()
 
     # G-4: 汇总别名 → 前缀匹配。onchain 数据实际落 btc_difficulty /
-    # btc_transfers / btc_hashrate 等子类型，type=onchain 聚合返回全部。
-    _SNAPSHOT_TYPE_ALIASES = {"onchain": "btc_%"}
+    # btc_transfers / btc_hashrate 及新合并的 onchain_checkpoints 等子类型，
+    # type=onchain 聚合返回全部；okx 聚合返回 okx_* 行情子类型。
+    _SNAPSHOT_TYPE_ALIASES = {"onchain": ["btc_%", "onchain_%"], "okx": "okx_%"}
 
     if data_type:
-        pattern = _SNAPSHOT_TYPE_ALIASES.get(data_type)
-        if pattern:
-            sql = """SELECT provider, data_type, raw_json, fetched_at
-                     FROM raw_snapshots
-                     WHERE data_type LIKE ?
-                     ORDER BY fetched_at DESC
-                     LIMIT 50"""
-            params = (pattern,)
+        patterns = _SNAPSHOT_TYPE_ALIASES.get(data_type)
+        if patterns:
+            if isinstance(patterns, str):
+                patterns = [patterns]
+            where = " OR ".join(["data_type LIKE ?"] * len(patterns))
+            sql = (
+                "SELECT provider, data_type, raw_json, fetched_at "
+                "FROM raw_snapshots "
+                f"WHERE ({where}) "
+                "ORDER BY fetched_at DESC "
+                "LIMIT 50"
+            )
+            params = tuple(patterns)
         else:
             sql = """SELECT provider, data_type, raw_json, fetched_at
                      FROM raw_snapshots

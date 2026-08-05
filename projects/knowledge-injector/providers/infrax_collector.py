@@ -21,9 +21,10 @@ def _base() -> str:
 
 
 def _headers() -> dict:
+    # 旧栈 collector 中间件（apiKeyAuth）只认 X-API-Key header（非 Bearer）
     h = {}
     if SETTINGS.collector_api_key:
-        h["Authorization"] = f"Bearer {SETTINGS.collector_api_key}"
+        h["X-API-Key"] = SETTINGS.collector_api_key
     return h
 
 
@@ -57,7 +58,7 @@ def _get(path: str, params: dict | None = None) -> list[dict]:
 
 def fetch_market_signals(limit: int = 50) -> list[dict]:
     """拉取 Collector 市场信号，并附加 data_type=signals。"""
-    items = _get("/market/signals", {"limit": min(limit, 200)})
+    items = _get("/api/v2/data/market/signals", {"limit": min(limit, 200)})
     for it in items:
         it.setdefault("data_type", "signals")
     return items
@@ -65,7 +66,7 @@ def fetch_market_signals(limit: int = 50) -> list[dict]:
 
 def fetch_hot_tokens(limit: int = 20) -> list[dict]:
     """拉取 Collector 热门代币，并附加 data_type=hot_tokens。"""
-    items = _get("/market/hot-tokens", {"limit": min(limit, 100)})
+    items = _get("/api/v2/data/market/hot-tokens", {"limit": min(limit, 100)})
     for it in items:
         it.setdefault("data_type", "hot_tokens")
     return items

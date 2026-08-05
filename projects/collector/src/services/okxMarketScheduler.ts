@@ -24,20 +24,18 @@ export class OkxMarketScheduler {
 
     await this.client.init();
 
-    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs, schedulerMempumpMs: mempumpMs } = config.okxMarket;
+    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs } = config.okxMarket;
 
     // Initial snapshots (staggered)
     setTimeout(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), 5_000).unref?.();
     setTimeout(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), 8_000).unref?.();
     setTimeout(() => this.safeRun('candles', () => this.snapshotCandles()), 15_000).unref?.();
-    setTimeout(() => this.safeRun('mempump', () => this.snapshotMemePump()), 20_000).unref?.();
 
     // Periodic
     this.timers.push(
       setInterval(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), hotMs),
       setInterval(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), indexMs),
       setInterval(() => this.safeRun('candles', () => this.snapshotCandles()), candlesMs),
-      setInterval(() => this.safeRun('mempump', () => this.snapshotMemePump()), mempumpMs),
     );
 
     for (const t of this.timers) { if ('unref' in t) (t as any).unref?.(); }
@@ -45,7 +43,7 @@ export class OkxMarketScheduler {
     logger.info('[okx-sched] Scheduler started', {
       chains: this.chains.length,
       candleTokens: this.candleTokens,
-      intervals: { hotTokens: hotMs, candles: candlesMs, indexPrice: indexMs, mempump: mempumpMs },
+      intervals: { hotTokens: hotMs, candles: candlesMs, indexPrice: indexMs },
     });
   }
 
@@ -87,26 +85,41 @@ export class OkxMarketScheduler {
   }
 
   // ── Index Prices ──────────────────────────────────────────────
+  // POST /index/current-price requires tokenContractAddress per token,
+  // so we resolve token addresses from the per-chain toplist first.
   private async snapshotIndexPrices(): Promise<void> {
-    for (const chainIndex of this.chains) {
-      const data = await this.client.getIndexPrice(chainIndex);
-      if (!data) continue;
+    const maxTokens = Math.min(this.candleTokens, 30);
+    const collectedAt = new Date();
+    const client = await pool.connect();
+    try {
+      for (const chainIndex of this.chains) {
+        try {
+          const tokens = await this.client.getHotTokens(chainIndex, maxTokens);
+          if (!tokens || !Array.isArray(tokens)) continue;
 
-      const items = Array.isArray(data) ? data : [data];
-      const collectedAt = new Date();
-      const client = await pool.connect();
-      try {
-        for (const item of items) {
-          const price = parseFloat(item.price || item.indexPrice || '0') || 0;
-          if (price === 0) continue;
-          await client.query(
-            `INSERT INTO okx_market_index_prices (chain, token_address, price, collected_at)
-             VALUES ($1,$2,$3,$4)`,
-            [chainIndex, item.tokenAddress || item.symbol || '', price, collectedAt]
-          );
+          const items = tokens
+            .filter((t: any) => t?.tokenAddress)
+            .map((t: any) => ({ chainIndex, tokenContractAddress: t.tokenAddress }))
+            .slice(0, maxTokens);
+          if (!items.length) continue;
+
+          const data = await this.client.getIndexPriceBatch(items);
+          if (!data || !Array.isArray(data)) continue;
+
+          for (const item of data) {
+            const price = parseFloat(item.price || '0');
+            if (!price) continue;
+            await client.query(
+              `INSERT INTO okx_market_index_prices (chain, token_address, price, collected_at)
+               VALUES ($1,$2,$3,$4)`,
+              [item.chainIndex || chainIndex, item.tokenContractAddress || '', price, collectedAt]
+            );
+          }
+        } catch (err: any) {
+          logger.warn(`[okx-sched] index-price failed (${chainIndex})`, { error: err.message });
         }
-      } finally { client.release(); }
-    }
+      }
+    } finally { client.release(); }
   }
 
   // ── Tracked Tokens (user-configured) ───────────────────────────
@@ -172,34 +185,6 @@ export class OkxMarketScheduler {
 
         await new Promise(r => setTimeout(r, 100));
       }
-    }
-  }
-
-  // ── MemePump ──────────────────────────────────────────────────
-  private async snapshotMemePump(): Promise<void> {
-    for (const chainIndex of this.chains) {
-      try {
-        const tokens = await this.client.getMemePumpTokenList(chainIndex, undefined, 'volume24h', this.candleTokens);
-        if (!tokens || !Array.isArray(tokens)) continue;
-
-        const collectedAt = new Date();
-        const client = await pool.connect();
-        try {
-          for (const t of tokens) {
-            if (!t?.tokenAddress) continue;
-            await client.query(
-              `INSERT INTO okx_market_mempump
-                 (chain, token_address, token_symbol, token_name, liquidity, volume_24h, price_change_24h, holder_count, dev_address, dev_holding_pct, bundled_pct, is_honeypot, created_at_ts, collected_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-              [chainIndex, t.tokenAddress, t.symbol || '', t.name || '',
-               t.liquidity || 0, t.volume24h || 0, t.priceChange24h || 0,
-               t.holderCount || 0, t.devAddress || '', t.devHoldingPercent || 0,
-               t.bundledPercent || 0, t.isHoneypot || false,
-               t.createdAt ? parseInt(t.createdAt, 10) : 0, collectedAt]
-            );
-          }
-        } finally { client.release(); }
-      } catch { /* skip chain errors */ }
     }
   }
 }

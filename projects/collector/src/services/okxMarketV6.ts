@@ -176,6 +176,39 @@ export class OkxMarketV6Client {
 
   // ── Account management ────────────────────────────────────────
 
+  /** Parse a v6 positional candle row [ts, open, high, low, close, vol, volUsd, confirm] */
+  private parseCandleRow(row: any): OkxCandle | null {
+    if (!Array.isArray(row) || row.length < 6) return null;
+    return {
+      timestamp: String(row[0]),
+      open: parseFloat(row[1]) || 0,
+      high: parseFloat(row[2]) || 0,
+      low: parseFloat(row[3]) || 0,
+      close: parseFloat(row[4]) || 0,
+      volume: parseFloat(row[5]) || 0,
+    };
+  }
+
+  /** Map a v6 token/toplist row onto the shared OkxTokenInfo shape */
+  private mapTokenRow(row: any): OkxTokenInfo {
+    return {
+      chain: String(row.chainIndex || ''),
+      tokenAddress: row.tokenContractAddress || row.tokenAddress || '',
+      symbol: row.tokenSymbol || '',
+      name: row.tokenName || '',
+      price: parseFloat(row.price) || 0,
+      volume24h: parseFloat(row.volume || row.volume24h || row.volume24H) || 0,
+      marketCap: parseFloat(row.marketCap) || 0,
+      liquidity: parseFloat(row.liquidity) || 0,
+      fdv: parseFloat(row.fdv) || 0,
+      supply: parseFloat(row.supply) || 0,
+      holders: parseInt(row.holders || row.holderCount, 10) || 0,
+      dexName: row.dexName || '',
+      poolAddress: row.poolAddress || '',
+      change24h: parseFloat(row.change || row.priceChange24h || row.priceChange24H) || 0,
+    };
+  }
+
   async init(): Promise<number> {
     // Load from DB first, fallback to env
     try {
@@ -208,20 +241,28 @@ export class OkxMarketV6Client {
   // P1 — Free Tier (零成本)
   // ==============================================================
 
-  /** GET /api/v6/dex/index/current-price — current index price */
+  /** POST /api/v6/dex/index/current-price — current index price (body is JSON array) */
   async getIndexPrice(chainIndex: string, tokenAddress?: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    let path = `/api/v6/dex/index/current-price?chainIndex=${chainIndex}`;
-    if (tokenAddress) path += `&tokenAddress=${tokenAddress}`;
-    return this.request(acct, 'GET', path);
+    if (!tokenAddress) throw new Error('index/current-price requires tokenContractAddress');
+    return this.request(acct, 'POST', '/api/v6/dex/index/current-price', [
+      { chainIndex, tokenContractAddress: tokenAddress },
+    ]);
+  }
+
+  /** POST /api/v6/dex/index/current-price — batch index price for multiple tokens */
+  async getIndexPriceBatch(items: Array<{ chainIndex: string; tokenContractAddress: string }>): Promise<any> {
+    const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
+    if (!items.length) return [];
+    return this.request(acct, 'POST', '/api/v6/dex/index/current-price', items);
   }
 
   /** GET /api/v6/dex/index/historical-price */
   async getHistoricalIndexPrice(chainIndex: string, tokenAddress?: string, limit = 100): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    let path = `/api/v6/dex/index/historical-price?chainIndex=${chainIndex}&limit=${limit}`;
-    if (tokenAddress) path += `&tokenAddress=${tokenAddress}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ chainIndex, limit: String(limit) });
+    if (tokenAddress) q.set('tokenContractAddress', tokenAddress);
+    return this.request(acct, 'GET', `/api/v6/dex/index/historical-price?${q.toString()}`);
   }
 
   /** GET /api/v6/dex/balance/total-value-by-address */
@@ -272,50 +313,46 @@ export class OkxMarketV6Client {
   // P2 — Basic Tier ($0.0001/call)
   // ==============================================================
 
-  /** GET /api/v6/dex/market/token/search — token search by keyword */
+  /** GET /api/v6/dex/market/token/search — token search by keyword (chains: comma-separated chainIndex) */
   async searchToken(keyword: string, chainIndex?: string, limit = 20): Promise<OkxTokenInfo[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    let path = `/api/v6/dex/market/token/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}`;
-    if (chainIndex) path += `&chainIndex=${chainIndex}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ search: keyword, limit: String(limit) });
+    q.set('chains', chainIndex || '1,56,8453');
+    const data = await this.request(acct, 'GET', `/api/v6/dex/market/token/search?${q.toString()}`);
+    return Array.isArray(data) ? data.map((r: any) => this.mapTokenRow(r)) : [];
   }
 
-  /** GET /api/v6/dex/market/token/basic-info */
+  /** POST /api/v6/dex/market/token/basic-info — token metadata (body is JSON array) */
   async getTokenBasicInfo(chainIndex: string, tokenAddress: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/token/basic-info?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}`;
-    return this.request(acct, 'GET', path);
+    return this.request(acct, 'POST', '/api/v6/dex/market/token/basic-info', [
+      { chainIndex, tokenContractAddress: tokenAddress },
+    ]);
   }
 
-  /** GET /api/v6/dex/market/token/hot-token — trending tokens
+  /** GET /api/v6/dex/market/token/toplist — trending tokens (okx-dex-token skill)
    *
    * @param chainIndex  Chain ID (1=ETH, 56=BSC, 8453=Base, 501=Solana)
-   * @param limit       Max results (default 50, max 100)
+   * @param limit       Max results
    * @param opts        Optional filters:
-   *   rankingType       4=Trending(token score), 5=Xmentioned(Twitter)
-   *   rankingTimeFrame  1=5min, 2=1h(default), 3=4h, 4=24h
-   *   rankBy            1=price, 2=priceChange%, 3=txs, 4=uniqueTraders,
-   *                     5=volumeUSD, 6=mcap, 7=liquidity, 8=createdAt,
+   *   sortBy            1=price, 2=priceChange%, 3=txs, 4=uniqueTraders,
+   *                     5=volumeUSD (default), 6=mcap, 7=liquidity, 8=createdAt,
    *                     9=OKXsearch, 10=holders, 11=mentions, 12=socialScore,
    *                     14=netInflow, 15=tokenScore
-   *   riskFilter        Hide risky tokens (default true)
-   *   stableTokenFilter Hide stablecoins (default true)
-   *   protocolId        Filter by protocol (e.g. "120596" for Pump.fun)
-   *   priceChangePercentMin/Max, tradeAmountMin/Max, volumeMin/Max,
-   *   txsMin/Max, uniqueTraderMin/Max, marketCapMin/Max, liquidityMin/Max,
-   *   holdersMin/Max, mentionedCountMin/Max, socialScoreMin/Max, inflowUsdMin/Max,
-   *   fdvMin/Max, isLpBurnt, isMint, isFreeze, cursor
+   *   timeFrame         1=5min, 2=1h, 3=4h, 4=24h (default)
    */
   async getHotTokens(chainIndex: string, limit = 50, opts?: Record<string, string>): Promise<OkxTokenInfo[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const q = new URLSearchParams({ chainIndex, limit: String(limit) });
+    const q = new URLSearchParams({ chains: chainIndex, limit: String(limit) });
+    q.set('sortBy', opts?.sortBy || '5');
+    q.set('timeFrame', opts?.timeFrame || '4');
     if (opts) {
       for (const [k, v] of Object.entries(opts)) {
-        if (v !== undefined && v !== '') q.set(k, String(v));
+        if (k !== 'sortBy' && k !== 'timeFrame' && v !== undefined && v !== '') q.set(k, String(v));
       }
     }
-    const path = `/api/v6/dex/market/token/hot-token?${q.toString()}`;
-    return this.request(acct, 'GET', path);
+    const data = await this.request(acct, 'GET', `/api/v6/dex/market/token/toplist?${q.toString()}`);
+    return Array.isArray(data) ? data.map((r: any) => this.mapTokenRow(r)) : [];
   }
 
   /** GET /api/v6/dex/market/token/top-liquidity — top liquidity pools */
@@ -325,25 +362,36 @@ export class OkxMarketV6Client {
     return this.request(acct, 'GET', path);
   }
 
-  /** GET /api/v6/dex/market/candles — K-line candles */
+  /** GET /api/v6/dex/market/candles — K-line candles (response is positional arrays) */
   async getCandles(chainIndex: string, tokenAddress: string, period = '15m', limit = 100): Promise<OkxCandle[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/candles?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}&period=${period}&limit=${limit}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ chainIndex, tokenContractAddress: tokenAddress, bar: period, limit: String(limit) });
+    const data = await this.request(acct, 'GET', `/api/v6/dex/market/candles?${q.toString()}`);
+    return Array.isArray(data)
+      ? data.map((row: any) => this.parseCandleRow(row)).filter((c: OkxCandle | null): c is OkxCandle => c !== null)
+      : [];
   }
 
-  /** GET /api/v6/dex/market/price — real-time price */
+  /** POST /api/v6/dex/market/price — real-time price (body is JSON array) */
   async getPrice(chainIndex: string, tokenAddress: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/price?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}`;
-    return this.request(acct, 'GET', path);
+    return this.request(acct, 'POST', '/api/v6/dex/market/price', [
+      { chainIndex, tokenContractAddress: tokenAddress },
+    ]);
+  }
+
+  /** POST /api/v6/dex/market/price — batch real-time prices */
+  async getPriceBatch(items: Array<{ chainIndex: string; tokenContractAddress: string }>): Promise<any> {
+    const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
+    if (!items.length) return [];
+    return this.request(acct, 'POST', '/api/v6/dex/market/price', items);
   }
 
   /** GET /api/v6/dex/market/trades — recent trades */
   async getTrades(chainIndex: string, tokenAddress: string, limit = 50): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/trades?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}&limit=${limit}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ chainIndex, tokenContractAddress: tokenAddress, limit: String(limit) });
+    return this.request(acct, 'GET', `/api/v6/dex/market/trades?${q.toString()}`);
   }
 
   // ==============================================================
@@ -360,8 +408,8 @@ export class OkxMarketV6Client {
   /** GET /api/v6/dex/market/token/holder */
   async getTokenHolders(chainIndex: string, tokenAddress: string, limit = 50): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/token/holder?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}&limit=${limit}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ chainIndex, tokenContractAddress: tokenAddress, limit: String(limit) });
+    return this.request(acct, 'GET', `/api/v6/dex/market/token/holder?${q.toString()}`);
   }
 
   /** GET /api/v6/dex/market/token/top-trader */
@@ -371,18 +419,22 @@ export class OkxMarketV6Client {
     return this.request(acct, 'GET', path);
   }
 
-  /** GET /api/v6/dex/market/price-info */
+  /** POST /api/v6/dex/market/price-info — price + market cap + liquidity (body is JSON array) */
   async getPriceInfo(chainIndex: string, tokenAddress: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/price-info?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}`;
-    return this.request(acct, 'GET', path);
+    return this.request(acct, 'POST', '/api/v6/dex/market/price-info', [
+      { chainIndex, tokenContractAddress: tokenAddress },
+    ]);
   }
 
   /** GET /api/v6/dex/market/historical-candles */
   async getHistoricalCandles(chainIndex: string, tokenAddress: string, period = '1H', limit = 100): Promise<OkxCandle[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/historical-candles?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}&period=${period}&limit=${limit}`;
-    return this.request(acct, 'GET', path);
+    const q = new URLSearchParams({ chainIndex, tokenContractAddress: tokenAddress, bar: period, limit: String(limit) });
+    const data = await this.request(acct, 'GET', `/api/v6/dex/market/historical-candles?${q.toString()}`);
+    return Array.isArray(data)
+      ? data.map((row: any) => this.parseCandleRow(row)).filter((c: OkxCandle | null): c is OkxCandle => c !== null)
+      : [];
   }
 
   // ── MemePump ─────────────────────────────────────────────────

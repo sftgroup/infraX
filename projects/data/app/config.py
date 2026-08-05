@@ -113,6 +113,24 @@ P2_RETENTION_DAYS = int(os.getenv("P2_RETENTION_DAYS", "90"))
 GLOBAL_MARKET_COLLECT_ENABLED = os.getenv("GLOBAL_MARKET_COLLECT_ENABLED", "true").lower() == "true"
 GLOBAL_MARKET_COLLECT_INTERVAL_SEC = int(os.getenv("GLOBAL_MARKET_COLLECT_INTERVAL_SEC", "900"))
 
+# ── 旧栈 collector 合并（rawdata 位点 + OKX ChainOS 行情）────────────────
+# COLLECTOR_URL: 旧栈 collector 服务（Express :9101），http://43.156.99.215:9101
+# COLLECTOR_API_KEY: 旧栈 api_keys 表签发的只读 key（X-API-Key header，非 Bearer）
+COLLECTOR_URL = os.getenv("COLLECTOR_URL", "")
+COLLECTOR_API_KEY = os.getenv("COLLECTOR_API_KEY", "")
+
+# 链上扫描位点聚合快照（onchain_checkpoints）：每链已扫高度/事件数/状态/最近抓取时间
+ONCHAIN_COLLECT_ENABLED = os.getenv("ONCHAIN_COLLECT_ENABLED", "true").lower() == "true"
+ONCHAIN_COLLECT_INTERVAL_SEC = int(os.getenv("ONCHAIN_COLLECT_INTERVAL_SEC", "60"))
+
+# OKX ChainOS 行情快照（okx_hot_tokens / okx_index_prices）：web3.okx.com 官方 v6
+OKX_CHAINOS_COLLECT_ENABLED = os.getenv("OKX_CHAINOS_COLLECT_ENABLED", "true").lower() == "true"
+OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "60"))
+# 链 ID：Ethereum=1, BSC=56, Base=8453（v6 官方链 ID，字符串）
+OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453")
+OKX_HOT_LIMIT = int(os.getenv("OKX_HOT_LIMIT", "10"))       # 每链热门代币数
+OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "3"))  # 每链补指数价格的头部代币数
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

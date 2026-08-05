@@ -25,6 +25,97 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 8
 
 
+def _snap(base_url: str, data_type: str) -> dict[str, Any] | None:
+    """拉取 data-service /snapshots 指定类型（fail-silent，返回原始 payload 或 None）。
+
+    data-service /snapshots 会解包单键 envelope：{"items": [...]} → 直接返回列表。
+    """
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/snapshots",
+            params={"type": data_type},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service /snapshots %s → %s", data_type, resp.status_code)
+            return None
+        data = resp.json()
+        payload = (data.get("snapshots") or {}).get(data_type)
+        if not payload:
+            return None
+        return {"payload": payload, "ts": data.get("ts", 0)}
+    except requests.Timeout:
+        logger.debug("data-service /snapshots %s timeout (%ss)", data_type, _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /snapshots %s request failed: %s", data_type, exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /snapshots %s parse failed: %s", data_type, exc)
+        return None
+
+
+def fetch_onchain_checkpoints() -> dict[str, Any] | None:
+    """拉取 data-service 链上扫描位点聚合快照（onchain_checkpoints）。
+
+    返回 {"items": [{chain, collector_name, last_block, event_count, status,
+          last_fetch_at}], "ts": int} 或 None（未配置/失败/无快照）。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    snap = _snap(base_url, "onchain_checkpoints")
+    if not snap:
+        return None
+    payload = snap["payload"]
+    if isinstance(payload, dict) and payload.get("items"):
+        return {"items": payload["items"], "ts": snap["ts"]}
+    if isinstance(payload, list) and payload:
+        return {"items": payload, "ts": snap["ts"]}
+    return None
+
+
+def fetch_okx_hot_tokens() -> list[dict] | None:
+    """拉取 data-service OKX 热门代币行情快照（okx_hot_tokens）。
+
+    返回 [{chain, symbol, price, volume24h, change24h, ...}] 或 None。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    snap = _snap(base_url, "okx_hot_tokens")
+    if not snap:
+        return None
+    payload = snap["payload"]
+    if isinstance(payload, dict) and payload.get("items"):
+        return payload["items"]
+    if isinstance(payload, list):
+        return payload
+    return None
+
+
+def fetch_okx_index_prices() -> list[dict] | None:
+    """拉取 data-service OKX 指数价格快照（okx_index_prices）。
+
+    返回 [{chainIndex, price, time, tokenContractAddress}] 或 None。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    snap = _snap(base_url, "okx_index_prices")
+    if not snap:
+        return None
+    payload = snap["payload"]
+    if isinstance(payload, dict) and payload.get("items"):
+        return payload["items"]
+    if isinstance(payload, list):
+        return payload
+    return None
+
+
 def fetch_klines(symbol: str, timeframe: str = "1d", limit: int = 500) -> list[dict] | None:
     """拉取 data-service K 线（/bars），返回升序 [{ts, open, high, low, close, volume}, ...]。
 
