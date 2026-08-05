@@ -381,6 +381,32 @@ async def symbols_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/symbol/resolve")
+async def symbol_resolve(
+    symbol: str = Query(..., description="符号关键字，如 BTC / BTC/USDT / EURUSD=X"),
+    market: str = Query("crypto", description="crypto | usstock | forex | futures"),
+):
+    """符号解析（DS-4）：单符号 → 标准交易对。
+
+    契约（AITRADER_DATA_SERVICE_REQ.md DS-4）：
+        GET /symbol/resolve?symbol=BTC → {"query": "BTC", "resolved": "BTCUSDT"}
+    解析失败返回 404。全市场覆盖范围（美股/外汇/期货/A股/港股）待 DS-11 决策；
+    本期 crypto 精确解析（binance spot 优先）+ 非 crypto 种子直通。
+    """
+    try:
+        from app.symbol_search import resolve_symbol as _resolve
+
+        resolved = _resolve(symbol, market)
+        if not resolved:
+            raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not resolvable")
+        return {"query": symbol, "resolved": resolved, "market": market}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"/symbol/resolve failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Snapshots (complex data: heatmap, calendar, indices, etc.) ─
 
 @app.get("/snapshots")

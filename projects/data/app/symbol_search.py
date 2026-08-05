@@ -157,6 +157,51 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
     return results
 
 
+def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
+    """单符号 → 标准交易对（DS-4）。解析失败返回 None（路由层 404）。
+
+    契约（AITRADER_DATA_SERVICE_REQ.md DS-4）：
+        GET /symbol/resolve?symbol=BTC → {"query": "BTC", "resolved": "BTCUSDT"}
+
+    解析规则：
+      - 输入已含分隔符（BTC/USDT、BTC/USDT:USDT）→ 去分隔符规范化
+        （binance 风格：BTC/USDT → BTCUSDT）
+      - 纯 base（BTC）→ crypto 符号表中匹配 quote=USDT 的候选，优先
+        binance spot（fallback seed）；非 crypto 走种子精确匹配（原样直通）
+      - 全市场覆盖范围（美股/外汇/期货/A股/港股）待 DS-11 决策；
+        本期 crypto 精确解析 + 非 crypto 种子直通
+    """
+    sym = (symbol or "").strip()
+    if not sym:
+        return None
+
+    # 已含分隔符：直接规范化（去 "/" 与 ":"）
+    if "/" in sym or ":" in sym:
+        return sym.replace("/", "").replace(":", "")
+
+    if market == "crypto":
+        markets = _load_crypto_markets()
+        if not markets:
+            markets = _seed_markets("crypto")
+        base = sym.lower()
+        cands = [m for m in markets if m["symbol"].lower().startswith(base + "/")]
+        if not cands:
+            return None
+
+        def _rank(m: dict) -> tuple:
+            return (0 if m["exchange"] == "binance" else 1,
+                    0 if m["market_type"] == "spot" else 1)
+
+        best = min(cands, key=_rank)
+        return best["symbol"].replace("/", "")
+
+    # 非 crypto：种子精确匹配（大小写不敏感，原样返回）
+    for s, _name in _SEED_FALLBACK.get(market, []):
+        if s.lower() == sym.lower():
+            return s
+    return None
+
+
 def get_hot_symbols(market: str = "crypto", limit: int = 10) -> list[dict]:
     """热门符号（种子前 N），供前端默认列表使用。"""
     if market == "crypto":
