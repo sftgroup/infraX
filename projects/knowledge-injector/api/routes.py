@@ -314,4 +314,10 @@ def create_app() -> Flask:
         logger.error("unhandled error: %s", e)
         return jsonify({"code": 500, "message": "Internal Server Error", "data": None}), 500
 
+    # ─── Prometheus /metrics（G-6）─────────────────────────────
+    # 请求指标 + GET /metrics（app_auth 已豁免 /metrics，探针免 key 拉取）。
+    from metrics import register_flask  # noqa: E402
+
+    register_flask(app, "injector")
+
     return app

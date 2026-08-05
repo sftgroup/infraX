@@ -85,6 +85,13 @@ async def _api_auth(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Prometheus /metrics（G-6）─────────────────────────────────
+# 请求指标 + GET /metrics（app_auth 已豁免 /metrics，探针免 key 拉取）。
+from metrics import register_fastapi  # noqa: E402
+
+register_fastapi(app, "ml")
+
+
 # ── Health ─────────────────────────────────────────────────
 
 @app.get("/health")

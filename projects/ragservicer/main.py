@@ -89,6 +89,10 @@ def main():
     def _not_found(_e):
         return build_error("Not Found", 404)
 
+    # G-6: Prometheus /metrics（/metrics 由 app_auth 豁免，探针免 key 拉取）
+    from metrics import register_flask
+    register_flask(app, "ragservicer")
+
     # Register tenant context on Flask g (fixes g.tenant_id never being set)
     from api.code_refactor import register_tenant_on_g
     app.before_request(register_tenant_on_g)

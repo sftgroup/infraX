@@ -136,6 +136,13 @@ from app.rate_limit import rate_limit_middleware  # noqa: E402
 app.middleware("http")(rate_limit_middleware)
 
 
+# ── Prometheus /metrics（G-6）─────────────────────────────────
+# 请求指标 + GET /metrics（app_auth 已豁免 /metrics，探针免 key 拉取）。
+from metrics import register_fastapi  # noqa: E402
+
+register_fastapi(app, "data")
+
+
 # ── Business endpoint auth (Bearer / X-API-Key / X-Service-Key) ─
 # 业务端点统一鉴权（DS-12，契约见 AITRADER_DATA_SERVICE_REQ.md）：
 #   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 或

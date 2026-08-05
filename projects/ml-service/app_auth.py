@@ -28,8 +28,8 @@ from typing import Callable, Container
 # 统一 401 响应体（与 data-service DS-12 契约一致）
 UNAUTHORIZED = {"detail": "unauthorized"}
 
-# 默认豁免路径（存活探针）
-DEFAULT_PUBLIC_PATHS = frozenset({"/health"})
+# 默认豁免路径（存活探针 + Prometheus 指标拉取）
+DEFAULT_PUBLIC_PATHS = frozenset({"/health", "/metrics"})
 
 HeaderGetter = Callable[[str], str]
 

@@ -15,8 +15,8 @@ import time
 
 from fastapi.responses import JSONResponse
 
-# 豁免路径（与 app_auth 豁免语义一致）
-_EXEMPT_PREFIXES = ("/health", "/admin/")
+# 豁免路径（与 app_auth 豁免语义一致；/metrics 供监控探针免限流拉取）
+_EXEMPT_PREFIXES = ("/health", "/admin/", "/metrics")
 
 
 class _TokenBucket:
