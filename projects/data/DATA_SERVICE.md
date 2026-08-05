@@ -219,6 +219,7 @@ GET /stats
 | `FINNHUB_API_KEY` | 已配置（2026-08-05） | Finnhub：美股 quote/日线备选/财报 earnings/公司档案/情绪；经济日历 free tier 无权限 |
 | `FIRECRAWL_API_KEY` | 已配置（2026-08-05） | 统一搜索服务（`app/services/search.py`，search API）：macro_news 新闻搜索补充；未配置时 fail-silent 不影响主链路 |
 | `FRED_API_KEY` | 已配置（2026-08-06） | FRED 宏观指标（CPI/PCE/NFP/Unemployment/GDP/Fed Funds）实测出数；DXY 备源 |
+| `TWELVE_DATA_API_KEY` | 已配置（2026-08-06） | 外汇 K线主源（优先于 yfinance）；实测 EURUSD 400 根达标。⚠️ 免费 tier 限 8 次/分钟约 800 credits/天，现每 5 分钟拉 6 对会超额 → 待降频（见 DEPLOYMENT_DATA_STACK 9.3） |
 | `LOG_LEVEL` | INFO | 日志级别 |
 
 ---
