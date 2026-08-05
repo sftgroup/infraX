@@ -9,6 +9,7 @@
     "dev:mpc": "tsx src/mpc-index.ts",
     "dev:vault": "tsx src/vault-index.ts",
     "dev:market": "tsx src/market-index.ts",
+    "dev:hub": "tsx src/hub-index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },

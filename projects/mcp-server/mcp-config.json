@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.modelcontextprotocol.io/sdk/dts/",
+  "comment": "InfraX MCP 客户端注册（G-5 / 9.6 Phase 3.1）。hub-index 为四服务数据能力统一入口；ragservicer mcp_server 为 RAG 知识库专用（STDIO）。",
+  "mcpServers": {
+    "infrax-hub": {
+      "type": "http",
+      "url": "http://localhost:3008/mcp",
+      "description": "InfraX 统一 MCP 入口：data K线/因子/快照/ticker、injector 注入、rag 知识库查询",
+      "comment": "生产替换 url 为 https://mcp.infrax.dev/mcp；环境变量 DATA_URL/DATA_API_KEY/INJECTOR_URL/INJECTOR_API_KEY/RAG_URL/RAG_API_KEY 需注入 systemd unit"
+    },
+    "infrax-rag": {
+      "type": "stdio",
+      "command": "/home/ubuntu/infraX-1/projects/ragservicer/.venv/bin/python",
+      "args": [
+        "-c",
+        "from config import load_config; load_config(); from mcp_server.server import run_mcp_server; run_mcp_server()"
+      ],
+      "cwd": "/home/ubuntu/infraX-1/projects/ragservicer",
+      "description": "RAGservicer 知识库 MCP（5 工具：insert/query/delete/list/retrieve）"
+    }
+  }
+}
