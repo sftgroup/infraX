@@ -217,6 +217,7 @@ GET /stats
 | `DATA_CONFIG_PATH` | data_config.json | 采集配置文件路径 |
 | `COINGECKO_API_KEY` | (空) | CoinGecko API Key (可选) |
 | `FINNHUB_API_KEY` | 已配置（2026-08-05） | Finnhub：美股 quote/日线备选/财报 earnings/公司档案/情绪；经济日历 free tier 无权限 |
+| `FIRECRAWL_API_KEY` | 已配置（2026-08-05） | 统一搜索服务（`app/services/search.py`，search API）：macro_news 新闻搜索补充；未配置时 fail-silent 不影响主链路 |
 | `FRED_API_KEY` | (空) | FRED 宏观数据 Key (可选) |
 | `LOG_LEVEL` | INFO | 日志级别 |
 
