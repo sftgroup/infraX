@@ -622,7 +622,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 ### 9.7 各模块 SDK / MCP / API 端点能力审查（待排期）
 
 > 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
-> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）；`docs/CHECKLIST_BARS_FACTORS.md`（7.2 `/bars` `/factors/*` 契约明细核对表）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
+> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）；7.2 契约明细核对表已内嵌本文件（见下方「7.2 详细核对表」，原独立文档 CHECKLIST_BARS_FACTORS.md 已合并，2026-08-06）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
 
 | # | 消费方需求 | 审查范围 | 状态 |
 |:---:|------|------|:---:|
@@ -657,6 +657,75 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] ⑦ 分页字段一致性：page/limit/has_more（ragservicer documents、injector stats/recent）
 - [ ] ⑧ 时间戳契约：单位（ms/s）与时区（UTC）全服务统一核对
 - [ ] ⑨ 空数据/失败行为：fail-silent 返回 `data:null`（ml-service）与显式错误的一致性核对
+
+**7.2 详细核对表 —— `/bars` 与 `/factors/*`**（原 `docs/CHECKLIST_BARS_FACTORS.md`，2026-08-06 合并入 tasklist）
+
+> 代码依据：`projects/data/main.py`（路由 L125~L272）+ `projects/data/app/enrich.py` `query_bars` + `projects/data/app/factors.py`。状态标记：⬜ 待核对 ｜ ✅ 已核对
+
+**`GET /bars`** —— 请求参数
+
+| 参数 | 必填 | 类型 | 默认 | 约束 | 说明 |
+|------|:---:|:---:|:---:|------|------|
+| `symbol` | ✅ | str | — | — | 例 `BTC/USDT`；swap 时按 ccxt 惯例 `BTC/USDT:USDT` 存储键查询 |
+| `timeframe` | — | str | `1m` | 枚举 `1m/5m/15m/30m/1h/4h/1d`（**大小写敏感**，D1） | — |
+| `market_type` | — | str | `spot` | pattern `^(spot\|swap)$` | spot/swap 数据互不混淆（DS-8 方案 A） |
+| `start` / `end` | — | int | null | unix **ms** | 含边界 `ts >= start` / `ts <= end` |
+| `limit` | — | int | `500` | `1 ≤ limit ≤ 5000` | — |
+
+响应：顶层 `{symbol, timeframe, market_type, count, bars}`；`bars[]` 元素 `{ts(ms), open/high/low/close/volume, rsi_14/macd/macd_signal/macd_hist, bb_upper/middle/lower, atr_14, ma_5/10/20, 外部因子}`，指标 None 时**省略字段**，外部因子按**最近快照** join，bars 按 ts **升序**。错误体统一 `{code, message, data}`（D2 已修复）。
+
+核对项：
+- [ ] ① `symbol` 接受 `BTC/USDT` 与 `BTCUSDT` 两种形式（`_normalize_kline_symbol` 归一化）实测
+- [x] ② `timeframe` 大小写：`1d` count=3 / `1D` 空（**确认大小写敏感**，docstring 已修正 commit 57050f1）
+- [x] ③ `market_type=swap` 存储键查询：**实测 count=0（swap 无数据，D6 待确认覆盖）**
+- [ ] ④ `start`/`end` 时间过滤边界（含端点）实测
+- [ ] ⑤ `limit` 上界 5000 与默认 500 实测
+- [ ] ⑥ 指标字段 None 省略行为实测
+- [ ] ⑦ 外部因子"最近快照"join 语义实测（bar 早于全部快照时行为）
+- [x] ⑧ 错误体统一包装：**D2 已完成**（422/404/500 均 `{code,message,data}`）
+
+实测记录（2026-08-05）：`5m/15m/30m/1h/4h` 全部出数指标完整；`1d` 有数据；缺 `symbol` → 422 包装。
+
+**`GET /factors/catalog`** —— 无参数；响应 `{factors: [{id, name, category, type, range}]}`，内置 **18 项**（technical 11 + macro 3 + sentiment 2 + onchain 2），另加 `FACTORS_CONFIG_PATH` JSON `extra` 项。
+
+核对项：
+- [x] ① 目录 18 项与 current/history 可用因子一致（实测 18 项，external 0 因 extra 未配置）
+- [ ] ② `range` 值正确（rsi_14 [0,100]、fear_greed [0,100] int、atr_14 [0,∞]、us10y [0,10]、dxy [50,150]）
+- [ ] ③ `FACTORS_CONFIG_PATH` 未配置时不含 extra 项
+- [ ] ④ 目录字段与 `_CATEGORY_MAP` 分类映射一致
+
+**`GET /factors/current`** —— 请求参数：`symbols`（默认 `BTC`，逗号分隔；技术因子查询候选回退 `BTC`→`BTC/USDT`，D5 已修复）、`category`（7 类：external/sentiment/news/opportunities/heatmap/calendar/snapshot，D3 已修复 docstring）。响应 `{ts(int ms), factors: {symbol: {fid}}, _complex?}`。
+
+核对项：
+- [x] ① `symbols` 默认 `BTC` 现带技术因子（D5 修复：候选回退）
+- [x] ② `category` 7 类均可用（external→us10y、sentiment→sentiment_score+`_complex`、news 无数据、opportunities/heatmap/calendar→`_complex`、snapshot→btc_difficulty+`_complex`）
+- [ ] ③ `_SIMPLE_FACTOR_IDS` 简单因子值、6 位舍入实测
+- [ ] ④ `_complex` 解包行为（单 key unwrap）实测
+- [ ] ⑤ 空库时 `ts=0`、factors 空对象行为实测
+
+实测记录（2026-08-05）：默认 `symbols=BTC` 返回简单因子+技术因子+`_complex.heatmap`，`ts` 已归一 int；`symbols=BTC/USDT` 返回完整字段。
+
+**`GET /factors/history`** —— 请求参数：`symbol`（必填，`BTC/USDT` 或 `BTCUSDT`，无数据时自动回退基础符号）、`timeframe`（默认 `1m`）、`ids`（逗号分隔因子 id，默认 11 技术因子）、`start`/`end`（ms 含边界）、`limit`（默认 500，1~5000）。响应 `{symbol, timeframe, count, series: [{ts, fid}]}`，series **升序**（D4 已修复）。
+
+核对项：
+- [ ] ① 无数据时 `count=0`、`series=[]`（200 而非 404）实测
+- [x] ② `ids` 过滤：实测 `ids=rsi_14,macd` 仅返回 `{ts, rsi_14, macd}`
+- [ ] ③ symbol 无 `/` 数据时回退基础符号逻辑实测
+- [ ] ④ `start`/`end` 与 limit 组合分页行为实测
+- [x] ⑤ series 升序对齐 /bars（D4 修复 `ORDER BY ts ASC`，实测递增）
+
+实测记录（2026-08-05）：`limit=6` ts 递增；`ids` 字段过滤正确。
+
+**审查发现汇总**（详见 §9.3 待办）：
+
+| # | 级别 | 发现 | 处理 |
+|:---:|:---:|------|------|
+| D1 | ✅ | `/bars` timeframe 大小写敏感（`1D` 空） | docstring 修正 `1m/5m/15m/30m/1h/4h/1d`（57050f1） |
+| D2 | ✅ | 错误体 FastAPI 默认 `{"detail"}` | 统一 `{code,message,data}`（05b02eb + eac3656） |
+| D3 | ✅ | `/factors/current` docstring 仅 4 类 category | docstring 补全 7 类（57050f1） |
+| D4 | ✅ | `/factors/history` series 降序 | `ORDER BY ts ASC`（57050f1） |
+| D5 | ✅ | `symbols=BTC` 查不到技术因子 | 候选回退 `BTC`→`BTC/USDT`（57050f1） |
+| D6 | ⚠️ | swap 无数据 + `BTC/USDT:USDT` 约定未文档化 | **待办（9.3）**：swap 数据覆盖确认 + 约定文档化 |
 
 **7.3 Agent 使用 —— 检查项**
 
