@@ -143,6 +143,14 @@ from metrics import register_fastapi  # noqa: E402
 register_fastapi(app, "data")
 
 
+# ── 可选响应信封（G-2）────────────────────────────────────────
+# 默认成功响应保持裸字段（向后兼容）；请求带 ?envelope=1 或
+# X-Envelope: 1 时统一包装为 {code, message, data}，对齐 Flask 服务信封。
+from envelope import install_envelope_middleware  # noqa: E402
+
+install_envelope_middleware(app)
+
+
 # ── Business endpoint auth (Bearer / X-API-Key / X-Service-Key) ─
 # 业务端点统一鉴权（DS-12，契约见 AITRADER_DATA_SERVICE_REQ.md）：
 #   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 或

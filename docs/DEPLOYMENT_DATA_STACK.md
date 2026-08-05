@@ -661,7 +661,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）— 核对通过
 - [x] ④ ml-service :9120 实际路由与 §6 核对 — 核对通过
 - [x] ⑤ 鉴权契约复核：四服务 Bearer/X-API-Key/X-Service-Key 三选一 + 401 统一响应 + `/health` 豁免（生产已闭环 9.3，此处按文档回归）— 回归一致（app_auth 共享实现）
-- [x] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致（**D2 已完成**：data 数据面错误体已统一包装 `{code,message,data}`，见 9.3；data 成功响应仍为裸字段结构，**需评估是否对齐 → 差距报告 G-2**）
+- [x] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致（**D2 已完成**：data 数据面错误体已统一包装 `{code,message,data}`，见 9.3；data 成功响应默认保持裸字段，**✅ G-2 已实现可选信封开关**：请求带 `?envelope=1` 或 `X-Envelope: 1` 时统一包装为 `{code:0,message:"ok",data}`，默认行为不变零影响）
 - [x] ⑦ 错误码/异常契约文档化：400/401/404/409/429/500 各服务语义核对 — 核对完成（**Flask 404 默认 HTML、injector 错误体非统一信封 → 差距报告 G-1**）
 - [x] ⑧ 限流/配额：`RATE_LIMIT_RPM`（ragservicer）是否生效、返回 429 结构文档化 — ragservicer TokenBucket 按 tenant 限流（默认 100 RPM，429 `build_error`）；data 已定义 `RATE_LIMIT_RPM=60` 未启用 → 差距报告 G-3
 - [x] ⑨ CORS/跨域策略：外部 web 应用直接调用时的 allow_origins 现状核对 — data/ml `allow_origins=["*"]` + `allow_credentials=False`（安全组合）；injector/ragservicer 无 CORS 中间件（B 端均为服务端调用，无需跨域）
@@ -792,14 +792,14 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（TS/Python）；Flask 服务建议人工维护契约表或补 `flask-smorest` → 差距报告 G-9
 - [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — 决策：当前仓库内引用（main 指向 dist/TS 源码），npm 发布已备（`prepublishOnly` 构建）；PyPI 发布 lightrag-client 可后续排期 → 差距报告 G-9
 
-**9.7 差距报告（2026-08-06 审查输出，G-1/G-3/G-4/G-6/G-7/G-8 已按序实现）**
+**9.7 差距报告（2026-08-06 审查输出，G-1/G-2/G-3/G-4/G-6/G-7/G-8 已按序实现）**
 
-> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6 顺序实现 6 项（本地验证通过，部署见 9.3）。剩余 **G-2/G-5/G-9** 为排期项。
+> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6→G-2 顺序实现 7 项（本地验证通过，部署见 9.3）。剩余 **G-5/G-9** 为排期项。
 
 | # | 级别 | 现状 | 差距 | 处理状态 |
 |:---:|:---:|------|------|------|
 | G-1 | 低 | injector `/inject/<unknown>` 返回 `400 {"error": ...}`；Flask 404 为默认 HTML | 错误体非统一 `{code,message,data}` 信封 | ✅ **已修复**：injector 业务错误统一信封 + 全局 404/500 handler；ragservicer 补 404 JSON handler（`build_error`） |
-| G-2 | 低 | data 成功响应为裸字段（FastAPI 原生） | 成功响应结构不一致 | 🔲 契约差异已记录；统一需改 data 成功响应 → 影响现有调用方，暂不动 |
+| G-2 | 低 | data 成功响应为裸字段（FastAPI 原生） | 成功响应结构不一致 | ✅ **已修复**：新增 `shared/envelope.py` 可选信封中间件（`?envelope=1` 或 `X-Envelope: 1` 时 2xx JSON 统一包装 `{code:0,message:"ok",data}`，跳过 /metrics 与已是信封的响应；默认裸字段不变，现有调用方零影响），data + ml-service 接入 |
 | G-3 | 低 | data `RATE_LIMIT_RPM=60` 定义未启用 | data 无请求级限流 | ✅ **已修复**：新增 `app/rate_limit.py` TokenBucket 中间件（按 IP，`RATE_LIMIT_ENABLED` 默认 true 生效，429 统一信封，`/health` `/admin/*` 豁免） |
 | G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 落 `btc_difficulty/btc_transfers/btc_hashrate` 子类型 | ✅ **已修复**：`get_snapshots` 加 `onchain→btc_%` 前缀聚合别名，type=onchain 返回全部 BTC 子类型（本地临时库实测通过） |
 | G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 🔲 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
@@ -808,4 +808,4 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
 | G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | 🔲 npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask OpenAPI 排期 |
 
-**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项中 **G-1/G-3/G-4/G-6/G-7/G-8 已实现**（本轮提交，见 git log），G-2/G-5/G-9 排期处理（G-5 与 9.6 联动）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
+**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项中 **G-1/G-2/G-3/G-4/G-6/G-7/G-8 已实现**（本轮提交，见 git log），G-5/G-9 排期处理（G-5 与 9.6 联动）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
