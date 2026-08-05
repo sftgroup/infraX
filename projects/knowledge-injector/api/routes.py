@@ -160,9 +160,10 @@ def create_app() -> Flask:
         body = request.get_json(silent=True) or {}
         q = body.get("query", "")
         top_k = body.get("top_k", 5)
+        namespace = body.get("namespace")  # 可选：默认走 SETTINGS.default_namespace（market）
         if not q:
             return jsonify({"error": "query is required"}), 400
-        results = injector._client.query(q, top_k=top_k)
+        results = injector._client.query(q, top_k=top_k, namespace=namespace)
         return jsonify({"results": results, "count": len(results)})
 
     # ─── Status / Injectors / Stats ────────────────
