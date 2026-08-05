@@ -33,6 +33,7 @@ if _env_path.exists():
                     os.environ[key] = val
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -82,8 +83,9 @@ async def _validation_error_handler(request: Request, exc: RequestValidationErro
     return JSONResponse(status_code=422, content=body)
 
 
-@app.exception_handler(HTTPException)
-async def _http_error_handler(request: Request, exc: HTTPException):
+@app.exception_handler(StarletteHTTPException)
+async def _http_error_handler(request: Request, exc: StarletteHTTPException):
+    """覆盖 FastAPI/Starlette HTTPException（含 404 路由未匹配）→ 统一 {code, message, data}。"""
     return JSONResponse(status_code=exc.status_code, content=_error_body(exc.status_code, str(exc.detail)))
 
 
