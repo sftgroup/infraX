@@ -11,10 +11,10 @@
 - JS SDK `@0xinfrax/infrax-dk@0.3.0` 已发布 npm；集成文档 INTEGRATION_PLATFORM / INTEGRATION_DATA_SERVICE / INTEGRATION_LIGHTRAG
 - 9.7 差距项 G-1~G-9 全部实现（PyPI 发布待 token）
 
-**区块链栈（盘点结论，任务见 tasklist §9.8，P0 修复进行中）**
-- ⚠️ payment / vault 运行期**无鉴权**；mpc 验证码硬编码 `888888` → P0 安全缺口
-- ⚠️ session-key（三层鉴权最完整）**未部署**（9111 端口与 web 冲突）；vault safe_owners 未建表、仅 Sepolia
-- ⚠️ dc-index `dc_tokens` 调不存在的 `/api/v2/data/tokens`；web 缺 `/api/v2/subscription` 代理；admin 缺用户/套餐/订单页
+**区块链栈（盘点结论，任务见 tasklist §9.8，P0 已完成）**
+- ✅ P0 安全修复已部署生产并 E2E 通过（`148cc42`）：payment/vault/mpc 三服务接入统一鉴权契约（`px_`/`vx_`/`mp_` scope key），mpc 验证码 `888888` → `crypto.randomInt`；共享中间件 `projects/shared/auth-express.ts`
+- ⚠️ session-key（三层鉴权最完整）**未部署**（9111 端口与 web 冲突）；vault safe_owners 未建表、仅 Sepolia；x402/pay 为伪实现；dc-index `dc_tokens` 调不存在端点 → P1（B-5/B-6/B-10-2~5）
+- ⚠️ web 缺 `/api/v2/subscription` 代理；用户端无套餐/key 界面；admin 缺用户/套餐/订单页 → P1/P2（B-11-x）
 - 决策：先修 P0 安全 + P1 功能缺口 → 统一更新 SDK/MCP → 发布文档（B-1~B-12-4）
 
 ---
