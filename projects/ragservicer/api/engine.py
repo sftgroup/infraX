@@ -125,7 +125,7 @@ def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
             except Exception:
                 logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
             await rag.ainsert(text, ids=doc_id)
-        return _do
+        return _do()
     return _factory
 
 
@@ -140,7 +140,7 @@ def _insert_batch_coro(tenant_id: str, namespace: str, documents: list[dict]):
             rag = get_rag(tenant_id, namespace)
             combined = "\n\n---\n\n".join(texts)
             await rag.ainsert(combined, ids="|".join(ids))
-        return _do
+        return _do()
     return _factory
 
 
@@ -151,7 +151,7 @@ def _delete_coro(tenant_id: str, namespace: str, doc_id: str):
         async def _do():
             rag = get_rag(tenant_id, namespace)
             await rag.adelete_by_doc_id(doc_id)
-        return _do
+        return _do()
     return _factory
 
 
