@@ -12,16 +12,12 @@ from urllib.error import HTTPError, URLError
 logger = logging.getLogger(__name__)
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
-_FINNHUB_API_KEY: Optional[str] = None
 
 
 def _get_api_key() -> str:
-    global _FINNHUB_API_KEY
-    if _FINNHUB_API_KEY is None:
-        # Delayed import to avoid circular dependency at module level
-        from app.config import APIKeys
-        _FINNHUB_API_KEY = APIKeys.rotate("FINNHUB_API_KEY") or ""
-    return _FINNHUB_API_KEY
+    """多 key 轮换：每次调用轮询取下一个（支持逗号分隔 key 池）。"""
+    from app.config import APIKeys
+    return APIKeys.rotate("FINNHUB_API_KEY") or ""
 
 
 def _finnhub_get(path: str, params: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:

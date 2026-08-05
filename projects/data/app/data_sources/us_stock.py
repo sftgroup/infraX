@@ -51,7 +51,7 @@ class USStockDataSource(BaseDataSource):
     }
     
     def __init__(self):
-        # 初始化 finnhub 作为备选
+        # 初始化 finnhub 作为备选（多 key 轮换：每次请求前轮询取 key，见 _rotate_finnhub）
         self.finnhub_client = None
         try:
             import finnhub
@@ -60,6 +60,11 @@ class USStockDataSource(BaseDataSource):
                 logger.info("Finnhub client initialized")
         except Exception as e:
             logger.warning(f"Finnhub init failed: {e}")
+
+    def _rotate_finnhub(self) -> None:
+        """请求前轮询取下一个 Finnhub key（多 key 逗号分隔自动轮换）。"""
+        if self.finnhub_client:
+            self.finnhub_client.api_key = APIKeys.rotate('FINNHUB_API_KEY')
     
     def get_ticker(self, symbol: str) -> Dict[str, Any]:
         """
@@ -294,6 +299,7 @@ class USStockDataSource(BaseDataSource):
             end_ts = int(end_date.timestamp())
             
             # logger.info(f"使用 Finnhub 获取 {symbol} 日线数据")
+            self._rotate_finnhub()
             candles = self.finnhub_client.stock_candles(symbol, 'D', start_ts, end_ts)
             
             if candles and candles.get('s') == 'ok':
