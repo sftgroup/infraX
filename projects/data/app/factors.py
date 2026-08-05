@@ -44,6 +44,27 @@ _BUILTIN = [
 ]
 
 
+# crypto 裸对 → 交易对存储键（resolve 返回 BTCUSDT 形式，kline 存 BTC/USDT）。
+# 仅识别已知 quote 后缀，非 crypto 符号（AAPL/GC=F/EURUSD/600519）原样返回。
+_CRYPTO_QUOTES = ("USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI", "BTC", "ETH")
+
+
+def normalize_crypto_pair(symbol: str, market_type: str = "spot") -> str:
+    """crypto 裸对 → 存储键：``BTCUSDT`` → spot ``BTC/USDT`` / swap ``BTC/USDT:USDT``。
+
+    已含 ``/`` 或 ``:`` 的符号原样返回；非 crypto 符号原样返回。
+    """
+    if "/" in symbol or ":" in symbol:
+        return symbol
+    for q in _CRYPTO_QUOTES:
+        if symbol.endswith(q) and len(symbol) > len(q):
+            base = symbol[: -len(q)]
+            if market_type == "swap":
+                return f"{base}/{q}:{q}"
+            return f"{base}/{q}"
+    return symbol
+
+
 def _load_extra_factors() -> list[dict]:
     """Load additional factors from FACTORS_CONFIG_PATH JSON file."""
     path = os.getenv("FACTORS_CONFIG_PATH", "")
@@ -322,6 +343,11 @@ def get_history_factors(
     rows = _query(symbol)
     if not rows and "/" in symbol:
         rows = _query(symbol.split("/", 1)[0])
+    if not rows and "/" not in symbol:
+        # crypto 裸对（resolve 返回 BTCUSDT）→ 交易对存储键再查（D7）
+        pair = normalize_crypto_pair(symbol)
+        if pair != symbol:
+            rows = _query(pair)
 
     wanted = set(ids) if ids else set(_TECH_FACTORS)
     series: list[dict] = []

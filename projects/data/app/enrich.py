@@ -11,25 +11,32 @@ from typing import Optional
 
 from app.storage import get_db
 from app.factors import _TECH_FACTORS as TECHNICAL_COLUMNS
+from app.factors import get_catalog, normalize_crypto_pair
+
+# 外部因子 join 白名单：仅附加 catalog 中声明的因子 id，
+# 避免 market_overview/indices 等快照的 sections/summary 等非因子字段污染 bars（D8）。
+_FACTOR_KEYS = {f["id"] for f in get_catalog()}
 
 
 def _normalize_kline_symbol(symbol: str, market_type: str) -> str:
-    """crypto spot/swap 存储键规范化（DS-8 方案 A）。
+    """crypto spot/swap 存储键规范化（DS-8 方案 A + 裸对兼容 D7）。
 
-    - spot：原样（``BTC/USDT``）
-    - swap：ccxt 惯例 ``BTC/USDT:USDT``；symbol 已带 ``:quote`` 后缀则视为 swap 保持原样
+    - spot：原样（``BTC/USDT``）；裸对 ``BTCUSDT`` → ``BTC/USDT``
+    - swap：ccxt 惯例 ``BTC/USDT:USDT``；symbol 已带 ``:quote`` 后缀则视为 swap 保持原样；
+      裸对 ``BTCUSDT`` → ``BTC/USDT:USDT``
     - 非交易对符号（美股/外汇/期货等）不受影响
     """
-    if market_type != "swap":
-        return symbol
     if ":" in symbol:
         return symbol
     if "/" in symbol:
-        base, quote = symbol.split("/", 1)
-        if ":" in quote:
-            return symbol
-        return f"{base}/{quote}:{quote}"
-    return symbol
+        if market_type == "swap":
+            base, quote = symbol.split("/", 1)
+            if ":" in quote:
+                return symbol
+            return f"{base}/{quote}:{quote}"
+        return symbol
+    # crypto 裸对（/symbol/resolve 返回 BTCUSDT 形式）→ 按已知 quote 补斜杠
+    return normalize_crypto_pair(symbol, market_type=market_type)
 
 
 def query_bars(
@@ -115,7 +122,7 @@ def _join_factors(bars: list[dict], symbol: str):
         except (json.JSONDecodeError, TypeError):
             continue
         for k, v in data.items():
-            if v is not None:
+            if v is not None and k in _FACTOR_KEYS:
                 factors.setdefault(int(r["fetched_at"]), {})[str(k)] = v
 
     if not factors:
