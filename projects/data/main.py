@@ -407,6 +407,30 @@ async def symbol_resolve(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# DS-5 券商市场策略（静态配置，契约见 AITRADER_DATA_SERVICE_REQ.md DS-5）
+_BROKER_MARKET_POLICY = {
+    "crypto": {
+        "exchanges": [
+            "Binance", "OKX", "Bybit", "Gate", "Kucoin", "Kraken",
+            "HTX", "Bitget", "Deepcoin", "Coinbase",
+        ],
+        "default": "Binance",
+    }
+}
+
+
+@app.get("/policy/broker-market")
+async def policy_broker_market():
+    """券商市场策略（DS-5）。
+
+    契约（AITRADER_DATA_SERVICE_REQ.md DS-5）：
+        GET /policy/broker-market
+          → { "crypto": { "exchanges": [...], "default": "Binance" } }
+    静态配置（crypto 主交易市场）；多市场扩展待 DS-11 决策。
+    """
+    return _BROKER_MARKET_POLICY
+
+
 # ── Snapshots (complex data: heatmap, calendar, indices, etc.) ─
 
 @app.get("/snapshots")
