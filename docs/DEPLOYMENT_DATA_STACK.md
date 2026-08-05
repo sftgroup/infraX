@@ -522,7 +522,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-5 | `/policy/broker-market` 券商市场策略 | ⚠️ | P1 | **端点缺失（2026-08-05 生产实测 404，data-service 代码无此路由）**；REQ 文档标"已实现"与实际不符 → 需确认是否由 data-service 承接 |
 | DS-6 | `/stats` `/health` | ✅ | — | |
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
-| DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度已对齐验收标准**（2026-08-05 aa3f1c1 回填：1d 1095 根/3 年、1m 43202 根/30 天、5m 180 天等，见 9.3） |
+| DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度已对齐验收标准**（2026-08-05 aa3f1c1 crypto 回填：1d 1095 根/3 年、1m 43202 根/30 天；76a9419 非 crypto `fetch_bars` 200→400：美股 AAPL/MSFT 400 根≈585 天、期货 GC=F 565 天、A股 600519 602 天、港股 00700 597 天均达标；**外汇 6 对受 yfinance 限流保持 199 根**，见 9.3 yfinance 待办） |
 | DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
 | DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ✅ | P1 | 2d78050 已部署；生产实测：market_overview ✅（crypto 15 项）、commodities ✅（SI=F 白银/CL=F 原油 WTI 等）、forex_pairs ✅（EUR/USD/GBP/USD 等），yfinance 免费源正常出数 |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
