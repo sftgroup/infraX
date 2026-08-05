@@ -78,13 +78,18 @@ function serveFile(res, filePath) {
 }
 
 // ─── Proxy API requests to backends ──────────────────────────────
+const SERVICE_API_KEY = process.env.SERVICE_API_KEY || '';
 function proxyRequest(req, res, target) {
+  const headers = { ...req.headers, host: target.host + ':' + target.port };
+  // 后端已接入统一鉴权契约：代理统一注入 X-Service-Key（平台 bridge key），
+  // 前端无需携带 key；直接访问后端的调用方需自带 Bearer/X-API-Key/X-Service-Key
+  if (SERVICE_API_KEY) headers['x-service-key'] = SERVICE_API_KEY;
   const opts = {
     hostname: target.host,
     port: target.port,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: target.host + ':' + target.port },
+    headers,
     timeout: 15000,
   };
   const proxy = http.request(opts, (pres) => {

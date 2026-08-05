@@ -29,7 +29,14 @@ logger = get_logger(__name__)
 
 KEY_PREFIX = "dx_"
 # scope → key 前缀（MCP 专用 key 用 mx_ 前缀，权限由调用方校验）
-PREFIX_BY_SCOPE = {"data": "dx_", "mcp": "mx_"}
+# payment/vault/mpc 为区块链栈服务，前缀互斥（首字符 d/m/l/p/v 均不同）
+PREFIX_BY_SCOPE = {
+    "data": "dx_",      # data 业务端点
+    "mcp": "mx_",       # hub-index MCP 入站
+    "payment": "px_",   # payment 服务
+    "vault": "vx_",     # vault 服务
+    "mpc": "mp_",       # mpc 服务
+}
 _DEFAULT_PREFIX = "dx_"
 _DEFAULT_RATE_LIMIT = 100
 

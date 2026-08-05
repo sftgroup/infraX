@@ -14,6 +14,8 @@ const PORT = parseInt(process.env.PORT || '3007', 10);
 
 async function mpc(path: string, opts?: { method?: string; body?: any }) {
   const headers: any = { 'Content-Type': 'application/json' };
+  const serviceKey = process.env.MPC_API_KEY || process.env.DATA_API_KEY || '';
+  if (serviceKey) headers['X-Service-Key'] = serviceKey;
   const r = await fetch(MPC + path, { method: opts?.method || 'GET', headers, body: opts?.body ? JSON.stringify(opts.body) : undefined });
   return r.json();
 }

@@ -4,10 +4,22 @@ import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import crypto from 'crypto';
+import { createAuthMiddleware } from '../shared/auth-express';
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
+
+// 统一平台鉴权契约（Bearer / X-API-Key / X-Service-Key 三选一，B-10-1）
+// 本地 PAYMENT_API_KEY（bridge key）或 data 服务签发的 px_ key（scope=payment）放行；
+// /health /metrics 豁免；外部 key 经 data POST /api-keys/verify 实时校验。
+const authMw = createAuthMiddleware({
+  envKeys: process.env.PAYMENT_API_KEY,
+  scope: 'payment',
+  verifyUrl: process.env.DATA_URL,
+  verifyKey: process.env.DATA_API_KEY,
+});
+app.use(authMw);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_payment',

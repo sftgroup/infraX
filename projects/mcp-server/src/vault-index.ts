@@ -15,6 +15,8 @@ const PORT = parseInt(process.env.PORT || '3006', 10);
 
 async function vt(path: string, opts?: { method?: string; body?: any }) {
   const headers: any = { 'Content-Type': 'application/json' };
+  const serviceKey = process.env.VAULT_API_KEY || process.env.DATA_API_KEY || '';
+  if (serviceKey) headers['X-Service-Key'] = serviceKey;
   const r = await fetch(VAULT + path, { method: opts?.method || 'GET', headers, body: opts?.body ? JSON.stringify(opts.body) : undefined });
   return r.json();
 }

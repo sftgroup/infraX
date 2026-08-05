@@ -867,8 +867,11 @@ async def admin_create_api_key(request: Request):
     if not label:
         raise HTTPException(status_code=400, detail="label required")
     scope = str(body.get("scope") or "data").strip()
-    if scope not in ("data", "mcp"):
-        raise HTTPException(status_code=400, detail="scope must be 'data' or 'mcp'")
+    if scope not in api_keys.PREFIX_BY_SCOPE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"scope must be one of {sorted(api_keys.PREFIX_BY_SCOPE)}",
+        )
     rate_limit = body.get("rate_limit")
     if rate_limit in (None, ""):
         rate_limit = None
@@ -885,7 +888,7 @@ async def admin_create_api_key(request: Request):
 
 @app.post("/api-keys/verify")
 async def verify_api_key(request: Request):
-    """校验 MCP 专用 key（scope=mcp）。供 hub-index 入站鉴权调用。
+    """校验外部签发 key（scope=mcp/payment/vault/mpc）。供各服务入站鉴权调用。
 
     该端点为业务端点（非 /admin/*），由 _api_auth 中间件统一鉴权
     （DATA_API_KEY / monitor / 签发的 dx_ key 任一放行），避免 ADMIN_API_KEY
@@ -893,9 +896,12 @@ async def verify_api_key(request: Request):
     """
     body = await request.json() or {}
     api_key = str(body.get("api_key") or "").strip()
-    status = api_keys.verify(api_key, scope="mcp")
+    scope = str(body.get("scope") or "mcp").strip().lower()
+    if scope not in api_keys.PREFIX_BY_SCOPE:
+        scope = "mcp"
+    status = api_keys.verify(api_key, scope=scope)
     if status == 0:
-        return {"code": 0, "message": "ok", "data": {"valid": True}}
+        return {"code": 0, "message": "ok", "data": {"valid": True, "scope": scope}}
     message = {403: "API key disabled", 429: "Rate limit exceeded"}.get(status, "unauthorized")
     raise HTTPException(status_code=status, detail=message)
 

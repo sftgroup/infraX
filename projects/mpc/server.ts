@@ -5,10 +5,22 @@ import { Pool } from 'pg';
 import cors from 'cors';
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { createAuthMiddleware } from '../shared/auth-express';
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
+
+// 统一平台鉴权契约（Bearer / X-API-Key / X-Service-Key 三选一）
+// 本地 MPC_API_KEY（bridge key）或 data 服务签发的 mp_ key（scope=mpc）放行；
+// /health /metrics 豁免；外部 key 经 data POST /api-keys/verify 实时校验。
+const authMw = createAuthMiddleware({
+  envKeys: process.env.MPC_API_KEY,
+  scope: 'mpc',
+  verifyUrl: process.env.DATA_URL,
+  verifyKey: process.env.DATA_API_KEY,
+});
+app.use(authMw);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_mpc',
@@ -225,9 +237,9 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-mpc
 app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
   const { email } = req.body;
   if (!email) return res.status(400).json(apiResponse(null, 'email required', 1001));
-  const code = '888888'; // dev fixed code — no email sending yet
+  const code = String(crypto.randomInt(100000, 1000000)); // 6 位随机码（B-1：移除硬编码 888888 万能码）
   storeCode(email, code);
-  console.log(`[MPC] Code for ${email}: ${code}`);
+  console.log(`[MPC] Code for ${email}: ${code}`); // 真实发信接入前，验证码经日志/存储下发（勿外泄）
   res.json(apiResponse({ message: 'Code sent' }));
 }));
 

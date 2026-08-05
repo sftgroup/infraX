@@ -5,10 +5,22 @@ import { Pool } from 'pg';
 import cors from 'cors';
 import crypto from 'crypto';
 import * as multiSigService from './src/services/multiSigService';
+import { createAuthMiddleware } from '../shared/auth-express';
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
+
+// 统一平台鉴权契约（Bearer / X-API-Key / X-Service-Key 三选一，B-4）
+// 本地 VAULT_API_KEY（bridge key）或 data 服务签发的 vx_ key（scope=vault）放行；
+// /health /metrics 豁免；外部 key 经 data POST /api-keys/verify 实时校验。
+const authMw = createAuthMiddleware({
+  envKeys: process.env.VAULT_API_KEY,
+  scope: 'vault',
+  verifyUrl: process.env.DATA_URL,
+  verifyKey: process.env.DATA_API_KEY,
+});
+app.use(authMw);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_vault',
