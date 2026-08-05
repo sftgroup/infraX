@@ -248,17 +248,45 @@ sudo systemctl restart infrax-ragservicer infrax-knowledge-injector
 
 | 服务 | 业务端点鉴权 | 管理端点 |
 |---|---|---|
-| data :9112 | **可配置**（`DATA_API_KEY`，回退 `RAGSERVICER_API_KEY`→`DOC_API_KEY`→`LIGHTRAG_API_KEY`）；未配置则开放 | `/admin/config` 需 Bearer `ADMIN_API_KEY` |
+| data :9112 | **可配置**（`DATA_API_KEY`，回退 `RAGSERVICER_API_KEY`→`DOC_API_KEY`→`LIGHTRAG_API_KEY`）+ **多租户签发 key**（`/admin/api-keys`，`dx_` 前缀）；未配置则开放 | `/admin/config`、`/admin/status`、`/admin/symbols`、`/admin/api-keys` 需 Bearer `ADMIN_API_KEY` |
 | knowledge-injector :9113 | **可配置**（`INJECTOR_API_KEY`，回退 `RAGSERVICER_API_KEY`）；未配置则开放 | `/admin/config` 需 Bearer `ADMIN_API_KEY` |
 | ragservicer :9721 | **强制**（bridge key / admin key / 租户 key 三层，见 4.3） | `/api/v1/admin/*`、`/instances` 需 Bearer `ADMIN_API_KEY` |
 
-调用方式统一：`Authorization: Bearer <key>` 或 `X-API-Key: <key>` 二选一。
+调用方式统一：`Authorization: Bearer <key>`、`X-API-Key: <key>` 或 `X-Service-Key: <key>` 三选一（AItrader 服务间约定用 `X-Service-Key`）。
 
 **key 一致性要求**：data-service 与 knowledge-injector 建议配置**同一把** `RAGSERVICER_API_KEY`（与 ragservicer/注入器 bridge key 一致），这样：
 - injector → data-service 联动（`GET /snapshots` 拉情绪因子）自动带 `X-API-Key`，无需额外配置
 - admin 后台自动读取三个服务 `.env` 中的 key 转发请求（`DATA_API_KEY`/`INJECTOR_API_KEY`/`RAGSERVICER_API_KEY`），改 key 后无需重启 admin
 
 **启用方式**：在对应服务 `.env` 填入 key 并重启即强制校验；删除 key 即回退开放模式（向后兼容，便于 aitrader 调用方逐步接入）。
+
+#### 4.6.1 data 多租户 key 签发（`/admin/api-keys`，复用旧栈 collector api_keys 模式）
+
+面向下游平台（aitrader 等）签发独立业务 key，与 bridge key 等价可访问全部业务端点；携带方式三 header 任一。仅存 SHA-256 哈希，不存明文。
+
+| 端点 | 方法 | 说明 |
+|---|---|---|
+| `/admin/api-keys` | GET | 列表（key 掩码：前 8 + `...` + 后 4，含 enabled / rate_limit / last_used_at / request_count 用量监控） |
+| `/admin/api-keys` | POST | 签发 `{label, rate_limit?}` → 完整 key **仅此一次**返回 |
+| `/admin/api-keys/{id}` | PATCH | `{label?, enabled?, rate_limit?}`（热启停 / 调限流） |
+| `/admin/api-keys/{id}/rotate` | POST | 轮换（同 id 新 key，旧 key 立即失效） |
+| `/admin/api-keys/{id}` | DELETE | 吊销 |
+
+行为契约：
+- 未携带 / 非法 key → `401 {"detail": "unauthorized"}`；已禁用 → `403`；超 RPM → `429`（每 key 1 分钟滑动窗口，内存单实例）
+- `dx_` 前缀 + 32 字节 hex（51 字符）；表 `api_keys` 存于共享 SQLite `data/data.db`
+- 签发/轮换的完整 key 需立即保存（服务端仅存哈希，无法二次读取）
+
+```bash
+# 签发（Bearer ADMIN_API_KEY）
+curl -X POST http://<host>:9112/admin/api-keys \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" -H "Content-Type: application/json" \
+  -d '{"label":"aitrader-prod","rate_limit":100}'
+# → {"code":0,"message":"ok","data":{"id":1,"api_key":"dx_...","label":"aitrader-prod",...}}
+
+# aitrader 侧调用
+curl -H "X-Service-Key: dx_..." http://<host>:9112/stats
+```
 
 ### 4.7 ml-service（`projects/ml-service/.env`，独立服务器）
 

@@ -47,3 +47,6 @@ deploy/overrides/*.conf
 # Local secrets
 .env.github
 ~/.git-credentials
+
+# Python build artifacts
+*.egg-info/

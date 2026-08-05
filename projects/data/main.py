@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # 统一鉴权契约（app_auth）：先导入 app.config 触发 sys.path 引导（../shared）
 import app.config  # noqa: E402
 import app_auth  # noqa: E402
+from app import api_keys  # noqa: E402  (多租户 key 签发，导入时幂等建表)
 
 app = FastAPI(
     title="InfraX Data Service",
@@ -160,22 +161,34 @@ install_envelope_middleware(app)
 # 实现复用全平台统一契约 app_auth（projects/shared/app_auth.py）。
 
 
-def _api_authorized(request) -> bool:
+def _api_auth_status(request) -> int | None:
+    """鉴权结果：None=放行，否则返回 HTTP 状态码（401/403/429）。
+
+    校验顺序：平台 bridge key / 只读监控 key（app_auth 统一契约）→
+    签发的多租户 key（api_keys 表，仅存哈希）。任一命中即放行；
+    未配置任何 key 时开放（向后兼容）。
+    """
     from app.config import DATA_API_KEY, MONITOR_API_KEY
-    return app_auth.is_authorized(
+    if app_auth.is_authorized(
         request.headers.get, DATA_API_KEY,
         method=request.method, monitor_key=MONITOR_API_KEY,
-    )
+    ):
+        return None
+    key = app_auth.extract_api_key(request.headers.get)
+    if not key:
+        return 401
+    return api_keys.verify(key) or None
 
 
 @app.middleware("http")
 async def _api_auth(request, call_next):
     if not app_auth.is_exempt(request.url.path, prefixes=("/admin/",)):
-        if not _api_authorized(request):
-            return JSONResponse(
-                status_code=401,
-                content=app_auth.UNAUTHORIZED,
-            )
+        status = _api_auth_status(request)
+        if status == 401:
+            return JSONResponse(status_code=401, content=app_auth.UNAUTHORIZED)
+        if status:
+            message = {403: "API key disabled", 429: "Rate limit exceeded"}.get(status, "unauthorized")
+            return JSONResponse(status_code=status, content={"code": status, "message": message, "data": None})
     return await call_next(request)
 
 
@@ -828,6 +841,89 @@ async def admin_put_symbols(request: Request):
         "market": market, "action": action,
         "symbols": new_syms, "timeframes": new_tfs,
     }}
+
+
+# ── Admin API keys（多租户 key 签发，B 端管理）─────────────────
+# 复用旧栈 collector api_keys 模式（label / rate_limit / enabled /
+# 用量跟踪 / 掩码列表 / 轮换），仅存 SHA-256 哈希不存明文。
+# 签发 key 以 dx_ 开头，与 bridge key 等价可访问全部业务端点，
+# 携带方式三 header 任一（Bearer / X-API-Key / X-Service-Key）。
+# 完整 key 仅在创建/轮换响应返回一次。鉴权同 /admin/config（Bearer ADMIN_API_KEY）。
+
+
+@app.get("/admin/api-keys")
+async def admin_list_api_keys(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    return {"code": 0, "message": "ok", "data": api_keys.list_keys()}
+
+
+@app.post("/admin/api-keys")
+async def admin_create_api_key(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    body = await request.json()
+    label = (body.get("label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="label required")
+    rate_limit = body.get("rate_limit")
+    if rate_limit in (None, ""):
+        rate_limit = None
+    else:
+        try:
+            rate_limit = int(rate_limit)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="rate_limit must be an integer")
+    raw, row = api_keys.create_key(label=label, rate_limit=rate_limit, created_by="admin")
+    row["api_key"] = raw  # 完整 key 仅此一次可见
+    logger.info("Admin api-key created: id=%s label=%s", row["id"], label)
+    return {"code": 0, "message": "ok", "data": row}
+
+
+@app.patch("/admin/api-keys/{key_id}")
+async def admin_update_api_key(key_id: int, request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    body = await request.json()
+    label = body.get("label")
+    enabled = body.get("enabled")
+    rate_limit = body.get("rate_limit")
+    if rate_limit not in (None, ""):
+        try:
+            rate_limit = int(rate_limit)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="rate_limit must be an integer")
+    ok = api_keys.update_key(
+        key_id,
+        label=str(label).strip() if label is not None else None,
+        enabled=enabled if enabled is not None else None,
+        rate_limit=rate_limit if rate_limit is not None else None,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="api key not found")
+    return {"code": 0, "message": "ok", "data": {"updated": True}}
+
+
+@app.post("/admin/api-keys/{key_id}/rotate")
+async def admin_rotate_api_key(key_id: int, request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    raw = api_keys.rotate_key(key_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="api key not found")
+    logger.info("Admin api-key rotated: id=%s", key_id)
+    return {"code": 0, "message": "ok", "data": {"id": key_id, "api_key": raw}}
+
+
+@app.delete("/admin/api-keys/{key_id}")
+async def admin_delete_api_key(key_id: int, request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    ok = api_keys.delete_key(key_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="api key not found")
+    logger.info("Admin api-key deleted: id=%s", key_id)
+    return {"code": 0, "message": "ok", "data": {"deleted": True}}   # noqa: E501
 
 
 # ── Startup ────────────────────────────────────────────────────
