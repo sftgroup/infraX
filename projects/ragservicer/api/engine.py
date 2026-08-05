@@ -7,6 +7,7 @@ Uses api.adapters for LLM/Embedding factories.
 """
 import asyncio
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -63,6 +64,7 @@ def _get_embed_func():
 # ── RAG Instance Pool (tenant_id/namespace) ───────────────
 
 _rag_instances: dict[str, object] = {}
+_rag_lock = threading.Lock()  # 序列化首次实例创建，防多 worker 竞态
 
 
 def _instance_key(tenant_id: str, namespace: str) -> str:
@@ -70,28 +72,34 @@ def _instance_key(tenant_id: str, namespace: str) -> str:
 
 
 def get_rag(tenant_id: str, namespace: str = "default"):
-    """Get or create a LightRAG instance scoped to (tenant, namespace)."""
+    """Get or create a LightRAG instance scoped to (tenant, namespace).
+
+    注意：只能在 lightrag-loop 之外的线程调用（MCP/worker/请求线程）。
+    实例初始化会阻塞等待 loop 完成，若在 loop 线程内调用将自死锁。
+    """
     from lightrag import LightRAG
 
     key = _instance_key(tenant_id, namespace)
     if key not in _rag_instances:
-        cfg = get_config()
-        wd = str(Path(cfg.storage.working_dir) / tenant_id / namespace)
-        Path(wd).mkdir(parents=True, exist_ok=True)
+        with _rag_lock:
+            if key not in _rag_instances:
+                cfg = get_config()
+                wd = str(Path(cfg.storage.working_dir) / tenant_id / namespace)
+                Path(wd).mkdir(parents=True, exist_ok=True)
 
-        rag = LightRAG(
-            working_dir=wd,
-            llm_model_func=_get_llm_func(),
-            embedding_func=_get_embed_func(),
-            addon_params={"language": cfg.rag.summary_language},
-        )
+                rag = LightRAG(
+                    working_dir=wd,
+                    llm_model_func=_get_llm_func(),
+                    embedding_func=_get_embed_func(),
+                    addon_params={"language": cfg.rag.summary_language},
+                )
 
-        async def _init():
-            await rag.initialize_storages()
-        _run_async(_init())
+                async def _init():
+                    await rag.initialize_storages()
+                _run_async(_init())
 
-        _rag_instances[key] = rag
-        logger.info(f"Created LightRAG instance: {key} → {wd}")
+                _rag_instances[key] = rag
+                logger.info(f"Created LightRAG instance: {key} → {wd}")
 
     return _rag_instances[key]
 
@@ -102,49 +110,66 @@ def get_rag(tenant_id: str, namespace: str = "default"):
 # 异步（REST 写队列）两条路径复用。所有 LightRAG 调用仍在全局循环执行。
 
 def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
-    async def _do():
-        rag = get_rag(tenant_id, namespace)
-        try:
-            await rag.adelete_by_doc_id(doc_id)
-        except Exception:
-            logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
-        await rag.ainsert(text, ids=doc_id)
-    return _do
+    """任务工厂：worker 线程先预初始化实例（loop 外），再返回注入 coroutine。
+
+    不能在 loop 线程内 get_rag 首次初始化（自死锁），故把初始化前移到
+    coro_factory 执行（tasks worker 在 loop 外调用工厂）。
+    """
+    def _factory():
+        get_rag(tenant_id, namespace)  # 幂等；非 loop 线程，阻塞等待 loop 完成
+
+        async def _do():
+            rag = get_rag(tenant_id, namespace)
+            try:
+                await rag.adelete_by_doc_id(doc_id)
+            except Exception:
+                logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
+            await rag.ainsert(text, ids=doc_id)
+        return _do
+    return _factory
 
 
 def _insert_batch_coro(tenant_id: str, namespace: str, documents: list[dict]):
     texts = [d["text"] for d in documents]
     ids = [d.get("doc_id", f"doc_{i}") for i, d in enumerate(documents)]
 
-    async def _do():
-        rag = get_rag(tenant_id, namespace)
-        combined = "\n\n---\n\n".join(texts)
-        await rag.ainsert(combined, ids="|".join(ids))
-    return _do
+    def _factory():
+        get_rag(tenant_id, namespace)
+
+        async def _do():
+            rag = get_rag(tenant_id, namespace)
+            combined = "\n\n---\n\n".join(texts)
+            await rag.ainsert(combined, ids="|".join(ids))
+        return _do
+    return _factory
 
 
 def _delete_coro(tenant_id: str, namespace: str, doc_id: str):
-    async def _do():
-        rag = get_rag(tenant_id, namespace)
-        await rag.adelete_by_doc_id(doc_id)
-    return _do
+    def _factory():
+        get_rag(tenant_id, namespace)
+
+        async def _do():
+            rag = get_rag(tenant_id, namespace)
+            await rag.adelete_by_doc_id(doc_id)
+        return _do
+    return _factory
 
 
 def insert_document(tenant_id: str, namespace: str, text: str, doc_id: str) -> dict:
     """同步插入（MCP / legacy 使用，请求线程会阻塞到完成）。"""
-    _run_async(_insert_coro(tenant_id, namespace, text, doc_id))
+    _run_async(_insert_coro(tenant_id, namespace, text, doc_id)())
     return {"doc_id": doc_id, "tenant": tenant_id, "namespace": namespace}
 
 
 def insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]) -> dict:
     """同步批量插入（MCP / legacy 使用）。"""
-    _run_async(_insert_batch_coro(tenant_id, namespace, documents))
+    _run_async(_insert_batch_coro(tenant_id, namespace, documents)())
     return {"count": len(documents), "tenant": tenant_id, "namespace": namespace}
 
 
 def delete_document(tenant_id: str, namespace: str, doc_id: str) -> dict:
     """同步删除（MCP / legacy 使用）。"""
-    _run_async(_delete_coro(tenant_id, namespace, doc_id))
+    _run_async(_delete_coro(tenant_id, namespace, doc_id)())
     return {"doc_id": doc_id, "deleted": True}
 
 
