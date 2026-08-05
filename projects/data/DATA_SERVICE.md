@@ -215,11 +215,15 @@ GET /stats
 | `CALENDAR_COLLECT_INTERVAL_SEC` | 600 | 日历采集间隔 |
 | `MARKET_COLLECT_INTERVAL_SEC` | 600 | 快照采集间隔 |
 | `DATA_CONFIG_PATH` | data_config.json | 采集配置文件路径 |
-| `COINGECKO_API_KEY` | (空) | CoinGecko API Key (可选) |
+| `COINGECKO_API_KEY` | 已配置（2026-08-06） | CoinGecko demo key（`x_cg_demo_api_key`）：heatmap/价格请求自动携带提升限流额度；实测 BTC 64513 / ETH 1890.69 出数 |
 | `FINNHUB_API_KEY` | 已配置（2026-08-05） | Finnhub：美股 quote/日线备选/财报 earnings/公司档案/情绪；经济日历 free tier 无权限 |
 | `FIRECRAWL_API_KEY` | 已配置（2026-08-05） | 统一搜索服务（`app/services/search.py`，search API）：macro_news 新闻搜索补充；未配置时 fail-silent 不影响主链路 |
 | `FRED_API_KEY` | 已配置（2026-08-06） | FRED 宏观指标（CPI/PCE/NFP/Unemployment/GDP/Fed Funds）实测出数；DXY 备源 |
-| `TWELVE_DATA_API_KEY` | 已配置（2026-08-06） | 外汇 K线主源（优先于 yfinance）；实测 EURUSD 400 根达标。⚠️ 免费 tier 限 8 次/分钟约 800 credits/天，现每 5 分钟拉 6 对会超额 → 待降频（见 DEPLOYMENT_DATA_STACK 9.3） |
+| `TWELVE_DATA_API_KEY` | 已配置（2026-08-06） | 外汇 K线主源（优先于 yfinance）；实测 EURUSD 400 根达标。免费 tier 限 8 次/分钟 ~800 credits/天，已降频（KL_MULTI_INTERVAL_SEC=1800，~96 次/天） |
+| `NEWSAPI_API_KEY` | 已配置（2026-08-06） | 新闻采集（business/crypto 头条）：实测 top-headlines 返回 54 条；未配置时新闻采集自动禁用 |
+| `TIINGO_API_KEY` | 已配置（2026-08-06） | 外汇/期货备源：实测 fx EURUSD bid 1.15446；IEX 美股 quote free tier 无权限（返回 None，美股走 akshare/腾讯） |
+| `ALPHA_VANTAGE_KEY` | 已配置（2026-08-06） | DXY 美元指数备源：实测 GLOBAL_QUOTE AAPL 309.38 |
+| `CRYPTOCOMPARE_API_KEY` | 已配置（2026-08-06） | 预留（当前 crypto 价格走 ccxt/CoinGecko）：实测 BTC/USD 64516.08 |
 | `LOG_LEVEL` | INFO | 日志级别 |
 
 ---
