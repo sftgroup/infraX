@@ -519,7 +519,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-2 | `/factors/*` 因子目录/最新/历史 | ✅ | P0 | |
 | DS-3 | `/snapshots` 复杂快照 | ✅ | P0 | 契约确认；缺的 3 类（commodities/forex_pairs/market_overview）已由 DS-10 补齐 |
 | DS-4 | `/symbol/resolve` 符号解析 | ✅ | P1 | **crypto 精确解析已实现**（1df5e77 + swap 规范化 d3b313f，2026-08-05 生产实测：BTC→BTCUSDT、swap BTC/USDT:USDT→BTCUSDT、非 crypto 种子直通 EUR/USD→EURUSD、未知 404）；全市场覆盖范围仍待 DS-11 确认 |
-| DS-5 | `/policy/broker-market` 券商市场策略 | ⚠️ | P1 | **端点缺失（2026-08-05 生产实测 404，data-service 代码无此路由）**；REQ 文档标"已实现"与实际不符 → 需确认是否由 data-service 承接 |
+| DS-5 | `/policy/broker-market` 券商市场策略 | ✅ | P1 | **静态配置已实现**（2a7ce7f，2026-08-05 生产实测 200 符合契约：crypto 10 家交易所 + default Binance；无 key 401）；多市场扩展待 DS-11 |
 | DS-6 | `/stats` `/health` | ✅ | — | |
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
 | DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度已对齐验收标准**（2026-08-05 aa3f1c1 crypto 回填：1d 1095 根/3 年、1m 43202 根/30 天；76a9419 非 crypto `fetch_bars` 200→400：美股 AAPL/MSFT 400 根≈585 天、期货 GC=F 565 天、A股 600519 602 天、港股 00700 597 天均达标；**外汇 6 对受 yfinance 限流保持 199 根**，见 9.3 yfinance 待办） |
@@ -553,7 +553,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
 - [x] **D2（9.7-7.2 审查发现，关联 9.7-7.1-⑥）** data 数据面统一响应体：错误统一包装为 `{code, message, data}`（2026-08-05 完成，commit 05b02eb + eac3656）：新增 422 / HTTPException（StarletteHTTPException 基类，含 404）/ 未捕获异常三个 handler；实测 404/422/业务 401 均 `{code,message,data}`，鉴权 401 保持 `{"detail":"unauthorized"}` 契约，成功响应不受影响
 - [ ] **D6（9.7-7.2 审查发现）** swap 数据覆盖确认 + 约定文档化：核对生产 `KL_SWAP_ENABLED`/`KL_SWAP_SYMBOLS`/`KL_SWAP_TIMEFRAMES` 配置（当前 `/bars?market_type=swap&symbol=BTC/USDT` count=0 无数据）；`BTC/USDT:USDT` 存储键约定补入端点文档
-- [ ] **B 端契约缺口确认（DS-4/DS-5）** `/symbol/resolve` 已由 data-service 承接实现（crypto 精确解析，1df5e77/d3b313f，2026-08-05 生产实测通过）；**`/policy/broker-market` 仍缺失**（生产 404）→ 待确认承接；DS-11 全市场覆盖范围待 B 端确认
+- [x] **B 端契约缺口确认（DS-4/DS-5，2026-08-05 完成）** `/symbol/resolve`（1df5e77/d3b313f）与 `/policy/broker-market`（2a7ce7f）均已由 data-service 承接实现并生产实测；**DS-11 全市场覆盖范围仍待 B 端确认**
 - [x] **B 端验收数据深度回填（2026-08-05 完成，commit aa3f1c1）** `/bars` 深度已对齐验收标准：KlineStore 新增 `_backfill_all/_backfill_gap` 分页回填（默认 1m≥30d、5m/15m/30m≥180d、1h/4h≥365d、1d≥1095d，`KL_BACKFILL_DAYS` 可覆盖；幂等 MIN(ts) 达标跳过；spot/swap 共用）。生产回填日志 total：1m 43202、5m 51840、15m 17280、30m 8640、1h 8576、4h 2185、1d 1095（ETH/SOL 同）；swap `BTC/USDT:USDT` 1m +42000。实测 `/bars?timeframe=1d` count=1095 span=1094 天、库 1m 30 天。注：`/bars` 单次查询 limit 上限 5000，30 天 1m 需 `start`/`end` 分段
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
@@ -637,7 +637,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 **7.1 外部应用集成 —— 检查项**
 
-- [x] ① data :9112 实际路由与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` §3 逐一核对（**DS-4 `/symbol/resolve` 缺失已确认并实现（1df5e77/d3b313f）**，见 9.1 DS-4；**DS-5 `/policy/broker-market` 仍缺失（生产 404）**，待办见 9.3；其余 14 路由核对一致）
+- [x] ① data :9112 实际路由与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` §3 逐一核对（**DS-4 `/symbol/resolve`（1df5e77/d3b313f）与 DS-5 `/policy/broker-market`（2a7ce7f）缺失均已确认并实现**，见 9.1；其余 14 路由核对一致）
 - [ ] ② injector :9113 实际路由与 §4 核对（含 19 个 `inject_<source>` 全部可用）
 - [ ] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）
 - [ ] ④ ml-service :9120 实际路由与 §6 核对

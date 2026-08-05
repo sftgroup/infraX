@@ -65,6 +65,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | GET | `/symbols?timeframe=&min_bars=` | 满足最少 bar 数的标的清单（ml-service 训练发现用） | app_auth |
 | GET | `/symbols/search?keyword=&market=&limit=` | 符号模糊搜索（ccxt 4h 缓存 + 种子回退） | app_auth |
 | GET | `/symbol/resolve?symbol=&market=` | 符号解析：单符号 → 标准交易对（DS-4，crypto 精确解析 binance spot 优先 + 非 crypto 种子直通；未知 404） | app_auth |
+| GET | `/policy/broker-market` | 券商市场策略（DS-5，静态配置：crypto 10 家交易所 + default Binance） | app_auth |
 | GET | `/bars?symbol=&timeframe=&market_type=&start=&end=&limit=` | OHLCV + 预计算指标 + 外部因子（K 线主端点） | app_auth |
 | GET | `/ticker?symbol=&market_type=&exchange_id=` | 实时报价（ccxt / yfinance / Tencent 多源） | app_auth |
 | GET | `/factors/catalog` | 因子目录 | app_auth |
