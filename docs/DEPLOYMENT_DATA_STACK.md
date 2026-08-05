@@ -524,7 +524,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
 | DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；遗留见 9.3 |
 | DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
-| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ⚠️ | P1 | 2d78050 已部署：market_overview ✅（crypto 15 项实测）；commodities/forex_pairs 走 TD→yfinance→Tiingo 多源兜底（无 key 时 yfinance 免费源，采集器过滤占位价）待实测非空后标 ✅ |
+| DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ✅ | P1 | 2d78050 已部署；生产实测：market_overview ✅（crypto 15 项）、commodities ✅（SI=F 白银/CL=F 原油 WTI 等）、forex_pairs ✅（EUR/USD/GBP/USD 等），yfinance 免费源正常出数 |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
 | DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | ✅ | P1 | 1f4deea 统一鉴权契约 app_auth 落地；生产三服务实测闭环（见 9.3） |
 
@@ -537,7 +537,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] M4 P2 三件套（Bolt / Moirai / TimesFM，懒加载，全部署）
 - [x] P2 历史落库（`ml_predictions` 表 + P2MlCollector 30min 轮询 + `/ml/predictions` 历史查询，90 天滚动清理）
 - [x] P2 历史注入 RAG（`inject_p2_predictions` + `p2_predictions_report`，2026-08-05 实测落图 4 篇）
-- [x] BTC 转账流量/巨鲸大额转账注入 RAG（d149320 已提交：injector `fetch_btc_transfers`/`onchain_transfers`/`inject_onchain` + data `_fetch_btc_transfers` 接入 `_collect`；单测 data 5 + injector 59 通过；生产 data 侧 `onchain/btc_transfers` 已落库实测（mempool_txs/height），RAG 注入侧随 9.2/9.3 持续运行验证）
+- [⚠️] BTC 转账流量/巨鲸大额转账注入 RAG（代码已提交 d149320：injector `fetch_btc_transfers`/`onchain_transfers`/`inject_onchain` + data `_fetch_btc_transfers` 接入 `_collect`；单测 data 5 + injector 59 通过；生产 data 侧 `onchain/btc_transfers` 已落库实测（mempool_txs/height）。**注入侧未闭环**：onchain/whale namespace 图库为空，注入任务全部 300s 超时。根因：ragservicer `.env` LLM/embedding key 为占位符（`YOUR_DEEPSEEK_API_KEY`/无效 DashScope key，实测 401），LightRAG 抽取重试退避卡死；待配有效 key 后重启 ragservicer 验证（见 9.3））
 - [x] 默认注入列表 18 项（含 tree_ml / consensus / p2_predictions）
 
 ### 9.3 部署 / 运维待办（源：本文件 §3~§8）
@@ -550,6 +550,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
 - [ ] DS-10~DS-11 排期与完成时间（见 9.1；DS-12 已完成）
 - [ ] ml-service 生产升级至 master（ff2bad5 → 含统一鉴权 app_auth 1f4deea）并实测入站鉴权 + `/ml/*` 出数
+- [ ] ragservicer 配置有效 LLM/embedding key（生产 `.env` 为占位符 `YOUR_DEEPSEEK_API_KEY` / 无效 DashScope key，实测 401 导致注入任务 300s 超时）后重启，验证 onchain/whale/market 注入闭环
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
