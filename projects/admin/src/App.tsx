@@ -8,6 +8,7 @@ import VaultPanel from './pages/VaultPanel';
 import MpcPanel from './pages/MpcPanel';
 import DataPipeline from './pages/DataPipeline';
 import DataStack from './pages/DataStack';
+import ApiKeys from './pages/ApiKeys';
 import Revenue from './pages/Revenue';
 import SettingsPage from './pages/SettingsPage';
 import Audit from './pages/Audit';
@@ -26,6 +27,7 @@ const NAV = [
   { path: '/mpc', label: 'MPC', icon: Key },
   { path: '/pipeline', label: 'Data Pipeline', icon: Activity },
   { path: '/data', label: 'Data Stack', icon: BarChart3 },
+  { path: '/api-keys', label: 'API Keys', icon: Key },
   { path: '/revenue', label: 'Revenue', icon: DollarSign },
   { path: '/settings', label: 'Settings', icon: Settings },
   { path: '/audit', label: 'Audit', icon: FileText },
@@ -86,6 +88,7 @@ function AuthedLayout() {
           <Route path="/mpc" element={<MpcPanel />} />
           <Route path="/pipeline" element={<DataPipeline />} />
           <Route path="/data" element={<DataStack />} />
+          <Route path="/api-keys" element={<ApiKeys />} />
           <Route path="/revenue" element={<Revenue />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/audit" element={<Audit />} />

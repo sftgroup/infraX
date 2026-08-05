@@ -63,12 +63,13 @@ InfraX 目前对外提供两大能力集群，均可通过 **REST API / MCP / SD
 |---|---|---|---|
 | data | `http://127.0.0.1:9112` | `https://infrax.0xainet.top/api/data` | `/api/data/bars` → `/bars` |
 | ragservicer | `http://127.0.0.1:9721` | `https://infrax.0xainet.top/api/rag` | `/api/rag/api/v1/health` → `/api/v1/health` |
-| knowledge-injector | `http://127.0.0.1:9113` | `https://infrax.0xainet.top/api/injector` | `/api/injector/health` → `/health` |
+| knowledge-injector | `http://127.0.0.1:9113` | —（内部服务，不对外暴露） | 仅内网访问 |
 | hub-index MCP | `http://127.0.0.1:3008` | `https://infrax.0xainet.top/mcp/message` | 不变 |
 
 > ⚠️ **DNS 切换前**：`infrax.0xainet.top` 仍指向旧服务器 `43.156.99.215`，外网地址暂不可用。
 > 切换前请使用 `https://43.163.105.172/api/data/...`，curl 加 `-k`（或配置正确 SNI）。
-> 健康检查免鉴权：`GET /api/data/health`、`GET /api/rag/api/v1/health`、`GET /api/injector/health`、`GET /mcp/health`。
+> 健康检查免鉴权：`GET /api/data/health`、`GET /api/rag/api/v1/health`、`GET /mcp/health`。
+> knowledge-injector（:9113）与 ml-service（:9120）为内部服务，不对外暴露。
 
 ### 3.2 统一鉴权契约（所有服务一致）
 
@@ -88,8 +89,8 @@ X-Service-Key: <key>      # 服务间调用约定
 |---|---|---|---|
 | 平台 bridge key | 自定义 | 全平台内部服务联动（injector/ml 等） | InfraX 内部配置，不对外签发 |
 | 只读监控 key | 自定义 | 仅 GET/HEAD/OPTIONS | InfraX 内部配置 |
-| **数据服务租户 key** | `dx_` | data 全部业务端点 | 管理员 `/admin/api-keys` 签发（见数据服务文档 §3.1） |
-| **LightRAG 租户 key** | `lr_` | 绑定的 ragservicer 租户 | 管理员创建租户后签发（见 LightRAG 文档 §3.3） |
+| **数据服务租户 key** | `dx_` | data 全部业务端点 | 管理员在 admin 面板 **API Keys** 页签发（见 §3.5） |
+| **LightRAG 租户 key** | `lr_` | 绑定的 ragservicer 租户 | 管理员在 admin 面板 **API Keys** 页创建租户后签发（见 §3.5） |
 
 ### 3.4 开通流程（项目方）
 
@@ -101,6 +102,26 @@ X-Service-Key: <key>      # 服务间调用约定
         └─ 服务平台：创建独立租户（如 servicehub）+ 签发 lr_ key
                       → 写入资料到命名空间 → 语义检索 / 自动注入
 ```
+
+### 3.5 管理端：统一 API Key 管理（admin 面板）
+
+管理员可在 admin 面板一处管理 **data（`dx_`）** 与 **LightRAG（`lr_`）** 两类 key，无需分别调用各服务管理端点。
+
+**入口**：`http://127.0.0.1:3002`（内网，登录 admin 账号）→ 侧边栏 **API Keys**。
+
+| 能力 | data（`dx_` key） | LightRAG（`lr_` key） |
+|---|---|---|
+| 签发 | label + RPM 限流 | 创建租户（不存在则自动建）→ 签发 name + 有效期（天） |
+| 查看 | 列表（掩码展示） | 租户列表 + 各租户 key（掩码 / 有效期） |
+| 变更 | 启用 / 禁用、轮换（返回新 key）、删除 | 吊销 key、删除租户（连带全部 key） |
+| 状态列 | enabled / RPM / 请求数 / 最后使用时间 | active / 过期时间 |
+
+> ⚠️ **key 只完整展示一次**（签发与轮换时），请立即保存。
+> 页面 10s 自动刷新；签发新 key 后无需等待即可复制。
+
+**后端聚合说明**：admin 服务将请求转发到 data（`/admin/api-keys`，Bearer data 的 `ADMIN_API_KEY`）与 ragservicer（`/api/v1/tenants...`，Bearer ragservicer 的 `ADMIN_API_KEY`）。两个上游的 `ADMIN_API_KEY` 在 admin 服务启动时从各自 `.env` 读取；未配置时对应区块显示 `adminKeySet=false`，需在 admin 服务重启前补齐。
+
+**当前已签发**：`aitrader / aiservicer / aihunter-saas / aiops-saas` 各一把 `dx_` key（600 RPM）与一个 `lr_` 租户 key（365 天）。
 
 ---
 
@@ -266,7 +287,8 @@ rs.delete("docs", "doc-001")
 knowledge-injector 每 6 小时自动把 21 类数据源（宏观、情绪、链上、OKX 行情等）注入知识库的 `market` 命名空间，也可手动触发：
 
 ```bash
-curl -X POST https://infrax.0xainet.top/api/injector/inject \
+# 内网触发（injector 不对外暴露）
+curl -X POST http://127.0.0.1:9113/inject \
   -H "X-API-Key: <bridge key>" -H "Content-Type: application/json" \
   -d '{"namespace":"market","sources":["macro","sentiment","onchain"]}'
 ```

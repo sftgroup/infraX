@@ -23,10 +23,9 @@ LightRAG 知识栈由两个服务组成：
 |---|---|
 | ragservicer 内网 | `http://127.0.0.1:9721`（同机/内网） |
 | ragservicer 外网 | `https://infrax.0xainet.top/api/rag`（前缀剥离，`/api/rag/api/v1/...` → `/api/v1/...`） |
-| injector 内网 | `http://127.0.0.1:9113` |
-| injector 外网 | `https://infrax.0xainet.top/api/injector`（`/api/injector/health` → `/health`） |
-| 健康检查（免鉴权） | `GET /api/rag/api/v1/health`、`GET /api/injector/health` |
-| OpenAPI（免鉴权） | `GET /api/rag/api/v1/openapi.json`、`GET /api/injector/openapi.json` |
+| injector 内网 | `http://127.0.0.1:9113`（**内部服务，不对外暴露**） |
+| 健康检查（免鉴权） | 外网 `GET /api/rag/api/v1/health`；injector 仅内网 `GET http://127.0.0.1:9113/health` |
+| OpenAPI（免鉴权） | 外网 `GET /api/rag/api/v1/openapi.json`；injector 仅内网 `GET http://127.0.0.1:9113/openapi.json` |
 
 > ⚠️ `infrax.0xainet.top` DNS 切到 `43.163.105.172` 后可用；切换前用 `https://43.163.105.172/...`。
 
@@ -159,7 +158,7 @@ client.delete("research", "report-2026q2-001")
 |---|---|---|
 | `/api/rag/api/v1/namespaces/<ns>/query` | POST | `{"query":"...","mode":"mix"}`；mode ∈ `naive/local/global/hybrid/mix`（默认 mix） |
 | `/api/rag/api/v1/namespaces/<ns>/retrieve` | POST | 同上，多 `top_k` 参数 |
-| `/api/injector/query`（injector 透传） | POST | `{"query":"...","top_k":5,"namespace":"market"}`，直接透传 ragservicer 结果 |
+| `/api/injector/query`（injector 透传，**仅内网**） | POST | `{"query":"...","top_k":5,"namespace":"market"}`，直接透传 ragservicer 结果 |
 
 ```bash
 curl -X POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/research/query \
@@ -183,23 +182,23 @@ r = client.retrieve("research", "流动性管理", mode="local", top_k=10)
 
 ## 7. 自动注入（knowledge-injector）
 
-平台已内置 21 类数据源的定时自动注入（每 6h 一轮），**服务平台一般无需自己触发**。如需手动：
+平台已内置 21 类数据源的定时自动注入（每 6h 一轮），**服务平台一般无需自己触发**。如需手动（**injector 为内部服务，仅内网调用**）：
 
 | 端点 | 说明 |
 |---|---|
-| `POST /api/injector/inject/<source>` | 触发单个注入源，source ∈ `macro / sentiment / crypto_overview / volatility / news_sentiment / major_events / onchain / defi_tvl / macro_trend / fred_economics / earnings_index / evm / global_macro / indices / tech_analysis / tree_ml / consensus / p2_predictions / ml_predictions / onchain_checkpoints / okx_market` |
-| `POST /api/injector/inject/all` | 全量注入（不含 ml_predictions） |
-| `POST /api/injector/inject/parsed` | 配置化解析注入，body `{"source":"infrax_dc|infrax_collector","limit":100,"dry_run":false}` |
-| `GET /api/injector/status` | 注入器状态（`lightrag_enabled` + injectors 列表） |
-| `GET /api/injector/stats` / `GET /api/injector/stats/recent` | 注入统计 |
+| `POST http://127.0.0.1:9113/inject/<source>` | 触发单个注入源，source ∈ `macro / sentiment / crypto_overview / volatility / news_sentiment / major_events / onchain / defi_tvl / macro_trend / fred_economics / earnings_index / evm / global_macro / indices / tech_analysis / tree_ml / consensus / p2_predictions / ml_predictions / onchain_checkpoints / okx_market` |
+| `POST http://127.0.0.1:9113/inject/all` | 全量注入（不含 ml_predictions） |
+| `POST http://127.0.0.1:9113/inject/parsed` | 配置化解析注入，body `{"source":"infrax_dc|infrax_collector","limit":100,"dry_run":false}` |
+| `GET http://127.0.0.1:9113/status` | 注入器状态（`lightrag_enabled` + injectors 列表） |
+| `GET http://127.0.0.1:9113/stats` / `GET http://127.0.0.1:9113/stats/recent` | 注入统计 |
 
 ```bash
-curl -X POST https://infrax.0xainet.top/api/injector/inject/macro \
+curl -X POST http://127.0.0.1:9113/inject/macro \
   -H "X-Service-Key: $INJECTOR_KEY"
 # → {"success":true,"duration_ms":...}
 ```
 
-> injector 业务端点鉴权：`INJECTOR_API_KEY`（回退 bridge key），未配置则开放。
+> injector 业务端点鉴权：`INJECTOR_API_KEY`（回退 bridge key），未配置则开放。该服务不暴露到外网 nginx，仅服务器内网可达。
 
 ---
 
@@ -213,7 +212,7 @@ curl -X POST https://infrax.0xainet.top/api/injector/inject/macro \
 | `/api/rag/api/v1/tenants/<tid>/keys` | GET/POST | key 列表（掩码）/ 签发 |
 | `/api/rag/api/v1/keys/<key_id>/revoke` | POST | 吊销 key |
 | `/api/rag/api/v1/admin/config` | GET/PUT | LLM/embedding 配置热更新 |
-| `/api/injector/admin/config` | GET/PUT | 数据源 key 热更新 |
+| `/api/injector/admin/config`（**仅内网**） | GET/PUT | 数据源 key 热更新 |
 
 ---
 

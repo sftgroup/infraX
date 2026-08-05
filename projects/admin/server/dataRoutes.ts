@@ -280,4 +280,180 @@ router.post('/data-source-keys', async (req: any, res: any) => {
   res.json({ code: 0, message: 'success', data: results });
 });
 
+// ═══════════════════════════════════════════════════════════════════
+//  统一 API Key 管理（聚合 data dx_ key + ragservicer lr_ key）
+//  前端一个页面管理两套服务签发的租户 key。
+// ═══════════════════════════════════════════════════════════════════
+
+// data 服务 admin/api-keys 调用（Bearer DATA_ADMIN_KEY，envelope {code,message,data}）
+async function dataKeyReq<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: any): Promise<{ status: number; data?: T; message?: string }> {
+  if (!DATA_ADMIN_KEY) {
+    return { status: 503, message: 'data admin key 未配置（data .env 的 ADMIN_API_KEY）' };
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(`${DATA_BASE}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${DATA_ADMIN_KEY}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: r.status, message: j?.detail || j?.message || `HTTP ${r.status}` };
+    return { status: r.status, data: (j?.data ?? j) as T };
+  } catch (e: any) {
+    return { status: 0, message: `连接 data 服务失败: ${e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ragservicer tenant/keys 调用（Bearer RAGSERVICER_ADMIN_KEY；list 接口返回裸对象）
+async function ragKeyReq<T = any>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: any): Promise<{ status: number; data?: T; message?: string }> {
+  if (!RAGSERVICER_ADMIN_KEY) {
+    return { status: 503, message: 'ragservicer admin key 未配置（RAGSERVICER_ADMIN_KEY 或 ragservicer .env 的 ADMIN_API_KEY）' };
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(`${RAGSERVICER_API_BASE}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${RAGSERVICER_ADMIN_KEY}`,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: r.status, message: j?.detail || j?.message || `HTTP ${r.status}` };
+    return { status: r.status, data: (j?.data ?? j) as T };
+  } catch (e: any) {
+    return { status: 0, message: `连接 ragservicer 失败: ${e.message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── 统一列表：data dx_ keys + ragservicer tenants（含各自 keys） ──
+router.get('/keys', async (_req: any, res: any) => {
+  const dataR = await dataKeyReq<any>('GET', '/admin/api-keys');
+  const dataOk = dataR.status === 200 && Array.isArray(dataR.data);
+  const dataKeys = dataOk ? (dataR.data as any[]).map(k => ({ ...k, service: 'data' })) : [];
+
+  const ragR = await ragKeyReq<{ tenants: any[] }>('GET', '/tenants');
+  const ragOk = ragR.status === 200 && !!ragR.data;
+  let tenants: any[] = [];
+  if (ragOk) {
+    const list = (ragR.data as any).tenants || [];
+    tenants = await Promise.all(list.map(async (t: any) => {
+      const keysR = await ragKeyReq<any>('GET', `/tenants/${encodeURIComponent(t.id)}/keys`);
+      // ragservicer list 接口返回裸对象 {keys:[...]}（非信封），此处兼容两种形态
+      const raw = keysR.status === 200 && keysR.data ? (keysR.data as any) : null;
+      const keys = raw ? (Array.isArray(raw) ? raw : raw.keys || []) : [];
+      return {
+        ...t,
+        keys,
+        keys_ok: keysR.status === 200,
+        keys_error: keysR.status === 200 ? undefined : keysR.message,
+      };
+    }));
+  }
+
+  res.json({
+    code: 0, message: 'success',
+    data: {
+      data: { ok: dataOk, keys: dataKeys, adminKeySet: !!DATA_ADMIN_KEY, error: dataOk ? undefined : dataR.message },
+      rag: { ok: ragOk, tenants, adminKeySet: !!RAGSERVICER_ADMIN_KEY, error: ragOk ? undefined : ragR.message },
+      fetched_at: Date.now(),
+    },
+  });
+});
+
+// ── 统一签发：{service:'data', label, rate_limit} | {service:'rag', tenant_id, name, expires_days} ──
+router.post('/keys', async (req: any, res: any) => {
+  const { service } = req.body || {};
+  if (service === 'data') {
+    const label = String(req.body.label || '').trim();
+    if (!label) return res.status(400).json({ code: -1, message: 'label required', data: null });
+    const r = await dataKeyReq<any>('POST', '/admin/api-keys', { label, rate_limit: req.body.rate_limit });
+    if (r.status !== 201 && r.status !== 200) {
+      return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+    }
+    return res.json({ code: 0, message: 'success', data: { ...r.data, service: 'data' } });
+  }
+  if (service === 'rag') {
+    const tenant_id = String(req.body.tenant_id || '').trim();
+    if (!tenant_id) return res.status(400).json({ code: -1, message: 'tenant_id required', data: null });
+    // 1) 租户不存在则创建
+    const listR = await ragKeyReq<{ tenants: any[] }>('GET', '/tenants');
+    const exists = listR.status === 200 && (listR.data as any)?.tenants?.some((t: any) => t.id === tenant_id);
+    if (!exists) {
+      const cR = await ragKeyReq<any>('POST', '/tenants', {
+        tenant_id,
+        name: req.body.name || tenant_id,
+        description: req.body.description || '',
+      });
+      if (cR.status !== 200 && cR.status !== 201) {
+        return res.status(cR.status === 0 ? 502 : cR.status).json({ code: -1, message: cR.message, data: null });
+      }
+    }
+    // 2) 签发 key
+    const kR = await ragKeyReq<any>('POST', `/tenants/${encodeURIComponent(tenant_id)}/keys`, {
+      name: req.body.name || 'prod',
+      expires_days: Number(req.body.expires_days) || 0,
+    });
+    if (kR.status !== 201 && kR.status !== 200) {
+      return res.status(kR.status === 0 ? 502 : kR.status).json({ code: -1, message: kR.message, data: null });
+    }
+    return res.json({ code: 0, message: 'success', data: { ...kR.data, service: 'rag' } });
+  }
+  res.status(400).json({ code: -1, message: "service must be 'data' or 'rag'", data: null });
+});
+
+// ── data key：更新（label/enabled/rate_limit） ──
+router.patch('/keys/data/:id', async (req: any, res: any) => {
+  const r = await dataKeyReq<any>('PATCH', `/admin/api-keys/${req.params.id}`, {
+    label: req.body.label,
+    enabled: req.body.enabled,
+    rate_limit: req.body.rate_limit,
+  });
+  if (r.status !== 200) return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+  res.json({ code: 0, message: 'success', data: r.data });
+});
+
+// ── data key：轮换（返回新完整 key，仅一次） ──
+router.post('/keys/data/:id/rotate', async (req: any, res: any) => {
+  const r = await dataKeyReq<any>('POST', `/admin/api-keys/${req.params.id}/rotate`);
+  if (r.status !== 200) return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+  res.json({ code: 0, message: 'success', data: { ...r.data, service: 'data' } });
+});
+
+// ── data key：删除 ──
+router.delete('/keys/data/:id', async (req: any, res: any) => {
+  const r = await dataKeyReq<any>('DELETE', `/admin/api-keys/${req.params.id}`);
+  if (r.status !== 200) return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+  res.json({ code: 0, message: 'success', data: r.data });
+});
+
+// ── rag key：吊销 ──
+router.post('/keys/rag/:keyId/revoke', async (req: any, res: any) => {
+  const r = await ragKeyReq<any>('POST', `/keys/${encodeURIComponent(req.params.keyId)}/revoke`);
+  if (r.status !== 200) return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+  res.json({ code: 0, message: 'success', data: r.data });
+});
+
+// ── rag 租户：删除（连带其 keys） ──
+router.delete('/keys/rag/:tenantId', async (req: any, res: any) => {
+  const r = await ragKeyReq<any>('DELETE', `/tenants/${encodeURIComponent(req.params.tenantId)}`);
+  if (r.status !== 200) return res.status(r.status === 0 ? 502 : r.status).json({ code: -1, message: r.message, data: null });
+  res.json({ code: 0, message: 'success', data: r.data });
+});
+
 export default router;
