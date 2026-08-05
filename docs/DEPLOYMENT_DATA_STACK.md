@@ -518,14 +518,14 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-1 | `/bars` K 线（OHLCV+指标+因子） | ✅ | P0 | 契约确认 |
 | DS-2 | `/factors/*` 因子目录/最新/历史 | ✅ | P0 | |
 | DS-3 | `/snapshots` 复杂快照 | ✅ | P0 | 契约确认；缺的 3 类（commodities/forex_pairs/market_overview）已由 DS-10 补齐 |
-| DS-4 | `/symbol/resolve` 符号解析 | ✅ | P1 | **crypto 精确解析已实现**（1df5e77 + swap 规范化 d3b313f，2026-08-05 生产实测：BTC→BTCUSDT、swap BTC/USDT:USDT→BTCUSDT、非 crypto 种子直通 EUR/USD→EURUSD、未知 404）；全市场覆盖范围仍待 DS-11 确认 |
+| DS-4 | `/symbol/resolve` 符号解析 | ✅ | P1 | **crypto 精确解析已实现**（1df5e77 + swap 规范化 d3b313f，2026-08-05 生产实测：BTC→BTCUSDT、swap BTC/USDT:USDT→BTCUSDT、非 crypto 种子直通 EUR/USD→EURUSD、未知 404）；**全市场覆盖已实现（DS-11，见 DS-11 行）** |
 | DS-5 | `/policy/broker-market` 券商市场策略 | ✅ | P1 | **静态配置已实现**（2a7ce7f，2026-08-05 生产实测 200 符合契约：crypto 10 家交易所 + default Binance；无 key 401）；多市场扩展待 DS-11 |
 | DS-6 | `/stats` `/health` | ✅ | — | |
 | DS-7 | `/ticker` 实时报价 | ✅ | P0 | 1375a38，已部署实测 |
 | DS-8 | `/bars` 数据覆盖 + spot/swap 区分 | ✅ | P0 | da2cd34 已部署实测；**深度已对齐验收标准**（2026-08-05 aa3f1c1 crypto 回填：1d 1095 根/3 年、1m 43202 根/30 天；76a9419 非 crypto `fetch_bars` 200→400：美股 AAPL/MSFT 400 根≈585 天、期货 GC=F 565 天、A股 600519 602 天、港股 00700 597 天均达标；**外汇 6 对受 yfinance 限流保持 199 根**，见 9.3 yfinance 待办） |
-| DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；usstock/forex/futures 走种子 |
+| DS-9 | `/symbols/search` 符号搜索 | ✅ | P0 | 3b9da2b 已部署实测：btc 20 条（spot5+swap15，binance/okx/bybit，全 active）；**usstock/forex/futures/cnstock/hkstock 在线 lookup（DS-11 后，见 DS-11 行）** |
 | DS-10 | `/snapshots` 补齐 commodities/forex_pairs/market_overview | ✅ | P1 | 2d78050 已部署；生产实测：market_overview ✅（crypto 15 项）、commodities ✅（SI=F 白银/CL=F 原油 WTI 等）、forex_pairs ✅（EUR/USD/GBP/USD 等），yfinance 免费源正常出数 |
-| DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 | P1 | 待 B 端确认 |
+| DS-11 | `/symbol/resolve` 多市场覆盖确认 | ✅ | P1 | **全市场覆盖已实现**（09a9d65 + 3bfa660，2026-08-06 生产实测）：新增 `app/symbol_lookup.py` 在线符号搜索（美股→Finnhub search 主 + TwelveData symbol_search 备；外汇/期货→TwelveData；A股/港股→AkShare 全量表 24h 缓存 + TwelveData 备）；resolve 实测 apple→AAPL、MSFT→MSFT、600519→600519、00700→00700、EUR/USD→EURUSD、gold→GOLD；search 实测茅台→600519、腾讯→00700（中文名匹配）、apple→AAPL/APLE 等（Finnhub 已过滤 .SS/.HK/.L 非美后缀）；种子→在线回退链，全市场路由 market 参数统一 crypto/usstock/forex/futures/cnstock/hkstock |
 | DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | ✅ | P1 | 1f4deea 统一鉴权契约 app_auth 落地；生产三服务实测闭环（见 9.3） |
 
 ### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
@@ -548,12 +548,12 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [x] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（2026-08-05 复核：生产 `.env` 已是该值；`/bars` 实测 BTC/USDT 5m/15m/30m/1h/4h 全部出数，指标完整）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
-- [ ] DS-10~DS-11 排期与完成时间（见 9.1；DS-12 已完成）
+- [x] DS-10~DS-11（2026-08-06 完成：DS-10 见 9.1 行 2d78050；DS-11 全市场覆盖见 9.1 行 09a9d65 + 3bfa660）
 - [x] ml-service 生产升级至 master（ff2bad5 → 7350d47，含统一鉴权 app_auth 1f4deea + 项目根副本）并实测入站鉴权 + `/ml/*` 出数（2026-08-05 完成：生产 .env 补 `ML_API_KEY`/`DATA_API_KEY`（与主栈同一把 bridge key）；实测 /health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200；/ml/consensus 出数：六路信号全 true、33 symbols、avg_consensus 0.5455）
 - [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
 - [x] **D2（9.7-7.2 审查发现，关联 9.7-7.1-⑥）** data 数据面统一响应体：错误统一包装为 `{code, message, data}`（2026-08-05 完成，commit 05b02eb + eac3656）：新增 422 / HTTPException（StarletteHTTPException 基类，含 404）/ 未捕获异常三个 handler；实测 404/422/业务 401 均 `{code,message,data}`，鉴权 401 保持 `{"detail":"unauthorized"}` 契约，成功响应不受影响
 - [x] **D6（9.7-7.2 审查发现，2026-08-05 完成）** swap 数据覆盖确认 + 约定文档化：生产 `KL_SWAP_ENABLED=true`、`KL_SWAP_SYMBOLS=BTC/USDT,ETH/USDT,SOL/USDT`（与 spot 对齐）；`KL_SWAP_TIMEFRAMES` 由 `1m` 扩为 `1m,5m,15m,30m,1h,4h,1d`（回填共用自动补：5m 51840/15m 17280/30m 8640/1h 8576/4h 2180/1d 1095，BTC/ETH/SOL 全）；实测 `/bars?market_type=swap` 7 周期全出数；存储键 `base/quote:quote`（`BTC/USDT:USDT`）约定已在 `.env.example` 注释 + 7.2 核对表 ③ 更新
-- [x] **B 端契约缺口确认（DS-4/DS-5，2026-08-05 完成）** `/symbol/resolve`（1df5e77/d3b313f）与 `/policy/broker-market`（2a7ce7f）均已由 data-service 承接实现并生产实测；**DS-11 全市场覆盖范围仍待 B 端确认**
+- [x] **B 端契约缺口确认（DS-4/DS-5，2026-08-05 完成）** `/symbol/resolve`（1df5e77/d3b313f）与 `/policy/broker-market`（2a7ce7f）均已由 data-service 承接实现并生产实测；**DS-11 全市场覆盖已实现（2026-08-06，见 9.1 DS-11 行）**
 - [x] finnhub key 配置（2026-08-05，B 端提供）：生产 `.env` 启用 `FINNHUB_API_KEY`，重启后 `Finnhub client initialized`、ticker AAPL 出数；美股 quote/日线备选/财报/公司档案/情绪增强生效；**经济日历 free tier 无权限**（接口 403，静态 FOMC 回退保持）
 - [x] **统一搜索服务接入（2026-08-05，commit a8bb216，B 端提供 firecrawl key）** 新建 `data/app/services/search.py`（FirecrawlSearchProvider + get_search_service 单例，未配置 key fail-silent），`FIRECRAWL_API_KEY` 纳入 APIKeys 轮询白名单 + 生产 `.env` 启用；实测 `search_stock_news("AAPL","苹果","usstock")` 返回 3 条真实结果（moomoo/新浪/Yahoo）；修复 macro_news 搜索补充（此前引用缺失模块从未生效）；文档：DATA_SERVICE.md 配置表
 - [x] **B 端验收数据深度回填（2026-08-05 完成，commit aa3f1c1）** `/bars` 深度已对齐验收标准：KlineStore 新增 `_backfill_all/_backfill_gap` 分页回填（默认 1m≥30d、5m/15m/30m≥180d、1h/4h≥365d、1d≥1095d，`KL_BACKFILL_DAYS` 可覆盖；幂等 MIN(ts) 达标跳过；spot/swap 共用）。生产回填日志 total：1m 43202、5m 51840、15m 17280、30m 8640、1h 8576、4h 2185、1d 1095（ETH/SOL 同）；swap `BTC/USDT:USDT` 1m +42000。实测 `/bars?timeframe=1d` count=1095 span=1094 天、库 1m 30 天。注：`/bars` 单次查询 limit 上限 5000，30 天 1m 需 `start`/`end` 分段
