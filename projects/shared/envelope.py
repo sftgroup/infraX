@@ -19,7 +19,7 @@ import json
 
 def install_envelope_middleware(app) -> None:
     """FastAPI：可选 `{code, message, data}` 信封中间件。"""
-    from starlette.responses import JSONResponse
+    from starlette.responses import JSONResponse, Response
 
     @app.middleware("http")
     async def _envelope(request, call_next):
@@ -30,26 +30,30 @@ def install_envelope_middleware(app) -> None:
         )
         response = await call_next(request)
         if not want:
-            return response
+            return response  # 未读取 body，原样返回
         if not 200 <= response.status_code < 300:
             return response  # 错误已是信封
         if request.url.path == "/metrics":
             return response  # Prometheus 文本，不包装
 
-        # 读取响应体并尝试 JSON 解析
+        # 读取响应体（消费 body_iterator；后续统一重建响应返回）
         body = b"".join([chunk async for chunk in response.body_iterator])
+        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         if not body:
             return response
+
         try:
             data = json.loads(body)
         except (ValueError, UnicodeDecodeError):
-            return response  # 非 JSON，不包装
+            # 非 JSON：原样返回（重建，避免 body_iterator 已被消费）
+            return Response(content=body, status_code=response.status_code,
+                            headers=headers, media_type=response.media_type)
 
         # 已是信封（含 code/message/data）则跳过，避免二次包装
         if isinstance(data, dict) and {"code", "message", "data"} <= set(data):
-            return response
+            return Response(content=body, status_code=response.status_code,
+                            headers=headers, media_type=response.media_type)
 
-        headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
         return JSONResponse(
             {"code": 0, "message": "ok", "data": data},
             status_code=response.status_code,
