@@ -108,7 +108,7 @@ const SUPPORTED_CHAINS = [
   { name: 'ethereum', chainId: 1, type: 'evm', network: 'mainnet', rpc: 'https://ethereum-rpc.publicnode.com' },
   { name: 'bsc', chainId: 56, type: 'evm', network: 'mainnet', rpc: 'https://bsc-dataseed.bnbchain.org' },
   { name: 'base', chainId: 8453, type: 'evm', network: 'l2', rpc: 'https://mainnet.base.org' },
-  { name: 'oxa', chainId: 19505, type: 'evm', network: 'l1', rpc: 'https://rpc-oxa.0xainet.top' },
+  { name: 'oxa', chainId: 19505, type: 'evm', network: 'l1', rpc: 'https://rpc.l1.oxachain.io' },
 ];
 
 app.get('/api/v2/data/plans', asyncHandler(async (_req: any, res: any) => {
@@ -252,7 +252,7 @@ const RPC_ENDPOINTS: Record<string, string> = {
   eth:     "https://ethereum-rpc.publicnode.com",
   bsc:     "https://bsc-dataseed.bnbchain.org",
   base:    "https://mainnet.base.org",
-  oxa:     "https://rpc-oxa.0xainet.top",
+  oxa:     "https://rpc.l1.oxachain.io",
 };
 
 async function rpcCall(chain: string, method: string, params: any[]): Promise<any> {

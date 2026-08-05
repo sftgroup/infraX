@@ -104,7 +104,7 @@ const RPC_ENDPOINTS: Record<string, string> = {
   eth:     process.env.ETH_RPC_URL     || 'https://ethereum-rpc.publicnode.com',
   bsc:     process.env.BSC_RPC_URL     || 'https://bsc-dataseed.bnbchain.org',
   base:    process.env.BASE_RPC_URL    || 'https://mainnet.base.org',
-  oxa:     process.env.OXA_RPC_URL     || 'https://rpc-oxa.0xainet.top',
+  oxa:     process.env.OXA_RPC_URL     || 'https://rpc.l1.oxachain.io',
 };
 
 const CHAIN_IDS: Record<string, number> = {

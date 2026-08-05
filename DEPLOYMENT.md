@@ -101,7 +101,7 @@ ssh ubuntu@43.156.99.215
 | Ethereum | `eth` / `ethereum` | 1 | publicnode |
 | BSC | `bsc` | 56 | dataseed (12 端点 via rpc-pool.json + env) |
 | Base | `base` | 8453 | mainnet.base.org |
-| **OxaChain** | `oxa` | 19505 | **rpc-oxa.0xainet.top** |
+| **OxaChain** | `oxa` | 19505 | **rpc.l1.oxachain.io** |
 
 > Collector 5 链扫描：sepolia / ethereum / bsc / base / oxa
 > RPC Pool: `rpc-pool.json` 静态基线 + env 环境变量 + DB `admin_rpc_config` 三层合并
@@ -142,7 +142,7 @@ Environment="OKX_CHAINOS_API_SECRET=..."
 Environment="OKX_CHAINOS_API_PASSPHRASE=..."
 
 # /etc/systemd/system/infrax-collector.service.d/oxa.conf
-Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
+Environment="OXA_RPC_URL=https://rpc.l1.oxachain.io"
 ```
 
 ## 数据库
@@ -275,7 +275,7 @@ SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ETH_RPC_URL=https://ethereum-rpc.publicnode.com
 BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
 BASE_RPC_URL=https://mainnet.base.org
-OXA_RPC_URL=https://rpc-oxa.0xainet.top
+OXA_RPC_URL=https://rpc.l1.oxachain.io
 ```
 
 ### Admin

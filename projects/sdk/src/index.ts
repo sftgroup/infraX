@@ -10,6 +10,10 @@ export interface InfraXConfig {
   baseUrl?: string;
   apiKey?: string;
   dcApiKey?: string;
+  /** Data service (:9112) base URL, e.g. http://<host>:9112; falls back to baseUrl */
+  dataUrl?: string;
+  /** Data service API key (X-API-Key); falls back to apiKey */
+  dataApiKey?: string;
   timeout?: number;
 }
 
@@ -79,6 +83,34 @@ export interface MarketTx { txHash: string; chain: string; blockHeight: number; 
 export interface MarketMemeToken { chain: string; tokenAddress: string; symbol: string; name: string; liquidity: number; volume24h: number; holderCount: number; devAddress: string; isHoneypot: boolean; bundledPercent: number; }
 export interface MarketSignal { signalId: string; chain: string; tokenAddress: string; symbol: string; signalType: string; address: string; amount: number; valueUsd: number; }
 export interface MarketLeaderboardEntry { rank: number; address: string; pnl: number; pnlPercent: number; winRate: number; tradeCount: number; }
+
+// Data — InfraX data service (:9112) market data plane
+export interface DataBarsParams {
+  symbol: string;
+  timeframe?: string;
+  marketType?: 'spot' | 'swap';
+  start?: number;
+  end?: number;
+  limit?: number;
+}
+export interface DataBar {
+  ts: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  [k: string]: any; // 附加技术指标/因子字段
+}
+export interface DataTickerParams { symbol: string; marketType?: 'spot' | 'swap'; exchangeId?: string; market?: string; }
+export interface DataTickerResult { symbol: string; price: number; change: number; changePercent: number; high: number; low: number; open: number; previousClose: number; ts: number; }
+export interface DataFactorCurrentParams { symbols?: string; category?: string; }
+export interface DataFactorHistoryParams { symbol: string; timeframe?: string; ids?: string[]; start?: number; end?: number; limit?: number; }
+export interface DataSnapshotParams { type?: string; date?: string; limit?: number; }
+export interface DataSymbolSearchParams { keyword: string; market?: string; limit?: number; }
+export interface DataSymbolResolveParams { symbol: string; market?: string; }
+export interface DataMlPredictionsParams { model: 'bolt' | 'moirai' | 'timesfm'; symbol: string; start?: number; end?: number; limit?: number; }
+export interface DataStats { kline_rows: number; snapshot_rows: number; symbols: number; time_start: number | null; time_end: number | null; }
 
 // ═══════════════ HTTP ═══════════════
 
@@ -356,6 +388,113 @@ class MarketAPI {
   }
 }
 
+// ═══════════════ Data — InfraX data service (:9112) market data plane ═══════════════
+// 覆盖 data 服务数据面端点：K线 / ticker / 因子 / 快照（含 onchain/okx 快照）/
+// 符号搜索解析 / 统计。响应为 data 服务原始 JSON（成功时非 {code,message,data} 信封）。
+
+class DataAPI {
+  constructor(private http: HttpClient) {}
+
+  /** OHLCV K-line bars（crypto/usstock/forex/futures/cnstock/hkstock） */
+  async bars(params: DataBarsParams) {
+    const q = new URLSearchParams({ symbol: params.symbol });
+    if (params.timeframe) q.set('timeframe', params.timeframe);
+    if (params.marketType) q.set('market_type', params.marketType);
+    if (params.start) q.set('start', String(params.start));
+    if (params.end) q.set('end', String(params.end));
+    if (params.limit) q.set('limit', String(params.limit));
+    return this.http.get<{ symbol: string; timeframe: string; market_type: string; count: number; bars: DataBar[] }>('/bars?' + q.toString());
+  }
+
+  /** 实时报价 */
+  async ticker(params: DataTickerParams) {
+    const q = new URLSearchParams({ symbol: params.symbol });
+    if (params.marketType) q.set('market_type', params.marketType);
+    if (params.exchangeId) q.set('exchange_id', params.exchangeId);
+    if (params.market) q.set('market', params.market);
+    return this.http.get<DataTickerResult>('/ticker?' + q.toString());
+  }
+
+  /** 因子目录 */
+  async factorsCatalog() {
+    return this.http.get<{ factors: any[] }>('/factors/catalog');
+  }
+
+  /** 最新因子值（symbols 逗号分隔；category 过滤） */
+  async factorsCurrent(params: DataFactorCurrentParams = {}) {
+    const q = new URLSearchParams();
+    if (params.symbols) q.set('symbols', params.symbols);
+    if (params.category) q.set('category', params.category);
+    return this.http.get<{ ts: number; factors: Record<string, any> }>('/factors/current?' + q.toString());
+  }
+
+  /** 逐 bar 因子时间序列（回测/研究用） */
+  async factorsHistory(params: DataFactorHistoryParams) {
+    const q = new URLSearchParams({ symbol: params.symbol });
+    if (params.timeframe) q.set('timeframe', params.timeframe);
+    if (params.ids?.length) q.set('ids', params.ids.join(','));
+    if (params.start) q.set('start', String(params.start));
+    if (params.end) q.set('end', String(params.end));
+    if (params.limit) q.set('limit', String(params.limit));
+    return this.http.get<any>('/factors/history?' + q.toString());
+  }
+
+  /** 复杂快照：heatmap/calendar/crypto_prices/indices/tvl/volatility/
+   *  us_indicators/earnings/onchain/onchain_checkpoints/okx_hot_tokens/okx_index_prices */
+  async snapshots(params: DataSnapshotParams = {}) {
+    const q = new URLSearchParams();
+    if (params.type) q.set('type', params.type);
+    if (params.date) q.set('date', params.date);
+    if (params.limit) q.set('limit', String(params.limit));
+    return this.http.get<{ ts: number; snapshots: Record<string, any> }>('/snapshots?' + q.toString());
+  }
+
+  /** 有足够 K 线数据的 symbol 列表（ml-service 训练标的发现用） */
+  async symbols(timeframe = '1d', minBars = 1) {
+    return this.http.get<{ timeframe: string; min_bars: number; symbols: string[] }>(
+      `/symbols?timeframe=${encodeURIComponent(timeframe)}&min_bars=${minBars}`);
+  }
+
+  /** 符号模糊搜索（DS-9） */
+  async searchSymbols(params: DataSymbolSearchParams) {
+    const q = new URLSearchParams({ keyword: params.keyword });
+    if (params.market) q.set('market', params.market);
+    if (params.limit) q.set('limit', String(params.limit));
+    return this.http.get<{ keyword: string; symbols: any[] }>('/symbols/search?' + q.toString());
+  }
+
+  /** 符号解析为标准交易对（DS-4） */
+  async resolveSymbol(params: DataSymbolResolveParams) {
+    const q = new URLSearchParams({ symbol: params.symbol });
+    if (params.market) q.set('market', params.market);
+    return this.http.get<{ query: string; resolved: string; market: string }>('/symbol/resolve?' + q.toString());
+  }
+
+  /** 券商市场策略（DS-5） */
+  async brokerMarketPolicy() {
+    return this.http.get<any>('/policy/broker-market');
+  }
+
+  /** P2 单模型预测历史（bolt/moirai/timesfm） */
+  async mlPredictions(params: DataMlPredictionsParams) {
+    const q = new URLSearchParams({ model: params.model, symbol: params.symbol });
+    if (params.start) q.set('start', String(params.start));
+    if (params.end) q.set('end', String(params.end));
+    if (params.limit) q.set('limit', String(params.limit));
+    return this.http.get<any>('/ml/predictions?' + q.toString());
+  }
+
+  /** 数据库统计（kline/snapshot 行数、symbol 数、覆盖范围） */
+  async stats() {
+    return this.http.get<DataStats>('/stats');
+  }
+
+  /** 服务健康 */
+  async health() {
+    return this.http.get<any>('/health');
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -368,6 +507,7 @@ export class InfraX {
   readonly vault: VaultAPI;
   readonly mpc: MPCAPI;
   readonly market: MarketAPI;
+  readonly data: DataAPI;
 
   private http: HttpClient;
 
@@ -382,6 +522,12 @@ export class InfraX {
     this.vault = new VaultAPI(this.http);
     this.mpc = new MPCAPI(this.http);
     this.market = new MarketAPI(this.http);
+    // data 服务独立 baseUrl（dataUrl 优先，回退 baseUrl）+ 独立 key（dataApiKey 优先，回退 apiKey）
+    this.data = new DataAPI(new HttpClient({
+      ...config,
+      baseUrl: config.dataUrl || config.baseUrl,
+      apiKey: config.dataApiKey || config.apiKey,
+    }));
   }
 
   setApiKey(key: string) { this.http.setApiKey(key); }

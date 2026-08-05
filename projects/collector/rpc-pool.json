@@ -400,7 +400,7 @@
   "oxa": [
     {
       "key": "oxa-rpc",
-      "url": "https://rpc-oxa.0xainet.top",
+      "url": "https://rpc.l1.oxachain.io",
       "provider": "public",
       "tier": "free",
       "rateLimit": {

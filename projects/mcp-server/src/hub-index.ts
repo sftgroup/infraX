@@ -168,6 +168,58 @@ server.tool(
   }
 );
 
+server.tool(
+  "data_symbol_search",
+  "Fuzzy-search supported symbols across markets (crypto / usstock / forex / futures / cnstock / hkstock).",
+  {
+    keyword: z.string().describe("Fuzzy keyword, e.g. btc, eth, apple, 600519"),
+    market: z.string().optional().describe("Market: crypto (default), usstock, forex, futures, cnstock, hkstock"),
+    limit: z.coerce.number().optional().describe("Max results (default 20, max 100)"),
+  },
+  async ({ keyword, market, limit }) => {
+    const q = new URLSearchParams({ keyword });
+    if (market) q.set("market", market);
+    if (limit) q.set("limit", String(limit));
+    const data = await api(DATA_URL, DATA_API_KEY, `/symbols/search?${q.toString()}`);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "data_symbol_resolve",
+  "Resolve a raw symbol keyword to the canonical trading symbol (e.g. BTC -> BTCUSDT).",
+  {
+    symbol: z.string().describe("Symbol keyword, e.g. BTC, BTC/USDT, EURUSD=X, apple"),
+    market: z.string().optional().describe("Market: crypto (default), usstock, forex, futures, cnstock, hkstock"),
+  },
+  async ({ symbol, market }) => {
+    const q = new URLSearchParams({ symbol });
+    if (market) q.set("market", market);
+    const data = await api(DATA_URL, DATA_API_KEY, `/symbol/resolve?${q.toString()}`);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "data_broker_policy",
+  "Get the broker market policy (which exchanges are the primary trading venue per market).",
+  {},
+  async () => {
+    const data = await api(DATA_URL, DATA_API_KEY, `/policy/broker-market`);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "data_stats",
+  "Get InfraX data service database stats (kline rows, snapshot rows, symbol count, coverage range).",
+  {},
+  async () => {
+    const data = await api(DATA_URL, DATA_API_KEY, `/stats`);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
 // ═══════════ injector (:9113) ═══════════
 
 server.tool(
