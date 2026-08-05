@@ -43,6 +43,7 @@ from app.config import (
     KL_SWAP_TIMEFRAMES,
     KL_FETCH_LIMIT,
     KL_INTERVAL_SEC,
+    KL_MULTI_INTERVAL_SEC,
     KL_EXCHANGE,
     KL_BACKFILL_DAYS,
 )
@@ -243,20 +244,25 @@ class KlineStore:
         self._thread = threading.Thread(target=self._loop, daemon=True, name="kline-collector")
         self._thread.start()
         swap_note = f", swap={KL_SWAP_ENABLED and (f'{_SWAP_SYMBOLS}@{_SWAP_TIMEFRAMES}' or '') or 'off'}"
-        logger.info("KlineStore started (symbols=%s, timeframes=%s, interval=%ds%s)",
-                     _SYMBOLS, _TIMEFRAMES, KL_INTERVAL_SEC, swap_note)
+        logger.info("KlineStore started (symbols=%s, timeframes=%s, interval=%ds, multi_interval=%ds%s)",
+                     _SYMBOLS, _TIMEFRAMES, KL_INTERVAL_SEC, KL_MULTI_INTERVAL_SEC, swap_note)
 
     def stop(self):
         self._running = False
 
     def _loop(self):
+        last_multi = 0.0
         while self._running:
             try:
                 self._backfill_all()  # 历史深度回填（幂等，DS-8 验收标准）
                 self._collect_all()
                 if KL_SWAP_ENABLED:
                     self._collect_swap()
-                self._collect_multi_market()
+                # 多市场（美股/外汇/期货/A股/港股）独立周期 KL_MULTI_INTERVAL_SEC：
+                # 仅 1d 日线 + Twelve Data 免费 tier 限流，避免每 5 分钟拉 6 对外汇超额 429。
+                if time.monotonic() - last_multi >= KL_MULTI_INTERVAL_SEC:
+                    self._collect_multi_market()
+                    last_multi = time.monotonic()
             except Exception:
                 logger.warning("KlineStore cycle failed", exc_info=True)
             time.sleep(KL_INTERVAL_SEC)

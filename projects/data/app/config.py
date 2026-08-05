@@ -85,6 +85,10 @@ KL_SWAP_SYMBOLS = os.getenv("KL_SWAP_SYMBOLS", "")
 KL_SWAP_TIMEFRAMES = os.getenv("KL_SWAP_TIMEFRAMES", "1m")
 KL_FETCH_LIMIT = int(os.getenv("KL_FETCH_LIMIT", "500"))
 KL_INTERVAL_SEC = int(os.getenv("KL_INTERVAL_SEC", "300"))
+# 多市场（美股/外汇/期货/A股/港股）采集独立周期：这些市场仅 1d 日线，且
+# Twelve Data 免费 tier 限 8 次/分钟 ~800 credits/天（每 5 分钟拉 6 对外汇
+# 会超额 429）。默认 30 分钟（约 96 次/天），可经 KL_MULTI_INTERVAL_SEC 覆盖。
+KL_MULTI_INTERVAL_SEC = int(os.getenv("KL_MULTI_INTERVAL_SEC", "1800"))
 KL_EXCHANGE = os.getenv("KL_EXCHANGE", "binance")
 # 历史深度回填目标（天），JSON：{"1m":30,"1d":1095}；未配置按默认表
 # （1m≥30d；5m/15m/30m≥180d；1h/4h≥365d；1d≥1095d=3y，对齐 B 端验收标准）
