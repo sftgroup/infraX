@@ -837,3 +837,66 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.2.0` 已发布（registry.npmjs.org 已验证 main/types/engines）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
 
 **9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-9 全部实现**（G-9 中 PyPI 发布待 token 排期，其余闭环，本轮提交见 git log）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
+
+### 9.8 区块链栈 / 平台集成需求（2026-08-06 全量盘点，B 端需求 9/10/11）
+
+> **盘点结论**：data/rag/MCP/SDK 数据栈已完整（鉴权 + admin API Keys 面板 + SDK v0.3.0 + 文档）；**区块链栈（MPC/Vault/Session Key/WAAS/Payment/DC）未达可发布状态**——payment/vault 运行期无鉴权、mpc 验证码硬编码（P0 安全缺口），另有 dc_tokens 端点缺失、session-key 未部署、web subscription 代理缺失、admin 缺用户/套餐/订单页等功能缺口。
+> **决策（2026-08-06 B 端确认）**：① 先修 P0 安全 + P1 功能缺口，完成后统一更新 SDK/MCP 并发布文档；② 鉴权复用统一契约（Bearer/X-API-Key/X-Service-Key 三选一）+ admin 面板统一签发 key（与 data 栈一致，Node 服务新增共享鉴权中间件）。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
+
+**9.8.1 需求 9：TEE（MPC 钱包）与 Session 签名**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|:---:|
+| B-1 | MPC 邮箱验证码：`projects/mpc/server.ts` L228 硬编码 `888888` → `crypto.randomInt` 6 位（waas `mpcRoutes` 同步） | 🔲（现状 ⚠️ `const code='888888'`，无真实发信） | P0 |
+| B-2 | MPC 服务接入统一鉴权契约（当前 15 REST 端点无 key 鉴权） | 🔲 | P0 |
+| B-3 | MPC 是否升级真 MPC/TEE（当前单 EOA 私钥、`shard_count` 恒 1/1、无 TEE 硬件隔离） | 🔲（⚠️ 非真 MPC，依赖 TEE 环境审批，与 9.6 Phase 2 排期联动） | P2 |
+| B-4 | Vault 运行期接入鉴权：`auth.ts` 已定义 5 种中间件但 `server.ts` 未挂载 → 全部端点裸奔 | 🔲 | P0 |
+| B-5 | Vault 功能补齐：`safe_owners` 表建表、`updateSafeOwners` 走链上、多链支持（当前仅 Sepolia）、`GAS_POOL_PRIVATE_KEY` 注入 systemd | 🔲 | P1 |
+| B-6 | Session Key Engine（:3500）+ MCP 生产部署（⚠️ 当前未上线；MCP 默认端口 9111 与 web 冲突，需改端口；session-key 实现最完整：Bearer + EIP-712 + 白名单 + Redis 锁） | 🔲 | P1 |
+
+**9.8.2 需求 10：WAAS / RPC / 交易广播服务封装**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|:---:|
+| B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | 🔲 | P0 |
+| B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | 🔲（⚠️ 伪实现） | P1 |
+| B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens`（dc 无此端点）→ dc 补端点或工具改接 `/plans` `/chains` | 🔲（⚠️ 必失败） | P1 |
+| B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | 🔲（⚠️ 缺失） | P1 |
+| B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | 🔲 | P1 |
+| B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | 🔲 | P2 |
+
+**9.8.3 需求 11：用户端套餐/apikey 界面 + 管理后台查看与配置**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|:---:|
+| B-11-1 | web `server.js` 代理表补 `/api/v2/subscription`（waasUpgradePlan 点击无响应） | 🔲（⚠️ 缺失） | P1 |
+| B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | 🔲 | P1 |
+| B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | 🔲（⚠️ 现状无；web 仅有 waas/dc 租户 apikey） | P1 |
+| B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | 🔲 | P1 |
+| B-11-5 | admin 套餐管理（CRUD）页 | 🔲 | P1 |
+| B-11-6 | admin 订单 / 支付管理页 | 🔲 | P1 |
+| B-11-7 | admin 孤儿页面（Tenants/Transactions/Webhooks/Sweeps/RpcPool/System）挂进导航或清理 | 🔲（⚠️ 存在未挂载） | P2 |
+
+**9.8.4 SDK / MCP / 文档（前置：P0/P1 完成后，B 端需求"更新 SDK/MCP 且发布文档"）**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|:---:|
+| B-12-1 | 区块链服务统一鉴权 + admin 面板统一签发管理（key 前缀按服务；当前 data `dx_`/mcp `mx_`/rag `lr_` 已统一，区块链栈未接入） | 🔲 | P1 |
+| B-12-2 | SDK 扩展 waas/dc/vault/session 方法并发布（`@0xinfrax/infrax-dk` 当前 0.3.0 仅 data） | 🔲（⚠️ 未含区块链栈） | P2 |
+| B-12-3 | MCP 工具更新（hub-index 聚合 + dc_tokens 修复 + mpc/sk 工具鉴权） | 🔲 | P2 |
+| B-12-4 | 文档发布：`docs/API_ACCESS.md` 更新为真实生产端口/状态（当前为 v0.5.0 旧布局），各区块链服务接入文档 | 🔲（⚠️ 过时） | P2 |
+
+**9.8 盘点明细（2026-08-06 调查结论）**
+
+| 服务 | 端口（生产） | 实现状态 | 关键缺口 |
+|---|---|---|---|
+| MPC | 9104 / MCP 9105 | ⚠️ 非真 MPC，单 EOA 托管 | 验证码 888888 硬编码；无鉴权 |
+| Session Key | —（未部署） | ✅ 代码最完整（三层鉴权） | 未上线；9111 端口冲突 |
+| Vault | 9107 / MCP 9108 | ⚠️ 多签功能在 | 运行期无鉴权；safe_owners 未建表；仅 Sepolia |
+| WAAS | 9109 | ✅ 功能最全 | 签名委托外部 CWallet；无通用 RPC 代理；两路由未挂载 |
+| Payment | 9106 | ⚠️ 订单 CRUD 可用 | 全端点无鉴权；x402 伪实现 |
+| DC | 9102 / MCP 3005 | ✅ 订阅+查询+余额 RPC | MCP `dc_tokens` 调不存在的端点 |
+| Collector | 9101 | ✅ 最完整（relay 广播+鉴权+限流） | — |
+| web 用户端 | 9111 | ⚠️ 有套餐卡片 | 无注册/登录；套餐硬编码；缺 subscription 代理；无 data key 界面 |
+| admin | 3002 | ⚠️ 11 页 | 缺用户/套餐/订单页；6 个孤儿页面 |

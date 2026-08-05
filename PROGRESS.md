@@ -1,6 +1,23 @@
 # InfraX 进度报告
 
-> 版本 `v0.3.0-20260717` | 生产: `129.226.203.60` | 12 服务 systemd 托管
+> 版本 `v0.6.0-20260806` | 生产: `43.163.105.172`（数据栈 + 区块链栈 + admin/web 同机；旧服务器 129.226.203.60 / 43.156.99.215 已弃用） | 18 服务 systemd 托管
+> **唯一 tasklist 维护点**：`docs/DEPLOYMENT_DATA_STACK.md` §9（9.1~9.7 数据栈闭环，9.8 区块链栈/平台集成需求 9/10/11）。
+
+## 当前状态（2026-08-06 平台整合）
+
+**数据栈（已完成，见 tasklist §9.1~9.7）**
+- data :9112 / knowledge-injector :9113 / ragservicer :9721 / hub-index MCP :3008 / ml-service 独立 :9120 全部生产运行
+- 统一鉴权契约 app_auth（Bearer/X-API-Key/X-Service-Key）；admin 面板 **API Keys** 页统一管理 `dx_`/`mx_`/`lr_` 三类 key；MCP 入站强制鉴权（mx_ key）
+- JS SDK `@0xinfrax/infrax-dk@0.3.0` 已发布 npm；集成文档 INTEGRATION_PLATFORM / INTEGRATION_DATA_SERVICE / INTEGRATION_LIGHTRAG
+- 9.7 差距项 G-1~G-9 全部实现（PyPI 发布待 token）
+
+**区块链栈（盘点结论，任务见 tasklist §9.8，P0 修复进行中）**
+- ⚠️ payment / vault 运行期**无鉴权**；mpc 验证码硬编码 `888888` → P0 安全缺口
+- ⚠️ session-key（三层鉴权最完整）**未部署**（9111 端口与 web 冲突）；vault safe_owners 未建表、仅 Sepolia
+- ⚠️ dc-index `dc_tokens` 调不存在的 `/api/v2/data/tokens`；web 缺 `/api/v2/subscription` 代理；admin 缺用户/套餐/订单页
+- 决策：先修 P0 安全 + P1 功能缺口 → 统一更新 SDK/MCP → 发布文档（B-1~B-12-4）
+
+---
 
 ## Phase 0 — Crash Fix (上游 typo 修复)
 

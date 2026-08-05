@@ -4,8 +4,9 @@
 用量跟踪 / 掩码列表 / CRUD），按 data 服务环境适配：
 
   - 存于共享 SQLite（data/data.db，见 app.storage），表 api_keys
-  - key 格式 dx_ + 32 字节 hex（51 字符）；仅存 SHA-256 哈希，不存明文
-    （旧栈 collector 存明文，哈希避免 SQLite 文件泄漏即密钥泄漏）
+  - key 格式按 scope：dx_（data）/ mx_（mcp）+ 24 字节 hex（51 字符）；仅存
+    SHA-256 哈希，不存明文（旧栈 collector 存明文，哈希避免 SQLite 文件
+    泄漏即密钥泄漏）
   - 每 key RPM 滑动窗口限流（内存，单实例）
   - 用量跟踪：last_used_at / request_count
 
