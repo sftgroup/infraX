@@ -26,6 +26,13 @@ _COINGECKO_BASE = os.getenv(
 _CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")
 
 
+def _cg_key_param() -> dict:
+    """CoinGecko demo key（多 key 轮换）：配置了则加 x_cg_demo_api_key 参数提升限流额度。"""
+    from app.config import APIKeys
+    key = APIKeys.rotate("COINGECKO_API_KEY") or ""
+    return {"x_cg_demo_api_key": key} if key else {}
+
+
 def _load_config() -> dict:
     path = Path(_CONFIG_PATH)
     if not path.exists():
@@ -90,6 +97,7 @@ def _fetch_heatmap(max_per: int = 30) -> Optional[dict]:
                 "page": 1,
                 "sparkline": "false",
                 "price_change_percentage": "24h",
+                **(_cg_key_param()),
             },
             timeout=15,
         )

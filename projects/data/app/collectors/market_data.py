@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 COLLECT_INTERVAL = int(os.getenv("MARKET_COLLECT_INTERVAL_SEC", "600"))
 
+
+def _cg_key_param() -> dict:
+    """CoinGecko demo key（多 key 轮换）：配置了则加 x_cg_demo_api_key 参数提升限流额度。"""
+    key = APIKeys.rotate("COINGECKO_API_KEY") or ""
+    return {"x_cg_demo_api_key": key} if key else {}
+
+
 # ── Config loader ────────────────────────────────────────
 
 _CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")
@@ -71,6 +78,7 @@ def _fetch_crypto_prices() -> Optional[list[dict]]:
                 "vs_currencies": "usd",
                 "include_24hr_change": "true",
                 "include_market_cap": "true",
+                **(_cg_key_param()),
             },
             timeout=COLLECTOR_HTTP_TIMEOUT,
         )
