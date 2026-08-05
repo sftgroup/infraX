@@ -128,6 +128,14 @@ async def _access_log(request, call_next):
     return response
 
 
+# ── Rate limiting（G-3）────────────────────────────────────────
+# 按 client IP 限流（TokenBucket），超限 429 {code,message,data}。
+# RATE_LIMIT_ENABLED 默认 true；/health 与 /admin/* 豁免。
+from app.rate_limit import rate_limit_middleware  # noqa: E402
+
+app.middleware("http")(rate_limit_middleware)
+
+
 # ── Business endpoint auth (Bearer / X-API-Key / X-Service-Key) ─
 # 业务端点统一鉴权（DS-12，契约见 AITRADER_DATA_SERVICE_REQ.md）：
 #   - 配置了 DATA_API_KEY → 要求 Authorization: Bearer 或 X-API-Key 或
@@ -138,8 +146,11 @@ async def _access_log(request, call_next):
 
 
 def _api_authorized(request) -> bool:
-    from app.config import DATA_API_KEY
-    return app_auth.is_authorized(request.headers.get, DATA_API_KEY)
+    from app.config import DATA_API_KEY, MONITOR_API_KEY
+    return app_auth.is_authorized(
+        request.headers.get, DATA_API_KEY,
+        method=request.method, monitor_key=MONITOR_API_KEY,
+    )
 
 
 @app.middleware("http")
@@ -437,7 +448,7 @@ async def policy_broker_market():
 
 @app.get("/snapshots")
 async def snapshots(
-    type: Optional[str] = Query(None, description="Data type: heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings"),
+    type: Optional[str] = Query(None, description="Data type: heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain"),
 ):
     """Return latest complex snapshot data.
 
@@ -450,6 +461,7 @@ async def snapshots(
       - volatility: VXN/GVZ volatility indices
       - us_indicators: FRED macro indicators (CPI, GDP, etc.)
       - earnings: upcoming earnings reports
+      - onchain: aggregate BTC on-chain data (btc_difficulty/btc_transfers/btc_hashrate, G-4)
     """
     try:
         from app.factors import get_snapshots

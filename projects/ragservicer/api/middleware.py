@@ -72,12 +72,20 @@ def audit_log_middleware(response):
     """
     Flask after_request handler.
     Logs every API call: tenant, endpoint, status, duration.
+    G-8: 同时写入 SQLite audit_logs 表（结构化审计，who/when/what）。
     Attach to app.after_request.
     """
     tenant = getattr(g, 'tenant_id', None) or request.remote_addr or ANON_FALLBACK
     endpoint = request.endpoint or UNKNOWN_ENDPOINT
     status = response.status_code
     start = getattr(g, 'request_start', None)
-    duration = f"{time.time() - start:.3f}s" if start else "?"
+    duration_ms = round((time.time() - start) * 1000, 1) if start else 0.0
+    duration = f"{duration_ms:.0f}ms" if start else "?"
     logger.info(f"AUDIT tenant={tenant} endpoint={endpoint} status={status} duration={duration}")
+    try:
+        from tenants import manager as tm
+        tm.add_audit_log(tenant, endpoint, request.method, status, duration_ms)
+    except Exception:
+        # 审计落库失败不影响请求响应
+        pass
     return response

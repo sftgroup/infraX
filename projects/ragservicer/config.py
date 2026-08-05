@@ -70,6 +70,7 @@ class ServerConfig:
     mcp_server_version: str = "2.0.0"
     admin_api_key: str = ""        # REQUIRED in production
     ragservicer_api_key: str = ""  # Internal key for aiservicer bridge (optional)
+    monitor_api_key: str = ""      # G-7: 监控只读 key（仅 GET/HEAD/OPTIONS）
     rate_limit_rpm: int = 100
     rate_limit_window: int = 60    # seconds
 
@@ -138,6 +139,7 @@ def load_config() -> AppConfig:
             mcp_tenant_id=os.getenv("MCP_TENANT_ID", ServerConfig.mcp_tenant_id),
             admin_api_key=os.getenv("ADMIN_API_KEY", ""),
             ragservicer_api_key=os.getenv("RAGSERVICER_API_KEY", "") or os.getenv("DOC_API_KEY", "") or os.getenv("LIGHTRAG_API_KEY", ""),
+            monitor_api_key=os.getenv("MONITOR_API_KEY", ""),
             rate_limit_rpm=int(os.getenv("RATE_LIMIT_RPM", str(ServerConfig.rate_limit_rpm))),
             rate_limit_window=int(os.getenv("RATE_LIMIT_WINDOW", str(ServerConfig.rate_limit_window))),
         ),

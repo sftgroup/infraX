@@ -58,6 +58,9 @@ DATA_API_KEY = os.getenv(
     os.getenv("RAGSERVICER_API_KEY", os.getenv("DOC_API_KEY", os.getenv("LIGHTRAG_API_KEY", ""))),
 )
 
+# G-7: 监控只读 key（仅允许 GET/HEAD/OPTIONS 读操作，与 bridge key 权限解耦）
+MONITOR_API_KEY = os.getenv("MONITOR_API_KEY", "")
+
 # ── Caching ────────────────────────────────────────────────────
 
 CACHE_TTL_SHORT = int(os.getenv("CACHE_TTL_SHORT", "60"))

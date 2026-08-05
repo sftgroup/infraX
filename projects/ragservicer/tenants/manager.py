@@ -3,12 +3,15 @@ Tenant & API Key Management.
 Uses SQLite for lightweight multi-tenant API key storage.
 """
 import hashlib
+import logging
 import secrets
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from config import get_config
+
+logger = logging.getLogger("ragservicer.tenants")
 
 
 def _get_db_path() -> Path:
@@ -53,12 +56,40 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_tenant_apikeys ON api_keys(tenant_id);
         CREATE INDEX IF NOT EXISTS idx_key_hash ON api_keys(key_hash);
 
+        -- G-8: 结构化审计日志（who/when/what，由 audit_log_middleware 落库）
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            tenant TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            method TEXT NOT NULL,
+            status INTEGER NOT NULL,
+            duration_ms REAL NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_tenant_ts ON audit_logs(tenant, ts);
+
         -- Default tenant for backward compatibility
         INSERT OR IGNORE INTO tenants (id, name, description)
         VALUES ('default', 'Default', 'Default tenant for existing integrations');
     """)
     conn.commit()
     conn.close()
+
+
+# ── Audit logs（G-8：结构化审计，谁/何时/改了什么）──────────
+
+def add_audit_log(tenant: str, endpoint: str, method: str, status: int, duration_ms: float) -> None:
+    """写入一条审计记录；失败仅记 warning，不影响请求本身。"""
+    try:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO audit_logs (tenant, endpoint, method, status, duration_ms) VALUES (?, ?, ?, ?, ?)",
+            (tenant, endpoint, method, status, duration_ms),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logger.warning("audit log write failed: %s", exc)
 
 
 # ── Tenant CRUD ────────────────────────────────────────────

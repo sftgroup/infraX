@@ -242,15 +242,27 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
     """
     db = get_db()
 
+    # G-4: 汇总别名 → 前缀匹配。onchain 数据实际落 btc_difficulty /
+    # btc_transfers / btc_hashrate 等子类型，type=onchain 聚合返回全部。
+    _SNAPSHOT_TYPE_ALIASES = {"onchain": "btc_%"}
+
     if data_type:
-        rows = db.execute(
-            """SELECT provider, data_type, raw_json, fetched_at
-               FROM raw_snapshots
-               WHERE data_type = ?
-               ORDER BY fetched_at DESC
-               LIMIT 1""",
-            (data_type,),
-        ).fetchall()
+        pattern = _SNAPSHOT_TYPE_ALIASES.get(data_type)
+        if pattern:
+            sql = """SELECT provider, data_type, raw_json, fetched_at
+                     FROM raw_snapshots
+                     WHERE data_type LIKE ?
+                     ORDER BY fetched_at DESC
+                     LIMIT 50"""
+            params = (pattern,)
+        else:
+            sql = """SELECT provider, data_type, raw_json, fetched_at
+                     FROM raw_snapshots
+                     WHERE data_type = ?
+                     ORDER BY fetched_at DESC
+                     LIMIT 1"""
+            params = (data_type,)
+        rows = db.execute(sql, params).fetchall()
     else:
         rows = db.execute(
             """SELECT provider, data_type, raw_json, fetched_at

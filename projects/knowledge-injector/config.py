@@ -101,6 +101,9 @@ class Settings:
     # ── 管理后台鉴权（GET/PUT /admin/config 需 Bearer ADMIN_API_KEY） ──
     admin_api_key: str = field(default_factory=lambda: os.getenv("ADMIN_API_KEY", ""))
 
+    # ── G-7: 监控只读 key（仅允许 GET/HEAD/OPTIONS 读操作，与 bridge key 解耦） ──
+    monitor_api_key: str = field(default_factory=lambda: os.getenv("MONITOR_API_KEY", ""))
+
     # ── Injection schedule ──
     injector_interval_sec: int = int(os.getenv("INJECTOR_INTERVAL_SEC", "21600"))
     injector_startup_delay: int = int(os.getenv("INJECTOR_STARTUP_DELAY", "120"))

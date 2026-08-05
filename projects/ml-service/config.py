@@ -38,6 +38,9 @@ ML_API_KEY = os.getenv(
     os.getenv("RAGSERVICER_API_KEY", os.getenv("DOC_API_KEY", os.getenv("LIGHTRAG_API_KEY", ""))),
 )
 
+# G-7: 监控只读 key（仅允许 GET/HEAD/OPTIONS 读操作，与 bridge key 权限解耦）
+MONITOR_API_KEY = os.getenv("MONITOR_API_KEY", "")
+
 # ── LightGBM 方向预测（TREE_ML_ENABLED） ─────────────────
 TREE_ML_ENABLED = os.getenv("TREE_ML_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 TREE_ML_HORIZON = int(os.getenv("TREE_ML_HORIZON", "7"))

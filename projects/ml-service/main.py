@@ -65,7 +65,10 @@ app.add_middleware(
 # 401 响应体统一 {"detail": "unauthorized"}。
 
 def _authorized(request: Request) -> bool:
-    return app_auth.is_authorized(request.headers.get, config.ML_API_KEY)
+    return app_auth.is_authorized(
+        request.headers.get, config.ML_API_KEY,
+        method=request.method, monitor_key=config.MONITOR_API_KEY,
+    )
 
 
 @app.middleware("http")

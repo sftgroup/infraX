@@ -67,7 +67,10 @@ def create_app() -> Flask:
         if app_auth.is_exempt(request.path, prefixes=("/admin/",)):
             return None
         key = config.SETTINGS.injector_api_key or config.SETTINGS.ragservicer_api_key
-        if not app_auth.is_authorized(request.headers.get, key):
+        if not app_auth.is_authorized(
+            request.headers.get, key,
+            method=request.method, monitor_key=config.SETTINGS.monitor_api_key,
+        ):
             return jsonify(app_auth.UNAUTHORIZED), 401
         return None
 
@@ -110,7 +113,7 @@ def create_app() -> Flask:
         """手动触发指定类型注入。"""
         method = getattr(injector, f"inject_{source}", None)
         if not method:
-            return jsonify({"error": f"unknown source: {source}"}), 400
+            return jsonify({"code": 400, "message": f"unknown source: {source}", "data": None}), 400
         t0 = time.monotonic()
         ok = method()
         duration_ms = (time.monotonic() - t0) * 1000
@@ -162,7 +165,7 @@ def create_app() -> Flask:
         top_k = body.get("top_k", 5)
         namespace = body.get("namespace")  # 可选：默认走 SETTINGS.default_namespace（market）
         if not q:
-            return jsonify({"error": "query is required"}), 400
+            return jsonify({"code": 400, "message": "query is required", "data": None}), 400
         results = injector._client.query(q, top_k=top_k, namespace=namespace)
         return jsonify({"results": results, "count": len(results)})
 
@@ -299,5 +302,16 @@ def create_app() -> Flask:
             reset_key_pools()
             logger.info("Admin config updated: %s", ", ".join(sorted(updates)))
         return jsonify({"code": 0, "message": "ok", "data": _key_snapshot()})
+
+    # ─── 全局错误处理（G-1：统一 {code,message,data} 信封；404 不再返回 HTML）───
+
+    @app.errorhandler(404)
+    def _not_found(_e):
+        return jsonify({"code": 404, "message": "Not Found", "data": None}), 404
+
+    @app.errorhandler(Exception)
+    def _unhandled(e):
+        logger.error("unhandled error: %s", e)
+        return jsonify({"code": 500, "message": "Internal Server Error", "data": None}), 500
 
     return app

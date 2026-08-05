@@ -83,6 +83,12 @@ def main():
 
     app.register_blueprint(api)
 
+    # G-1: 404 统一 JSON 信封（Flask 默认返回 HTML）
+    from api.code_refactor import build_error
+    @app.errorhandler(404)
+    def _not_found(_e):
+        return build_error("Not Found", 404)
+
     # Register tenant context on Flask g (fixes g.tenant_id never being set)
     from api.code_refactor import register_tenant_on_g
     app.before_request(register_tenant_on_g)

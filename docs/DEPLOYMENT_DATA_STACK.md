@@ -792,20 +792,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（TS/Python）；Flask 服务建议人工维护契约表或补 `flask-smorest` → 差距报告 G-9
 - [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — 决策：当前仓库内引用（main 指向 dist/TS 源码），npm 发布已备（`prepublishOnly` 构建）；PyPI 发布 lightrag-client 可后续排期 → 差距报告 G-9
 
-**9.7 差距报告（2026-08-06 审查输出）**
+**9.7 差距报告（2026-08-06 审查输出，G-1/G-3/G-4/G-7/G-8 已按序实现）**
 
-> 本轮 9.7 审查共修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；以下为**已知未修项**，按优先级排期，全部为低风险改进项（不阻塞当前 B 端消费方集成）。
+> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7 顺序实现 5 项（本地验证通过，部署见 9.3）。剩余 **G-2/G-5/G-6/G-9** 为排期项。
 
-| # | 级别 | 现状 | 差距 | 建议处理 |
+| # | 级别 | 现状 | 差距 | 处理状态 |
 |:---:|:---:|------|------|------|
-| G-1 | 低 | injector `/inject/<unknown>` 返回 `400 {"error": "unknown source"}`；Flask 服务（injector/ragservicer）404 为默认 HTML | 错误体非统一 `{code,message,data}` 信封，agent/外部消费方需额外兼容 | 补 Flask `@app.errorhandler(404)` + `build_error` 统一 400/404 JSON（对齐 data D2） |
-| G-2 | 低 | data 成功响应为裸字段（FastAPI 原生），injector/ragservicer 成功为 `{code,message,data}` 信封 | 成功响应结构不一致 | 已记录为契约差异；如统一需改 data 成功响应 → 影响现有调用方，暂不动，文档标注 |
-| G-3 | 低 | data `app/config.py` 定义 `RATE_LIMIT_RPM=60` 但未启用；仅 ragservicer 按 tenant TokenBucket 限流 | data/injector/ml 无请求级限流 | 按需启用 data 限流中间件（对齐 ragservicer 429 `build_error` 结构） |
-| G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 数据实际落 `data_type=btc_difficulty/btc_transfers` 子类型，无 `onchain` 汇总类型 | 文档已修正；如需 `type=onchain` 聚合视图可排期 |
-| G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 均不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
-| G-6 | 中 | 四服务均无 Prometheus `/metrics` / OpenTelemetry 暴露 | 无法接入标准指标采集 | `SERVICE_ENDPOINTS_OBSERVABILITY.md` §8 已文档 HTTP 轮询探针方案（`/health`+`/stats`+`/admin/status`）；如需标准 metrics 可排期 |
-| G-7 | 低 | 监控复用 bridge key（可读全部业务端点），无独立只读 key | 监控凭据权限过大 | 如需独立只读 key 可排期（当前 bridge key 由 B 端管控） |
-| G-8 | 低 | 管理操作无结构化审计日志（仅普通 request/response 日志）；ragservicer `require_admin` 为 Bearer-only | 审计追溯缺失；admin 端点不支持 X-API-Key | 可排期补审计表（who/when/what）；admin 契约 B 端未要求三 header，保留现状 |
-| G-9 | 低 | SDK 未发布到 npm/PyPI（仓库内引用）；Flask 服务无自动 OpenAPI | 外部用户获取 SDK 需 clone 仓库 | npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask 补 `flask-smorest` 或维持人工契约表 |
+| G-1 | 低 | injector `/inject/<unknown>` 返回 `400 {"error": ...}`；Flask 404 为默认 HTML | 错误体非统一 `{code,message,data}` 信封 | ✅ **已修复**：injector 业务错误统一信封 + 全局 404/500 handler；ragservicer 补 404 JSON handler（`build_error`） |
+| G-2 | 低 | data 成功响应为裸字段（FastAPI 原生） | 成功响应结构不一致 | 🔲 契约差异已记录；统一需改 data 成功响应 → 影响现有调用方，暂不动 |
+| G-3 | 低 | data `RATE_LIMIT_RPM=60` 定义未启用 | data 无请求级限流 | ✅ **已修复**：新增 `app/rate_limit.py` TokenBucket 中间件（按 IP，`RATE_LIMIT_ENABLED` 默认 true 生效，429 统一信封，`/health` `/admin/*` 豁免） |
+| G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 落 `btc_difficulty/btc_transfers/btc_hashrate` 子类型 | ✅ **已修复**：`get_snapshots` 加 `onchain→btc_%` 前缀聚合别名，type=onchain 返回全部 BTC 子类型（本地临时库实测通过） |
+| G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 🔲 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
+| G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | 🔲 HTTP 轮询探针已兜底；标准 metrics 排期 |
+| G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝；本地行为测试通过） |
+| G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
+| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | 🔲 npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask OpenAPI 排期 |
 
-**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；9 项差距全部为低优先级改进项，其中 G-5 与 9.6（MCP & Skill 产品需求）排期联动，其余按需处理。**本轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
+**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项中 **G-1/G-3/G-4/G-7/G-8 已实现**（本轮提交，见 git log），G-2/G-5/G-6/G-9 排期处理（G-5 与 9.6 联动）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。

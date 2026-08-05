@@ -41,6 +41,10 @@ def extract_tenant():
         tenant_header = request.headers.get("X-Tenant-ID", "")
         return tenant_header if tenant_header else "default"
 
+    # G-7: 监控只读 key — 仅允许安全方法（GET/HEAD/OPTIONS），写操作拒绝
+    if cfg.server.monitor_api_key and key == cfg.server.monitor_api_key:
+        return "monitor" if request.method in ("GET", "HEAD", "OPTIONS") else None
+
     # Admin key
     if cfg.server.admin_api_key and key == cfg.server.admin_api_key:
         return "admin"
