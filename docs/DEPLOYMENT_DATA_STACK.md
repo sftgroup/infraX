@@ -537,7 +537,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] M4 P2 三件套（Bolt / Moirai / TimesFM，懒加载，全部署）
 - [x] P2 历史落库（`ml_predictions` 表 + P2MlCollector 30min 轮询 + `/ml/predictions` 历史查询，90 天滚动清理）
 - [x] P2 历史注入 RAG（`inject_p2_predictions` + `p2_predictions_report`，2026-08-05 实测落图 4 篇）
-- [⚠️] BTC 转账流量/巨鲸大额转账注入 RAG（代码已提交 d149320：injector `fetch_btc_transfers`/`onchain_transfers`/`inject_onchain` + data `_fetch_btc_transfers` 接入 `_collect`；单测 data 5 + injector 59 通过；生产 data 侧 `onchain/btc_transfers` 已落库实测（mempool_txs/height）。**注入侧未闭环**：onchain/whale namespace 图库为空，注入任务全部 300s 超时。根因：ragservicer `.env` LLM/embedding key 为占位符（`YOUR_DEEPSEEK_API_KEY`/无效 DashScope key，实测 401），LightRAG 抽取重试退避卡死；待配有效 key 后重启 ragservicer 验证（见 9.3））
+- [x] BTC 转账流量/巨鲸大额转账注入 RAG（代码已提交 d149320：injector `fetch_btc_transfers`/`onchain_transfers`/`inject_onchain` + data `_fetch_btc_transfers` 接入 `_collect`；单测 data 5 + injector 59 通过；生产 data 侧 `onchain/btc_transfers` 已落库实测（mempool_txs/height）。**2026-08-05 实测闭环**：修复 ragservicer 写任务自死锁（b13ddbb/ad38756）+ 配置有效 key 后，`POST /inject/onchain` 真实注入 success（313s），`onchain:btc_transfers:daily:20260805T1534`/`onchain:btc:daily:20260805T1532`/`onchain:whale:daily` 新文档落库，`POST /query` 命中真实链上 KG（区块 961,178、100 BTC 阈值、24h 窗口））
 - [x] 默认注入列表 18 项（含 tree_ml / consensus / p2_predictions）
 
 ### 9.3 部署 / 运维待办（源：本文件 §3~§8）
@@ -550,7 +550,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
 - [ ] DS-10~DS-11 排期与完成时间（见 9.1；DS-12 已完成）
 - [ ] ml-service 生产升级至 master（ff2bad5 → 含统一鉴权 app_auth 1f4deea）并实测入站鉴权 + `/ml/*` 出数
-- [ ] ragservicer 配置有效 LLM/embedding key（生产 `.env` 为占位符 `YOUR_DEEPSEEK_API_KEY` / 无效 DashScope key，实测 401 导致注入任务 300s 超时）后重启，验证 onchain/whale/market 注入闭环
+- [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
