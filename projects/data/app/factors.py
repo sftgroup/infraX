@@ -186,22 +186,28 @@ def get_current_factors(
 
     # Also add technical factors from kline table
     for sym in target:
-        row = db.execute(
-            "SELECT * FROM kline WHERE symbol = ? ORDER BY ts DESC LIMIT 1",
-            (sym.replace("/", "").replace("USDT", ""),),
-        ).fetchone()
-        if row is None:
+        # kline 表 spot 存储键为 `BTC/USDT`；兼容无市场后缀的裸符号（如默认 BTC）
+        row = None
+        candidates = [sym]
+        normalized = sym.replace("/", "").replace("USDT", "")
+        if normalized != sym:
+            candidates.append(normalized)
+        if "/" not in sym:
+            candidates.append(f"{sym}/USDT")
+        for cand in candidates:
             row = db.execute(
                 "SELECT * FROM kline WHERE symbol = ? ORDER BY ts DESC LIMIT 1",
-                (sym,),
+                (cand,),
             ).fetchone()
+            if row is not None:
+                break
         if row:
             for fid in _TECH_FACTORS:
                 val = row[fid]
                 if val is not None:
                     result[sym][fid] = val
 
-    result["_ts"] = max_ts
+    result["_ts"] = int(max_ts)
     if complex_data:
         result["_complex"] = complex_data
     return result
@@ -260,7 +266,7 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
         else:
             result[fid] = data
 
-    result["_ts"] = max_ts
+    result["_ts"] = int(max_ts)
     return result
 
 
@@ -309,7 +315,7 @@ def get_history_factors(
             where += " AND ts <= ?"
             params.append(end)
         return db.execute(
-            f"SELECT ts, {cols} FROM kline WHERE {where} ORDER BY ts DESC LIMIT ?",
+            f"SELECT ts, {cols} FROM kline WHERE {where} ORDER BY ts ASC LIMIT ?",
             (*params, limit),
         ).fetchall()
 

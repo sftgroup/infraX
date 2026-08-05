@@ -125,7 +125,7 @@ async def _api_auth(request, call_next):
 @app.get("/bars")
 async def get_bars(
     symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
-    timeframe: str = Query("1m", description="Timeframe: 1m/5m/15m/1h/4h/1D"),
+    timeframe: str = Query("1m", description="Timeframe: 1m/5m/15m/30m/1h/4h/1d"),
     market_type: str = Query("spot", pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
     start: Optional[int] = Query(None, description="Start unix ms"),
     end: Optional[int] = Query(None, description="End unix ms"),
@@ -218,7 +218,7 @@ async def factors_catalog():
 @app.get("/factors/current")
 async def factors_current(
     symbols: str = Query("BTC", description="Comma-separated symbols"),
-    category: Optional[str] = Query(None, description="Filter: external/heatmap/calendar/snapshot"),
+    category: Optional[str] = Query(None, description="Filter: external/sentiment/news/opportunities/heatmap/calendar/snapshot"),
 ):
     """Latest factor values (for live trading FactorClient).
 
