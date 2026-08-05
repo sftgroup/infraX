@@ -620,6 +620,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 ### 9.7 各模块 SDK / MCP / API 端点能力审查（待排期）
 
 > 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
+> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
 
 | # | 消费方需求 | 审查范围 | 状态 |
 |:---:|------|------|:---:|
@@ -629,3 +630,70 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 7.4 | 第三方监控 | `/health` `/stats` 端点、metrics 暴露（prometheus/opentelemetry）与告警接入 | 🔲 |
 | 7.5 | 管理 Agent | admin 端点（injector `/admin/config`、ragservicer admin 等）可编程化管理能力 | 🔲 |
 | 7.6 | SDK 交付 | 是否提供官方 SDK/客户端（Python/Node），或需生成 OpenAPI 契约供外部生成 | 🔲 |
+
+**7.1 外部应用集成 —— 检查项**
+
+- [ ] ① data :9112 实际路由与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` §3 逐一核对（含 DS-4 `/symbol/resolve`、DS-5 `/policy/broker-market` 缺失确认）
+- [ ] ② injector :9113 实际路由与 §4 核对（含 19 个 `inject_<source>` 全部可用）
+- [ ] ③ ragservicer :9721 实际路由与 §5 核对（含 legacy `/api/v1/v1/bots/*` 兼容路由）
+- [ ] ④ ml-service :9120 实际路由与 §6 核对
+- [ ] ⑤ 鉴权契约复核：四服务 Bearer/X-API-Key/X-Service-Key 三选一 + 401 统一响应 + `/health` 豁免（生产已闭环 9.3，此处按文档回归）
+- [ ] ⑥ 响应体结构统一（`code`/`message`/`data`）—— 核对 FastAPI 服务 `{code,message,data}` 与 Flask 服务一致
+- [ ] ⑦ 错误码/异常契约文档化：400/401/404/409/429/500 各服务语义核对
+- [ ] ⑧ 限流/配额：`RATE_LIMIT_RPM`（ragservicer）是否生效、返回 429 结构文档化
+- [ ] ⑨ CORS/跨域策略：外部 web 应用直接调用时的 allow_origins 现状核对
+- [ ] ⑩ 版本策略：URL 无版本前缀服务的变更兼容机制（如 ragservicer `/api/v1` 前缀覆盖范围）
+
+**7.2 数据查询 —— 检查项**
+
+- [ ] ① `/bars`：参数校验（symbol/timeframe/market_type/start/end/limit）、指标字段一致性、timeframe 枚举（1m~1d 分钟级已补，DS-8）
+- [ ] ② `/factors/catalog` `/factors/current` `/factors/history` 三类返回契约核对
+- [ ] ③ `/snapshots`：type 枚举（crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain/market_overview 等）与各 type 返回结构
+- [ ] ④ `/ticker`：多源降级链（ccxt/yfinance/Tencent）行为与返回字段
+- [ ] ⑤ ragservicer `/query` + `/retrieve`：mode 枚举（naive/local/global/hybrid/mix）、top_k、返回上下文结构
+- [ ] ⑥ `/ml/predictions`：model 枚举（bolt/moirai/timesfm）、limit 与分页
+- [ ] ⑦ 分页字段一致性：page/limit/has_more（ragservicer documents、injector stats/recent）
+- [ ] ⑧ 时间戳契约：单位（ms/s）与时区（UTC）全服务统一核对
+- [ ] ⑨ 空数据/失败行为：fail-silent 返回 `data:null`（ml-service）与显式错误的一致性核对
+
+**7.3 Agent 使用 —— 检查项**
+
+- [ ] ① ragservicer MCP Server（STDIO）`tools/list` 5 工具（insert/query/delete/list_instances/retrieve）实测可调用
+- [ ] ② MCP tenant 隔离：`mcp_tenant_id` 配置生效核对
+- [ ] ③ injector `/query` 的 namespace 参数化（默认 market）核对
+- [ ] ④ data / ml-service 的 OpenAPI（`/openapi.json`）可被 agent 工具框架加载核对
+- [ ] ⑤ SKILL.md / mcp-config.json 存在性确认（9.6 前置：当前无，需与 9.6 排期联动）
+- [ ] ⑥ dc-index / hub-index 现状确认（项目仓库是否存在该入口）
+- [ ] ⑦ agent 调用鉴权方式文档化（Bearer/X-API-Key/X-Service-Key 任一）
+- [ ] ⑧ 返回 JSON 结构化（字段固定/可解析）满足 agent 工具解析
+
+**7.4 第三方监控 —— 检查项**
+
+- [ ] ① 四服务 `/health` 探活矩阵实测（9112/9113/9721/9120，`code==0`）
+- [ ] ② `/stats` 关键字段核对（kline_rows/snapshot_rows/symbols/time_end 新鲜度）
+- [ ] ③ injector `/stats/recent` 注入健康核对（success/error/duration）
+- [ ] ④ ragservicer `/api/v1/admin/tasks` 吞吐/积压核对（queue stats + 任务状态分布）
+- [ ] ⑤ Prometheus `/metrics` 或 OpenTelemetry 暴露确认（已知缺口：无，见 §8）
+- [ ] ⑥ 无 `/metrics` 时：HTTP 轮询接入方案（监控脚本/探针）落地
+- [ ] ⑦ 监控专用只读 key 治理（独立 key vs 复用 bridge key 的评估）
+- [ ] ⑧ 日志采集：systemd journald 接入第三方日志平台方案确认
+
+**7.5 管理 Agent —— 检查项**
+
+- [ ] ① data `/admin/config` GET/PUT 实测（Bearer ADMIN_API_KEY、热更新免重启）
+- [ ] ② injector `/admin/config` GET/PUT 实测
+- [ ] ③ ragservicer `/api/v1/admin/config` GET/PUT 实测（写 .env + reload + 重建实例）
+- [ ] ④ 租户管理 CRUD：`/api/v1/tenants` POST/GET/DELETE 实测
+- [ ] ⑤ 租户 Key 签发/吊销：`/api/v1/tenants/{id}/keys` + `/api/v1/keys/{id}/revoke` 实测
+- [ ] ⑥ 手动注入触发 `POST /inject/<source>` 实测
+- [ ] ⑦ 管理端点幂等性/并发安全复核（热更新与实例重建竞态）
+- [ ] ⑧ 管理操作审计日志（谁/何时/改了什么）现状核对
+
+**7.6 SDK 交付 —— 检查项**
+
+- [ ] ① 仓库内官方 Python SDK 现状检查（`projects/` 下是否有 client 包）
+- [ ] ② 官方 Node SDK 现状检查（`projects/admin` 等是否含可复用 client）
+- [ ] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对
+- [ ] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）
+- [ ] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）
+- [ ] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策
