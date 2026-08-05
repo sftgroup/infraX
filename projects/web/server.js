@@ -30,6 +30,7 @@ const API_ROUTES = {
   '/api/vault':      { host: VAULT_HOST,   port: VAULT_PORT },
   '/api/v2/vault':   { host: VAULT_HOST,   port: VAULT_PORT },
   '/api/v2/payment': { host: PAYMENT_HOST, port: PAYMENT_PORT },
+  '/api/v2/subscription': { host: WAAS_HOST, port: WAAS_PORT },
 };
 
 const MIME = {

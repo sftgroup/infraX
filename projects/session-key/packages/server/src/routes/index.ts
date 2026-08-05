@@ -47,7 +47,7 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
   });
 
   // ── List Sessions ──────────────────────────────────────────────────
-  app.get('/api/v1/sessions', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
+  app.get('/api/v1/sessions', async (req, res) => {
     const { user, chain, status } = req.query as any;
     if (!user) return res.status(400).send({ code: 400, message: 'user address required' });
     const sessions = await svc.sessionService.list(user, chain, status);
@@ -55,7 +55,7 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
   });
 
   // ── Get Session ────────────────────────────────────────────────────
-  app.get('/api/v1/sessions/:id', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
+  app.get('/api/v1/sessions/:id', async (req, res) => {
     const { id } = req.params as any;
     try {
       const session = await svc.sessionService.get(id);
@@ -66,7 +66,7 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
   });
 
   // ── Revoke Session ─────────────────────────────────────────────────
-  app.delete('/api/v1/sessions/:id', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
+  app.delete('/api/v1/sessions/:id', async (req, res) => {
     const { id } = req.params as any;
     try {
       const result = await svc.sessionService.revoke(id);
@@ -77,7 +77,7 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
   });
 
   // ── Execute ────────────────────────────────────────────────────────
-  app.post('/api/v1/execute', { preHandler: [(req: any) => req.authenticate()] }, async (req, res) => {
+  app.post('/api/v1/execute', async (req, res) => {
     const { sessionId, chain, to, data, value, gasLimit } = req.body as any;
     if (!sessionId || !chain || !to || !data) {
       return res.status(400).send({ code: 400, message: 'sessionId, chain, to, data required' });

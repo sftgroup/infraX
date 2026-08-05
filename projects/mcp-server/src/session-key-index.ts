@@ -155,18 +155,24 @@ server.tool(
 );
 
 // ── Start server ───────────────────────────────────────────────────────
-const PORT = parseInt(process.env.PORT || "9111", 10);
+// 端口 3011（生产 web 占 9111，避免冲突；B-6）
+const PORT = parseInt(process.env.PORT || "3011", 10);
 
 const app = express();
 app.use(express.json());
 
+// stateless per-request transport：每次请求新建并 connect，
+// res 'close' 时 close() 会重置 Protocol._transport，允许下次请求重新 connect
+// （SDK Protocol.connect 只能连接一次，单例 transport 会导致
+//   "Server already initialized"/"Mcp-Session-Id header is required"）
 app.post("/mcp/message", async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
   });
-  app.locals.transport = transport;
+  res.on("close", () => transport.close());
   await server.connect(transport);
-  await transport.handleRequest(req, res);
+  await transport.handleRequest(req, res, req.body);
 });
 
 app.listen(PORT, () => {
