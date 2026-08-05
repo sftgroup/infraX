@@ -769,7 +769,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ④ ragservicer `/api/v1/admin/tasks` 吞吐/积压核对（queue stats + 任务状态分布）— 核对通过（Bearer ADMIN_API_KEY，读写分离统计）
 - [x] ⑤ Prometheus `/metrics` 或 OpenTelemetry 暴露确认（已知缺口：无，见 §8）— **✅ G-6 已实现**：`shared/metrics.py` 统一指标，四服务 `/metrics`（app_auth 豁免免 key），探针可直接抓取
 - [x] ⑥ 无 `/metrics` 时：HTTP 轮询接入方案（监控脚本/探针）落地 — ✅ 已落地：`SERVICE_ENDPOINTS_OBSERVABILITY.md` §8 监控方案 = `/health`+`/stats`+`/admin/status`（538795e）HTTP 轮询探针
-- [x] ⑦ 监控专用只读 key 治理（独立 key vs 复用 bridge key 的评估）— 评估完成：当前复用 bridge key（可读全部业务端点），`/admin/*` 需独立 `ADMIN_API_KEY`；如需独立只读 key 排期新增 → 差距报告 G-7
+- [x] ⑦ 监控专用只读 key 治理（独立 key vs 复用 bridge key 的评估）— **✅ G-7 已实现**：`app_auth.is_authorized` 支持 `method`+`monitor_key`，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行）；生产已配置启用并验证
 - [x] ⑧ 日志采集：systemd journald 接入第三方日志平台方案确认 — 方案确认（journald → rsyslog/vector → 第三方平台，§7.2 日志表）
 
 **7.5 管理 Agent —— 检查项**
@@ -804,7 +804,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 落 `btc_difficulty/btc_transfers/btc_hashrate` 子类型 | ✅ **已修复**：`get_snapshots` 加 `onchain→btc_%` 前缀聚合别名，type=onchain 返回全部 BTC 子类型（本地临时库实测通过） |
 | G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 🔲 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
 | G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | ✅ **已修复**：新增 `projects/shared/metrics.py` 统一 Prometheus 指标（`http_requests_total` + `http_request_duration_seconds` + 进程指标），四服务接入 `/metrics`（data/ml 走 `register_fastapi`，injector/rag 走 `register_flask`），`/metrics` 纳入 app_auth 豁免免 key 拉取；与 HTTP 轮询探针互补 |
-| G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝；本地行为测试通过） |
+| G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝）；**生产已启用**（四服务 `.env` 已配置同一 `MONITOR_API_KEY` 并重启），实测 monitor key GET 200 / POST 401、bridge key 不受影响（key 存于生产 `.env`，不入 repo，需轮换时替换后重启即可） |
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
 | G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | 🔲 npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask OpenAPI 排期 |
 
