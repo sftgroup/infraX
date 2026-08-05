@@ -517,7 +517,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 |---|---|---|---|---|
 | DS-1 | `/bars` K 线（OHLCV+指标+因子） | ✅ | P0 | 契约确认 |
 | DS-2 | `/factors/*` 因子目录/最新/历史 | ✅ | P0 | |
-| DS-3 | `/snapshots` 复杂快照 | ⚠️ | P0 | 缺 3 类 → DS-10 |
+| DS-3 | `/snapshots` 复杂快照 | ✅ | P0 | 契约确认；缺的 3 类（commodities/forex_pairs/market_overview）已由 DS-10 补齐 |
 | DS-4 | `/symbol/resolve` 符号解析 | ⚠️ | P1 | 多市场覆盖待确认 → DS-11 |
 | DS-5 | `/policy/broker-market` 券商市场策略 | ✅ | P1 | |
 | DS-6 | `/stats` `/health` | ✅ | — | |
