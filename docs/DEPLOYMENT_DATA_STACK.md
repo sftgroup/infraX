@@ -544,12 +544,12 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 - [x] ragservicer 配置 LLM / embedding 密钥，端到端注入跑通 → `POST /query` 命中（2026-08-05 实测命中 count=4）
 - [x] 统一鉴权契约 + 共享 app_auth（`projects/shared/app_auth.py` 唯一来源；data/injector/ragservicer/ml-service 同一实现：Bearer/X-API-Key/X-Service-Key、统一 401、/health 豁免、bridge key 回退链收敛，1f4deea）
-- [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 部署于独立服务器 43.156.25.197（:9120，版本 ff2bad5 落后、未含 app_auth，待升级见下）
+- [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 独立服务器 43.156.25.197（:9120）当时版本 ff2bad5 未含 app_auth，已于同日升级至 7350d47 完成闭环（见下）
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [ ] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（当前仅 `1m,1d`）
 - [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
 - [ ] DS-10~DS-11 排期与完成时间（见 9.1；DS-12 已完成）
-- [ ] ml-service 生产升级至 master（ff2bad5 → 含统一鉴权 app_auth 1f4deea）并实测入站鉴权 + `/ml/*` 出数
+- [x] ml-service 生产升级至 master（ff2bad5 → 7350d47，含统一鉴权 app_auth 1f4deea + 项目根副本）并实测入站鉴权 + `/ml/*` 出数（2026-08-05 完成：生产 .env 补 `ML_API_KEY`/`DATA_API_KEY`（与主栈同一把 bridge key）；实测 /health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200；/ml/consensus 出数：六路信号全 true、33 symbols、avg_consensus 0.5455）
 - [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）

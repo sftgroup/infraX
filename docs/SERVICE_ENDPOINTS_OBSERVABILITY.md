@@ -11,7 +11,7 @@
 | `infrax-data` | 9112 | FastAPI | ✅ 运行中（43.163.105.172） | `projects/data/infrax-data.service` | `projects/data/service.log` |
 | `infrax-knowledge-injector` | 9113 | Flask（`--api`） | ✅ 运行中 | `projects/knowledge-injector/infrax-knowledge-injector.service` | `projects/knowledge-injector/service.log` |
 | `infrax-ragservicer` | 9721 | Flask（LightRAG） | ✅ 运行中 | `projects/ragservicer/infrax-ragservicer.service` | `projects/ragservicer/service.log` / `journalctl -u infrax-ragservicer` |
-| `infrax-ml-service` | 9120 | FastAPI | ✅ 运行中（43.156.25.197；版本 ff2bad5 落后 master，未含统一鉴权，待升级） | `infrax-ml-service.service` | `journalctl -u infrax-ml-service` |
+| `infrax-ml-service` | 9120 | FastAPI | ✅ 运行中（43.156.25.197；master 7350d47，含统一鉴权 app_auth） | `infrax-ml-service.service` | `journalctl -u infrax-ml-service` |
 | `infrax-admin`（可选） | 3002 | Node/React | 视部署 | `projects/admin` | `journalctl -u infrax-admin` |
 
 ```mermaid
@@ -127,7 +127,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 
 所有 ML 端点 fail-silent：模型不可用返回 `data: null`。
 
-> **部署状态**：已部署于独立服务器 43.156.25.197（:9120，`infrax-ml-service.service` 运行中）。生产版本 `ff2bad5` 落后 master（未含统一鉴权 app_auth 1f4deea），入站 `ML_API_KEY` 校验暂未生效；升级后 §2 鉴权契约对其同样适用。
+> **部署状态**：已部署于独立服务器 43.156.25.197（:9120，`infrax-ml-service.service` 运行中）。2026-08-05 升级至 master `7350d47`（含统一鉴权 app_auth 1f4deea），生产 .env 已补 `ML_API_KEY`/`DATA_API_KEY`（主栈同一把 bridge key）；实测 §2 鉴权契约生效（/health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200）、/ml/consensus 六路信号出数。
 
 ## 7. 模块间依赖关系
 
