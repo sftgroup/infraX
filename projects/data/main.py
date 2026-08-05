@@ -32,6 +32,7 @@ if _env_path.exists():
                 if key and key not in os.environ:
                     os.environ[key] = val
 from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -57,6 +58,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── 统一错误响应体（D2，9.7-7.1-⑥ 关联待办）───────────────────
+# 所有非鉴权错误统一包装为 {code, message, data}：
+#   - 422 校验错误 / HTTPException / 未捕获异常 → {"code": <status>, "message": ..., "data": null}
+# 对齐 ragservicer / ml-service 业务端点结构。
+# 注：鉴权 401 仍返回 app_auth.UNAUTHORIZED（{"detail": "unauthorized"}，契约固定，
+#     由 _api_auth 中间件直接返回，不经过下述 handler）。
+
+def _error_body(code: int, message: str) -> dict:
+    return {"code": code, "message": message, "data": None}
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request: Request, exc: RequestValidationError):
+    errors = [
+        {"loc": ".".join(str(p) for p in e.get("loc", [])), "msg": e.get("msg", ""), "type": e.get("type", "")}
+        for e in exc.errors()
+    ]
+    body = _error_body(422, "Validation error")
+    body["data"] = errors
+    return JSONResponse(status_code=422, content=body)
+
+
+@app.exception_handler(HTTPException)
+async def _http_error_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content=_error_body(exc.status_code, str(exc.detail)))
+
+
+@app.exception_handler(Exception)
+async def _unhandled_error_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error on %s: %s", request.url.path, exc, exc_info=True)
+    return JSONResponse(status_code=500, content=_error_body(500, str(exc)))
 
 
 # ── Health ─────────────────────────────────────────────────────
@@ -300,7 +334,7 @@ async def stats():
 
 @app.get("/symbols")
 async def symbols(
-    timeframe: str = Query("1d", description="Timeframe: 1m/5m/15m/1h/4h/1D"),
+    timeframe: str = Query("1d", description="Timeframe: 1m/5m/15m/30m/1h/4h/1d"),
     min_bars: int = Query(1, ge=1, description="Minimum bar count per symbol"),
 ):
     """Symbols with enough bars in a timeframe (ascending by name).
