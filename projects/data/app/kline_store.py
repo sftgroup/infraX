@@ -14,6 +14,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -43,7 +44,9 @@ from app.config import (
     KL_FETCH_LIMIT,
     KL_INTERVAL_SEC,
     KL_EXCHANGE,
+    KL_BACKFILL_DAYS,
 )
+from app.data_sources.base import TIMEFRAME_SECONDS
 from app.storage import get_db
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,31 @@ _TIMEFRAMES = [t.strip() for t in KL_TIMEFRAMES.split(",") if t.strip()]
 # swap 合约采集（DS-8）：独立标的/周期，存储键 base/quote:quote
 _SWAP_SYMBOLS = [s.strip() for s in KL_SWAP_SYMBOLS.split(",") if s.strip()]
 _SWAP_TIMEFRAMES = [t.strip() for t in KL_SWAP_TIMEFRAMES.split(",") if t.strip()]
+
+# ── 历史深度回填目标（天）────────────────────────────
+# 对齐 B 端验收标准（AITRADER_DATA_SERVICE_REQ.md §7）：
+#   1m≥30 天；5m/15m/30m≥180 天；1h/4h≥365 天；1d≥1095 天（3 年）
+# 未列出 timeframe 默认 30 天。可用 KL_BACKFILL_DAYS JSON 覆盖。
+_DEFAULT_BACKFILL_DAYS = {
+    "1m": 30,
+    "5m": 180,
+    "15m": 180,
+    "30m": 180,
+    "1h": 365,
+    "4h": 365,
+    "1d": 1095,
+}
+_BACKFILL_DAYS = dict(_DEFAULT_BACKFILL_DAYS)
+if KL_BACKFILL_DAYS:
+    try:
+        _BACKFILL_DAYS.update(json.loads(KL_BACKFILL_DAYS))
+    except Exception:
+        logger.warning("KL_BACKFILL_DAYS unparsable: %r (ignored)", KL_BACKFILL_DAYS)
+
+
+def _tf_seconds(timeframe: str) -> int:
+    """timeframe → 秒（'1m'→60, '1d'→86400，未知默认 86400）。"""
+    return TIMEFRAME_SECONDS.get(timeframe, 86400)
 
 
 def _swap_ccxt_symbol(symbol: str) -> str:
@@ -224,6 +252,7 @@ class KlineStore:
     def _loop(self):
         while self._running:
             try:
+                self._backfill_all()  # 历史深度回填（幂等，DS-8 验收标准）
                 self._collect_all()
                 if KL_SWAP_ENABLED:
                     self._collect_swap()
@@ -273,6 +302,95 @@ class KlineStore:
                     self._upsert_bars_with_indicators(ccxt_sym, tf, ohlcv)
                 except Exception:
                     logger.warning("KlineStore swap fetch failed %s %s", ccxt_sym, tf, exc_info=True)
+
+    # ── 历史深度回填（DS-8 / B 端验收标准）────────────────
+
+    def _backfill_all(self):
+        """补齐所有 (symbol, timeframe) 与 swap 的历史深度缺口。
+
+        幂等：库中最早 ts 已覆盖目标窗口时跳过（仅一次 SQL 查询）。
+        在每轮采集循环开头调用，深度保持由目标窗口 + 增量采集共同维持。
+        """
+        ex = self._get_exchange()
+        for symbol in _SYMBOLS:
+            for tf in _TIMEFRAMES:
+                try:
+                    n = self._backfill_gap(ex, symbol, tf)
+                    if n:
+                        logger.info("KlineStore backfill: %s %s +%d bars", symbol, tf, n)
+                except Exception:
+                    logger.warning("KlineStore backfill failed %s %s", symbol, tf, exc_info=True)
+        if KL_SWAP_ENABLED and _SWAP_SYMBOLS:
+            for sym in _SWAP_SYMBOLS:
+                ccxt_sym = _swap_ccxt_symbol(sym)
+                for tf in _SWAP_TIMEFRAMES:
+                    try:
+                        n = self._backfill_gap(ex, ccxt_sym, tf)
+                        if n:
+                            logger.info("KlineStore backfill: %s %s +%d bars", ccxt_sym, tf, n)
+                    except Exception:
+                        logger.warning("KlineStore backfill failed %s %s", ccxt_sym, tf, exc_info=True)
+
+    def _backfill_gap(self, ex: ccxt.Exchange, symbol: str, timeframe: str) -> int:
+        """补齐单个 (symbol, timeframe) 的历史缺口 → 返回回填 bar 数（无缺口返回 0）。
+
+        目标起点 = now - 目标深度（天）。若库中 MIN(ts) 已不晚于目标起点则视为
+        深度达标。否则从目标起点分页拉取（fetch_ohlcv since + limit=1000）直到
+        覆盖已有最早数据 / 当前时间，去重后统一 upsert（含指标重算）。
+        """
+        target_days = _BACKFILL_DAYS.get(timeframe, _DEFAULT_BACKFILL_DAYS.get("1m", 30))
+        target_since = int(
+            (datetime.now(timezone.utc) - timedelta(days=target_days)).timestamp() * 1000
+        )
+        db = get_db()
+        row = db.execute(
+            "SELECT MIN(ts), MAX(ts) FROM kline WHERE symbol=? AND timeframe=?",
+            (symbol, timeframe),
+        ).fetchone()
+        min_ts = row[0] if row and row[0] else None
+        if min_ts is not None and min_ts <= target_since:
+            return 0  # 深度已达标
+
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        end_ms = min(min_ts, now_ms) if min_ts is not None else now_ms
+        if end_ms <= target_since:
+            return 0
+        tf_ms = _tf_seconds(timeframe) * 1000
+
+        all_ohlcv: list = []
+        cur = target_since
+        batch_limit = 1000
+        empty_streak = 0
+        while cur < end_ms:
+            try:
+                batch = ex.fetch_ohlcv(symbol, timeframe, since=cur, limit=batch_limit)
+            except Exception as exc:
+                logger.warning(
+                    "KlineStore backfill fetch failed %s %s @%d: %s",
+                    symbol, timeframe, cur, exc,
+                )
+                break
+            if not batch:
+                empty_streak += 1
+                if empty_streak >= 3:
+                    break
+                cur += tf_ms * min(batch_limit, 64)
+                continue
+            empty_streak = 0
+            all_ohlcv.extend(batch)
+            last_ts = batch[-1][0]
+            if last_ts >= end_ms:
+                break
+            if last_ts <= cur:  # 交易所未推进（防御死循环）
+                cur += tf_ms * min(batch_limit, 16)
+                continue
+            cur = last_ts + tf_ms
+
+        if not all_ohlcv:
+            return 0
+        by_ts = {int(r[0]): r for r in all_ohlcv if len(r) >= 6}
+        merged = sorted(by_ts.values(), key=lambda r: r[0])
+        return self._upsert_bars_with_indicators(symbol, timeframe, merged)
 
     def _upsert_bars_with_indicators(self, symbol: str, timeframe: str, ohlcv: list) -> int:
         """OHLCV → 指标 → upsert（spot/swap 共用）。返回落库 bar 数。"""

@@ -210,6 +210,7 @@ GET /stats
 | `KL_INTERVAL_SEC` | 300 | K线采集间隔 |
 | `KL_EXCHANGE` | binance | ccxt 交易所 |
 | `KL_FETCH_LIMIT` | 500 | 每次采集条数 |
+| `KL_BACKFILL_DAYS` | `{"1m":30,"5m":180,"15m":180,"30m":180,"1h":365,"4h":365,"1d":1095}` | 历史深度回填目标（天），JSON 覆盖；对齐 B 端验收标准（1m≥30 天、5m/15m/30m≥180 天、1h/4h≥365 天、1d≥3 年） |
 | `FACTOR_COLLECT_INTERVAL_SEC` | 300 | 外部因子采集间隔 |
 | `CALENDAR_COLLECT_INTERVAL_SEC` | 600 | 日历采集间隔 |
 | `MARKET_COLLECT_INTERVAL_SEC` | 600 | 快照采集间隔 |

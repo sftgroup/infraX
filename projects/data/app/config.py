@@ -86,6 +86,9 @@ KL_SWAP_TIMEFRAMES = os.getenv("KL_SWAP_TIMEFRAMES", "1m")
 KL_FETCH_LIMIT = int(os.getenv("KL_FETCH_LIMIT", "500"))
 KL_INTERVAL_SEC = int(os.getenv("KL_INTERVAL_SEC", "300"))
 KL_EXCHANGE = os.getenv("KL_EXCHANGE", "binance")
+# 历史深度回填目标（天），JSON：{"1m":30,"1d":1095}；未配置按默认表
+# （1m≥30d；5m/15m/30m≥180d；1h/4h≥365d；1d≥1095d=3y，对齐 B 端验收标准）
+KL_BACKFILL_DAYS = os.getenv("KL_BACKFILL_DAYS", "")
 LIGHTRAG_URL = os.getenv("LIGHTRAG_URL", "")
 
 # ── ML 推理联动（模型已拆分到独立 ml-service，如 /ml/tree_predictions） ──
