@@ -789,12 +789,12 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ② 官方 Node SDK 现状检查（`projects/admin` 等是否含可复用 client）— 核对通过：`projects/sdk`（@0xinfrax/infrax-dk 0.1.1：wallet/multisig/MPC/data 查询）+ `projects/ragservicer/sdk`（@0xinfrax/ragservicer-sdk 2.0.0 TS 类型）
 - [x] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对 — 核对通过（完整 schema，可被 openapi-generator 消费）
 - [x] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）— 核对通过（`SERVICE_ENDPOINTS_OBSERVABILITY.md` §4/§5 端点表与代码一致）
-- [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（TS/Python）；Flask 服务建议人工维护契约表或补 `flask-smorest` → 差距报告 G-9
-- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — 决策：当前仓库内引用（main 指向 dist/TS 源码），npm 发布已备（`prepublishOnly` 构建）；PyPI 发布 lightrag-client 可后续排期 → 差距报告 G-9
+- [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（FastAPI 自带 /openapi.json + /docs）；**✅ G-9 已实现 Flask OpenAPI**：injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths），手写 OpenAPI 3.0 spec，生产免 key 实测 200
+- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — **✅ G-9 已发布**：npm `@0xinfrax/infrax-dk@0.2.0` 已发布 registry 验证；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，待 token 发布（排期）
 
-**9.7 差距报告（2026-08-06 审查输出，G-1~G-8 已按序实现）**
+**9.7 差距报告（2026-08-06 审查输出，G-1~G-9 已按序实现）**
 
-> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6→G-2→G-5 顺序实现 8 项（本地验证通过，部署见 9.3）。剩余 **G-9** 为排期项。
+> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6→G-2→G-5→G-9 顺序实现 9 项（本地验证通过，部署见 9.3）。G-9 中仅 PyPI 发布待 token（排期）。
 
 | # | 级别 | 现状 | 差距 | 处理状态 |
 |:---:|:---:|------|------|------|
@@ -806,6 +806,6 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | ✅ **已修复**：新增 `projects/shared/metrics.py` 统一 Prometheus 指标（`http_requests_total` + `http_request_duration_seconds` + 进程指标），四服务接入 `/metrics`（data/ml 走 `register_fastapi`，injector/rag 走 `register_flask`），`/metrics` 纳入 app_auth 豁免免 key 拉取；与 HTTP 轮询探针互补 |
 | G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝）；**生产已启用**（四服务 `.env` 已配置同一 `MONITOR_API_KEY` 并重启），实测 monitor key GET 200 / POST 401、bridge key 不受影响（key 存于生产 `.env`，不入 repo，需轮换时替换后重启即可） |
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
-| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | 🔲 npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask OpenAPI 排期 |
+| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.2.0` 已发布（registry.npmjs.org 已验证 main/types/engines）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
 
-**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-8 已实现**（本轮提交，见 git log），G-9 排期处理（SDK 发布）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
+**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-9 全部实现**（G-9 中 PyPI 发布待 token 排期，其余闭环，本轮提交见 git log）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
