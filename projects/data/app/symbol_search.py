@@ -175,9 +175,13 @@ def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
     if not sym:
         return None
 
-    # 已含分隔符：直接规范化（去 "/" 与 ":"）
-    if "/" in sym or ":" in sym:
-        return sym.replace("/", "").replace(":", "")
+    # 已含分隔符：规范化（binance 风格）
+    if ":" in sym:
+        # swap 合约：base/quote:quote → base+quote（BTC/USDT:USDT → BTCUSDT）
+        parts = sym.split(":")
+        return parts[0].split("/")[0] + parts[-1]
+    if "/" in sym:
+        return sym.replace("/", "")
 
     if market == "crypto":
         markets = _load_crypto_markets()
