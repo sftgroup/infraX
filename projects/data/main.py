@@ -364,14 +364,15 @@ async def symbols(
 
 @app.get("/symbols/search")
 async def symbols_search(
-    keyword: str = Query(..., description="模糊关键字，如 btc / eth/"),
-    market: str = Query("crypto", description="crypto | usstock | forex | futures"),
+    keyword: str = Query(..., description="模糊关键字，如 btc / eth/ / apple"),
+    market: str = Query("crypto", description="crypto | usstock | forex | futures | cnstock | hkstock"),
     limit: int = Query(20, ge=1, le=100, description="返回条数，默认 20，上限 100"),
 ):
     """符号模糊搜索（DS-9，P0）。
 
     对标单体 market.py 符号搜索：ccxt 全量市场（binance spot+swap，quote=USDT
-    且 active）4h TTL 缓存 + 种子回退；usstock/forex/futures 走本地种子。
+    且 active）4h TTL 缓存 + 种子回退；usstock/forex/futures/cnstock/hkstock
+    走在线 lookup（Finnhub/TwelveData/AkShare）+ 种子回退（DS-11 全市场覆盖）。
     """
     try:
         from app.symbol_search import search_symbols as _search
@@ -384,15 +385,15 @@ async def symbols_search(
 
 @app.get("/symbol/resolve")
 async def symbol_resolve(
-    symbol: str = Query(..., description="符号关键字，如 BTC / BTC/USDT / EURUSD=X"),
-    market: str = Query("crypto", description="crypto | usstock | forex | futures"),
+    symbol: str = Query(..., description="符号关键字，如 BTC / BTC/USDT / EURUSD=X / apple"),
+    market: str = Query("crypto", description="crypto | usstock | forex | futures | cnstock | hkstock"),
 ):
     """符号解析（DS-4）：单符号 → 标准交易对。
 
     契约（AITRADER_DATA_SERVICE_REQ.md DS-4）：
         GET /symbol/resolve?symbol=BTC → {"query": "BTC", "resolved": "BTCUSDT"}
-    解析失败返回 404。全市场覆盖范围（美股/外汇/期货/A股/港股）待 DS-11 决策；
-    本期 crypto 精确解析（binance spot 优先）+ 非 crypto 种子直通。
+    解析失败返回 404。全市场覆盖（DS-11）：crypto 精确解析（binance spot 优先）；
+    美股/外汇/期货/A股/港股 → 种子精确匹配 + 在线 lookup（Finnhub/TwelveData/AkShare）。
     """
     try:
         from app.symbol_search import resolve_symbol as _resolve

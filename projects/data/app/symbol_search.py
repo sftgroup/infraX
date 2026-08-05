@@ -26,6 +26,8 @@ from app.data.market_symbols_seed import (
     FOREX_SYMBOLS,
     FUTURES_SYMBOLS,
     STOCK_SYMBOLS,
+    CN_STOCK_SYMBOLS,
+    HK_STOCK_SYMBOLS,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ _SEED_FALLBACK: dict[str, list[tuple[str, str]]] = {
     "usstock": STOCK_SYMBOLS,
     "forex": FOREX_SYMBOLS,
     "futures": FUTURES_SYMBOLS,
+    "cnstock": CN_STOCK_SYMBOLS,
+    "hkstock": HK_STOCK_SYMBOLS,
 }
 
 # ccxt 全量市场缓存（crypto）
@@ -140,9 +144,34 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
                 break
         return results
 
-    # 非 crypto：种子（symbol + name 均可匹配，如 gold → GC=F）
+    # 非 crypto：在线 lookup（种子 → Finnhub/TwelveData/AkShare），symbol+name 均可匹配
+    online = []
+    if market in ("usstock", "forex", "futures", "cnstock", "hkstock"):
+        from app.symbol_lookup import lookup_symbols
+        online = lookup_symbols(market, kw, limit=limit)
+
     results = []
+    # 在线结果优先（更全）；不足部分用种子补齐
+    seen = set()
+    for m in online:
+        key = m["symbol"]
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({
+            "symbol": key,
+            "market": market,
+            "market_type": "spot",
+            "exchange": "",
+            "active": True,
+            "name": m.get("name", ""),
+        })
+        if len(results) >= limit:
+            return results
+
     for sym, name in _SEED_FALLBACK.get(market, []):
+        if sym in seen:
+            continue
         if kw and kw not in sym.lower() and kw not in name.lower():
             continue
         results.append({
@@ -151,6 +180,7 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
             "market_type": "spot",
             "exchange": "",
             "active": True,
+            "name": name,
         })
         if len(results) >= limit:
             break
@@ -199,10 +229,18 @@ def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
         best = min(cands, key=_rank)
         return best["symbol"].replace("/", "")
 
-    # 非 crypto：种子精确匹配（大小写不敏感，原样返回）
+    # 非 crypto：种子精确匹配（大小写不敏感）→ 在线 lookup（symbol/name 匹配）
+    low = sym.lower()
     for s, _name in _SEED_FALLBACK.get(market, []):
-        if s.lower() == sym.lower():
+        if s.lower() == low:
             return s
+    if market in ("usstock", "forex", "futures", "cnstock", "hkstock"):
+        from app.symbol_lookup import lookup_symbols
+        for m in lookup_symbols(market, sym, limit=20):
+            s = (m.get("symbol") or "")
+            name = (m.get("name") or "").lower()
+            if s.lower() == low or name == low or low in s.lower() or low in name:
+                return s
     return None
 
 
