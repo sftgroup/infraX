@@ -552,7 +552,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ml-service 生产升级至 master（ff2bad5 → 7350d47，含统一鉴权 app_auth 1f4deea + 项目根副本）并实测入站鉴权 + `/ml/*` 出数（2026-08-05 完成：生产 .env 补 `ML_API_KEY`/`DATA_API_KEY`（与主栈同一把 bridge key）；实测 /health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200；/ml/consensus 出数：六路信号全 true、33 symbols、avg_consensus 0.5455）
 - [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
 - [x] **D2（9.7-7.2 审查发现，关联 9.7-7.1-⑥）** data 数据面统一响应体：错误统一包装为 `{code, message, data}`（2026-08-05 完成，commit 05b02eb + eac3656）：新增 422 / HTTPException（StarletteHTTPException 基类，含 404）/ 未捕获异常三个 handler；实测 404/422/业务 401 均 `{code,message,data}`，鉴权 401 保持 `{"detail":"unauthorized"}` 契约，成功响应不受影响
-- [ ] **D6（9.7-7.2 审查发现）** swap 数据覆盖确认 + 约定文档化：核对生产 `KL_SWAP_ENABLED`/`KL_SWAP_SYMBOLS`/`KL_SWAP_TIMEFRAMES` 配置（当前 `/bars?market_type=swap&symbol=BTC/USDT` count=0 无数据）；`BTC/USDT:USDT` 存储键约定补入端点文档
+- [x] **D6（9.7-7.2 审查发现，2026-08-05 完成）** swap 数据覆盖确认 + 约定文档化：生产 `KL_SWAP_ENABLED=true`、`KL_SWAP_SYMBOLS=BTC/USDT,ETH/USDT,SOL/USDT`（与 spot 对齐）；`KL_SWAP_TIMEFRAMES` 由 `1m` 扩为 `1m,5m,15m,30m,1h,4h,1d`（回填共用自动补：5m 51840/15m 17280/30m 8640/1h 8576/4h 2180/1d 1095，BTC/ETH/SOL 全）；实测 `/bars?market_type=swap` 7 周期全出数；存储键 `base/quote:quote`（`BTC/USDT:USDT`）约定已在 `.env.example` 注释 + 7.2 核对表 ③ 更新
 - [x] **B 端契约缺口确认（DS-4/DS-5，2026-08-05 完成）** `/symbol/resolve`（1df5e77/d3b313f）与 `/policy/broker-market`（2a7ce7f）均已由 data-service 承接实现并生产实测；**DS-11 全市场覆盖范围仍待 B 端确认**
 - [x] **B 端验收数据深度回填（2026-08-05 完成，commit aa3f1c1）** `/bars` 深度已对齐验收标准：KlineStore 新增 `_backfill_all/_backfill_gap` 分页回填（默认 1m≥30d、5m/15m/30m≥180d、1h/4h≥365d、1d≥1095d，`KL_BACKFILL_DAYS` 可覆盖；幂等 MIN(ts) 达标跳过；spot/swap 共用）。生产回填日志 total：1m 43202、5m 51840、15m 17280、30m 8640、1h 8576、4h 2185、1d 1095（ETH/SOL 同）；swap `BTC/USDT:USDT` 1m +42000。实测 `/bars?timeframe=1d` count=1095 span=1094 天、库 1m 30 天。注：`/bars` 单次查询 limit 上限 5000，30 天 1m 需 `start`/`end` 分段
 
@@ -679,7 +679,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 核对项：
 - [ ] ① `symbol` 接受 `BTC/USDT` 与 `BTCUSDT` 两种形式（`_normalize_kline_symbol` 归一化）实测
 - [x] ② `timeframe` 大小写：`1d` count=3 / `1D` 空（**确认大小写敏感**，docstring 已修正 commit 57050f1）
-- [x] ③ `market_type=swap` 存储键查询：**实测 count=0（swap 无数据，D6 待确认覆盖）**
+- [x] ③ `market_type=swap` 存储键查询：**已通（D6 完成，2026-08-05）** — `KL_SWAP_TIMEFRAMES` 由 1m 扩为 7 周期（回填共用自动补，BTC/ETH/SOL 全），实测 `/bars?market_type=swap` 各周期均出数；存储键 `base/quote:quote`（`BTC/USDT:USDT`）约定已文档化（.env.example 注释）
 - [ ] ④ `start`/`end` 时间过滤边界（含端点）实测
 - [ ] ⑤ `limit` 上界 5000 与默认 500 实测
 - [ ] ⑥ 指标字段 None 省略行为实测
@@ -727,7 +727,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | D3 | ✅ | `/factors/current` docstring 仅 4 类 category | docstring 补全 7 类（57050f1） |
 | D4 | ✅ | `/factors/history` series 降序 | `ORDER BY ts ASC`（57050f1） |
 | D5 | ✅ | `symbols=BTC` 查不到技术因子 | 候选回退 `BTC`→`BTC/USDT`（57050f1） |
-| D6 | ⚠️ | swap 无数据 + `BTC/USDT:USDT` 约定未文档化 | **待办（9.3）**：swap 数据覆盖确认 + 约定文档化 |
+| D6 | ✅ | swap 无数据 + `BTC/USDT:USDT` 约定未文档化 | **完成（2026-08-05，见 9.3）**：`KL_SWAP_TIMEFRAMES` 扩 7 周期 + 回填共用自动补全 + 约定文档化 |
 
 **7.3 Agent 使用 —— 检查项**
 
