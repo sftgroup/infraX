@@ -572,7 +572,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 |------|------|------|
 | API key 查看/热更新 | ✅ 已实现（10 个 key 白名单，脱敏，list/逗号串→多 key 池，写入 .env 免重启） | `GET/PUT /admin/config` |
 | 多 key 轮换 | ✅ 已实现+已补齐（APIKeys.rotate 全源覆盖） | — |
-| 数据源状态监控 | ⏳ 待开发（见上方待办） | `GET /admin/status` |
+| 数据源状态监控 | ✅ 已实现（commit 538795e，生产实测） | `GET /admin/status` |
 | 交易对管理 | ⏳ 待开发（见上方待办） | `PUT /admin/symbols` |
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
