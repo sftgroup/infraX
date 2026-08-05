@@ -1,6 +1,7 @@
 """Admin routes: tenant management + API key management + runtime config."""
 import logging
 import os
+import threading
 from pathlib import Path
 
 from flask import request, Blueprint, jsonify
@@ -16,6 +17,9 @@ logger = logging.getLogger("ragservicer.routes.admin")
 # ── Runtime config (LLM / Embedding keys) ───────────────
 
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+# 并发 PUT 串行化 read-modify-write，避免丢更新（与 data/injector admin 一致）
+_env_write_lock = threading.Lock()
 
 # request field → (env var, coerce)
 _CFG_FIELDS = {
@@ -70,24 +74,25 @@ def _snapshot_config():
 
 def _write_env(updates: dict[str, str]) -> None:
     """Line-level replace-or-append of KEY=VALUE into the .env file."""
-    if not ENV_PATH.exists():
-        ENV_PATH.write_text("")
-    lines = ENV_PATH.read_text().splitlines()
-    remaining = set(updates)
-    out = []
-    for line in lines:
-        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
-            out.append(line)
-            continue
-        key = line.split("=", 1)[0].strip()
-        if key in updates:
+    with _env_write_lock:
+        if not ENV_PATH.exists():
+            ENV_PATH.write_text("")
+        lines = ENV_PATH.read_text().splitlines()
+        remaining = set(updates)
+        out = []
+        for line in lines:
+            if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                out.append(line)
+                continue
+            key = line.split("=", 1)[0].strip()
+            if key in updates:
+                out.append(f"{key}={updates[key]}")
+                remaining.discard(key)
+            else:
+                out.append(line)
+        for key in remaining:
             out.append(f"{key}={updates[key]}")
-            remaining.discard(key)
-        else:
-            out.append(line)
-    for key in remaining:
-        out.append(f"{key}={updates[key]}")
-    ENV_PATH.write_text("\n".join(out) + "\n")
+        ENV_PATH.write_text("\n".join(out) + "\n")
 
 
 def register(api: Blueprint):
