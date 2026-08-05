@@ -756,8 +756,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ② MCP tenant 隔离：`mcp_tenant_id` 配置生效核对 — 核对通过（STDIO 工具调用默认挂载该 tenant，与 REST 租户隔离一致）
 - [x] ③ injector `/query` 的 namespace 参数化（默认 market）核对 — **✅ 本轮补齐（1ddcc97）**：`LightRAGClient.query` 本就支持 namespace，路由未透传；补上后生产实测 `namespace=onchain` 命中 4 条
 - [x] ④ data / ml-service 的 OpenAPI（`/openapi.json`）可被 agent 工具框架加载核对 — 核对通过（FastAPI 原生，含全路由 schema）
-- [x] ⑤ SKILL.md / mcp-config.json 存在性确认（9.6 前置：当前无，需与 9.6 排期联动）— **确认缺失** → 差距报告 G-5（与 9.6 Phase 3.1 排期联动）
-- [x] ⑥ dc-index / hub-index 现状确认（项目仓库是否存在该入口）— **确认缺失** → 差距报告 G-5（与 9.6 Phase 2.4 排期联动）
+- [x] ⑤ SKILL.md / mcp-config.json 存在性确认（9.6 前置：当前无，需与 9.6 排期联动）— **✅ G-5 已补齐（9.6 Phase 3.1）**：`projects/mcp-server/SKILL.md` + `mcp-config.json`
+- [x] ⑥ dc-index / hub-index 现状确认（项目仓库是否存在该入口）— **✅ G-5 已补齐（9.6 Phase 2.4/2.5）**：新增 `projects/mcp-server/src/hub-index.ts`（:3008，9 工具聚合 data/injector/ragservicer）+ `deploy/systemd/infrax-hub-index.service` 生产已部署
 - [x] ⑦ agent 调用鉴权方式文档化（Bearer/X-API-Key/X-Service-Key 任一）— 核对通过（§4.6 + 9.3 统一契约已文档化，见 7.1-⑤）
 - [x] ⑧ 返回 JSON 结构化（字段固定/可解析）满足 agent 工具解析 — 核对通过（data/rag/injector/ml 返回均 JSON，字段固定）
 
@@ -792,9 +792,9 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（TS/Python）；Flask 服务建议人工维护契约表或补 `flask-smorest` → 差距报告 G-9
 - [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — 决策：当前仓库内引用（main 指向 dist/TS 源码），npm 发布已备（`prepublishOnly` 构建）；PyPI 发布 lightrag-client 可后续排期 → 差距报告 G-9
 
-**9.7 差距报告（2026-08-06 审查输出，G-1/G-2/G-3/G-4/G-6/G-7/G-8 已按序实现）**
+**9.7 差距报告（2026-08-06 审查输出，G-1~G-8 已按序实现）**
 
-> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6→G-2 顺序实现 7 项（本地验证通过，部署见 9.3）。剩余 **G-5/G-9** 为排期项。
+> 首轮 9.7 审查修复 4 项（D7/D8/injector namespace/rag `_write_env` 锁，均已在生产实测闭环）；本轮按 G-1→G-4→G-3→G-8→G-7→G-6→G-2→G-5 顺序实现 8 项（本地验证通过，部署见 9.3）。剩余 **G-9** 为排期项。
 
 | # | 级别 | 现状 | 差距 | 处理状态 |
 |:---:|:---:|------|------|------|
@@ -802,10 +802,10 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-2 | 低 | data 成功响应为裸字段（FastAPI 原生） | 成功响应结构不一致 | ✅ **已修复**：新增 `shared/envelope.py` 可选信封中间件（`?envelope=1` 或 `X-Envelope: 1` 时 2xx JSON 统一包装 `{code:0,message:"ok",data}`，跳过 /metrics 与已是信封的响应；默认裸字段不变，现有调用方零影响），data + ml-service 接入 |
 | G-3 | 低 | data `RATE_LIMIT_RPM=60` 定义未启用 | data 无请求级限流 | ✅ **已修复**：新增 `app/rate_limit.py` TokenBucket 中间件（按 IP，`RATE_LIMIT_ENABLED` 默认 true 生效，429 统一信封，`/health` `/admin/*` 豁免） |
 | G-4 | 低 | `/snapshots?type=onchain` 返回空 | onchain 落 `btc_difficulty/btc_transfers/btc_hashrate` 子类型 | ✅ **已修复**：`get_snapshots` 加 `onchain→btc_%` 前缀聚合别名，type=onchain 返回全部 BTC 子类型（本地临时库实测通过） |
-| G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 不存在 | agent 生态（Skill/MCP Hub）入口缺失 | 🔲 与 9.6 排期联动（Phase 2.4 hub-index + Phase 3.1 SKILL.md） |
+| G-5 | 中 | `SKILL.md` / `mcp-config.json` / `dc-index` / `hub-index` 不存在 | agent 生态（Skill/MCP Hub）入口缺失 | ✅ **已修复（入口补齐，9.6 Phase 2.4/2.5/3.1 主体）**：新增 `projects/mcp-server/src/hub-index.ts` 统一 MCP 入口（:3008，Streamable HTTP，9 工具聚合 data/injector/ragservicer），`deploy/systemd/infrax-hub-index.service` 已生产部署 active；`SKILL.md`（ClawHub 风格能力矩阵）+ `mcp-config.json`（hub-index HTTP + ragservicer MCP STDIO 注册）。TEE 钱包（Phase 2.1-2.3）与品牌化发布（Phase 3.2-3.5）仍按 9.6 排期 |
 | G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | ✅ **已修复**：新增 `projects/shared/metrics.py` 统一 Prometheus 指标（`http_requests_total` + `http_request_duration_seconds` + 进程指标），四服务接入 `/metrics`（data/ml 走 `register_fastapi`，injector/rag 走 `register_flask`），`/metrics` 纳入 app_auth 豁免免 key 拉取；与 HTTP 轮询探针互补 |
 | G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝）；**生产已启用**（四服务 `.env` 已配置同一 `MONITOR_API_KEY` 并重启），实测 monitor key GET 200 / POST 401、bridge key 不受影响（key 存于生产 `.env`，不入 repo，需轮换时替换后重启即可） |
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
 | G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | 🔲 npm 发布已备（`prepublishOnly`）；PyPI 发布 lightrag-client 排期；Flask OpenAPI 排期 |
 
-**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项中 **G-1/G-2/G-3/G-4/G-6/G-7/G-8 已实现**（本轮提交，见 git log），G-5/G-9 排期处理（G-5 与 9.6 联动）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
+**9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-8 已实现**（本轮提交，见 git log），G-9 排期处理（SDK 发布）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
