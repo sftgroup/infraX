@@ -620,7 +620,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 ### 9.7 各模块 SDK / MCP / API 端点能力审查（待排期）
 
 > 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
-> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
+> 检查依据：`docs/SERVICE_ENDPOINTS_OBSERVABILITY.md`（端点一览 §3~§6、鉴权 §2、依赖 §7、监控 §8、管理 §9）；`docs/CHECKLIST_BARS_FACTORS.md`（7.2 `/bars` `/factors/*` 契约明细核对表）。**完成标准**：所有 `- [ ]` 勾选 + 输出差距报告。
 
 | # | 消费方需求 | 审查范围 | 状态 |
 |:---:|------|------|:---:|
