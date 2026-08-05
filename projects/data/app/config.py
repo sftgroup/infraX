@@ -145,6 +145,7 @@ class APIKeys:
     ALPHA_VANTAGE_API_KEY = ALPHA_VANTAGE_KEY
     NEWSAPI_API_KEY = NEWSAPI_API_KEY
     ADANOS_API_KEY = ADANOS_API_KEY
+    TUSHARE_TOKEN = TUSHARE_TOKEN
 
     _lock = threading.Lock()
     _counters: dict[str, int] = {}

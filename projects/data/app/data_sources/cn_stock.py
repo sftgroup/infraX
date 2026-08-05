@@ -22,6 +22,7 @@ from app.data_sources.asia_stock_kline import (
     fetch_akshare_minute_klines,
     fetch_akshare_weekly_klines,
 )
+from app.data_sources.tushare import fetch_tushare_klines
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -74,6 +75,20 @@ class CNStockDataSource(BaseDataSource):
                 after_time=after_time,
                 truncate=(after_time is None),
             )
+
+        # Tier 1.5: Tushare 日线（POST+token；需积分≥2000，无权限/未配置时 fail-silent）
+        if tf == "1D":
+            rows = fetch_tushare_klines(
+                tencent_code=code, timeframe=tf, limit=lim, before_time=before_time
+            )
+            if rows:
+                return self.filter_and_limit(
+                    rows,
+                    limit=lim,
+                    before_time=before_time,
+                    after_time=after_time,
+                    truncate=(after_time is None),
+                )
 
         # Tier 2: Tencent for daily/weekly (fast, free)
         if tf in ("1D", "1W"):
