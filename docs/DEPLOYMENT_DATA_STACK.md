@@ -848,10 +848,10 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
-| B-1 | MPC 邮箱验证码：`projects/mpc/server.ts` L228 硬编码 `888888` → `crypto.randomInt` 6 位（waas `mpcRoutes` 同步） | 🔲（现状 ⚠️ `const code='888888'`，无真实发信） | P0 |
-| B-2 | MPC 服务接入统一鉴权契约（当前 15 REST 端点无 key 鉴权） | 🔲 | P0 |
+| B-1 | MPC 邮箱验证码：`projects/mpc/server.ts` L228 硬编码 `888888` → `crypto.randomInt` 6 位（waas `mpcRoutes` 同步） | ✅ `148cc42`（mpc + waas 均 randomInt） | P0 |
+| B-2 | MPC 服务接入统一鉴权契约（当前 15 REST 端点无 key 鉴权） | ✅ `148cc42`（共享中间件 + `mp_` scope） | P0 |
 | B-3 | MPC 是否升级真 MPC/TEE（当前单 EOA 私钥、`shard_count` 恒 1/1、无 TEE 硬件隔离） | 🔲（⚠️ 非真 MPC，依赖 TEE 环境审批，与 9.6 Phase 2 排期联动） | P2 |
-| B-4 | Vault 运行期接入鉴权：`auth.ts` 已定义 5 种中间件但 `server.ts` 未挂载 → 全部端点裸奔 | 🔲 | P0 |
+| B-4 | Vault 运行期接入鉴权：`auth.ts` 已定义 5 种中间件但 `server.ts` 未挂载 → 全部端点裸奔 | ✅ `148cc42`（共享中间件 + `vx_` scope） | P0 |
 | B-5 | Vault 功能补齐：`safe_owners` 表建表、`updateSafeOwners` 走链上、多链支持（当前仅 Sepolia）、`GAS_POOL_PRIVATE_KEY` 注入 systemd | 🔲 | P1 |
 | B-6 | Session Key Engine（:3500）+ MCP 生产部署（⚠️ 当前未上线；MCP 默认端口 9111 与 web 冲突，需改端口；session-key 实现最完整：Bearer + EIP-712 + 白名单 + Redis 锁） | 🔲 | P1 |
 
@@ -859,7 +859,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
-| B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | 🔲 | P0 |
+| B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | ✅ `148cc42`（共享中间件 + `px_` scope，E2E 直连 200/非法 401/跨 scope 401） | P0 |
 | B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | 🔲（⚠️ 伪实现） | P1 |
 | B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens`（dc 无此端点）→ dc 补端点或工具改接 `/plans` `/chains` | 🔲（⚠️ 必失败） | P1 |
 | B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | 🔲（⚠️ 缺失） | P1 |
