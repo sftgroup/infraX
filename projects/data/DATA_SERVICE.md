@@ -216,7 +216,7 @@ GET /stats
 | `MARKET_COLLECT_INTERVAL_SEC` | 600 | 快照采集间隔 |
 | `DATA_CONFIG_PATH` | data_config.json | 采集配置文件路径 |
 | `COINGECKO_API_KEY` | (空) | CoinGecko API Key (可选) |
-| `FINNHUB_API_KEY` | (空) | Finnhub API Key (可选) |
+| `FINNHUB_API_KEY` | 已配置（2026-08-05） | Finnhub：美股 quote/日线备选/财报 earnings/公司档案/情绪；经济日历 free tier 无权限 |
 | `FRED_API_KEY` | (空) | FRED 宏观数据 Key (可选) |
 | `LOG_LEVEL` | INFO | 日志级别 |
 
