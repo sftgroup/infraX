@@ -561,8 +561,18 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **Twelve Data key 配置（2026-08-06，B 端提供）** 生产 `.env` 启用 `TWELVE_DATA_API_KEY`，重启 infrax-data；外汇 K线主源生效，实测 EURUSD 400 根（2025-05→2026-05 满一年）；库内 AUDUSD/USDCAD/USDCHF/USDJPY 各 396 根、EURUSD 599 根，GBPUSD 199 根待下一轮补齐；**免费 tier 限 8 次/分钟 ~800 credits/天，现采集每 5 分钟拉 6 对（1728 次/天）必然超额 → 见下方降频待办**
 - [x] **外汇采集降频（2026-08-06 完成，commit 9828840）** `_collect_multi_market` 独立周期 `KL_MULTI_INTERVAL_SEC`（默认 1800s=30 分钟，生产已验证生效），Twelve Data 调用从 1728 次/天降到 ~96 次/天（6 对×48 轮），远低于免费 tier 800 credits/天；crypto spot/swap 仍 5 分钟；生产重启后 `/health` 正常
 - [ ] **数据源 API key 申请清单（2026-08-06，需求登记）** 已配置：Finnhub + Firecrawl + FRED + **Twelve Data（2026-08-06）**；待申请：① NewsAPI https://newsapi.org/register（新闻）② Alpha Vantage https://www.alphavantage.co/support/#api-key（DXY）③ Tiingo https://www.tiingo.com/account/signup（外汇/期货备选）；可选：CoinGecko/Adanos/CryptoCompare。申请到 key 后写入生产 `.env`（可经 PUT /admin/config 热更新）
+- [x] **多 key 轮换补齐（2026-08-06 完成，commit bbe8201）** 基础设施 `APIKeys.rotate()`（逗号分隔 key 池，admin PUT /admin/config 支持 list 输入）已覆盖：FINNHUB/TWELVE/TIINGO/NEWSAPI/ADANOS/FRED/FIRECRAWL；本轮修复 finnhub 相关 3 处单 key 缓存：`data_providers/finnhub.py` 解除模块级 key 缓存、`data_sources/us_stock.py` 每次请求前 `_rotate_finnhub()`（quote/stock_candles 调用点）。注：`app/market_data/*` legacy 补丁包未被运行时引用，未改
 - [ ] **数据源状态监控端点 `GET /admin/status`（2026-08-06，需求登记）** 现状缺口：仅 /stats（DB 行数+时间跨度）；熔断器 `circuit_breaker.get_status()` 未暴露 HTTP；无 last_collect/成功率/新鲜度。目标：返回各采集器运行状态 + 各数据源熔断状态/失败数/最后错误 + 最近落库时间（raw_snapshots/kline 按 provider 分组 MAX(ts)）
 - [ ] **交易对热管理 API `PUT /admin/symbols`（2026-08-06，需求登记）** 现状缺口：crypto 标的/周期走 `.env`（KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_*）、非 crypto 标的在 `data_config.json`，均需改文件+重启。目标：交易对热更新（重启后生效或支持 reload），纳入 /admin 鉴权
+
+**后端管理需求总览（2026-08-06，B 端提）**
+
+| 能力 | 现状 | 端点 |
+|------|------|------|
+| API key 查看/热更新 | ✅ 已实现（10 个 key 白名单，脱敏，list/逗号串→多 key 池，写入 .env 免重启） | `GET/PUT /admin/config` |
+| 多 key 轮换 | ✅ 已实现+已补齐（APIKeys.rotate 全源覆盖） | — |
+| 数据源状态监控 | ⏳ 待开发（见上方待办） | `GET /admin/status` |
+| 交易对管理 | ⏳ 待开发（见上方待办） | `PUT /admin/symbols` |
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
