@@ -59,12 +59,16 @@ def create_app() -> Flask:
     # ─── 业务端点鉴权（/inject/*、/query、/status、/stats 等） ───
     # 统一契约（app_auth）：配置了 key（INJECTOR_API_KEY 或回退
     # RAGSERVICER_API_KEY）则强制 Bearer / X-API-Key / X-Service-Key 任一
-    # 匹配校验；未配置保持开放（向后兼容）。/health 与 /admin/* 除外
-    # （admin 沿用 ADMIN_API_KEY）。统一 401 响应 {"detail": "unauthorized"}。
+    # 匹配校验；未配置保持开放（向后兼容）。/health /metrics /openapi.json
+    # 与 /admin/* 除外（admin 沿用 ADMIN_API_KEY）。统一 401 {"detail":"unauthorized"}。
 
     @app.before_request
     def _require_api_key():
-        if app_auth.is_exempt(request.path, prefixes=("/admin/",)):
+        if app_auth.is_exempt(
+            request.path,
+            exact=("/health", "/metrics", "/openapi.json"),
+            prefixes=("/admin/",),
+        ):
             return None
         key = config.SETTINGS.injector_api_key or config.SETTINGS.ragservicer_api_key
         if not app_auth.is_authorized(
@@ -73,6 +77,15 @@ def create_app() -> Flask:
         ):
             return jsonify(app_auth.UNAUTHORIZED), 401
         return None
+
+    # ─── OpenAPI 文档（G-9）────────────────────────────
+    # 手写 OpenAPI 3.0 spec（api/openapi.py），鉴权豁免，免 key 浏览。
+
+    @app.route("/openapi.json")
+    def openapi_json():
+        from api.openapi import build_openapi
+
+        return jsonify(build_openapi())
 
     # ─── 注入器列表 ────────────────────────────────
 

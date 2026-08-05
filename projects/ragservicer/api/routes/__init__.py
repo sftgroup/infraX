@@ -18,6 +18,15 @@ def health():
     })
 
 
+# ── OpenAPI 文档（G-9）────────────────────────────────
+# 手写 OpenAPI 3.0 spec（api/openapi.py），无鉴权装饰器 → 天然公开。
+
+@api.route("/openapi.json")
+def openapi_json():
+    from api.openapi import build_openapi
+    return jsonify(build_openapi())
+
+
 # ── Register sub-routes ─────────────────────────────────
 
 def _register_all():

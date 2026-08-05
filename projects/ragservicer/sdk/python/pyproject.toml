@@ -5,9 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lightrag-client"
 version = "2.0.0"
-description = "Python client SDK for InfraX RAGservicer"
+description = "Python client SDK for InfraX RAGservicer — hybrid knowledge-base (vector + graph + keyword) retrieval"
+readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "InfraX" }]
+keywords = ["rag", "knowledge-base", "retrieval", "lightrag", "infrax", "vector-search"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = ["requests>=2.25"]
+
+[project.urls]
+Homepage = "https://infrax.io"
 
 [tool.setuptools]
 packages = ["lightrag_client"]
