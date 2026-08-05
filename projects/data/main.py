@@ -584,7 +584,87 @@ async def admin_put_config(request: Request):
     return {"code": 0, "message": "ok", "data": _data_config_snapshot()}
 
 
+# ── Admin status (数据源状态监控，9.3 待办) ──────────────────
+# 返回：采集器运行状态 + 熔断器状态 + 各数据源最近落库时间 + key 配置概览。
+# 鉴权与 /admin/config 一致（Bearer ADMIN_API_KEY）。
+
+
+def _collector_status() -> list[dict]:
+    """采集器运行状态：running 标志 + 线程存活 + 数据源注册时间。"""
+    out = []
+    now = time.time()
+    for name, c in _COLLECTORS.items():
+        running = bool(getattr(c, "_running", False))
+        thread = getattr(c, "_thread", None)
+        out.append({
+            "name": name,
+            "running": running,
+            "thread_alive": bool(thread and thread.is_alive()),
+            "thread_name": thread.name if thread else "",
+        })
+    out.sort(key=lambda x: x["name"])
+    return out
+
+
+def _circuit_breaker_status() -> dict:
+    """熔断器状态：各数据源熔断/半开/正常 + 失败次数 + 最后错误。"""
+    try:
+        from app.data_sources.circuit_breaker import get_realtime_circuit_breaker
+        return get_realtime_circuit_breaker().get_status()
+    except Exception as e:
+        logger.error("circuit_breaker status failed: %s", e)
+        return {}
+
+
+def _db_freshness() -> dict:
+    """数据新鲜度：raw_snapshots 按 provider/data_type 最近落库 + kline 各 timeframe 覆盖。"""
+    from app.storage import get_db
+    db = get_db()
+    result = {"snapshots": {}, "kline": {}}
+    try:
+        rows = db.execute(
+            "SELECT provider, data_type, MAX(fetched_at) AS latest "
+            "FROM raw_snapshots GROUP BY provider, data_type"
+        ).fetchall()
+        for r in rows:
+            key = f"{r['provider']}/{r['data_type']}"
+            result["snapshots"][key] = {"latest_fetched_ms": int(r["latest"])}
+    except Exception as e:
+        logger.error("snapshot freshness query failed: %s", e)
+    try:
+        rows = db.execute(
+            "SELECT timeframe, COUNT(*) AS n, MIN(ts) AS t0, MAX(ts) AS t1 "
+            "FROM kline GROUP BY timeframe"
+        ).fetchall()
+        for r in rows:
+            result["kline"][r["timeframe"]] = {
+                "rows": r["n"],
+                "ts_start": r["t0"],
+                "ts_end": r["t1"],
+            }
+    except Exception as e:
+        logger.error("kline freshness query failed: %s", e)
+    return result
+
+
+@app.get("/admin/status")
+async def admin_status(request: Request):
+    if not _admin_authorized(request):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key")
+    data = {
+        "collectors": _collector_status(),
+        "circuit_breakers": _circuit_breaker_status(),
+        "freshness": _db_freshness(),
+        "keys": _data_config_snapshot(),
+        "ts": int(time.time() * 1000),
+    }
+    return {"code": 0, "message": "ok", "data": data}
+
+
 # ── Startup ────────────────────────────────────────────────────
+
+# 采集器实例注册表（/admin/status 查询运行状态用）
+_COLLECTORS: dict[str, object] = {}
 
 @app.on_event("startup")
 async def _startup():
@@ -598,19 +678,24 @@ async def _startup():
         FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
         GlobalMarketCollector,
     )
-    ExternalFactorCollector().start()
-    CalendarCollector().start()
-    SnapshotCollector().start()
-    HeatmapCollector().start()
-    NewsCollector().start()
-    SentimentCollector().start()
-    AdanosCollector().start()
-    OpportunityCollector().start()
-    FinbertSentimentCollector().start()
-    TreeMlCollector().start()
-    ConsensusCollector().start()
-    P2MlCollector().start()
-    GlobalMarketCollector().start()
+    _collectors = [
+        ("external_factors", ExternalFactorCollector()),
+        ("calendar", CalendarCollector()),
+        ("snapshots", SnapshotCollector()),
+        ("heatmap", HeatmapCollector()),
+        ("news", NewsCollector()),
+        ("sentiment", SentimentCollector()),
+        ("adanos", AdanosCollector()),
+        ("opportunities", OpportunityCollector()),
+        ("finbert_sentiment", FinbertSentimentCollector()),
+        ("tree_ml", TreeMlCollector()),
+        ("consensus_ml", ConsensusCollector()),
+        ("p2_ml", P2MlCollector()),
+        ("global_market", GlobalMarketCollector()),
+    ]
+    for name, c in _collectors:
+        _COLLECTORS[name] = c
+        c.start()
     logger.info("InfraX Data Service startup complete")
 
 
