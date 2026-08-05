@@ -95,8 +95,8 @@
   },
 
   "multi_kline": {
-    "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；A股/港股切腾讯日线（规避新浪批量风控）；外汇 Twelve Data（配置 key 后优先）→ yfinance 回退。采集周期共用 KL_INTERVAL_SEC。",
-    "fetch_bars": 200,
+    "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；A股/港股切腾讯日线（规避新浪批量风控）；外汇 Twelve Data（配置 key 后优先）→ yfinance 回退。采集周期共用 KL_INTERVAL_SEC。fetch_bars=400 对齐 B 端验收（非 crypto 1D≥1 年，约 250 交易日，含余量）。",
+    "fetch_bars": 400,
     "us_stocks": {
       "symbols": [
         {"symbol": "AAPL",  "name": "Apple"},
