@@ -114,14 +114,14 @@ data-service 全部端点（`/health` 豁免）校验 `X-Service-Key`，缺失/�
 | 无 key 请求 | ✅ 401 |
 | 旧 `/api/v1/symbol/resolve` | ❌ 已废（新路径 `/api/data/symbol/resolve`） |
 
-### 6.2 剩余缺口（请 B 端处理）
+### 6.2 剩余缺口（请 B 端处理）——2026-08-06 全部复核完毕，见状态
 
-| # | 缺口 | 说明 |
+| # | 缺口 | 状态与说明 |
 |---|---|---|
-| 1 | **crypto 1D / ETH 日线 count:0** | DS-8 要求 1D≥3 年；AItrader 侧已配置 `KL_BACKFILL_DAYS={"1m":30,"1d":1095}` 示例，请 B 端启用历史回填并验证 |
-| 2 | **EUR/USD ticker 404** | 外汇符号映射（yfinance `EURUSD=X` ↔ 展示 `EUR/USD`），DS-7 覆盖缺口 |
-| 3 | **`/factors/history` 因子列 NULL** | backtest 因子注入（C2-8）依赖历史因子序列，当前仅技术因子且列值 NULL，宏观/情绪历史序列待补齐 |
-| 4 | **多市场分钟级 K 线** | 美股/外汇/期货/A股/港股采集器当前仅落 1d；timeframes 目标已写入 data_config.json（15m/1h/4h/1d），分钟级采集待扩展 |
+| 1 | **crypto 1D / ETH 日线 count:0** | ✅ **已解决**（2026-08-06 我方复核）BTC/ETH 1d count=1096（2023-08-07→2026-08-05，≈3 年），回执"count:0"应为回填完成前观察 |
+| 2 | **EUR/USD ticker 404** | ✅ **已解决** P1-3 符号映射生效，`/ticker?symbol=EUR/USD` 与 `EURUSD=X` 均 200 全字段（price 1.1546） |
+| 3 | **`/factors/history` 因子列 NULL** | ✅ **已解决**（commit ae3f461）技术因子 1d 1065/1096 行有 RSI；宏观/情绪 5 项（vix/dxy/us10y/fear_greed/sentiment_score）历史序列 asof 合并，生产实测 series 出数（vix:16.5 等）；更早窗口无宏观值因采集自 8-03 起 |
+| 4 | **多市场分钟级 K 线** | ✅ **主体解决**（commit b8cf9a6，2026-08-06 生产实测）A股 15m/1h/4h 全落库（腾讯分钟线，免费无额度）；外汇 Twelve Data 轮换采集已实现（额度友好，免费 tier 当日超支待 UTC 重置）；美股/期货 1h/4h yfinance 受 Yahoo 限流部分成功（V/XOM 落库 400/103 根）；**遗留**：hk 分钟级源未找到（仅 1d）、Twelve Data 免费 800 credits/天被全服务共享超支 → 建议 B 端提供付费 tier |
 
 ### 6.3 数据列表更新（2026-08-06，随本清单同批推送）
 

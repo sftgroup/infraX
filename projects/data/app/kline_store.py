@@ -584,14 +584,16 @@ class KlineStore:
         for sym in cn.get("symbols", []):
             time.sleep(_THROTTLE)
             market = sym.get("market", "sh")
+            rows_1h = []  # 本周期 1h 结果，4h 聚合复用避免二次拉取（腾讯偶发空返回）
             for tf in cn_tfs:
                 if tf == "1d":
                     rows = self._fetch_akshare_cn(sym["symbol"], market, fetch_bars)
                 elif tf in ("15m", "1h"):
                     rows = self._fetch_tencent_minute(sym["symbol"], market, tf)
-                else:  # 4h → 聚合 1h 分钟线
-                    rows = self._resample_1h_to_tf(
-                        self._fetch_tencent_minute(sym["symbol"], market, "1h"), 4)
+                    if tf == "1h":
+                        rows_1h = rows
+                else:  # 4h → 聚合本周期 1h 分钟线
+                    rows = self._resample_1h_to_tf(rows_1h, 4)
                 if not _upsert(sym["symbol"], tf, rows):
                     failed.append(f"{sym['symbol']} {tf}")
 
