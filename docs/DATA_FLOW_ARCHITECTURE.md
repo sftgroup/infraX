@@ -78,6 +78,7 @@ flowchart TB
 ## 3. 关键流向说明
 
 1. **链上数据（raw data 解析）**：公共 RPC 节点 → collector/dc 拉取 raw logs/区块 → **解析成结构化数据落库**（`events`/`tokens`/`ohlcv` 表）→ dc 提供 `/api/v2/data/*` REST。**它不属于 RPC 服务**——RPC 只是数据源，waas 的 rpc 代理才是纯透传（转发不解析）。
+   - **raw 导出能力**（2026-08-07）：`/api/v2/data/events` 增补 `topic_hash`/`amount_raw`/`event_data` 原始字段；`/api/v2/data/raw-receipt?chain=&tx_hash=` 实时调公共 RPC 导出**完整原始 receipt logs**（topics 全量 + data 字节），供高级租户自解析（需自己备 ABI），不落库即时取。
 2. **图谱链路**：data/collector/dc 的数据 → knowledge-injector（含 MQ-8 语义去噪）→ 注入 ragservicer（LightRAG）→ 应用经 `/api/rag/*` 检索。
 3. **ML 回流**：data 把 bars/factors 喂给 ml-service 训练/推理 → 预测结果（tree/bolt/moirai/timesfm）写回 data 的 `ml_predictions`，进入 factor catalog（`ml` 类别 10 个因子）。
 4. **SDK 区分**：`infrax.data.*`（dataUrl → :9112）与 `infrax.dc.*`/`market.*`（baseUrl → :9102）是两个独立服务入口，见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
