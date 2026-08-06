@@ -121,15 +121,19 @@ def quality_stats(db) -> dict:
     scanned = 0
     try:
         if total:
+            # 修复（2026-08-07）：原 ORDER BY ts ASC 取的是「最旧」行，与注释
+            # 「最近 _QC_SCAN_LIMIT」相悖，导致早期低质量数据放大 abnormal 比例。
+            # 改为取最近 _QC_SCAN_LIMIT 行，组内再按 ts 升序做跳空判定。
             rows = db.execute(
                 "SELECT symbol, ts, open, high, low, close, volume "
-                "FROM kline ORDER BY ts ASC LIMIT ?",
+                "FROM kline ORDER BY ts DESC LIMIT ?",
                 (_QC_SCAN_LIMIT,),
             ).fetchall()
             per_symbol: dict[str, list[dict]] = {}
             for r in rows:
                 per_symbol.setdefault(r["symbol"], []).append(r)
             for seq in per_symbol.values():
+                seq.sort(key=lambda b: b["ts"])  # 组内时间升序
                 prev = None
                 for r in seq:
                     scanned += 1
