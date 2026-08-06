@@ -506,11 +506,14 @@ class KlineStore:
         """Fetch multi-market K-lines and write OHLCV (no indicators).
 
         数据源（绕过 Yahoo 限流）：
-          - us_stocks → akshare 新浪日线（stock_us_daily）
-          - futures   → akshare 东财外盘期货日线（futures_foreign_hist）
-          - forex     → Twelve Data（需 key）→ yfinance 回退
-          - cn_stocks → 腾讯日线（不复权）→ akshare 新浪回退
-          - hk_stocks → 腾讯日线（前复权）→ akshare 新浪回退
+          - us_stocks → 1d akshare 新浪日线（stock_us_daily）；1h/4h yfinance
+          - futures   → 1d akshare 东财外盘期货日线（futures_foreign_hist）；1h/4h yfinance
+          - forex     → Twelve Data（需 key，interval 参数化 1m~1day）→ yfinance 回退
+          - cn_stocks → 腾讯日线（不复权）→ akshare 新浪回退；分钟级源待扩展
+          - hk_stocks → 腾讯日线（前复权）→ akshare 新浪回退；分钟级源待扩展
+
+        timeframes 取自 data_config.json multi_kline.<market>.timeframes（需求目标）；
+        源不支持的周期跳过并记入 failed（如 cn/hk 分钟级）。
         """
         cfg = self._get_multi_config()
         if not cfg:
@@ -524,59 +527,60 @@ class KlineStore:
         # 新浪/东财接口对快速连续请求会返回空（风控），每 symbol 间节流
         _THROTTLE = 2.0
 
-        # US stocks → akshare (新浪) — 仅日线
+        def _upsert(sym: str, tf: str, rows: list) -> bool:
+            nonlocal total
+            if not rows:
+                return False
+            self._upsert_ohlcv(sym, tf, rows)
+            total += 1
+            return True
+
+        # US stocks → 1d akshare + 1h/4h yfinance
         us = cfg.get("us_stocks") or {}
+        us_tfs = [t for t in (us.get("timeframes") or ["1d"]) if t in ("1d", "1h", "4h")]
         for sym in us.get("symbols", []):
             time.sleep(_THROTTLE)
-            rows = self._fetch_akshare_us(sym["symbol"], fetch_bars)
-            if rows:
-                self._upsert_ohlcv(sym["symbol"], "1d", rows)
-                total += 1
-            else:
-                failed.append(sym["symbol"])
+            for tf in us_tfs:
+                rows = (self._fetch_akshare_us(sym["symbol"], fetch_bars) if tf == "1d"
+                        else self._fetch_yfinance(sym["symbol"], tf, fetch_bars))
+                if not _upsert(sym["symbol"], tf, rows):
+                    failed.append(f"{sym['symbol']} {tf}")
 
-        # Futures → akshare (东财) — 仅日线
+        # Futures → 1d akshare (东财) + 1h/4h yfinance
         ft = cfg.get("futures") or {}
+        ft_tfs = [t for t in (ft.get("timeframes") or ["1d"]) if t in ("1d", "1h", "4h")]
         for sym in ft.get("symbols", []):
             time.sleep(_THROTTLE)
-            rows = self._fetch_akshare_futures(sym["symbol"], fetch_bars)
-            if rows:
-                self._upsert_ohlcv(sym["symbol"], "1d", rows)
-                total += 1
-            else:
-                failed.append(sym["symbol"])
+            for tf in ft_tfs:
+                rows = (self._fetch_akshare_futures(sym["symbol"], fetch_bars) if tf == "1d"
+                        else self._fetch_yfinance(sym["symbol"], tf, fetch_bars))
+                if not _upsert(sym["symbol"], tf, rows):
+                    failed.append(f"{sym['symbol']} {tf}")
 
-        # Forex → Twelve Data（配置 key 时优先）→ yfinance 回退
+        # Forex → Twelve Data（interval 参数化，15m/1h/4h/1d）→ yfinance 回退
         fx = cfg.get("forex") or {}
+        fx_tfs = [t for t in (fx.get("timeframes") or ["1d"]) if t in ("1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d")]
         for sym in fx.get("symbols", []):
             time.sleep(_THROTTLE)
-            rows = self._fetch_forex(sym["symbol"], fetch_bars)
-            if rows:
-                self._upsert_ohlcv(sym["symbol"], "1d", rows)
-                total += 1
-            else:
-                failed.append(sym["symbol"])
+            for tf in fx_tfs:
+                rows = self._fetch_forex(sym["symbol"], tf, fetch_bars)
+                if not _upsert(sym["symbol"], tf, rows):
+                    failed.append(f"{sym['symbol']} {tf}")
 
-        # A-shares → akshare
+        # A-shares → akshare/腾讯日线（分钟级源待扩展，仅采集 1d）
         cn = cfg.get("cn_stocks") or {}
         for sym in cn.get("symbols", []):
             time.sleep(_THROTTLE)
             rows = self._fetch_akshare_cn(sym["symbol"], sym.get("market", "sh"), fetch_bars)
-            if rows:
-                self._upsert_ohlcv(sym["symbol"], "1d", rows)
-                total += 1
-            else:
+            if not _upsert(sym["symbol"], "1d", rows):
                 failed.append(sym["symbol"])
 
-        # HK stocks → akshare
+        # HK stocks → akshare/腾讯日线（分钟级源待扩展，仅采集 1d）
         hk = cfg.get("hk_stocks") or {}
         for sym in hk.get("symbols", []):
             time.sleep(_THROTTLE)
             rows = self._fetch_akshare_hk(sym["symbol"], fetch_bars)
-            if rows:
-                self._upsert_ohlcv(sym["symbol"], "1d", rows)
-                total += 1
-            else:
+            if not _upsert(sym["symbol"], "1d", rows):
                 failed.append(sym["symbol"])
 
         if total:
@@ -585,19 +589,24 @@ class KlineStore:
             logger.warning("KlineStore: multi-market failed %d symbol(s): %s", len(failed), ", ".join(failed))
 
     @staticmethod
-    def _fetch_forex(symbol: str, bars: int) -> list:
-        """外汇日线：Twelve Data（配置 key 时优先）→ yfinance 回退。
+    def _fetch_forex(symbol: str, timeframe: str = "1d", bars: int = 200) -> list:
+        """外汇 K 线：Twelve Data（配置 key 时优先，interval 参数化）→ yfinance 回退。
 
         symbol 为 Yahoo 代码（如 EURUSD=X）；Twelve Data 需要 EUR/USD 格式。
+        timeframe 支持 1d/1h/4h/15m/30m/5m/1m（Twelve Data 原生 interval）。
         """
-        rows = KlineStore._fetch_forex_twelve(symbol, bars)
+        rows = KlineStore._fetch_forex_twelve(symbol, bars, timeframe)
         if rows:
             return rows
-        return KlineStore._fetch_yfinance(symbol, "1d", bars)
+        return KlineStore._fetch_yfinance(symbol, timeframe, bars)
 
     @staticmethod
-    def _fetch_forex_twelve(symbol: str, bars: int) -> list:
-        """外汇日线 from Twelve Data (api.twelvedata.com, 需 TWELVE_DATA_API_KEY)."""
+    def _fetch_forex_twelve(symbol: str, bars: int = 200, timeframe: str = "1d") -> list:
+        """外汇 K 线 from Twelve Data (api.twelvedata.com, 需 TWELVE_DATA_API_KEY).
+
+        Twelve Data interval 支持：1min/5min/15min/30min/45min/1h/2h/4h/1day/1week/1month。
+        datetime 含时分秒（intraday）时解析完整时间戳，避免同日期多行互相覆盖。
+        """
         try:
             from app.config import APIKeys
             key = APIKeys.rotate("TWELVE_DATA_API_KEY")
@@ -609,12 +618,18 @@ class KlineStore:
                 "NZDUSD", "EURJPY", "GBPJPY", "EURGBP", "USDCNH",
             ):
                 return []
+            interval_map = {
+                "1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min",
+                "45m": "45min", "1h": "1h", "2h": "2h", "4h": "4h",
+                "1d": "1day",
+            }
+            interval = interval_map.get(str(timeframe).strip().lower(), "1day")
             td_symbol = f"{pair[:3]}/{pair[3:]}"
             resp = requests.get(
                 "https://api.twelvedata.com/time_series",
                 params={
                     "symbol": td_symbol,
-                    "interval": "1day",
+                    "interval": interval,
                     "outputsize": min(bars, 800),
                     "apikey": key,
                 },
@@ -630,8 +645,12 @@ class KlineStore:
             from datetime import datetime as _dt
             rows = []
             for v in values:
+                dt_s = v.get("datetime", "")
                 try:
-                    ts = int(_dt.strptime(v["datetime"][:10], "%Y-%m-%d").timestamp() * 1000)
+                    if " " in dt_s:
+                        ts = int(_dt.strptime(dt_s, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+                    else:
+                        ts = int(_dt.strptime(dt_s[:10], "%Y-%m-%d").timestamp() * 1000)
                 except (ValueError, KeyError):
                     continue
                 rows.append((

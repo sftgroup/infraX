@@ -324,6 +324,12 @@ _TECH_FACTORS = (
     "ma_5", "ma_10", "ma_20",
 )
 
+# Macro / sentiment factors with history kept in raw_snapshots (per-collect rows).
+# /factors/history merges these asof-aligned (fetched_at <= bar ts, nearest previous).
+_NON_TECH_FACTORS = (
+    "vix", "dxy", "us10y", "fear_greed", "sentiment_score",
+)
+
 
 def get_history_factors(
     symbol: str,
@@ -339,8 +345,13 @@ def get_history_factors(
     returned aligned to candle timestamps — this is what backtests need to
     reproduce live factor values bar-by-bar.
 
-    ``ids`` filters to the requested factor ids (default: all technical
-    factors). ``ts`` is in milliseconds, matching /bars.
+    Macro / sentiment factors (vix/dxy/us10y/fear_greed/sentiment_score) are
+    merged from raw_snapshots history, asof-aligned to each bar (nearest value
+    with fetched_at <= bar ts). When ``ids`` is omitted, all technical +
+    macro/sentiment factors are returned.
+
+    ``ids`` filters to the requested factor ids (technical or macro ids).
+    ``ts`` is in milliseconds, matching /bars.
     """
     db = get_db()
     cols = ", ".join(_TECH_FACTORS)
@@ -370,13 +381,28 @@ def get_history_factors(
         if pair != symbol:
             rows = _query(pair)
 
-    wanted = set(ids) if ids else set(_TECH_FACTORS)
+    # 宏观/情绪历史（raw_snapshots，按 data_type 取 per-collect 历史）
+    import bisect
+    macro_hist = _load_non_tech_history()
+
+    wanted = set(ids) if ids else set(_TECH_FACTORS + _NON_TECH_FACTORS)
+    _aso = {}
+    for col in _NON_TECH_FACTORS:
+        if col in wanted and macro_hist.get(col):
+            _aso[col] = macro_hist[col]
+
     series: list[dict] = []
     for r in rows:
         item: dict = {"ts": r["ts"]}
         for col in _TECH_FACTORS:
             if col in wanted and r[col] is not None:
                 item[col] = r[col]
+        for col in _NON_TECH_FACTORS:
+            if col in wanted and col in _aso:
+                ts_list, val_list = _aso[col]
+                idx = bisect.bisect_right(ts_list, r["ts"]) - 1
+                if idx >= 0:
+                    item[col] = val_list[idx]
         series.append(item)
 
     return {
@@ -385,6 +411,52 @@ def get_history_factors(
         "count": len(series),
         "series": series,
     }
+
+
+def _load_non_tech_history() -> dict[str, tuple[list[int], list[float]]]:
+    """Load macro/sentiment factor history from raw_snapshots.
+
+    Returns ``{factor_id: (sorted_fetched_at, values)}`` — a value-change
+    step function. Consumers asof-lookup the nearest ``fetched_at <= bar_ts``.
+    """
+    db = get_db()
+    rows = db.execute(
+        f"SELECT data_type, raw_json, fetched_at FROM raw_snapshots "
+        f"WHERE data_type IN ({','.join('?' * len(_NON_TECH_FACTORS))}) "
+        f"ORDER BY fetched_at ASC LIMIT 50000",
+        _NON_TECH_FACTORS,
+    ).fetchall()
+    by_type: dict[str, list[tuple[int, float]]] = {f: [] for f in _NON_TECH_FACTORS}
+    for r in rows:
+        if not r["fetched_at"]:
+            continue
+        try:
+            data = json.loads(r["raw_json"]) if r["raw_json"] else {}
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        field = _FACTOR_FIELD.get(r["data_type"])
+        val = data.get(field) if field else None
+        if val is None:
+            val = next((v for v in data.values() if isinstance(v, (int, float))), None)
+        if val is None:
+            continue
+        by_type[r["data_type"]].append((int(r["fetched_at"]), float(val)))
+
+    out: dict[str, tuple[list[int], list[float]]] = {}
+    for fid, seq in by_type.items():
+        if not seq:
+            continue
+        steps: dict[int, float] = {}
+        last_v = None
+        for t, v in seq:
+            if v != last_v:
+                steps[t] = v
+                last_v = v
+        ts_list = sorted(steps)
+        out[fid] = (ts_list, [steps[t] for t in ts_list])
+    return out
 
 
 def save_snapshot(provider: str, data_type: str, data: dict, symbol: str = ""):
