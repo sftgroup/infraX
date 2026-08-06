@@ -24,7 +24,7 @@ cp .env.example .env   # 按需修改（RAGSERVICER_URL / RAGSERVICER_API_KEY）
 
 systemd：`sudo cp infrax-knowledge-injector.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now infrax-knowledge-injector`
 
-> 生产环境完整部署（systemd / .env / 注入链路验证）见 [docs/DEPLOYMENT_DATA_STACK.md](../../docs/DEPLOYMENT_DATA_STACK.md)。
+> 生产环境完整部署（systemd / .env / 注入链路验证）见 [docs/infrax_tasklist.md](../../docs/infrax_tasklist.md)。
 
 ## 环境变量
 

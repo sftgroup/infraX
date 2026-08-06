@@ -4,7 +4,7 @@
 >
 > 覆盖：data-service (:9112) / ml-service (:9120, 独立服务器) / knowledge-injector (:9113) / ragservicer (:9721)
 >
-> 关联文档：[DEPLOYMENT_DATA_STACK.md](./DEPLOYMENT_DATA_STACK.md)（部署步骤与运维）、[MERGE_PLAN_AITRADER.md](./MERGE_PLAN_AITRADER.md)（合并入 InfraX 的历史方案）
+> 关联文档：[infrax_tasklist.md](./infrax_tasklist.md)（部署步骤与运维）、[MERGE_PLAN_AITRADER.md](./MERGE_PLAN_AITRADER.md)（合并入 InfraX 的历史方案）
 
 ---
 
@@ -352,6 +352,6 @@ GET /ml/predictions?model=bolt&symbol=BTC&start=<unix ms>&end=<unix ms>&limit=50
 
 ## 9. 参考资料
 
-- [DEPLOYMENT_DATA_STACK.md](./DEPLOYMENT_DATA_STACK.md) — 部署步骤、配置项、验证清单
+- [infrax_tasklist.md](./infrax_tasklist.md) — 部署步骤、配置项、验证清单
 - [MERGE_PLAN_AITRADER.md](./MERGE_PLAN_AITRADER.md) — AItrader 数据栈并入 InfraX 历史方案
 - 代码：`projects/data` / `projects/ml-service` / `projects/knowledge-injector` / `projects/ragservicer`

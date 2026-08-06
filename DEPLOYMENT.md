@@ -3,7 +3,7 @@
 > 最后更新: 2026-08-06 | 版本 `v0.6.0-20260806`
 
 > 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721/3002）+ session-key（3500）+ MCP（3008/3011）+ admin/web + nginx 公网入口（80/443）全部同机部署（18 个 systemd 服务托管）。
-> **本文档覆盖区块链服务栈（9100-9111）**；数据栈详细部署见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)。
+> **本文档覆盖区块链服务栈（9100-9111）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
 > 旧服务器 ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 均已弃用。
 
 ## 生产服务器
@@ -15,7 +15,7 @@
 | SSH | 直连 |
 | 代码路径 | `/home/ubuntu/infraX-1` |
 | 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721/3002；session-key 3500；MCP 3008/3011；nginx 80/443 |
-| 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [DEPLOYMENT_DATA_STACK §2.1](./docs/DEPLOYMENT_DATA_STACK.md)） |
+| 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [DEPLOYMENT_DATA_STACK §2.1](./docs/infrax_tasklist.md)） |
 | ml-service | 独立服务器 **43.156.25.197**:9120（不在本机） |
 
 ```bash
@@ -73,7 +73,7 @@ ssh ubuntu@43.163.105.172
         └── infrax.css     ← 统一样式
 ```
 
-> 数据栈项目（data/knowledge-injector/ragservicer/ml-service/admin）同位于 `/home/ubuntu/infraX-1/projects/`，详见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)。
+> 数据栈项目（data/knowledge-injector/ragservicer/ml-service/admin）同位于 `/home/ubuntu/infraX-1/projects/`，详见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
 
 ## Web Proxy 路由 (`server.js`)
 
@@ -102,7 +102,7 @@ ssh ubuntu@43.163.105.172
 | `/` | admin/web 前端 | InfraX Web3 平台（需登录态） |
 
 - 80 端口一律 301 → 443；TLS 证书为 **Cloudflare Origin CA**（为 `infrax.0xainet.top` 签发，过期 2041）
-- 域名 `infrax.0xainet.top` DNS 现指向 Cloudflare（A 104.21.21.11），当前 `/api/*` 经公网 502（回源失败，origin 直连全 200）——**待 Cloudflare 面板修正回源**，详情与排查命令见 [DEPLOYMENT_DATA_STACK §2.1](./docs/DEPLOYMENT_DATA_STACK.md)
+- 域名 `infrax.0xainet.top` DNS 现指向 Cloudflare（A 104.21.21.11），当前 `/api/*` 经公网 502（回源失败，origin 直连全 200）——**待 Cloudflare 面板修正回源**，详情与排查命令见 [DEPLOYMENT_DATA_STACK §2.1](./docs/infrax_tasklist.md)
 
 ## 防火墙端口
 

@@ -2,7 +2,7 @@
 
 - **生成日期**：2026-08-06
 - **基线假设**：9.6 PRD 于 2026-08-07 审阅通过，实施自 2026-08-10（周一）启动；外部阻塞项（PyPI token / yfinance 限流 / Tushare 积分）以「待解锁」标注，解锁后按前置顺序插入
-- **来源**：`docs/DELIVERY_SUMMARY.md` §三 待办事项 + `docs/DEPLOYMENT_DATA_STACK.md` §9.6 排期
+- **来源**：`docs/DELIVERY_SUMMARY.md` §三 待办事项 + `docs/infrax_tasklist.md` §9.6 排期
 
 ---
 

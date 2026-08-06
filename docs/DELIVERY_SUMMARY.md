@@ -92,6 +92,6 @@
 
 ## 五、文档索引
 
-- 任务清单与差距报告：[DEPLOYMENT_DATA_STACK.md](DEPLOYMENT_DATA_STACK.md)（§9.7 已全部勾选）
+- 任务清单与差距报告：[infrax_tasklist.md](infrax_tasklist.md)（§9.7 已全部勾选）
 - 端点契约：[SERVICE_ENDPOINTS_OBSERVABILITY.md](SERVICE_ENDPOINTS_OBSERVABILITY.md)
 - 本报告：[DELIVERY_SUMMARY.md](DELIVERY_SUMMARY.md)

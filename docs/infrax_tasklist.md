@@ -1,8 +1,10 @@
-# InfraX 数据服务栈部署文档
+# InfraX 统一任务清单（infrax_tasklist）
 
-> 最后更新: 2026-08-06 | 适用版本 `v0.6.0-20260806`
+> 最后更新: 2026-08-07 | 适用版本 `v0.6.0-20260806`
 >
 > 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
+>
+> **独立维护文档**：本文档同时承载（a）数据服务栈生产部署流程（§1~§8）与（b）**全站唯一 tasklist 维护点**（§9，覆盖全部需求源——B 端 data-service / RAG 里程碑 / Session Key / MCP / 区块链栈 / 数据清洗与微服务需求补遗）。原 `docs/DEPLOYMENT_DATA_STACK.md` 于 2026-08-07 更名为本文件；各需求源文档保留详细契约，状态统一在本文件登记。
 
 本文档描述 AItrader 数据服务栈在生产环境的完整部署流程，包括一次性初始化、配置项、数据源降级链、验证清单与运维方式。
 
@@ -567,7 +569,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 ## 9. 统一任务清单（唯一 tasklist 维护点）
 
-> **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / `docs/MERGE_PLAN_AITRADER.md` / `prd/PRD.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"。
+> **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `projects/ragservicer/docs/REQUIREMENTS.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / `docs/SESSION_KEY_ENGINE_PRD.md` / `docs/MERGE_PLAN_AITRADER.md` / `prd/PRD.md` / `docs/MCP_REQUIREMENTS.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"（需求源登记见 §9.9）。
 > 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
 
 ### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md）
@@ -1010,3 +1012,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | Collector | 9101 | ✅ 最完整（relay 广播+鉴权+限流） | — |
 | web 用户端 | 9111 | ⚠️ 有套餐卡片 | 无注册/登录；套餐硬编码；缺 subscription 代理；无 data key 界面 |
 | admin | 3002 | ⚠️ 11 页 | 缺用户/套餐/订单页；6 个孤儿页面 |
+
+**9.9 需求源登记与状态（需求合并索引，2026-08-07）**
+
+> 全部需求统一在本文件 §9 登记状态；各需求源文档保留详细契约/规格，**不在源文档维护待办状态**。变更流程：新需求 → 在源文档补充契约 → 本节登记 → 按 §9 各小节跟踪执行。
+
+| 需求源文档 | 内容 | tasklist 登记 | 状态 |
+|---|---|---|---|
+| `projects/data/AITRADER_DATA_SERVICE_REQ.md` | B 端 data-service 需求（DS-1~DS-14） | §9.1 | 全部 ✅（DS-13/14 已交付 2026-08-07） |
+| `docs/DATA_MODULE_RAG_PLAN.md` | 模型与 RAG 里程碑（M0~M4 + P2 历史） | §9.2 | M0~M4 ✅ |
+| `projects/ragservicer/docs/REQUIREMENTS.md` | LightRAG 微服务需求（F-T01~F-Q03 + SDK 分发） | §9.2 | ✅ 契约已实现（:9721 生产运行） |
+| `docs/MCP_REQUIREMENTS.md` | MCP 工具清单（Wallet/DC/Market/Vault/MPC/SK 6 组） | §9.6 + §9.7 | ✅ 已上线（MQ-6：入站鉴权待补） |
+| `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` | Session Key 开发任务（v1.0） | §9.4 | ⚠️ PRD Draft（MQ-5） |
+| `docs/SESSION_KEY_ENGINE_PRD.md` | Session Key PRD（S-01~S-11） | §9.4 | ⚠️ Draft（MQ-5） |
+| `docs/MERGE_PLAN_AITRADER.md` | AItrader 合并计划 | §9.5 | — |
+| `prd/PRD.md` | MCP & Skill 产品需求（v1.1） | §9.6 | ⚠️ 待审阅 |
+| `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：发布记录矛盾待修正） |
+| `docs/DEPLOYMENT.md` / `docs/PROJECT_STATUS.md` 等 | 区块链栈部署/状态（旧布局） | §9.8 | ⚠️ 引用已随改名更新 |

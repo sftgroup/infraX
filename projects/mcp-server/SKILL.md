@@ -47,4 +47,4 @@ rag_query:     {"namespace": "market", "query": "美联储 2026 降息预期"}
 injector_trigger: {"source": "onchain"}
 ```
 
-> 注：TEE 钱包（Phase 2.1-2.3）与 hub-index 全量品牌化（Phase 2.4/2.5 排期）见 docs/DEPLOYMENT_DATA_STACK.md §9.6。本 SKILL 覆盖当前已上线能力。
+> 注：TEE 钱包（Phase 2.1-2.3）与 hub-index 全量品牌化（Phase 2.4/2.5 排期）见 docs/infrax_tasklist.md §9.6。本 SKILL 覆盖当前已上线能力。

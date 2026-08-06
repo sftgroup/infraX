@@ -323,7 +323,7 @@ infraX/
 | 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ | — | 已弃用 |
 
 - 区块链服务栈：详见 [DEPLOYMENT.md](./DEPLOYMENT.md)
-- **数据服务栈（9112/9113/9721）**：详见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)
+- **数据服务栈（9112/9113/9721）**：详见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)
 - 合并进度：详见 [PROGRESS.md](./PROGRESS.md)
 
 ## 版本历史
