@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 
 import config
-from app.providers.kronos import _fetch_klines, _TARGETS
+from app.providers.kronos import _fetch_klines, get_target_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ def predict_symbol(symbol: str) -> dict[str, Any] | None:
 def predict_all() -> list[dict[str, Any]]:
     """预测全部目标资产（逐项 fail-silent）。"""
     results: list[dict[str, Any]] = []
-    for sym in _TARGETS:
+    for sym in get_target_symbols():
         try:
             pred = predict_symbol(sym)
             if pred:

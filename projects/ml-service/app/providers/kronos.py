@@ -27,8 +27,28 @@ from app import data_client
 
 logger = logging.getLogger(__name__)
 
-# 目标资产
+# 目标资产（核心回退集；默认符号池由 get_target_symbols() 从 data-service 动态拉取）
 _TARGETS = ["BTC", "ETH", "SPY", "QQQ"]
+
+
+def get_target_symbols() -> list[str]:
+    """动态目标符号池（覆盖传统资产 1D + 加密资产，与 tree 模型对齐）。
+
+    优先级：P2_TARGET_SYMBOLS 显式覆盖 → data-service /symbols（timeframe=1d
+    且 bar 数达标，2026-08-07 起改为动态，覆盖美股/期货/外汇/A股/港股 + crypto）
+    → 失败回退核心 _TARGETS。
+    """
+    explicit = config.P2_TARGET_SYMBOLS
+    if explicit:
+        return [s.strip() for s in explicit.split(",") if s.strip()]
+    try:
+        syms = data_client.fetch_symbols(timeframe="1d", min_bars=config.TREE_ML_MIN_BARS)
+        if syms:
+            return syms
+        logger.debug("Kronos get_target_symbols: data-service /symbols empty, fallback")
+    except Exception as exc:
+        logger.debug("Kronos get_target_symbols failed, fallback: %s", exc)
+    return _TARGETS
 
 # 波动率档位阈值（volatility_score ∈ [0, 1]）
 _VOL_LEVELS = [
@@ -209,7 +229,7 @@ def predict_volatility(symbol: str) -> dict[str, Any] | None:
 def predict_all_volatility() -> list[dict[str, Any]]:
     """预测所有目标资产的波动率（逐项 fail-silent）。"""
     results: list[dict[str, Any]] = []
-    for sym in _TARGETS:
+    for sym in get_target_symbols():
         try:
             pred = predict_volatility(sym)
             if pred:

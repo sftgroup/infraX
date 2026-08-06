@@ -25,7 +25,7 @@ import numpy as np
 
 import config
 from app.providers import chronos_bolt as bolt
-from app.providers.kronos import _fetch_klines, _TARGETS
+from app.providers.kronos import _fetch_klines, get_target_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +80,10 @@ def predict_all() -> list[dict[str, Any]]:
         return []
 
     lookback = config.MOIRAI_CONTEXT
+    target_symbols = get_target_symbols()
     closes_map: dict[str, np.ndarray] = {}
     last_close_map: dict[str, float] = {}
-    for sym in _TARGETS:
+    for sym in target_symbols:
         klines = _fetch_klines(sym)
         if len(klines) < lookback:
             logger.warning("Moirai2: %s 历史K线不足（%d < %d）", sym, len(klines), lookback)
@@ -95,7 +96,22 @@ def predict_all() -> list[dict[str, Any]]:
     if not closes_map:
         return []
 
-    order = [s for s in _TARGETS if s in closes_map]
+    order = [s for s in target_symbols if s in closes_map]
+    # 多变量输入要求各资产序列等长：统一截断到最短长度
+    # （data-service 各符号回填深度不一，np.stack 会因长度不一致抛
+    #   "all input arrays must have the same shape"）
+    min_len = min(len(v) for v in closes_map.values())
+    if min_len < lookback:
+        logger.warning("Moirai2: min bars %d < lookback %d", min_len, lookback)
+        return []
+    for sym in order:
+        if len(closes_map[sym]) != min_len:
+            closes_map[sym] = closes_map[sym][-min_len:]
+    # uni2ts 2.0.0 空 pad bug：输入长度 == context_length 时
+    # np.full((0,1), value) 广播失败（could not broadcast ... (0,1)）。
+    # 统一截断后 min_len 可能恰等于 lookback → 让 context_length 严格
+    # 小于输入长度，走 slice 分支规避。
+    context_len = lookback if min_len > lookback else max(1, min_len - 1)
     # (past_time, tgt) —— 与 Moirai2Forecast.predict 输入约定一致
     past_target = np.stack([closes_map[s] for s in order], axis=1)
 
@@ -107,7 +123,7 @@ def predict_all() -> list[dict[str, Any]]:
         target_dim=len(order),
         feat_dynamic_real_dim=0,
         past_feat_dynamic_real_dim=0,
-        context_length=lookback,
+        context_length=context_len,
     )
     preds = fc_model.predict(past_target=[past_target])  # (1, n_q, pred_len, tgt)
 

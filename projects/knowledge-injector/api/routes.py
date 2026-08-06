@@ -34,12 +34,16 @@ def _uptime() -> str:
 
 def create_app() -> Flask:
     """创建 Flask 应用。"""
-    from injector.worker import GraphInjector
+    from injector.worker import GraphInjector, start_worker_thread
     from injector.client import LightRAGClient
     from injector.stats import STATS
 
     app = Flask(__name__)
     injector = GraphInjector(LightRAGClient())
+
+    # 挂载后台定时注入线程（--api 模式也跑 worker，修复 2026-08-07 发现的
+    # 注入停摆：此前仅 main.py 默认模式启动 worker，--api 分支只起 REST API）
+    start_worker_thread(injector)
 
     # ─── 请求日志（统一） ──────────────────────────────
 

@@ -29,6 +29,11 @@ DATA_SERVICE_URL = os.getenv("DATA_SERVICE_URL", "")
 # data-service 业务端点鉴权（/bars /symbols 需 X-API-Key）
 DATA_API_KEY = os.getenv("DATA_API_KEY", "")
 
+# ── P2/波动率目标符号池 ──────────────────────────────
+# 默认从 data-service /symbols（timeframe=1d，min_bars=TREE_ML_MIN_BARS）动态拉取，
+# 覆盖传统资产 1D + 加密资产；P2_TARGET_SYMBOLS 可显式覆盖（逗号分隔，留空走动态）。
+P2_TARGET_SYMBOLS = os.getenv("P2_TARGET_SYMBOLS", "")
+
 # ── ml-service 自身鉴权（可选） ──────────────────────────
 # 收敛为平台 bridge key（RAGSERVICER_API_KEY → DOC_API_KEY →
 # LIGHTRAG_API_KEY 回退链，统一契约见 app_auth）；配置后要求客户端带
