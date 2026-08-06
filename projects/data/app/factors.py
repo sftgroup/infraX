@@ -22,27 +22,27 @@ from app.config import FACTORS_FFILL, FRESHNESS_MS
 
 _BUILTIN = [
     # -- technical (computed in kline_store, stored in kline_1m) --
-    {"id": "rsi_14",     "name": "RSI(14)",            "category": "technical",  "type": "float", "range": [0, 100]},
-    {"id": "macd",       "name": "MACD Line",           "category": "technical",  "type": "float", "range": None},
-    {"id": "macd_signal", "name": "MACD Signal",        "category": "technical",  "type": "float", "range": None},
-    {"id": "macd_hist",  "name": "MACD Histogram",      "category": "technical",  "type": "float", "range": None},
-    {"id": "bb_upper",   "name": "BB Upper",            "category": "technical",  "type": "float", "range": None},
-    {"id": "bb_middle",   "name": "BB Middle",           "category": "technical",  "type": "float", "range": None},
-    {"id": "bb_lower",   "name": "BB Lower",            "category": "technical",  "type": "float", "range": None},
-    {"id": "atr_14",     "name": "ATR(14)",             "category": "technical",  "type": "float", "range": [0, None]},
-    {"id": "ma_5",       "name": "MA(5)",               "category": "technical",  "type": "float", "range": None},
-    {"id": "ma_10",      "name": "MA(10)",              "category": "technical",  "type": "float", "range": None},
-    {"id": "ma_20",      "name": "MA(20)",              "category": "technical",  "type": "float", "range": None},
+    {"id": "rsi_14", "name": "RSI(14)", "category": "technical", "type": "float", "range": [0, 100], "description": "14 周期相对强弱指标（>70 超买 / <30 超卖）", "unit": None},
+    {"id": "macd", "name": "MACD Line", "category": "technical", "type": "float", "range": None, "description": "MACD 快线（12 与 26 EMA 之差）", "unit": None},
+    {"id": "macd_signal", "name": "MACD Signal", "category": "technical", "type": "float", "range": None, "description": "MACD 信号线（快线的 9 期 EMA）", "unit": None},
+    {"id": "macd_hist", "name": "MACD Histogram", "category": "technical", "type": "float", "range": None, "description": "MACD 柱（快线 - 信号线）", "unit": None},
+    {"id": "bb_upper", "name": "BB Upper", "category": "technical", "type": "float", "range": None, "description": "布林带上轨（中轨 + k×std）", "unit": None},
+    {"id": "bb_middle", "name": "BB Middle", "category": "technical", "type": "float", "range": None, "description": "布林带中轨（20 期 SMA）", "unit": None},
+    {"id": "bb_lower", "name": "BB Lower", "category": "technical", "type": "float", "range": None, "description": "布林带下轨（中轨 - k×std）", "unit": None},
+    {"id": "atr_14", "name": "ATR(14)", "category": "technical", "type": "float", "range": [0, None], "description": "14 周期平均真实波幅（波动率）", "unit": None},
+    {"id": "ma_5", "name": "MA(5)", "category": "technical", "type": "float", "range": None, "description": "5 周期简单移动平均", "unit": None},
+    {"id": "ma_10", "name": "MA(10)", "category": "technical", "type": "float", "range": None, "description": "10 周期简单移动平均", "unit": None},
+    {"id": "ma_20", "name": "MA(20)", "category": "technical", "type": "float", "range": None, "description": "20 周期简单移动平均", "unit": None},
     # -- macro (from external APIs, stored in raw_snapshots) --
-    {"id": "vix",        "name": "VIX Volatility",      "category": "macro",      "type": "float", "range": [0, None]},
-    {"id": "dxy",        "name": "US Dollar Index",     "category": "macro",      "type": "float", "range": [50, 150]},
-    {"id": "us10y",      "name": "US 10Y Yield",        "category": "macro",      "type": "float", "range": [0, 10]},
+    {"id": "vix", "name": "VIX Volatility", "category": "macro", "type": "float", "range": [0, None], "description": "CBOE VIX 波动率指数（市场恐慌度）", "unit": None},
+    {"id": "dxy", "name": "US Dollar Index", "category": "macro", "type": "float", "range": [50, 150], "description": "美元指数（兑一篮子货币强弱）", "unit": None},
+    {"id": "us10y", "name": "US 10Y Yield", "category": "macro", "type": "float", "range": [0, 10], "description": "美国 10 年期国债收益率", "unit": "%"},
     # -- sentiment (from external APIs) --
-    {"id": "fear_greed", "name": "Fear & Greed Index",  "category": "sentiment",  "type": "int",   "range": [0, 100]},
-    {"id": "sentiment_score", "name": "News Sentiment Score", "category": "sentiment", "type": "float", "range": [-1, 1]},
+    {"id": "fear_greed", "name": "Fear & Greed Index", "category": "sentiment", "type": "int", "range": [0, 100], "description": "恐惧与贪婪指数（0 极度恐惧 - 100 极度贪婪）", "unit": None},
+    {"id": "sentiment_score", "name": "News Sentiment Score", "category": "sentiment", "type": "float", "range": [-1, 1], "description": "新闻情绪得分（-1 负面 - 1 正面）", "unit": None},
     # -- onchain --
-    {"id": "btc_difficulty", "name": "BTC Mining Difficulty", "category": "onchain", "type": "float", "range": [0, None]},
-    {"id": "btc_hashrate",   "name": "BTC Hashrate",          "category": "onchain", "type": "float", "range": [0, None]},
+    {"id": "btc_difficulty", "name": "BTC Mining Difficulty", "category": "onchain", "type": "float", "range": [0, None], "description": "BTC 挖矿难度", "unit": "T"},
+    {"id": "btc_hashrate", "name": "BTC Hashrate", "category": "onchain", "type": "float", "range": [0, None], "description": "BTC 全网算力", "unit": "EH/s"},
 ]
 
 # ─── ML factor catalog（DS-13，来源 ml-service，category="ml"）───
@@ -50,16 +50,16 @@ _BUILTIN = [
 # bolt/moirai/timesfm_* 来自 ml_predictions 明细表；consensus_* 来自 /ml/consensus。
 # direction 统一数值化：up=1 / flat=0 / down=-1（catalog type=int，见 B 端 DS-13 要求）。
 _ML_FACTORS = [
-    {"id": "tree_direction",    "name": "LightGBM Direction",      "category": "ml", "type": "int",   "range": [-1, 1]},
-    {"id": "tree_prob_up",      "name": "LightGBM P(Up)",          "category": "ml", "type": "float", "range": [0, 1]},
-    {"id": "finbert_sentiment", "name": "FinBERT Sentiment",       "category": "ml", "type": "float", "range": [-1, 1]},
-    {"id": "consensus_score",   "name": "Cross-model Consensus",   "category": "ml", "type": "float", "range": [0, 1]},
-    {"id": "bolt_direction",    "name": "Bolt Direction",          "category": "ml", "type": "int",   "range": [-1, 1]},
-    {"id": "bolt_prob_up",      "name": "Bolt P(Up)",              "category": "ml", "type": "float", "range": [0, 1]},
-    {"id": "moirai_direction",  "name": "Moirai Direction",        "category": "ml", "type": "int",   "range": [-1, 1]},
-    {"id": "moirai_prob_up",    "name": "Moirai P(Up)",            "category": "ml", "type": "float", "range": [0, 1]},
-    {"id": "timesfm_direction", "name": "TimesFM Direction",       "category": "ml", "type": "int",   "range": [-1, 1]},
-    {"id": "timesfm_prob_up",   "name": "TimesFM P(Up)",           "category": "ml", "type": "float", "range": [0, 1]},
+    {"id": "tree_direction", "name": "LightGBM Direction", "category": "ml", "type": "int", "range": [-1, 1], "description": "LightGBM 方向预测（1 涨 / 0 平 / -1 跌）", "unit": None},
+    {"id": "tree_prob_up", "name": "LightGBM P(Up)", "category": "ml", "type": "float", "range": [0, 1], "description": "LightGBM 上涨概率（0-1）", "unit": None},
+    {"id": "finbert_sentiment", "name": "FinBERT Sentiment", "category": "ml", "type": "float", "range": [-1, 1], "description": "FinBERT 金融情绪得分（-1 负面 - 1 正面）", "unit": None},
+    {"id": "consensus_score", "name": "Cross-model Consensus", "category": "ml", "type": "float", "range": [0, 1], "description": "多模型共识得分（0-1，越高一致性越强）", "unit": None},
+    {"id": "bolt_direction", "name": "Bolt Direction", "category": "ml", "type": "int", "range": [-1, 1], "description": "Bolt 方向预测（1 涨 / 0 平 / -1 跌）", "unit": None},
+    {"id": "bolt_prob_up", "name": "Bolt P(Up)", "category": "ml", "type": "float", "range": [0, 1], "description": "Bolt 上涨概率（0-1）", "unit": None},
+    {"id": "moirai_direction", "name": "Moirai Direction", "category": "ml", "type": "int", "range": [-1, 1], "description": "Moirai 方向预测（1 涨 / 0 平 / -1 跌）", "unit": None},
+    {"id": "moirai_prob_up", "name": "Moirai P(Up)", "category": "ml", "type": "float", "range": [0, 1], "description": "Moirai 上涨概率（0-1）", "unit": None},
+    {"id": "timesfm_direction", "name": "TimesFM Direction", "category": "ml", "type": "int", "range": [-1, 1], "description": "TimesFM 方向预测（1 涨 / 0 平 / -1 跌）", "unit": None},
+    {"id": "timesfm_prob_up", "name": "TimesFM P(Up)", "category": "ml", "type": "float", "range": [0, 1], "description": "TimesFM 上涨概率（0-1）", "unit": None},
 ]
 
 # ML 因子（history asof 对齐时并入 _NON_TECH_FACTORS 同型序列）
