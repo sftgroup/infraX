@@ -4,25 +4,33 @@ import { logger } from '../logger';
 /**
  * Data Cleaner
  *
- * Uses TimescaleDB `drop_chunks()` for O(1) data retention — no DELETE scanning.
+ * events 是普通表（TimescaleDB 扩展未安装，drop_chunks 不可用），
+ * 改为分批 DELETE + VACUUM 保留策略：
+ *  - 分批 DELETE 控制事务长度与锁粒度（每批 20 万行）
+ *  - 非 FULL VACUUM：回收死元组空间供复用（不锁表、无需额外磁盘空间；
+ *    VACUUM FULL 需要与表等大的临时空间，本盘不适用）
  *
  * Retention policy:
- *  - events: 72 hours (drop_chunks every 1h)
+ *  - events: 7 天（batch DELETE every hour + VACUUM）
  *  - payment_events: permanent (never deleted)
  *  - event_checkpoints: permanent
  */
 
 const CLEANUP_INTERVAL_MS = 3_600_000; // 1 hour
-const RETENTION_HOURS = 72;
+const RETENTION_HOURS = 7 * 24; // 保留 7 天
+const DELETE_BATCH = 200_000; // 每批行数（控制锁粒度）
+const MAX_BATCHES_PER_RUN = 20; // 单轮最多 400 万行，避免占用过久
 
 export class DataCleaner {
   private timer: NodeJS.Timeout | null = null;
+
+  private cleaning = false;
 
   start(): void {
     logger.info('[cleaner] Data Cleaner started', {
       interval: '1h',
       retention: `${RETENTION_HOURS}h`,
-      method: 'drop_chunks',
+      method: 'batch DELETE + VACUUM',
     });
 
     // Run immediately on startup, then every hour
@@ -35,31 +43,43 @@ export class DataCleaner {
   }
 
   async runCleanup(): Promise<void> {
+    if (this.cleaning) return; // 防重叠：上一轮未结束时跳过
+
+    this.cleaning = true;
     const startTime = Date.now();
+    let deletedTotal = 0;
 
     try {
-      // Drop all chunks older than RETENTION_HOURS (TimescaleDB O(1) operation)
-      const result = await pool.query(
-        `SELECT drop_chunks(
-          relation => 'events',
-          older_than => INTERVAL '72 hours'
-        )`
-      );
+      for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch++) {
+        // 分批 DELETE：PG 的 DELETE 不支持 LIMIT，用 ctid 子查询控制每批行数
+        const result = await pool.query(
+          `DELETE FROM events
+           WHERE ctid IN (
+             SELECT ctid FROM events
+             WHERE collected_at < NOW() - INTERVAL '${RETENTION_HOURS} hours'
+             LIMIT ${DELETE_BATCH}
+           )`
+        );
+        const deleted = result.rowCount ?? 0;
+        deletedTotal += deleted;
+
+        if (deleted === 0) break; // 没有更老的数据了
+      }
+
+      // 非 FULL VACUUM：回收死元组空间（不锁表、不占用额外磁盘空间）
+      if (deletedTotal > 0) {
+        await pool.query('VACUUM events');
+      }
 
       const duration = Date.now() - startTime;
-
-      if (result.rows.length > 0) {
-        const dropped = result.rows
-          .filter((r: any) => r.drop_chunks)
-          .map((r: any) => r.drop_chunks);
-        logger.info('[cleaner] Chunks dropped', {
-          chunks: dropped.length,
-          names: dropped,
-          duration: `${duration}ms`,
-        });
-      }
+      logger.info('[cleaner] Cleanup finished', {
+        deleted: deletedTotal,
+        duration: `${duration}ms`,
+      });
     } catch (err: any) {
       logger.error('[cleaner] Cleanup failed', { error: err.message });
+    } finally {
+      this.cleaning = false;
     }
   }
 

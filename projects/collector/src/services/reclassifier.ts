@@ -14,6 +14,13 @@ interface CustomSig {
 /**
  * Batch-reclassify raw_event rows that haven't been classified yet.
  *
+ * Strategy (avoids per-row UPDATE round-trips):
+ *   1. SELECT a batch of unclassified rows
+ *   2. Classify each row in memory, collecting params into two lists:
+ *        classifiedRows — rows matched by built-in or custom sigs
+ *        markedRows     — rows with no match (mark _classified:false)
+ *   3. Apply updates with a single multi-row UPDATE (VALUES) per list.
+ *
  * Classification order:
  *   1. Built-in SIGS (classifyLog) — Transfer, Approval, Swap, etc.
  *   2. Tenant-registered custom_event_sigs from DB
@@ -28,7 +35,7 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
   try {
     const result = await client.query(
       `SELECT id, event_id, chain, block_number, tx_hash, log_index,
-              topic_hash, event_data, collected_at
+              topic_hash, event_data, collected_at::text AS collected_at
        FROM events
        WHERE event_type = 'raw_event'
          AND event_data ? '_raw'
@@ -39,14 +46,16 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
 
     if (result.rows.length === 0) return { processed: 0, classified: 0, custom: 0 };
 
+    // [event_id, collected_at, event_type, from, to, token, symbol, tokenId, amount, amountRaw, eventDataJson, topicHash]
+    const classifiedRows: any[][] = [];
+    // [eventDataJson, event_id, collected_at]
+    const markedRows: any[][] = [];
+
     for (const row of result.rows) {
       processed++;
       const raw = row.event_data?._raw;
       if (!raw || !raw.topics || raw.topics.length === 0) {
-        await client.query(
-          `UPDATE events SET event_data = $1 WHERE id = $2`,
-          [JSON.stringify({ ...row.event_data, _classified: false }), row.id]
-        ).catch(() => {});
+        markedRows.push([JSON.stringify({ ...row.event_data, _classified: false }), row.event_id, row.collected_at]);
         continue;
       }
 
@@ -65,27 +74,20 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
       const builtinResult = classifyLog(logData, row.block_number, blockTimestamp, row.chain);
 
       if (builtinResult && builtinResult.event_type !== 'raw_event') {
-        await client.query(
-          `UPDATE events SET
-             event_type = $1,  from_address = $2,  to_address = $3,
-             token_address = $4,  token_symbol = $5,  token_id = $6,
-             amount = $7,  amount_raw = $8,
-             event_data = $9,  topic_hash = $10
-           WHERE id = $11`,
-          [
-            builtinResult.event_type,
-            builtinResult.from_address,
-            builtinResult.to_address,
-            builtinResult.token_address,
-            builtinResult.token_symbol || '',
-            builtinResult.token_id || '',
-            builtinResult.amount || '0',
-            builtinResult.amount_raw || '0',
-            JSON.stringify({ ...builtinResult.event_data, _classified: true }),
-            builtinResult.topic_hash,
-            row.id,
-          ]
-        );
+        classifiedRows.push([
+          row.event_id,
+          row.collected_at,
+          builtinResult.event_type,
+          builtinResult.from_address,
+          builtinResult.to_address,
+          builtinResult.token_address,
+          builtinResult.token_symbol || '',
+          builtinResult.token_id || '',
+          clampAmount(builtinResult.amount),
+          builtinResult.amount_raw || '0',
+          JSON.stringify({ ...builtinResult.event_data, _classified: true }),
+          builtinResult.topic_hash,
+        ]);
         classified++;
         continue;
       }
@@ -95,38 +97,32 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
       if (customSig) {
         const customEvent = buildCustomEvent(logData, row.chain, row.block_number, blockTimestamp, customSig);
         if (customEvent) {
-          await client.query(
-            `UPDATE events SET
-               event_type = $1,  from_address = $2,  to_address = $3,
-               token_address = $4,  token_symbol = $5,  token_id = $6,
-               amount = $7,  amount_raw = $8,
-               event_data = $9,  topic_hash = $10
-             WHERE id = $11`,
-            [
-              customEvent.event_type,
-              customEvent.from_address,
-              customEvent.to_address,
-              customEvent.token_address,
-              customEvent.token_symbol || '',
-              customEvent.token_id || '',
-              customEvent.amount || '0',
-              customEvent.amount_raw || '0',
-              JSON.stringify({ ...customEvent.event_data, _classified: true, _custom_sig: customSig.event_name || customSig.event_type }),
-              customEvent.topic_hash,
-              row.id,
-            ]
-          );
+          classifiedRows.push([
+            row.event_id,
+            row.collected_at,
+            customEvent.event_type,
+            customEvent.from_address,
+            customEvent.to_address,
+            customEvent.token_address,
+            customEvent.token_symbol || '',
+            customEvent.token_id || '',
+            clampAmount(customEvent.amount),
+            customEvent.amount_raw || '0',
+            JSON.stringify({ ...customEvent.event_data, _classified: true, _custom_sig: customSig.event_name || customSig.event_type }),
+            customEvent.topic_hash,
+          ]);
           custom++;
           continue;
         }
       }
 
       // 3. No match — mark as attempted
-      await client.query(
-        `UPDATE events SET event_data = $1 WHERE id = $2`,
-        [JSON.stringify({ ...row.event_data, _classified: false }), row.id]
-      ).catch(() => {});
+      markedRows.push([JSON.stringify({ ...row.event_data, _classified: false }), row.event_id, row.collected_at]);
     }
+
+    // Batch UPDATEs: one multi-row statement per list (dedup index (event_id, collected_at))
+    await batchUpdateClassified(client, classifiedRows);
+    await batchMarkUnclassified(client, markedRows);
   } catch (err: any) {
     logger.error('[reclassify] Batch failed', { error: err.message });
   } finally {
@@ -139,10 +135,106 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
   return { processed, classified, custom };
 }
 
+// ── Multi-row UPDATE helpers (VALUES-based) ───────────────────────
+
+const UPDATE_SUBBATCH = 4000; // 12 params/row → 48k params, safe under PG's 65535 limit
+
+// varchar column max lengths in events table — truncate to avoid
+// "value too long for type character varying(100)" aborting the whole batch
+// (non-standard tokens can emit huge `data`, producing 100k+ digit decimals)
+const VARCHAR_MAX: Record<number, number> = {
+  2: 100,  // event_type
+  3: 100,  // from_address
+  4: 100,  // to_address
+  5: 100,  // token_address
+  6: 50,   // token_symbol
+  7: 100,  // token_id
+  9: 100,  // amount_raw
+  11: 100, // topic_hash
+};
+
+function fitParam(v: any, idx: number): any {
+  const max = VARCHAR_MAX[idx];
+  if (max === undefined) return v;
+  if (v == null) return ''; // varchar columns are NOT NULL — coerce undefined/null to ''
+  const s = String(v);
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+async function batchUpdateClassified(client: any, rows: any[][]): Promise<void> {
+  for (let i = 0; i < rows.length; i += UPDATE_SUBBATCH) {
+    const chunk = rows.slice(i, i + UPDATE_SUBBATCH);
+    if (chunk.length === 0) continue;
+
+    const values = chunk
+      .map((_, r) => {
+        const b = r * 12;
+        return `($${b + 1}::varchar, $${b + 2}::timestamp, $${b + 3}::varchar, $${b + 4}::varchar, $${b + 5}::varchar, $${b + 6}::varchar, $${b + 7}::varchar, $${b + 8}::varchar, $${b + 9}::numeric, $${b + 10}::varchar, $${b + 11}::jsonb, $${b + 12}::varchar)`;
+      })
+      .join(', ');
+
+    await client.query(
+      `UPDATE events AS e SET
+         event_type = v.event_type,
+         from_address = v.from_address,
+         to_address = v.to_address,
+         token_address = v.token_address,
+         token_symbol = v.token_symbol,
+         token_id = v.token_id,
+         amount = v.amount,
+         amount_raw = v.amount_raw,
+         event_data = v.event_data,
+         topic_hash = v.topic_hash
+       FROM (VALUES ${values})
+         AS v(event_id, collected_at, event_type, from_address, to_address,
+              token_address, token_symbol, token_id, amount, amount_raw, event_data, topic_hash)
+       WHERE e.event_id = v.event_id AND e.collected_at = v.collected_at`,
+      chunk.flat().map((v, i) => fitParam(v, i % 12))
+    );
+  }
+}
+
+async function batchMarkUnclassified(client: any, rows: any[][]): Promise<void> {
+  for (let i = 0; i < rows.length; i += UPDATE_SUBBATCH) {
+    const chunk = rows.slice(i, i + UPDATE_SUBBATCH);
+    if (chunk.length === 0) continue;
+
+    const values = chunk
+      .map((_, r) => {
+        const b = r * 3;
+        return `($${b + 1}::jsonb, $${b + 2}::varchar, $${b + 3}::timestamp)`;
+      })
+      .join(', ');
+
+    await client.query(
+      `UPDATE events AS e SET event_data = v.event_data
+       FROM (VALUES ${values}) AS v(event_data, event_id, collected_at)
+       WHERE e.event_id = v.event_id AND e.collected_at = v.collected_at`,
+      chunk.flat()
+    );
+  }
+}
+
 // ── Custom sig cache ──────────────────────────────────────────────
 
 let customSigCache: Map<string, CustomSig> | null = null;
 let customSigCacheTime = 0;
+
+/**
+ * Clamp an amount string to fit NUMERIC(78,18) (60 integer digits).
+ * ERC-20 transfer amounts can be 78-digit uint256 values which overflow
+ * the numeric column and abort the whole UPDATE batch.
+ */
+function clampAmount(v: string | null | undefined): string {
+  if (!v) return '0';
+  const s = String(v).trim();
+  if (!s || s === '0') return '0';
+  const negative = s.startsWith('-');
+  const intPart = (negative ? s.slice(1) : s).split('.')[0].replace(/^0+/, '') || '0';
+  if (intPart.length <= 60) return s;
+  // Clamp to max value representable in NUMERIC(78,18)
+  return (negative ? '-' : '') + '9'.repeat(60);
+}
 
 async function loadAllCustomSigs(): Promise<Map<string, CustomSig>> {
   const now = Date.now();
@@ -255,14 +347,20 @@ function buildCustomEvent(
 // ── Scheduler ────────────────────────────────────────────────────
 
 let reclassifyTimer: NodeJS.Timeout | null = null;
+let reclassifyRunning = false; // 互斥锁：上一批未完成时跳过新批次，避免锁风暴
 
 export function startReclassifyScheduler(): void {
   if (reclassifyTimer) return;
 
   const run = async () => {
+    if (reclassifyRunning) return;
+    reclassifyRunning = true;
     try {
       await reclassifyRawEvents();
     } catch { /* logged internally */ }
+    finally {
+      reclassifyRunning = false;
+    }
   };
 
   reclassifyTimer = setInterval(run, config.reclassifier.intervalMs);

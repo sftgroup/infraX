@@ -59,7 +59,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_type ON events (event_type);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_tx_hash ON events (tx_hash);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_collected_at ON events (collected_at);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_event_id ON events (event_id);`);
+    // 精简索引：idx_events_event_id（17G）与 idx_events_dedup(event_id, collected_at) 前缀重复，不再创建
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events (event_id, collected_at);`);
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_type_block ON events (chain, event_type, block_number DESC);`);
