@@ -931,6 +931,23 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-12-3 | MCP 工具更新（hub-index 聚合 + dc_tokens 修复 + mpc/sk 工具鉴权） | 🔲 | P2 |
 | B-12-4 | 文档发布：`docs/API_ACCESS.md` 更新为真实生产端口/状态（当前为 v0.5.0 旧布局），各区块链服务接入文档 | 🔲（⚠️ 过时） | P2 |
 
+**9.8.5 调研补充（2026-08-07，B 端三问对照：RPC / okxchainos / TEE·MPC·Session）**
+
+> 本轮对照 B 端三个问题（对外 RPC 服务是否实现、okxchainos 数据是否正常获取、TEE/MPC 与 Session 是否完善且提供 SDK）的代码级复核结论。状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
+
+| # | 发现 | 代码证据 | 状态 |
+|:---:|---|---|:---:|
+| R-1 | **SDK `wallet.rpc()`（通用 RPC 转发代理）服务端不存在**：`POST /api/v2/wallet/rpc` 无路由 → 调用必 404（B-10-4 实锤） | `projects/sdk/src/index.ts` `rpc()` vs `projects/waas/routes/walletRoutes.ts`（仅 create/import/balance/address/transactions/token-info/token-balance/nfts/:chainId/custom-token*） | 🔲（并入 B-10-4 P1） |
+| R-2 | **SDK WalletAPI 与后端契约系统性错位**：`wallet.send/simulate/sweep/txStatus` 指向不存在端点；waas 真实端点为 `/api/v2/tx/*`（txRoutes）与 `/api/v2/internal/*` | `projects/sdk/src/index.ts` L174-179 | 🔲 新增 |
+| R-3 | **okxchainos 新栈仅 2 类快照**：`okx_hot_tokens` + `okx_index_prices`（60s 落 raw_snapshots，自旧栈 collector `COLLECTOR_URL` 拉取）；candles 仅旧栈落库；SDK MarketAPI 14 方法按需直连 collector 不落库 | `projects/data/app/collectors/okx_chainos.py`；`okxMarketScheduler.ts` | ⚠️ |
+| R-4 | **okxchainos 生产出数无实证**：仓库无 data `.env`（生产值不可验证），`.env.example` 的 `COLLECTOR_URL` 示例指向已弃用旧服务器 43.156.99.215；需实测 `/snapshots?type=okx` 与 collector `okx_token_snapshots` 表 | `.env.example` L87-88；本文件 L55 弃用标注 | ⚠️ 待实测（建议 2026-08-07） |
+| R-5 | **MPC SDK 封装不完整**：infrax-dk `MPCAPI` 仅 5/15 方法（send-code/register/recover/status/createWallet），签名/会话/交易/合约读写未封装 | `projects/sdk/src/index.ts` L270-277 vs `projects/mpc/server.ts` | 🔲（并入 B-12-2） |
+| R-6 | **Session Key 额度校验未实现**：`maxPerTx/maxTotal/totalSpent` 无校验，`addSpent()` 无调用点，`quota_exhausted` 不可达（PRD S-05"额度三重校验"实为两重）；`expireStale()` 过期清理未接线 | `session-key/packages/server/src/services/execution-service.ts` L30-40；`session-repo.ts` L59-63 | 🔲 新增（P1） |
+| R-7 | **Session Key PRD 未定稿**（v1.0 Draft）+ 声明的集成测试文件不存在（全仓无 `*.test.ts`） | `docs/SESSION_KEY_ENGINE_PRD.md` | ⚠️ |
+| R-8 | **session-key 四包未发布 npm**（`@0xinfrax/session-key-core/evm/client/server` 均 0.1.0、`workspace:*`、无 publishConfig）；infrax-dk 发布记录矛盾（SDK_INTEGRATION.md 0.3.0 vs DELIVERY_SUMMARY.md 0.2.0）；5 个 HTTP MCP（dc/wallet/mpc/sk/hub）入站鉴权裸奔（仅 hub-index 有鉴权） | 各 `package.json`；`docs/MCP_USAGE.md` L57 | 🔲（并入 B-12） |
+
+> **结论**：数据栈（data/rag/MCP/SDK v0.3.0/文档）已完整；区块链栈未达可发布状态（与 §9.8 结论一致）。高优先修复：R-1/R-2（RPC 契约错位）、R-6（Session 额度校验）；R-4 建议尽快实测 okxchainos 生产出数。
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。
