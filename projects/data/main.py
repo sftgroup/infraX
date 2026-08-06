@@ -181,7 +181,13 @@ def _api_auth_status(request) -> int | None:
 
 @app.middleware("http")
 async def _api_auth(request, call_next):
-    if not app_auth.is_exempt(request.url.path, prefixes=("/admin/",)):
+    # B 端反馈（P2-5）：docs/redoc/openapi.json 公开免 key（与 /health /metrics 同级），
+    # 便于调用方直接访问 /api/data/docs 与 /api/data/openapi.json 获取文档。
+    if not app_auth.is_exempt(
+        request.url.path,
+        exact={"/health", "/metrics", "/docs", "/redoc", "/openapi.json"},
+        prefixes=("/admin/",),
+    ):
         status = _api_auth_status(request)
         if status == 401:
             # B 端反馈（P2-6）：鉴权失败统一 {code, message, data}，与平台一致
