@@ -692,9 +692,19 @@ class KlineStore:
     def _fetch_yfinance(symbol: str, timeframe: str, bars: int) -> list:
         try:
             import yfinance as yf
-            # Yahoo 无原生 4h：1h/4h 均拉 1h interval，4h 在下方聚合
-            interval = "1h" if timeframe in ("1h", "4h") else "1d"
-            period = {"1d": f"{bars}d", "1h": "60d", "4h": "60d"}.get(timeframe, f"{bars}d")
+            # Yahoo 无原生 4h：1h/4h 均拉 1h interval，4h 在下方聚合。
+            # 分钟级 15m/30m/5m/1m 必须映射到 Yahoo 原生 interval，否则会静默
+            # 回退日线导致"15m 里存日线"的污染（intraday 历史上限 60d）。
+            interval_map = {
+                "1d": "1d", "1h": "1h", "4h": "1h",
+                "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+            }
+            period_map = {
+                "1d": f"{bars}d", "1h": "60d", "4h": "60d",
+                "1m": "10d", "5m": "60d", "15m": "60d", "30m": "60d",
+            }
+            interval = interval_map.get(str(timeframe).strip().lower(), "1d")
+            period = period_map.get(str(timeframe).strip().lower(), f"{bars}d")
             ticker = yf.Ticker(symbol)
             df = ticker.history(period=period, interval=interval)
             if df is None or df.empty:
