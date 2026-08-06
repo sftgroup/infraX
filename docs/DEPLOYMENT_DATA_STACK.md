@@ -948,6 +948,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > **结论**：数据栈（data/rag/MCP/SDK v0.3.0/文档）已完整；区块链栈未达可发布状态（与 §9.8 结论一致）。高优先修复：R-1/R-2（RPC 契约错位）、R-6（Session 额度校验）；R-4 已实测闭环（2026-08-07，okxchainos 数据实时出数正常，key 配置完整）。
 
+**9.8.6 数据清洗缺口盘点（2026-08-07，B 端「数据使用前是否需清洗」对照）**
+
+> 现状：已有清洗均为**隐式/分散**（K线 `INSERT OR REPLACE` 去重；DS-13 ML asof 对齐 + direction 数值化 + 符号归一化；reclassifier 批量 UPDATE 微秒精度/varchar 截断/null 兜底；okx `price_change_24h` 精度放宽；图谱注入去重/截断；SDK 秒↔毫秒归一化），**无统一清洗层，也无质量可观测性**。以下为消费路径缺口。
+
+| # | 缺口 | 现状/证据 | 状态 |
+|:---:|---|---|:---:|
+| C-1 | **技术指标无异常 bar 检测**：极端跳空/零成交量/负价异常不过滤，直接进 RSI/MACD/BB 等指标计算 | `projects/data/app/kline_store.py` 无清洗逻辑 | 🔲 P1 |
+| C-2 | **缺失值策略缺失**：某 bar 缺因子时无统一规则（前值填充/跳过），消费方自行容忍 | `app/factors.py` 仅 DS-13 asof 对齐，未覆盖一般缺失 | 🔲 P2 |
+| C-3 | **多源时间戳精度不齐**：ms/s 混用无归一化保险（asof 只防未来函数，不防精度错位） | DS-13 history 实测 ms/s 需 SDK 层兜底 | 🔲 P1 |
+| C-4 | **实时因子无新鲜度校验**：`/factors/current` 返回陈旧值（如 2h 前 fear_greed）无告警，fail-silent 只保不崩不保新鲜 | `get_current_factors()` 仅取最新行不校验 age | 🔲 P1 |
+| C-5 | **ml_predictions 写入层无约束**：符号大小写不一（BTC vs btc）、重复 predictions，靠消费方容忍 | 生产实测发现大小写不一致 | 🔲 P1 |
+| C-6 | **图谱注入无语义去噪**：新闻/链上/OKX 源仅去重+截断，广告/重复公告直接进 LightRAG | `projects/knowledge-injector/injector/*.py` | 🔲 P2 |
+| C-7 | **数据质量不可观测**：建议收敛显式清洗规则模块（`app/cleaning.py`，查询路径清洗）+ `/stats`/`/admin` 暴露质量指标（缺失率/异常 bar 数/源新鲜度） | 无现状（方案） | 🔲 P2 |
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。
