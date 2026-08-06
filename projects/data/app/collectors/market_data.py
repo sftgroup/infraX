@@ -21,7 +21,8 @@ from app.factors import save_snapshot
 from app.config import APIKeys
 from app.collectors.urls import (
     COINGECKO_SIMPLE_PRICE_URL, BLOCKCHAIN_INFO_DIFFICULTY_URL,
-    BLOCKCHAIN_INFO_LATEST_BLOCK_URL, DEFILLAMA_CHAINS_URL,
+    BLOCKCHAIN_INFO_LATEST_BLOCK_URL, BLOCKCHAIN_INFO_BALANCE_URL,
+    DEFILLAMA_CHAINS_URL,
     FRED_OBSERVATIONS_URL, FINNHUB_EARNINGS_URL,
     COLLECTOR_HTTP_TIMEOUT, COLLECTOR_HTTP_TIMEOUT_SHORT,
 )
@@ -230,6 +231,45 @@ def _fetch_btc_transfers() -> Optional[dict]:
     return result or None
 
 
+# ── 巨鲸 BTC 余额（/snapshots?type=onchain → whale_balances 子类型） ──────
+# 与 knowledge-injector providers/onchain.py 对齐：blockchain.info 公开 API，
+# 无需 Key，每地址一次 HTTP 请求。公开地址可在 P2 阶段扩展。
+_WHALE_ADDRESSES: dict[str, str] = {
+    "MicroStrategy": "1P5ZEDWTKTFGxQjZphgWPQUpe554WKDfHQ",
+    "Binance Cold": "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo",
+    "Bitfinex Cold": "3M219KR5vEneNb47ewrPfWZ2Hef9yEBc8w",
+}
+
+
+def _fetch_whale_balances() -> Optional[list[dict]]:
+    """抓取知名巨鲸 BTC 余额（satoshi → BTC）。
+
+    Returns:
+        [{"name", "address"(前8位), "balance_btc", "balance_satoshi"}, ...] 或 None（全部失败）
+    """
+    results: list[dict] = []
+    for name, address in _WHALE_ADDRESSES.items():
+        try:
+            resp = requests.get(
+                f"{BLOCKCHAIN_INFO_BALANCE_URL}/{address}",
+                timeout=COLLECTOR_HTTP_TIMEOUT_SHORT,
+            )
+            resp.raise_for_status()
+            balance_satoshi = int(resp.text.strip())
+            results.append({
+                "name": name,
+                "address": address[:8],
+                "balance_btc": round(balance_satoshi / 1e8, 1),
+                "balance_satoshi": balance_satoshi,
+            })
+        except Exception as exc:
+            logger.debug("Whale balance fetch failed for %s: %s", name, exc)
+    if not results:
+        return None
+    logger.info("Fetched %d whale balances", len(results))
+    return results
+
+
 def _fetch_defi_tvl() -> Optional[list[dict]]:
     cfg = _get_config().get("defi", {})
     top_n = cfg.get("top_chains", 0)
@@ -409,6 +449,11 @@ class SnapshotCollector:
         transfers = _fetch_btc_transfers()
         if transfers:
             save_snapshot("onchain", "btc_transfers", transfers)
+            count += 1
+
+        whales = _fetch_whale_balances()
+        if whales:
+            save_snapshot("onchain", "whale_balances", {"whales": whales})
             count += 1
 
         tvl = _fetch_defi_tvl()

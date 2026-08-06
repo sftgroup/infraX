@@ -35,6 +35,12 @@ BLOCKCHAIN_INFO_LATEST_BLOCK_URL = os.getenv(
     "https://blockchain.info/latestblock",
 )
 
+# 巨鲸地址余额查询（blockchain.info 公开 API，无需 Key）
+BLOCKCHAIN_INFO_BALANCE_URL = os.getenv(
+    "BLOCKCHAIN_INFO_BALANCE_URL",
+    "https://blockchain.info/q/addressbalance",
+)
+
 # ── DeFi ───────────────────────────────────────────────────
 
 DEFILLAMA_CHAINS_URL = os.getenv(

@@ -329,9 +329,12 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
     db = get_db()
 
     # G-4: 汇总别名 → 前缀匹配。onchain 数据实际落 btc_difficulty /
-    # btc_transfers / btc_hashrate 及新合并的 onchain_checkpoints 等子类型，
-    # type=onchain 聚合返回全部；okx 聚合返回 okx_* 行情子类型。
-    _SNAPSHOT_TYPE_ALIASES = {"onchain": ["btc_%", "onchain_%"], "okx": "okx_%"}
+    # btc_transfers / btc_hashrate / whale_balances 及新合并的 onchain_checkpoints
+    # 等子类型，type=onchain 聚合返回全部；okx 聚合返回 okx_* 行情子类型。
+    _SNAPSHOT_TYPE_ALIASES = {
+        "onchain": ["btc_%", "onchain_%", "whale_%"],
+        "okx": "okx_%",
+    }
 
     if data_type:
         patterns = _SNAPSHOT_TYPE_ALIASES.get(data_type)
