@@ -151,17 +151,20 @@ app.get('/api/vault/safe/:address', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse({ safe, transactions }));
 }));
 
-// PUT /api/vault/safe/:address/owners
+// PUT /api/vault/safe/:address/owners — B-5: 走链上多签（propose Safe owner 管理交易）
 app.put('/api/vault/safe/:address/owners', asyncHandler(async (req: any, res: any) => {
   const { address } = req.params;
-  const { userId, owners, threshold } = req.body;
+  const { userId, owners, threshold, signature } = req.body;
   if (!owners || !Array.isArray(owners) || !threshold) {
     return res.status(400).json(apiResponse(null, 'Missing required fields: owners, threshold', 1001));
   }
   const result = await multiSigService.updateSafeOwners({
-    userId: userId || 'vault', safeAddress: address, newOwners: owners, newThreshold: threshold,
+    userId: userId || 'vault', safeAddress: address, newOwners: owners, newThreshold: threshold, signature,
   });
-  res.json(apiResponse(result, 'Safe owners updated'));
+  const msg = result.safeTxHashes.length === 0
+    ? 'No owner changes needed'
+    : `Proposed ${result.safeTxHashes.length} Safe tx(s) on-chain${result.pendingConfirm > 0 ? ` — ${result.pendingConfirm} pending confirm` : ''}`;
+  res.json(apiResponse(result, msg));
 }));
 
 // POST /api/vault/safe/retry

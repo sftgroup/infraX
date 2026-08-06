@@ -321,6 +321,35 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
+    // 4.10a Safe owners (B-5) — denormalised owner list for confirm/validation;
+    // kept in sync on create/sync/execute (authoritative source is the Safe contract)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS safe_owners (
+        id UUID PRIMARY KEY,
+        safe_address VARCHAR(42) NOT NULL REFERENCES safe_wallets(safe_address) ON DELETE CASCADE,
+        owner_address VARCHAR(42) NOT NULL,
+        is_owner BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(safe_address, owner_address)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_safe_owners_safe_address ON safe_owners(safe_address);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_safe_owners_owner_address ON safe_owners(owner_address);`);
+
+    // Backfill safe_owners from existing safe_wallets.owners
+    // (owners stored as JSONB array or PG text[] — normalise both via translate)
+    await client.query(`
+      INSERT INTO safe_owners (id, safe_address, owner_address)
+      SELECT gen_random_uuid(), LOWER(s.safe_address), LOWER(x.owner_address)
+      FROM safe_wallets s
+      CROSS JOIN LATERAL (
+        SELECT btrim(elem, ' "') AS owner_address
+        FROM regexp_split_to_table(translate(s.owners::text, '[]{}"', '   '), ',') AS elem
+        WHERE elem ~ '0x[0-9a-fA-F]{40}'
+      ) x
+      ON CONFLICT (safe_address, owner_address) DO NOTHING
+    `);
+
     // Indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_safe_wallets_user_id ON safe_wallets(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_safe_transactions_safe_address ON safe_transactions(safe_address);`);

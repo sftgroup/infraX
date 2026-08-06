@@ -15,7 +15,8 @@
 - ✅ P0 安全修复已部署生产并 E2E 通过（`148cc42`）：payment/vault/mpc 三服务接入统一鉴权契约（`px_`/`vx_`/`mp_` scope key），mpc 验证码 `888888` → `crypto.randomInt`；共享中间件 `projects/shared/auth-express.ts`
 - ✅ session-key engine :3500 + MCP :3011 已生产部署并 E2E 通过（`414248c`）：鉴权 addHook 统一（401/403/200）、MCP per-request stateless transport（initialize 200 + 7 工具）、DB `session_key_engine` + systemd 双 unit
 - ✅ web 订阅代理 `/api/v2/subscription` → waas:9109 已部署（`414248c`，`/plans` 200 返回真实套餐）
-- ⚠️ vault safe_owners 未建表、仅 Sepolia；x402/pay 为伪实现；dc-index `dc_tokens` 调不存在端点 → P1（B-5/B-10-2~5）
+- ✅ vault B-5 已实现并部署生产（E2E 9/9 全绿）：`safe_owners` 表（UUID + backfill 17 行）、`updateSafeOwners` 走链上多签（addOwner/removeOwner/changeThreshold propose + 可选 signature auto-confirm）、4 链支持（sepolia/eth/bsc/base）、GAS_POOL key 注入 systemd；生产 schema 修复（safe_owners/safe_signatures 重建 + safe_transactions 补列）
+- ⚠️ x402/pay 为伪实现；dc-index `dc_tokens` 调不存在端点 → P1（B-10-2~5）
 - ⚠️ 用户端无套餐/key 界面；admin 缺用户/套餐/订单页 → P1/P2（B-11-2~7）
 - 决策：先修 P0 安全 + P1 功能缺口 → 统一更新 SDK/MCP → 发布文档（B-1~B-12-4）
 

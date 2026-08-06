@@ -4,10 +4,9 @@ import {
   createPublicClient, createWalletClient, http, getAddress,
   keccak256, encodePacked, encodeAbiParameters, parseAbiParameters,
   encodeFunctionData, getCreate2Address, parseEther,
-  // parseEventLogs removed (using ethers instead),
   type Address, type Hex
 } from 'viem';
-import { sepolia } from 'viem/chains';
+import { mainnet, bsc, base, sepolia } from 'viem/chains';
 import { getContractAddress } from 'viem/utils';
 import { pool } from '../models/database';
 import { logger } from '../utils/logger';
@@ -23,10 +22,9 @@ import { getHDMnemonic, getPrivateKey } from './hdWalletService';
  * - SafeProxyFactory: creates Safe proxies via createProxyWithNonce
  * - Safe: the multi-sig wallet contract
  *
- * Sepolia Safe addresses (v1.4.1):
- * - Safe Singleton: 0x29fcb43b46531bc0030c8fc6d5e1d063e48a7bc7
- * - SafeProxyFactory: 0xc22834581ebc8527d974f8a1c97e1bea4ef910bc
- * - SafeL2 Singleton: 0x29fcb43b46531bc0030c8fc6d5e1d063e48a7bc7 (same for L2)
+ * Safe v1.4.1 (deployed on all EVM chains, incl. Sepolia):
+ * - Safe Singleton (L1): 0x41675C099F32341bf84BFc5382aF534df5C7461a
+ * - SafeProxyFactory:    0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2
  */
 
 // Standard Safe ABI fragments
@@ -85,7 +83,151 @@ const SAFE_ABI = [
   },
 ] as const;
 
-// Chain configs
+// Safe owner-management ABI (B-5: updateSafeOwners 走链上多签)
+const SAFE_MANAGEMENT_ABI = [
+  {
+    type: 'function',
+    name: 'addOwner',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: '_threshold', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'removeOwner',
+    inputs: [
+      { name: 'prevOwner', type: 'address' },
+      { name: 'owner', type: 'address' },
+      { name: '_threshold', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'swapOwner',
+    inputs: [
+      { name: 'prevOwner', type: 'address' },
+      { name: 'oldOwner', type: 'address' },
+      { name: 'newOwner', type: 'address' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'changeThreshold',
+    inputs: [{ name: '_threshold', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
+// Safe owner 链表哨兵地址
+const SENTINEL_OWNERS = '0x0000000000000000000000000000000000000001' as Address;
+
+/** 规范化 owner 列表（兼容 JSONB / PG text[] / JS array） */
+export function parseOwners(owners: any): string[] {
+  if (Array.isArray(owners)) return owners.map((o) => String(o).toLowerCase());
+  if (typeof owners === 'string') {
+    const t = owners.trim();
+    if (t.startsWith('[')) {
+      try { return (JSON.parse(t) as string[]).map((o) => String(o).toLowerCase()); } catch { /* fallthrough */ }
+    }
+    // PG text[] 格式：{addr1,addr2}
+    return t
+      .replace(/^\{|\}$/g, '')
+      .split(',')
+      .map((s) => s.trim().replace(/^"|"$/g, '').toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+export interface OwnerOp {
+  type: 'addOwner' | 'removeOwner' | 'swapOwner' | 'changeThreshold';
+  owner?: string;
+  prevOwner?: string;
+  newOwner?: string;
+  threshold: number;
+}
+
+/**
+ * 计算将 Safe 从 (oldOwners, oldThreshold) 变更为 (newOwners, newThreshold) 所需的操作序列。
+ * Safe 的 owners 是链表：addOwner/removeOwner 需携带 prevOwner（链表前驱）与最终 threshold。
+ * 顺序：先 add 新 owner（追加到链表尾），再 remove 旧 owner，最后（无增删时）changeThreshold。
+ */
+export function computeOwnerOps(
+  oldOwners: string[],
+  oldThreshold: number,
+  newOwners: string[],
+  newThreshold: number,
+): OwnerOp[] {
+  const norm = (o: string) => o.toLowerCase();
+  const oldSet = new Set(oldOwners.map(norm));
+  const newSet = new Set(newOwners.map(norm));
+
+  const toAdd = newOwners.filter((o) => !oldSet.has(norm(o)));
+  const toRemove = oldOwners.filter((o) => !newSet.has(norm(o)));
+
+  const ops: OwnerOp[] = [];
+  let current = oldOwners.map(norm);
+
+  for (const o of toAdd) {
+    const prev = current.length > 0 ? current[current.length - 1] : SENTINEL_OWNERS.toLowerCase();
+    ops.push({ type: 'addOwner', owner: norm(o), prevOwner: prev, threshold: newThreshold });
+    current.push(norm(o));
+  }
+  for (const o of toRemove) {
+    const idx = current.indexOf(norm(o));
+    const prev = idx > 0 ? current[idx - 1] : SENTINEL_OWNERS.toLowerCase();
+    ops.push({ type: 'removeOwner', owner: norm(o), prevOwner: prev, threshold: newThreshold });
+    current.splice(idx, 1);
+  }
+  if (ops.length === 0 && newThreshold !== oldThreshold) {
+    ops.push({ type: 'changeThreshold', threshold: newThreshold });
+  }
+  return ops;
+}
+
+/** 编码单个 owner 管理操作为 Safe 调用 data */
+export function encodeOwnerOp(op: OwnerOp): Hex {
+  switch (op.type) {
+    case 'addOwner':
+      return encodeFunctionData({
+        abi: SAFE_MANAGEMENT_ABI,
+        functionName: 'addOwner',
+        args: [getAddress(op.owner as string) as Address, BigInt(op.threshold)],
+      });
+    case 'removeOwner':
+      return encodeFunctionData({
+        abi: SAFE_MANAGEMENT_ABI,
+        functionName: 'removeOwner',
+        args: [getAddress(op.prevOwner as string) as Address, getAddress(op.owner as string) as Address, BigInt(op.threshold)],
+      });
+    case 'swapOwner':
+      return encodeFunctionData({
+        abi: SAFE_MANAGEMENT_ABI,
+        functionName: 'swapOwner',
+        args: [getAddress(op.prevOwner as string) as Address, getAddress(op.owner as string) as Address, getAddress(op.newOwner as string) as Address],
+      });
+    case 'changeThreshold':
+      return encodeFunctionData({
+        abi: SAFE_MANAGEMENT_ABI,
+        functionName: 'changeThreshold',
+        args: [BigInt(op.threshold)],
+      });
+    default:
+      throw Errors.paramError(`Unknown owner op type`);
+  }
+}
+
+// Chain configs (B-5 multi-chain: sepolia + eth + bsc + base)
+// Sepolia 沿用生产历史值（0xfc7fa5/0x29fcb4），其余链用官方 Safe v1.4.1；
+// 均支持 SAFE_PROXY_FACTORY_ADDRESS / SAFE_SINGLETON_ADDRESS env 覆盖（作用于全链）。
 const CHAIN_CONFIG: Record<string, {
   chain: any;
   rpcUrl: string;
@@ -94,9 +236,27 @@ const CHAIN_CONFIG: Record<string, {
 }> = {
   '11155111': {
     chain: sepolia,
-    rpcUrl: config.sepoliaRpcUrl || 'https://1rpc.io/sepolia',
-    safeSingleton: '0x29fcb43b46531bc0030c8fc6d5e1d063e48a7bc7' as Address,
-    safeProxyFactory: '0xfc7fa546b24477e8a2ce3a8d39869b122017ea2b' as Address,
+    rpcUrl: config.chainRpc.sepolia,
+    safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x29fcb43b46531bc0030c8fc6d5e1d063e48a7bc7') as Address,
+    safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xfc7fa546b24477e8a2ce3a8d39869b122017ea2b') as Address,
+  },
+  '1': {
+    chain: mainnet,
+    rpcUrl: config.chainRpc.eth,
+    safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
+    safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
+  },
+  '56': {
+    chain: bsc,
+    rpcUrl: config.chainRpc.bsc,
+    safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
+    safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
+  },
+  '8453': {
+    chain: base,
+    rpcUrl: config.chainRpc.base,
+    safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
+    safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
   },
 };
 
@@ -308,6 +468,15 @@ export async function createSafe(params: {
     [safeId, userId, chainId, actualAddress, pgOwners, threshold, name || null, status, saltNonce.toString()]
   );
 
+  // 同步写 safe_owners（B-5）
+  for (const owner of owners) {
+    await pool.query(
+      `INSERT INTO safe_owners (id, safe_address, owner_address)
+       VALUES ($1, LOWER($2), LOWER($3)) ON CONFLICT (safe_address, owner_address) DO NOTHING`,
+      [uuidv4(), actualAddress, owner]
+    );
+  }
+
   return {
     safeAddress: actualAddress,
     chainId,
@@ -349,12 +518,24 @@ export async function proposeTransaction(params: {
   const safe = await getSafe(safeAddress);
   const chainId = safe.chain_id;
 
-  // Get current nonce from chain (or DB counter)
-  const nonceSig = await pool.query(
-    "SELECT COALESCE(MAX(nonce), 0) + 1 as next_nonce FROM safe_transactions WHERE safe_address = $1",
-    [safeAddress]
-  );
-  const nonce = nonceSig.rows[0].next_nonce || 0;
+  // Get current nonce — Safe 交易 nonce 以链上为准（B-5），RPC 不可达时 fallback DB
+  let nonce: number;
+  try {
+    const cfg = getChainCfg(chainId);
+    const publicClient = getPublicClient(chainId);
+    const onchainNonce = await publicClient.readContract({
+      address: safeAddress as Address,
+      abi: SAFE_ABI,
+      functionName: 'nonce',
+    });
+    nonce = Number(onchainNonce);
+  } catch {
+    const nonceSig = await pool.query(
+      "SELECT COALESCE(MAX(nonce), 0) + 1 as next_nonce FROM safe_transactions WHERE safe_address = $1",
+      [safeAddress]
+    );
+    nonce = nonceSig.rows[0].next_nonce || 0;
+  }
 
   // Compute Safe tx hash
   const safeTxHash = computeSafeTxHash(safeAddress, to, value, data || '0x', nonce, chainId);
@@ -568,6 +749,13 @@ export async function executeTransaction(params: {
     [userId, safeTxHash, chainTxHash]
   );
 
+  // B-5: 链上状态已变（如 owner 管理交易）→ 回读并同步 safe_wallets + safe_owners
+  try {
+    await syncSafeState(safe.safe_address);
+  } catch (err: any) {
+    logger.warn('Post-execute safe state sync failed', { safeAddress: safe.safe_address, error: err.message });
+  }
+
   return { txHash: chainTxHash, status: 'executed' };
 }
 
@@ -587,26 +775,105 @@ export async function getSafeTransactions(safeAddress: string): Promise<any[]> {
 
 // ── Owner Management ──
 
+/**
+ * B-5: updateSafeOwners 走链上多签。
+ * 不再直接改 DB owners —— 生成 Safe owner 管理交易（addOwner/removeOwner/changeThreshold）
+ * 并 propose 为 safe_transactions，由 owner 们 confirm（threshold 达标后 auto-execute）。
+ * 链上执行成功后再由 executeTransaction → syncSafeState 回写 safe_wallets + safe_owners。
+ * 可选 signature：调用者若提供 EOA 签名，则自动 confirm（发起人即为 owner 之一）。
+ */
 export async function updateSafeOwners(params: {
   userId: string;
   safeAddress: string;
   newOwners: string[];
   newThreshold: number;
-}): Promise<{ owners: string[]; threshold: number }> {
-  const { safeAddress, newOwners, newThreshold } = params;
+  signature?: string;
+}): Promise<{
+  safeTxHashes: string[];
+  txIds: string[];
+  operations: OwnerOp[];
+  pendingConfirm: number;
+}> {
+  const { userId, safeAddress, newOwners, newThreshold, signature } = params;
 
-  if (newThreshold < 1 || newThreshold > newOwners.length) {
+  if (!Array.isArray(newOwners) || newOwners.length === 0) {
+    throw Errors.paramError('Missing required fields: owners');
+  }
+  if (typeof newThreshold !== 'number' || newThreshold < 1 || newThreshold > newOwners.length) {
     throw Errors.paramError(`Threshold must be 1-${newOwners.length}`);
   }
 
-  // In production: this is itself a multi-sig tx (requires threshold signatures)
-  await pool.query(
-    'UPDATE safe_wallets SET owners = $1, threshold = $2, updated_at = NOW() WHERE safe_address = $3',
-    [JSON.stringify(newOwners), newThreshold, safeAddress]
-  );
+  const safe = await getSafe(safeAddress);
+  const chainId = safe.chain_id;
+  const oldOwners = parseOwners(safe.owners);
+  const oldThreshold = Number(safe.threshold || 1);
 
-  logger.info('Safe owners updated', { safeAddress, owners: newOwners, threshold: newThreshold });
-  return { owners: newOwners, threshold: newThreshold };
+  // 无变更 → 直接返回
+  const normOld = oldOwners.map((o) => o.toLowerCase()).sort();
+  const normNew = newOwners.map((o) => o.toLowerCase()).sort();
+  const unchanged =
+    normOld.length === normNew.length &&
+    normOld.every((o, i) => o === normNew[i]) &&
+    oldThreshold === newThreshold;
+  if (unchanged) {
+    return { safeTxHashes: [], txIds: [], operations: [], pendingConfirm: 0 };
+  }
+
+  // 计算操作序列并逐个 propose（链上 nonce 递增）
+  const ops = computeOwnerOps(oldOwners, oldThreshold, newOwners, newThreshold);
+  const safeTxHashes: string[] = [];
+  const txIds: string[] = [];
+
+  let nonce: number;
+  try {
+    const cfg = getChainCfg(chainId);
+    const publicClient = getPublicClient(chainId);
+    const onchainNonce = await publicClient.readContract({
+      address: safeAddress as Address,
+      abi: SAFE_ABI,
+      functionName: 'nonce',
+    });
+    nonce = Number(onchainNonce);
+  } catch {
+    const nonceSig = await pool.query(
+      "SELECT COALESCE(MAX(nonce), 0) + 1 as next_nonce FROM safe_transactions WHERE safe_address = $1",
+      [safeAddress]
+    );
+    nonce = nonceSig.rows[0].next_nonce || 0;
+  }
+
+  for (const op of ops) {
+    const data = encodeOwnerOp(op);
+    const safeTxHash = computeSafeTxHash(safeAddress, safeAddress, '0', data, nonce, chainId);
+    const txId = uuidv4();
+    await pool.query(
+      `INSERT INTO safe_transactions (id, safe_address, proposer_id, to_address, value, data, nonce, safe_tx_hash, status)
+       VALUES ($1, $2, $3, $4, '0', $5, $6, $7, 'pending')`,
+      [txId, safeAddress, userId, safeAddress, data, nonce, safeTxHash]
+    );
+    txIds.push(txId);
+    safeTxHashes.push(safeTxHash);
+    nonce += 1;
+  }
+
+  // 提供 signature 则自动 confirm（多签推进），失败不影响 propose 结果
+  let pendingConfirm = ops.length;
+  if (signature) {
+    for (const h of safeTxHashes) {
+      try {
+        await confirmTransaction({ userId, safeAddress, safeTxHash: h, signature });
+        pendingConfirm -= 1;
+      } catch (err: any) {
+        logger.warn('Owner-update auto-confirm failed', { safeTxHash: h, error: err.message });
+      }
+    }
+  }
+
+  logger.info('Safe owners update proposed on-chain', {
+    safeAddress, chainId, ops: ops.map((o) => o.type), safeTxHashes,
+  });
+
+  return { safeTxHashes, txIds, operations: ops, pendingConfirm };
 }
 
 // ── Retry / Repair ──
@@ -751,6 +1018,16 @@ export async function syncSafeState(safeAddress: string): Promise<{ owners: stri
     `UPDATE safe_wallets SET owners = $1, threshold = $2, updated_at = NOW() WHERE safe_address = $3`,
     [JSON.stringify(ownerStrings), thresholdNum, safeAddress]
   );
+
+  // B-5: 同步 safe_owners 表（全量替换，链上为准）
+  await pool.query('DELETE FROM safe_owners WHERE safe_address = LOWER($1)', [safeAddress]);
+  for (const owner of ownerStrings) {
+    await pool.query(
+      `INSERT INTO safe_owners (id, safe_address, owner_address) VALUES ($1, LOWER($2), $3)
+       ON CONFLICT (safe_address, owner_address) DO NOTHING`,
+      [uuidv4(), safeAddress, owner]
+    );
+  }
 
   logger.info('Safe state synced', { safeAddress, owners: ownerStrings, threshold: thresholdNum, nonce: nonceNum });
   return { owners: ownerStrings, threshold: thresholdNum, nonce: nonceNum };
