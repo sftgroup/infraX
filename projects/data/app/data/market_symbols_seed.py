@@ -37,6 +37,8 @@ FOREX_SYMBOLS = [
 ]
 
 STOCK_SYMBOLS = [
+    ("SPY", "SPDR S&P 500 ETF"),
+    ("QQQ", "Invesco QQQ Trust"),
     ("AAPL", "Apple Inc."),
     ("MSFT", "Microsoft Corp."),
     ("GOOGL", "Alphabet Inc."),

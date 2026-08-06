@@ -8,14 +8,17 @@ Data Service 为整个 AItrader 平台提供**多市场行情数据**和**技术
 
 ### 数据覆盖矩阵
 
-| 资产类型 | 标的数量 | 时间框架 | 数据源 | 状态 |
+> 深度标准对齐 AItrader 回测区间上限（DS-8）：Crypto 1m≥30 天、5m/15m/30m≥180 天、1h/4h≥1 年、1D≥3 年；美股 1D≥3 年且分钟级≥30 天；外汇/期货/A股/港股 1D≥1 年。timeframes 列为需求目标，当前采集器实际仅落 1d（分钟级待扩展）。
+
+| 资产类型 | 标的数量 | 时间框架（需求目标） | 数据源 | 状态 |
 |----------|:-------:|----------|--------|:--:|
-| 加密货币 | 3 (BTC/ETH/SOL) | 1m/5m/15m/1h/4h/1d | ccxt (Binance) | ✅ |
-| 美股 | 10 (AAPL/MSFT/GOOGL/AMZN/NVDA...) | 1h/4h/1d | yfinance | ⚠️ 待部署 |
-| 外汇 | 8 (EURUSD/GBPUSD/USDJPY...) | 1h/4h/1d | yfinance | ⚠️ 待部署 |
-| 期货 | 10 (GC/SI/CL/NG/ES/NQ...) | 1h/4h/1d | yfinance | ⚠️ 待部署 |
-| A股 | 5 (600519/000858/601318...) | 1d | akshare | ⚠️ 待部署 |
-| 港股 | 5 (00700/09988/09999...) | 1d | akshare | ⚠️ 待部署 |
+| 加密货币 spot | 3 (BTC/ETH/SOL) | 1m/5m/15m/30m/1h/4h/1d | ccxt (Binance) | ⚠️ 仅 4h 有数据，1m/1D 空（待全量采集） |
+| 加密货币 swap | 3 (BTC/ETH/SOL Perp) | 1m/5m/15m/30m/1h/4h/1d | ccxt (Binance) | 🔲 待实现（DS-8 方案 B） |
+| 美股 | 12 (SPY/QQQ/AAPL/MSFT...) | 1m/5m/15m/1h/4h/1d | yfinance | ⚠️ 待部署，当前仅 1d |
+| 外汇 | 7 (EURUSD/GBPUSD/USDJPY...) | 15m/1h/4h/1d | Twelve Data / yfinance | ⚠️ 待部署，当前仅 1d |
+| 期货 | 8 (GC/SI/CL/NG/ES/NQ...) | 1h/4h/1d | yfinance | ⚠️ 待部署，当前仅 1d |
+| A股 | 6 (600519/000858/601318...) | 15m/1h/4h/1d | akshare | ⚠️ 待部署，当前仅 1d |
+| 港股 | 5 (00700/09988/09999...) | 15m/1h/4h/1d | akshare | ⚠️ 待部署，当前仅 1d |
 
 ### 技术指标（每条 K 线自动计算）
 

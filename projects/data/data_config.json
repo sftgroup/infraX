@@ -2,9 +2,9 @@
   "_comment": "Data Service — 数据采集配置。修改后需重启服务生效。",
 
   "kline": {
-    "_comment": "symbols/timeframes/exchange/fetch_limit 由 .env (KL_* 变量) 控制，此处仅供文档参考。indicators 参数由此处读取。",
+    "_comment": "symbols/timeframes/exchange/fetch_limit 由 .env (KL_* 变量) 控制，此处仅供文档参考。indicators 参数由此处读取。深度标准对齐 AItrader 回测区间上限（DS-8）：1m≥30天、5m/15m/30m≥180天、1h/4h≥1年、1D≥3年。",
     "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
+    "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
     "exchange": "binance",
     "fetch_limit": 500,
     "indicators": {
@@ -98,7 +98,10 @@
     "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；A股/港股切腾讯日线（规避新浪批量风控）；外汇 Twelve Data（配置 key 后优先）→ yfinance 回退。采集周期共用 KL_INTERVAL_SEC。fetch_bars=400 对齐 B 端验收（非 crypto 1D≥1 年，约 250 交易日，含余量）。",
     "fetch_bars": 400,
     "us_stocks": {
+      "_comment": "DS-8：SPY/QQQ/AAPL 等主流；timeframes 为需求目标（1D≥3 年，分钟级≥30 天），当前采集器仅落 1d，分钟级待扩展。",
       "symbols": [
+        {"symbol": "SPY",   "name": "SPDR S&P 500 ETF"},
+        {"symbol": "QQQ",   "name": "Invesco QQQ Trust"},
         {"symbol": "AAPL",  "name": "Apple"},
         {"symbol": "MSFT",  "name": "Microsoft"},
         {"symbol": "GOOGL", "name": "Google"},
@@ -110,21 +113,23 @@
         {"symbol": "V",     "name": "Visa"},
         {"symbol": "XOM",   "name": "Exxon Mobil"}
       ],
-      "timeframes": ["1d"]
+      "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"]
     },
     "forex": {
-      "_comment": "Twelve Data（配置 TWELVE_DATA_API_KEY 后优先）→ yfinance 回退。仅 1d。",
+      "_comment": "Twelve Data（配置 TWELVE_DATA_API_KEY 后优先）→ yfinance 回退。DS-8：15m/1h/4h/1D，1D≥1 年；当前采集器仅落 1d。EUR/USD ticker 404 因符号格式（yfinance EURUSD=X vs 展示 EUR/USD），DS-7 需 B 端映射。",
       "symbols": [
         {"symbol": "EURUSD=X", "name": "EUR/USD"},
         {"symbol": "GBPUSD=X", "name": "GBP/USD"},
         {"symbol": "USDJPY=X", "name": "USD/JPY"},
         {"symbol": "AUDUSD=X", "name": "AUD/USD"},
         {"symbol": "USDCAD=X", "name": "USD/CAD"},
-        {"symbol": "USDCHF=X", "name": "USD/CHF"}
+        {"symbol": "USDCHF=X", "name": "USD/CHF"},
+        {"symbol": "NZDUSD=X", "name": "NZD/USD"}
       ],
-      "timeframes": ["1d"]
+      "timeframes": ["15m", "1h", "4h", "1d"]
     },
     "futures": {
+      "_comment": "DS-8：1h/4h/1D，1D≥1 年；当前采集器仅落 1d。",
       "symbols": [
         {"symbol": "GC=F",  "name": "Gold Futures"},
         {"symbol": "SI=F",  "name": "Silver Futures"},
@@ -135,21 +140,22 @@
         {"symbol": "NQ=F",  "name": "NASDAQ Futures"},
         {"symbol": "YM=F",  "name": "Dow Futures"}
       ],
-      "timeframes": ["1d"]
+      "timeframes": ["1h", "4h", "1d"]
     },
     "cn_stocks": {
-      "_comment": "腾讯日线（不复权）优先 → akshare 新浪 stock_zh_a_daily 回退。market: sh/sz。",
+      "_comment": "腾讯日线（不复权）优先 → akshare 新浪 stock_zh_a_daily 回退。market: sh/sz。DS-8：15m/1h/4h/1D，1D≥1 年；当前采集器仅落 1d。",
       "symbols": [
         {"symbol": "600519", "name": "贵州茅台", "market": "sh"},
         {"symbol": "000858", "name": "五粮液",   "market": "sz"},
         {"symbol": "601318", "name": "中国平安", "market": "sh"},
         {"symbol": "000333", "name": "美的集团", "market": "sz"},
-        {"symbol": "002594", "name": "比亚迪",   "market": "sz"}
+        {"symbol": "002594", "name": "比亚迪",   "market": "sz"},
+        {"symbol": "300750", "name": "宁德时代", "market": "sz"}
       ],
-      "timeframes": ["1d"]
+      "timeframes": ["15m", "1h", "4h", "1d"]
     },
     "hk_stocks": {
-      "_comment": "腾讯日线（前复权）优先 → akshare 新浪 stock_hk_daily 回退。",
+      "_comment": "腾讯日线（前复权）优先 → akshare 新浪 stock_hk_daily 回退。DS-8：15m/1h/4h/1D，1D≥1 年；当前采集器仅落 1d。",
       "symbols": [
         {"symbol": "00700", "name": "腾讯控股"},
         {"symbol": "09988", "name": "阿里巴巴"},
@@ -157,7 +163,17 @@
         {"symbol": "01810", "name": "小米集团"},
         {"symbol": "09618", "name": "京东集团"}
       ],
-      "timeframes": ["1d"]
+      "timeframes": ["15m", "1h", "4h", "1d"]
+    },
+    "crypto_swap": {
+      "_comment": "DS-8 方案 B：USDT 永续合约（ccxt defaultType: swap）。当前采集器仅 spot，永续采集待 B 端实现；快交易与策略执行涉及 market_type=swap。",
+      "symbols": [
+        {"symbol": "BTC/USDT:USDT", "name": "Bitcoin Perp"},
+        {"symbol": "ETH/USDT:USDT", "name": "Ethereum Perp"},
+        {"symbol": "SOL/USDT:USDT", "name": "Solana Perp"}
+      ],
+      "exchange": "binance",
+      "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
     }
   },
 
