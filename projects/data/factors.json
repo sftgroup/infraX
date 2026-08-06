@@ -1,4 +1,4 @@
 {
-  "_comment": "外部因子扩展列表（追加到内置因子之后）。由 FACTORS_CONFIG_PATH=factors.json 启用；未启用时 /factors/catalog 仅含内置 18 因子。字段：id/name/category(默认 external)/type(默认 float)/range。内置技术因子（rsi_14/macd*/bb_*/atr_14/ma_5/10/20）+ 外部（vix/dxy/us10y/fear_greed/sentiment_score/btc_difficulty）已满足昨日 backtest C2-8 因子注入需要，extra 暂为空；如需新增非内置因子在此追加。",
+  "_comment": "外部因子扩展列表（追加到内置因子之后）。由 FACTORS_CONFIG_PATH=factors.json 启用；未启用时 /factors/catalog 仅含内置 18 因子。字段：id(必填)/name(必填)/category(默认 external)/type(默认 float)/range/description(因子描述)/unit(单位，如 %、USD、ETH 等)。内置技术因子（rsi_14/macd*/bb_*/atr_14/ma_5/10/20）+ 外部（vix/dxy/us10y/fear_greed/sentiment_score/btc_difficulty）已满足昨日 backtest C2-8 因子注入需要，extra 暂为空；如需新增非内置因子在此追加（建议同时填 description 与 unit 便于下游展示）。",
   "extra": []
 }

@@ -107,6 +107,9 @@ def _load_extra_factors() -> list[dict]:
                 item.setdefault("category", "external")
                 item.setdefault("type", "float")
                 item.setdefault("range", None)
+                # 描述/单位（方便下游展示与使用；缺省填空值，保证 catalog 字段统一）
+                item.setdefault("description", "")
+                item.setdefault("unit", None)
                 valid.append(item)
         return valid
     except Exception:
