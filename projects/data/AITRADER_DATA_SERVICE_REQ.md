@@ -2,7 +2,7 @@
 
 > 提交方：AItrader 项目 ｜ 日期：2026-08-04
 > 背景：AItrader 微服务化后，data-service 已并入 B 端项目统一维护（生产 `http://43.159.60.46:8765`）。AItrader 单体 + 3 个本地微服务（backtest/trading/analysis）将**全部收敛为通过 HTTP 调用 B 端 data-service**，删除本地数据层。
-> 本文档为**完整需求**：已实现能力（DS-1~DS-6，作为契约确认）+ 待补缺口（DS-7~DS-12）。状态标记：✅ 已实现 ｜ 🔲 待补 ｜ ⚠️ 部分实现/待确认。
+> 本文档为**完整需求**：已实现能力（DS-1~DS-6，作为契约确认）+ 待补缺口（DS-7~DS-14）。状态标记：✅ 已实现 ｜ 🔲 待补 ｜ ⚠️ 部分实现/待确认。
 
 ---
 
@@ -22,6 +22,8 @@
 | DS-10 | `/snapshots` 类型补齐（commodities/forex_pairs/market_overview） | 🔲 待补 | P1 |
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | 🔲 待 B 端确认 | P1 |
 | DS-12 | 入站鉴权 `X-Service-Key` | 🔲 待补（与 AItrader 侧联动） | P1 |
+| DS-13 | ML 因子并入标准因子面（catalog/current/history） | 🔲 待补 | P1 |
+| DS-14 | 官方 Python SDK（封装全部端点） | 🔲 待补（建议与 DS-12 同批） | P1 |
 
 ---
 
@@ -116,7 +118,7 @@ GET /stats  → { "kline_rows", "snapshot_rows", "symbols", "time_start", "time_
 
 ---
 
-## 3. 待补需求（DS-7 ~ DS-12）
+## 3. 待补需求（DS-7 ~ DS-14）
 
 ### DS-7 实时报价 `GET /ticker` 🔲 P0
 
@@ -217,6 +219,78 @@ GET /symbols/search
 
 **要求**：data-service 全部端点（`/health` 豁免）校验 `X-Service-Key`，缺失/不匹配返回 401 `{ "detail": "unauthorized" }`。
 
+### DS-13 ML 因子并入标准因子面 🔲 P1
+
+**背景事实（2026-08-06 代码核实）**：
+- B 端已有独立 **ml-service** 推理并落库：LightGBM 方向预测（`/ml/tree_predictions` → `raw_snapshots` 的 `tree_predictions`）、FinBERT 新闻情绪（`/ml/sentiment`）、bolt/moirai/timesfm 时序预测（`ml_predictions` 明细表，`/ml/predictions` 可查）、跨模型共识（`/ml/consensus`）。
+- **但当前 `/factors/catalog`（内置 18 因子：技术 11 + 宏观 3 + 情绪 2 + onchain 2）、`/factors/current`、`/factors/history` 均不包含任何 ML 因子**——它们只走独立 `/ml/*` 端点，`_SIMPLE_FACTOR_IDS` / `_NON_TECH_FACTORS` 均不含。
+- AItrader 侧（单体 + backtest/trading/analysis 微服务）**当前无任何代码消费 `/ml/*`**，即 LightGBM/FinBERT/bolt/moirai/timesfm 预测因子目前**无法用于回测、AI 分析、实盘交易**。
+
+**必要性**：AItrader 的策略回测、AI 快速分析、实盘信号评估都从统一因子面（`/factors/catalog` + `/factors/current` + `/factors/history`）取因子。ML 因子（随机森林/LightGBM 方向预测、FinBERT 情绪、时序预测、共识）若并入标准面，各消费方**零改动**即可在策略代码里直接引用（如 `bar.tree_prob_up`、`bar.finbert_sentiment`）。
+
+**要求**：
+
+```
+GET /factors/catalog  → 追加 ML 类别因子（category="ml"，与 technical/macro/sentiment/onchain 并列）：
+  tree_direction      （LightGBM 方向：up/down/flat）
+  tree_prob_up        （LightGBM 上涨概率 0~1）
+  tree_uncertainty    （预测不确定性，可选）
+  finbert_sentiment   （FinBERT 新闻情绪，-1~1）
+  bolt_forecast       （bolt 时序预测值，可选）
+  moirai_forecast     （moirai 时序预测值，可选）
+  timesfm_forecast    （timesfm 时序预测值，可选）
+  consensus_score     （跨模型共识，可选）
+  （factor id / 语义以 B 端 ml-service 实际产出为准，AItrader 侧按 id 消费）
+
+GET /factors/current
+  → ML 因子按 symbol 返回（ml_predictions 按 symbol 存储，与 fear_greed 同型广播）
+
+GET /factors/history
+  → ML 因子历史序列并入（与现有宏观/情绪因子一致，按最近时间戳 asof 对齐，无未来函数）
+```
+
+**要点**：
+- ML 因子按 **symbol** 粒度返回（区别于 vix/dxy 等全局因子）；方向/概率类因子建议统一数值化（`tree_direction` 可用 1/0/-1 或字符串，二选一并写入 catalog `type`）。
+- `/factors/history` 的 asof 对齐逻辑沿用现有 `_NON_TECH_FACTORS` 模式（fetched_at ≤ bar ts 最近值），保证回测无未来函数。
+- **前置条件确认**：请 B 端确认生产已配置 `ML_SERVICE_URL` 且 ml-service 在产数（未配置时 TreeMl/FinBERT/P2Ml collector 空转，无任何数据）。
+- 落地顺序建议：先并 `/factors/catalog` + `/factors/current`（实盘/AI 分析立即可用），再并 `/factors/history`（回测可用）。
+
+---
+
+### DS-14 官方 Python SDK（封装全部端点） 🔲 P1
+
+**必要性**：AItrader 侧目前存在 **4 份 `data_client.py`（单体/backtest/trading/analysis）+ 1 份 `factor_client.py`（trading）**，各自重复实现 B 端 HTTP 契约——鉴权头、TLS `verify`、超时、秒↔毫秒换算各写各的，且口径不一致：trading/analysis **缺 `X-Service-Key` 与 `verify=False`**，B 端启用鉴权（DS-12）或证书切换后，因子链与 AI 分析链将 401/TLS 报错。收敛决策（AItrader 侧 D7）：**若 B 端提供官方 SDK，则 4 份客户端全部替换为 SDK，不建内部共享包**（避免重复造轮子）；B 端 SDK 未就绪前，AItrader 侧先做最小对齐止血（补鉴权头 + verify + 配置统一，2026-08-06 已规划）。
+
+**要求**：B 端提供官方 Python SDK（pip 包，SemVer 版本管理），一个客户端类收编以下全部端点：
+
+```
+Client(base_url, api_key)   # 单构造：base_url + X-Service-Key 内置
+
+  /bars                     → OHLCV + 因子列（支持 market_type=spot|swap、start/end 毫秒、limit）
+  /factors/catalog          → 因子目录
+  /factors/current          → 最新因子（symbols + category，含 DS-13 ML 因子）
+  /factors/history          → 逐 bar 因子历史（symbol/timeframe/ids/start/end/limit）
+  /snapshots                → 板块快照（type 参数）
+  /ticker                   → 实时报价（symbol + market_type + market）
+  /symbol/resolve           → 符号解析
+  /symbols/search           → 符号搜索（keyword/market/limit）
+  /policy/broker-market     → 券商市场策略
+  /stats /health            → 统计/健康
+```
+
+**SDK 核心能力（对应 AItrader 5 份客户端的痛点）**：
+- **鉴权内置**：自动带 `X-Service-Key`（DS-12），调用方零配置
+- **TLS 可配置**：`verify` 参数（应对当前 B 端证书不可信现状，或 B 端提供正确 CA）
+- **限流配套**：429 识别 + 重试/退避（与 B 端限流机制配合）
+- **fail-silent 语义**：与现有客户端一致——B 端不可用返回空/None 不抛错，业务不中断
+- **时间单位归一化**：秒↔毫秒转换内置（当前单体/backtest 各自换算）
+- **类型注解**：方法与返回类型标注，便于 IDE 与静态检查
+
+**交付建议**：
+- 发布到私有 pip 源或 git 引用；文档含 README + 各端点示例。
+- 依赖 B 端 API 稳定后交付：建议与 **DS-12（鉴权上线）同批**；当前限流/数据覆盖（DS-7/8/9）未解决前 SDK 意义有限。
+- 契约变更走 SemVer 版本升级，AItrader 侧升级 SDK 即可，无需改业务代码。
+
 ---
 
 ## 4. B 端已知采集配置（供 B 端核对）
@@ -248,6 +322,8 @@ DS-9 /symbols/search→ 单体符号搜索前置
 DS-10 /snapshots 补齐→ 仪表盘板块，可与 DS-7/8/9 并行
 DS-11 resolve 覆盖  → 需 B 端确认（决策点）
 DS-12 鉴权          → 与 AItrader 侧 WS-A 鉴权加固联动，建议同批上线
+DS-13 ML 因子并入   → 增强项（依赖 ml-service 产数确认）；先 catalog+current 后 history
+DS-14 官方 SDK      → 建议与 DS-12 同批（API 稳定后交付）；SDK 未就绪前 AItrader 侧先最小对齐止血
 ```
 
 ---
@@ -260,3 +336,5 @@ DS-12 鉴权          → 与 AItrader 侧 WS-A 鉴权加固联动，建议同�
 4. `/snapshots?type=commodities|forex_pairs|market_overview` 均返回非空数据。
 5. 全部端点（除 `/health`）带 `X-Service-Key`：无 key → 401，有 key → 200。
 6. AItrader 单体删除本地 `data_sources/`、`data_providers/` 后，kline/持仓现价/告警/符号搜索/仪表盘全流程可用。
+7. `/factors/catalog` 含 ML 类别因子（`tree_direction`/`tree_prob_up`/`finbert_sentiment` 等，以 B 端产出为准）；`/factors/current` 对 BTC 返回 ML 因子非空；`/factors/history` 返回的 ML 因子历史与 bar asof 对齐（回测引用时无未来函数）。
+8. 官方 SDK（DS-14）：pip 可安装，单构造 `Client(base_url, api_key)` 调通全部端点（含鉴权/verify/429 重试）；AItrader 侧 4 份 `data_client` + `factor_client` HTTP 层替换为 SDK 后功能回归一致。
