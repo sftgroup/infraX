@@ -20,7 +20,7 @@ AItrader 侧**服务间鉴权（WS-A）与配置统一下发（WS-B）已全部�
 | **DS-7** | 实时报价 `GET /ticker` | ✅ 已实现（1375a38） | **P0** | 单体持仓现价、持仓盈亏告警、快交易、全局行情页（`KlineService.get_realtime_price` 依赖） | 8-06 实测 BTC spot+swap / SPY 全字段 ✅；**EUR/USD ticker 404**（yfinance `EURUSD=X` vs 展示 `EUR/USD` 符号映射，请修复） |
 | **DS-9** | 符号搜索 `GET /symbols/search` | ✅ 已实现（8-06 实测 200） | **P0** | 单体符号搜索（前端"添加自选/搜索交易对"） | 实测已通；请核对 seed 表 SPY/QQQ 已补（AItrader 侧已更新 market_symbols_seed.py） |
 | **DS-10** | `/snapshots` 补齐 `commodities`/`forex_pairs`/`market_overview` | ✅ 已实现（8-06 实测三类型全 200） | P1 | 单体全局市场页"商品/外汇/顶部概览"板块 | 已通，无需处理 |
-| **DS-11** | `/symbol/resolve` 多市场覆盖确认 | ⚠️ 新路径 `/api/data/symbol/resolve` 已通（旧 `/api/v1/symbol/resolve` 已废） | P1 | 单体 `symbol_name.py` 跨市场名称解析（crypto/美股/外汇/期货/A股/港股） | **决策点仍待确认**：覆盖范围？若仅 crypto，AItrader 侧保留非 crypto 本地降级 |
+| **DS-11** | `/symbol/resolve` 多市场覆盖确认 | ✅ 已答复（2026-08-06，commit 后续，生产实测全市场矩阵） | P1 | 单体 `symbol_name.py` 跨市场名称解析（crypto/美股/外汇/期货/A股/港股） | **决策：resolve 已全市场覆盖**——crypto 精确解析（含 spot/swap）、外汇 `EUR/USD`/裸对 `EURUSD` → `EURUSD=X`、usstock/futures/cnstock/hkstock 种子直通；**调用方需显式传 `market` 参数**（默认 crypto，不传会把 SPY 误匹配 SPYUSDT）；AItrader **无需保留非 crypto 本地降级** |
 | **DS-12** | 入站鉴权 `X-Service-Key`（`/health` 豁免） | ✅ 已实现（8-06 实测无 key 401） | P1 | 生产安全 | 已通，无需处理 |
 
 ---
@@ -70,9 +70,14 @@ query: keyword 必填，模糊关键字（如 "btc"）
 
 缺失 `commodities`（商品）、`forex_pairs`（外汇对）、`market_overview`（多市场概览），消费方为全局市场页；返回结构与现有 `{ts, snapshots}` 信封一致；刷新节奏对标单体缓存 TTL（商品/外汇 30 分钟、概览 15 分钟）。
 
-### DS-11 `/symbol/resolve` 覆盖确认（P1，决策点）
+### DS-11 `/symbol/resolve` 覆盖确认（P1，**已答复 2026-08-06**）
 
-请确认 resolve 是否覆盖 crypto/美股/外汇/期货/A股/港股；若仅 crypto，AItrader 侧将保留非 crypto 解析的本地降级（yfinance/finnhub/腾讯/MOEX）。
+**决策：已覆盖全市场**（生产实测，需显式传 `market` 参数）：
+- crypto：`BTC` / `BTC/USDT` / `BTC/USDT:USDT` → `BTCUSDT`
+- forex：`EUR/USD` → `EURUSD=X`（斜杠或裸对 `EURUSD` 均支持）
+- usstock / futures / cnstock / hkstock：种子精确匹配 + 在线 lookup（`SPY`→`SPY`、`GC=F`→`GC=F`、`600519`→`600519`、`00700`→`00700`）
+- ⚠️ 不传 `market` 时默认 crypto，非 crypto 符号可能误匹配（如 `SPY`→`SPYUSDT`）；**AItrader 调用请显式传 `market`**
+- 结论：AItrader 侧**无需保留非 crypto 本地降级**；旧路径 `/api/v1/symbol/resolve` 已废，新路径 `/api/data/symbol/resolve`
 
 ### DS-12 入站鉴权（P1）
 

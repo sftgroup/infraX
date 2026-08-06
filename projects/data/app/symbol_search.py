@@ -46,6 +46,12 @@ _SEED_FALLBACK: dict[str, list[tuple[str, str]]] = {
     "hkstock": HK_STOCK_SYMBOLS,
 }
 
+# 已知外汇裸对（resolve 无斜杠识别用，与 kline_store._fetch_forex_twelve 白名单一致）
+_FOREX_PAIRS = {
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF",
+    "NZDUSD", "EURJPY", "GBPJPY", "EURGBP", "USDCNH",
+}
+
 # ccxt 全量市场缓存（crypto）
 _crypto_markets: Optional[list[dict]] = None
 _crypto_fetched_at: float = 0.0
@@ -197,9 +203,10 @@ def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
       - 输入已含分隔符（BTC/USDT、BTC/USDT:USDT）→ 去分隔符规范化
         （binance 风格：BTC/USDT → BTCUSDT）
       - 纯 base（BTC）→ crypto 符号表中匹配 quote=USDT 的候选，优先
-        binance spot（fallback seed）；非 crypto 走种子精确匹配（原样直通）
-      - 全市场覆盖范围（美股/外汇/期货/A股/港股）待 DS-11 决策；
-        本期 crypto 精确解析 + 非 crypto 种子直通
+        binance spot（fallback seed）
+      - 非 crypto（DS-11 已决策全市场覆盖）：外汇 EUR/USD → EURUSD=X、
+        裸对 EURUSD → EURUSD=X；usstock/futures/cnstock/hkstock 种子
+        精确匹配 + 在线 lookup 兜底（需显式传 market 参数）
     """
     sym = (symbol or "").strip()
     if not sym:
@@ -218,6 +225,10 @@ def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
                 quote = quote.split(":")[0]
             return f"{base.upper()}{quote.upper()}=X"
         return sym.replace("/", "")
+
+    if market == "forex" and sym.isalpha() and sym.upper() in _FOREX_PAIRS:
+        # 裸外汇对（EURUSD，无斜杠）→ EURUSD=X，与存储键一致（DS-11 实测补充）
+        return f"{sym.upper()}=X"
 
     if market == "crypto":
         markets = _load_crypto_markets()
