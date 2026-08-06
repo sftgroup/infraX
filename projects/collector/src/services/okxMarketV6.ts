@@ -446,9 +446,10 @@ export class OkxMarketV6Client {
   }
 
   /** GET /api/v6/dex/market/memepump/tokenList — Premium */
-  async getMemePumpTokenList(chainIndex: string, protocol?: string, sortBy = 'volume24h', limit = 50): Promise<OkxMemeToken[]> {
+  async getMemePumpTokenList(chainIndex: string, protocol?: string, sortBy = 'volume24h', limit = 50, stage?: string): Promise<OkxMemeToken[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
     let path = `/api/v6/dex/market/memepump/tokenList?chainIndex=${chainIndex}&sortBy=${sortBy}&limit=${limit}`;
+    if (stage) path += `&stage=${stage}`;
     if (protocol) path += `&protocol=${protocol}`;
     return this.request(acct, 'GET', path);
   }

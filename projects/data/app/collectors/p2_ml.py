@@ -21,6 +21,7 @@ from typing import Optional
 
 from app import ml_client
 from app.config import P2_COLLECT_ENABLED, P2_COLLECT_INTERVAL_SEC, P2_RETENTION_DAYS
+from app.factors import normalize_ml_symbol
 from app.storage import get_db
 from app.utils.logger import get_logger
 
@@ -30,10 +31,8 @@ _MODELS = ("bolt", "moirai", "timesfm")
 
 
 def _normalize_symbol(symbol: str) -> str:
-    """符号归一化：交易对 BTC/USDT → 裸代号 BTC（与共识层一致）。"""
-    if not symbol:
-        return symbol
-    return symbol.split("/")[0].strip()
+    """符号归一化（DQ-5）：大写 + 交易对/quote 剥离（BTC/USDT、BTC-USD、btc → BTC）。"""
+    return normalize_ml_symbol(symbol)
 
 
 def _save_predictions(model: str, results: list[dict], now_ms: int) -> int:

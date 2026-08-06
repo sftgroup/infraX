@@ -48,7 +48,8 @@
 
   "onchain": {
     "btc_difficulty": true,
-    "btc_height": true
+    "btc_height": true,
+    "btc_hashrate": true
   },
 
   "defi": {

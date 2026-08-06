@@ -24,18 +24,20 @@ export class OkxMarketScheduler {
 
     await this.client.init();
 
-    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs } = config.okxMarket;
+    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs, schedulerMempumpMs: mempumpMs } = config.okxMarket;
 
     // Initial snapshots (staggered)
     setTimeout(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), 5_000).unref?.();
     setTimeout(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), 8_000).unref?.();
     setTimeout(() => this.safeRun('candles', () => this.snapshotCandles()), 15_000).unref?.();
+    setTimeout(() => this.safeRun('mempump', () => this.snapshotMempump()), 20_000).unref?.();
 
     // Periodic
     this.timers.push(
       setInterval(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), hotMs),
       setInterval(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), indexMs),
       setInterval(() => this.safeRun('candles', () => this.snapshotCandles()), candlesMs),
+      setInterval(() => this.safeRun('mempump', () => this.snapshotMempump()), mempumpMs),
     );
 
     for (const t of this.timers) { if ('unref' in t) (t as any).unref?.(); }
@@ -43,7 +45,7 @@ export class OkxMarketScheduler {
     logger.info('[okx-sched] Scheduler started', {
       chains: this.chains.length,
       candleTokens: this.candleTokens,
-      intervals: { hotTokens: hotMs, candles: candlesMs, indexPrice: indexMs },
+      intervals: { hotTokens: hotMs, candles: candlesMs, indexPrice: indexMs, mempump: mempumpMs },
     });
   }
 
@@ -120,6 +122,56 @@ export class OkxMarketScheduler {
         }
       }
     } finally { client.release(); }
+  }
+
+  // ── MemePump ─────────────────────────────────────────────────
+  // DQ-7: 启用 mempump 定时器（OKX_MARKET_MEMPUMP_INTERVAL_MS，默认 5min）
+  // 快照每链 meme 代币 pump/trench 数据 → okx_market_mempump 表。
+  // v6 memepump API 需要 stage 参数且仅支持部分链（bsc/base），按 supported 过滤。
+  private async snapshotMempump(): Promise<void> {
+    let mempumpChains = this.chains;
+    try {
+      const supported = await this.client.getMemePumpSupportedChains();
+      const supportedSet = new Set<string>();
+      if (Array.isArray(supported)) {
+        for (const s of supported) {
+          if (s && s.chainIndex) supportedSet.add(String(s.chainIndex));
+        }
+      }
+      if (supportedSet.size > 0) {
+        mempumpChains = this.chains.filter(c => supportedSet.has(c));
+      }
+    } catch (err: any) {
+      logger.warn('[okx-sched] mempump supported-chains fetch failed, snapshot all', { error: err.message });
+    }
+
+    for (const chainIndex of mempumpChains) {
+      try {
+        const tokens = await this.client.getMemePumpTokenList(chainIndex, undefined, 'volume24h', this.candleTokens, 'NEW');
+        if (!tokens || !Array.isArray(tokens)) continue;
+
+        const client = await pool.connect();
+        try {
+          for (const t of tokens) {
+            if (!t?.tokenAddress) continue;
+            await client.query(
+              `INSERT INTO okx_market_mempump
+                 (chain, protocol, token_address, token_symbol, token_name, liquidity, volume_24h, price_change_24h, holder_count, dev_address, dev_holding_pct, bundled_pct, is_honeypot, created_at_ts)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+               ON CONFLICT DO NOTHING`,
+              [t.chain || chainIndex, '', t.tokenAddress, t.symbol || '', t.name || '',
+               t.liquidity || 0, t.volume24h || 0, t.priceChange24h || 0,
+               t.holderCount || 0, t.devAddress || '', t.devHoldingPercent || 0,
+               t.bundledPercent || 0, t.isHoneypot ?? false,
+               parseInt(t.createdAt || '0', 10) || 0]
+            );
+          }
+        } finally { client.release(); }
+      } catch (err: any) {
+        logger.warn(`[okx-sched] mempump failed (${chainIndex})`, { error: err.message });
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
   }
 
   // ── Tracked Tokens (user-configured) ───────────────────────────

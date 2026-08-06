@@ -131,6 +131,24 @@ OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453")
 OKX_HOT_LIMIT = int(os.getenv("OKX_HOT_LIMIT", "10"))       # 每链热门代币数
 OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "3"))  # 每链补指数价格的头部代币数
 
+# DQ-7: okx candles 快照（经旧栈 /api/v2/data/market/candles 拉取头部代币 K 线）
+OKX_CANDLE_ENABLED = os.getenv("OKX_CANDLE_ENABLED", "true").lower() == "true"
+OKX_CANDLE_TOKENS = int(os.getenv("OKX_CANDLE_TOKENS", "3"))  # 每链补 candles 的头部代币数
+OKX_CANDLE_PERIOD = os.getenv("OKX_CANDLE_PERIOD", "15m")
+OKX_CANDLE_LIMIT = int(os.getenv("OKX_CANDLE_LIMIT", "50"))   # 每代币拉取的 K 线根数
+
+# ── 数据质量 / 清洗（DQ-1 / DQ-4 / DQ-6）──────────────────────
+# DQ-1: 异常 bar 处理策略（drop=剔除 / mark=保留并打 is_abnormal 标记）与规则开关。
+# 默认 mark：外汇等无成交量品种（FX spot 正常无量）不应被静默剔除，打标让消费方自行过滤。
+CLEAN_MODE = os.getenv("CLEAN_MODE", "mark").strip().lower()
+CLEAN_ZERO_VOLUME = os.getenv("CLEAN_ZERO_VOLUME", "true").lower() == "true"
+CLEAN_NONPOSITIVE_PRICE = os.getenv("CLEAN_NONPOSITIVE_PRICE", "true").lower() == "true"
+CLEAN_MAX_JUMP_PCT = float(os.getenv("CLEAN_MAX_JUMP_PCT", "0.3"))  # 相邻 bar 价格突变阈值（0.3=30%）
+# DQ-4: 因子新鲜度阈值（毫秒），超过则 /factors/current 标记 fresh:false
+FRESHNESS_MS = int(os.getenv("FRESHNESS_MS", "600000"))
+# DQ-2: /factors/history 缺值因子列前值填充开关（ffill，false 则返回 null 占位）
+FACTORS_FFILL = os.getenv("FACTORS_FFILL", "true").lower() == "true"
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

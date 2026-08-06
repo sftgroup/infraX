@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
 from app.storage import get_db
+from app.config import FACTORS_FFILL, FRESHNESS_MS
 
 # ─── Built-in factor catalog ────────────────────────────
 
@@ -131,17 +133,21 @@ _CATEGORY_MAP = {
     "calendar":   [("calendar", "calendar")],
     "snapshot":   [
         ("market", "crypto_prices"), ("market", "indices"),
-        ("onchain", "btc_difficulty"), ("defi", "tvl"),
+        ("onchain", "btc_difficulty"), ("onchain", "btc_hashrate"), ("defi", "tvl"),
         ("volatility", "volatility"), ("macro", "us_indicators"),
         ("fundamental", "earnings"),
         ("global_market", "commodities"), ("global_market", "forex_pairs"),
         ("global_market", "market_overview"),
         ("collector_onchain", "onchain_checkpoints"),
         ("okx_chainos", "okx_hot_tokens"), ("okx_chainos", "okx_index_prices"),
+        ("okx_chainos", "okx_candles"),
     ],
 }
 # Flatten: data_type → category
-_SIMPLE_FACTOR_IDS = {"fear_greed", "vix", "dxy", "us10y", "btc_difficulty", "sentiment_score"}
+_SIMPLE_FACTOR_IDS = {
+    "fear_greed", "vix", "dxy", "us10y",
+    "btc_difficulty", "btc_hashrate", "sentiment_score",
+}
 
 
 def get_current_factors(
@@ -156,10 +162,20 @@ def get_current_factors(
     """
     db = get_db()
     target = symbols or ["BTC"]
+    now_ms = int(time.time() * 1000)
 
     result: dict = {}
     for sym in target:
         result[sym] = {}
+
+    # DQ-4: 因子新鲜度元数据 {factor_id: {age_ms, fresh}}（同因子多源取最大 age）
+    meta: dict[str, dict] = {}
+
+    def _track(fid: str, age_ms):
+        age_ms = max(int(age_ms), 0)
+        prev = meta.get(fid)
+        if prev is None or age_ms > prev["age_ms"]:
+            meta[fid] = {"age_ms": age_ms, "fresh": age_ms <= FRESHNESS_MS}
 
     # Determine which (provider, data_type) pairs to look for
     if category and category in _CATEGORY_MAP:
@@ -218,6 +234,7 @@ def get_current_factors(
             if val is not None:
                 if isinstance(val, float) and not isinstance(val, int):
                     val = round(val, 6)
+                _track(fid, now_ms - (fetched or 0))
                 for sym in target:
                     result[sym][fid] = val
 
@@ -252,14 +269,49 @@ def get_current_factors(
                 val = row[fid]
                 if val is not None:
                     result[sym][fid] = val
+                    _track(fid, now_ms - (row["ts"] or 0))
+
+    # DQ-4: ML 因子新鲜度 —— ml_predictions 按 model×symbol 最新 generated_at；
+    # tree_predictions / consensus 取最新快照 fetched_at。
+    ml_ts: dict[tuple, int] = {}
+    for r in db.execute(
+        "SELECT model, symbol, MAX(generated_at) AS g FROM ml_predictions GROUP BY model, symbol"
+    ).fetchall():
+        ml_ts[(r["model"], r["symbol"])] = int(r["g"] or 0)
+    snap_ts: dict[str, int] = {}
+    for dt in ("tree_predictions", "consensus"):
+        r = db.execute(
+            "SELECT fetched_at FROM raw_snapshots WHERE data_type=? ORDER BY fetched_at DESC LIMIT 1",
+            (dt,),
+        ).fetchone()
+        if r and r["fetched_at"]:
+            snap_ts[dt] = int(r["fetched_at"])
+
+    def _ml_age(fid: str, sym: str, key: str) -> Optional[int]:
+        if fid in ("tree_direction", "tree_prob_up"):
+            ts = snap_ts.get("tree_predictions")
+        elif fid in ("consensus_score", "finbert_sentiment"):
+            ts = snap_ts.get("consensus")
+        else:
+            model = next((m for m in ("bolt", "moirai", "timesfm") if fid.startswith(f"{m}_")), None)
+            if not model:
+                return None
+            ts = ml_ts.get((model, key)) or ml_ts.get((model, sym))
+        return now_ms - ts if ts else None
 
     # DS-13: ML 因子并入（tree/consensus/ml_predictions，按 symbol 广播）
     latest_ml = _load_latest_ml()
     for sym in target:
-        for fid, val in latest_ml.get(_ml_symbol_key(sym), {}).items():
+        key = _ml_symbol_key(sym)
+        for fid, val in latest_ml.get(key, {}).items():
             result[sym][fid] = val
+            age = _ml_age(fid, sym, key)
+            if age is not None:
+                _track(fid, age)
 
     result["_ts"] = int(max_ts)
+    if meta:
+        result["_meta"] = meta
     if complex_data:
         result["_complex"] = complex_data
     return result
@@ -344,6 +396,8 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
 _FACTOR_FIELD = {
     "fear_greed": "value",
     "sentiment_score": "value",
+    "btc_difficulty": "difficulty",
+    "btc_hashrate": "hashrate",
 }
 
 # Technical factors come from kline table
@@ -363,17 +417,29 @@ _NON_TECH_FACTORS = (
 # ─── ML factor loaders（DS-13）────────────────────────────────
 
 # 各源 symbol 形式不同：tree_predictions 用 "BTC/USDT"，consensus/ml_predictions 用 "BTC"。
-# 统一归一化到裸代号（BTCUSDT → BTC；非 crypto 原样返回）。
+# 统一归一化到裸代号大写（BTCUSDT → BTC；btc、BTC-USD 同样归一到 BTC；非 crypto 原样返回）。
 def _ml_symbol_key(symbol: str) -> str:
-    s = (symbol or "").strip()
+    s = (symbol or "").strip().upper()
     if "/" in s:
         s = s.split("/")[0].strip()
     elif ":" in s:
         s = s.split(":")[0].strip()
     for q in _CRYPTO_QUOTES:
         if s.endswith(q) and len(s) > len(q):
-            return s[: -len(q)]
+            s = s[: -len(q)]
+            break
+    # BTC-USD / BTC-USDT → BTC（短横线分隔的 crypto 对）
+    if "-" in s:
+        s = s.split("-")[0].strip()
     return s
+
+
+def normalize_ml_symbol(symbol: str) -> str:
+    """ML 符号规范化公开入口（DQ-5）：大写 + 交易对/quote 剥离。
+
+    ``BTC/USDT``、``BTCUSDT``、``BTC-USD``、``btc`` → ``BTC``；非 crypto 原样（仅大写）。
+    """
+    return _ml_symbol_key(symbol)
 
 
 def _dir_val(v) -> int | None:
@@ -633,6 +699,20 @@ def get_history_factors(
                     item[col] = val_list[idx]
         series.append(item)
 
+    # DQ-2: 缺值因子列前值填充（ffill，同 symbol 内按时间序、不引入未来值）。
+    # 技术因子早期 bar 未计算（rsi 等）或外部因子无更早快照时，
+    # 用序列内最近的非空值前向填充；FACTORS_FFILL=false 则保持缺值（null 占位）。
+    if FACTORS_FFILL and series:
+        all_keys = sorted({k for it in series for k in it if k != "ts"})
+        last: dict[str, float] = {}
+        for item in series:
+            for k in all_keys:
+                if k in item:
+                    if item[k] is not None:
+                        last[k] = item[k]
+                elif k in last:
+                    item[k] = last[k]
+
     return {
         "symbol": symbol,
         "timeframe": timeframe,
@@ -719,9 +799,9 @@ def query_ml_predictions(
 ) -> list[dict]:
     """P2 单模型预测历史查询（ml_predictions 明细表，§5.7）。
 
-    符号归一化（BTC/USDT → BTC），generated_at 升序，start/end 区间过滤。
+    符号归一化（BTC/USDT、btc → BTC，DQ-5），generated_at 升序，start/end 区间过滤。
     """
-    sym = symbol.split("/")[0].strip()
+    sym = normalize_ml_symbol(symbol)
     db = get_db()
     sql = (
         "SELECT generated_at, direction, prob_up, uncertainty, "

@@ -93,6 +93,11 @@ def query_bars(
                 bar[col] = r[col]
         bars.append(bar)
 
+    # DQ-1: 查询路径清洗 —— 异常 bar（零量/非正价/极端跳空）按 CLEAN_MODE 剔除或打标，
+    # 规则集中维护于 app/cleaning（与 /stats.quality 同一套判定，指标口径一致）。
+    from app.cleaning import clean_bars
+    bars = clean_bars(bars)
+
     # Join latest external factors
     _join_factors(bars, symbol)
 

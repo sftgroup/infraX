@@ -172,6 +172,22 @@ def _fetch_onchain() -> Optional[dict]:
             r = requests.get(BLOCKCHAIN_INFO_LATEST_BLOCK_URL, timeout=COLLECTOR_HTTP_TIMEOUT_SHORT)
             if r.status_code == 200:
                 result["height"] = r.json().get("height")
+        if cfg.get("btc_hashrate"):
+            # DQ-8: btc_hashrate 采集（mempool.space 免费 API，取最新 avgHashrate TH/s）
+            r = requests.get(
+                "https://mempool.space/api/v1/mining/hashrate/1d",
+                timeout=COLLECTOR_HTTP_TIMEOUT_SHORT,
+            )
+            if r.status_code == 200:
+                body = r.json()
+                # 响应形如 {"hashrates":[{"timestamp":..., "avgHashrate":...}, ...]}（时间升序）
+                arr = body.get("hashrates") if isinstance(body, dict) else body
+                if isinstance(arr, list) and arr:
+                    last = arr[-1]
+                    h = last.get("avgHashrate") if isinstance(last, dict) else None
+                    if isinstance(h, (int, float)):
+                        # avgHashrate 单位为 H/s，换算为 EH/s（行业标准，~899 EH/s 量级）
+                        result["hashrate"] = round(float(h) / 1e18, 2)
         return result if result else None
     except Exception as exc:
         logger.warning("On-chain fetch failed: %s", exc)
@@ -384,6 +400,10 @@ class SnapshotCollector:
         onchain = _fetch_onchain()
         if onchain:
             save_snapshot("onchain", "btc_difficulty", onchain)
+            count += 1
+        if onchain and onchain.get("hashrate") is not None:
+            # DQ-8: btc_hashrate 独立快照（catalog 已声明，挂 _SIMPLE_FACTOR_IDS）
+            save_snapshot("onchain", "btc_hashrate", {"hashrate": onchain["hashrate"]})
             count += 1
 
         transfers = _fetch_btc_transfers()

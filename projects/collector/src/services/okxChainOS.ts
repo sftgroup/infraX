@@ -2,6 +2,7 @@ import { pool } from '../database';
 import { config } from '../config';
 import { logger } from '../logger';
 import crypto from 'crypto';
+import { getMarketClient } from './okxMarketV6';
 
 interface OkxAccount {
   id: number;
@@ -11,6 +12,11 @@ interface OkxAccount {
   api_passphrase: string;
   enabled: boolean;
 }
+
+// DQ-7: v5 链名 → v6 chainIndex（回退到 v6 行情时使用）
+const _CHAIN_ID: Record<string, string> = { ethereum: '1', bsc: '56', base: '8453' };
+// v6 market client 只初始化一次（复用 index.ts 的账户配置）
+let _marketReady = false;
 
 interface OkxTokenInfo {
   chain: string;
@@ -155,13 +161,38 @@ export class OkxChainOSCollector {
     for (const chain of chains) {
       try {
         const acct = this.nextAccount();
-        if (!acct) { errors++; continue; }
-
-        // Fetch token ranking list (top tokens by volume)
-        const rankings = await this.okxRequest(
-          acct, 'GET',
-          `/api/v5/wallet/token/token-ranking?chainIndex=${chain}&limit=${Math.min(config.okx.tokenLimit, 200)}&sortBy=volume24h`
-        );
+        // DQ-7: v5 token-ranking 接口不可用/无账户时回退到 v6 行情（web3.okx.com 已验证可用），
+        // 修复 okx_token_snapshots 长期 0 行。链名（chain 列）保持 v5 语义不变。
+        let rankings: any[] = [];
+        if (acct) {
+          try {
+            rankings = await this.okxRequest(
+              acct, 'GET',
+              `/api/v5/wallet/token/token-ranking?chainIndex=${chain}&limit=${Math.min(config.okx.tokenLimit, 200)}&sortBy=volume24h`
+            );
+          } catch (err: any) {
+            logger.warn('[okx-chainos] v5 token-ranking failed, fallback to v6 hot-tokens', { chain, error: err.message });
+          }
+        }
+        if (!rankings || rankings.length === 0) {
+          if (!_marketReady) { await getMarketClient().init(); _marketReady = true; }
+          const v6 = await getMarketClient().getHotTokens(_CHAIN_ID[chain] || chain, Math.min(config.okx.tokenLimit, 200));
+          rankings = (v6 || []).map((t: any) => ({
+            tokenAddress: t.tokenAddress,
+            tokenSymbol: t.symbol,
+            tokenName: t.name,
+            priceUsd: t.price,
+            volume24h: t.volume24h,
+            marketCap: t.marketCap,
+            liquidityUsd: t.liquidity,
+            fullyDilutedValuation: t.fdv,
+            totalSupply: t.supply,
+            holderCount: t.holders,
+            dexName: t.dexName,
+            poolAddress: t.poolAddress,
+            priceChange24h: t.change24h,
+          }));
+        }
 
         if (!rankings || !Array.isArray(rankings)) { errors++; continue; }
 

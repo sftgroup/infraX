@@ -4,10 +4,12 @@
 （COLLECTOR_URL，Express :9101）拉取：
   GET /api/v2/data/market/hot-tokens?chainIndex={id}&limit={n}  → 每链热门代币行情
   GET /api/v2/data/market/index-price?chainIndex={id}&tokenAddress={addr}  → 头部代币指数价格
+  GET /api/v2/data/market/candles?chainIndex={id}&tokenAddress={addr}  → 头部代币 K 线（DQ-7）
 
 写入 raw_snapshots：
   provider=okx_chainos, data_type=okx_hot_tokens    → {items:[{chain,symbol,price,volume24h,change24h,...}]}
   provider=okx_chainos, data_type=okx_index_prices  → {items:[{chainIndex,price,time,tokenContractAddress}]}
+  provider=okx_chainos, data_type=okx_candles       → {period, items:[{timestamp,open,high,low,close,volume,...}]}
 
 设计：
   - 旧栈已完成 v6 修复（web3.okx.com 官方接口），价格数据自此真实产生
@@ -31,6 +33,10 @@ from app.config import (
     OKX_CHAINS,
     OKX_HOT_LIMIT,
     OKX_INDEX_TOKENS,
+    OKX_CANDLE_ENABLED,
+    OKX_CANDLE_TOKENS,
+    OKX_CANDLE_PERIOD,
+    OKX_CANDLE_LIMIT,
 )
 from app.factors import save_snapshot
 
@@ -96,6 +102,7 @@ class OkxChainosCollector:
 
         hot_items: list[dict] = []
         index_items: list[dict] = []
+        candle_items: list[dict] = []
         for chain in chains:
             try:
                 hot = self._fetch_hot_tokens(base, chain)
@@ -121,6 +128,23 @@ class OkxChainosCollector:
                         chain, addr, exc,
                     )
                 time.sleep(_INDEX_CALL_DELAY)
+            # DQ-7: 头部代币补 K 线 candles（经旧栈 /market/candles）
+            if OKX_CANDLE_ENABLED:
+                for tok in hot[: OKX_CANDLE_TOKENS]:
+                    addr = tok.get("tokenAddress")
+                    if not addr:
+                        continue
+                    try:
+                        candles = self._fetch_candles(base, chain, addr)
+                        for c in candles:
+                            c.setdefault("chain", chain)
+                            c.setdefault("tokenAddress", addr)
+                        candle_items.extend(candles)
+                    except (requests.Timeout, requests.RequestException) as exc:
+                        logger.debug(
+                            "okx_chainos candles chain=%s addr=%s failed: %s",
+                            chain, addr, exc,
+                        )
 
         if hot_items:
             save_snapshot(PROVIDER, "okx_hot_tokens", {"items": hot_items})
@@ -130,6 +154,12 @@ class OkxChainosCollector:
             logger.info(
                 "OkxChainosCollector okx_index_prices: %d items", len(index_items)
             )
+        if candle_items:
+            save_snapshot(PROVIDER, "okx_candles", {
+                "period": OKX_CANDLE_PERIOD,
+                "items": candle_items,
+            })
+            logger.info("OkxChainosCollector okx_candles: %d items", len(candle_items))
 
     def _fetch_hot_tokens(self, base: str, chain: str) -> list[dict]:
         resp = requests.get(
@@ -149,6 +179,22 @@ class OkxChainosCollector:
         resp = requests.get(
             f"{base}/api/v2/data/market/index-price",
             params={"chainIndex": chain, "tokenAddress": token_address},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return _parse_list(resp)
+
+    def _fetch_candles(self, base: str, chain: str, token_address: str) -> list[dict]:
+        """DQ-7: 经旧栈 /api/v2/data/market/candles 拉取 K 线（返回项含 timestamp/open/high/low/close/volume）。"""
+        resp = requests.get(
+            f"{base}/api/v2/data/market/candles",
+            params={
+                "chainIndex": chain,
+                "tokenAddress": token_address,
+                "period": OKX_CANDLE_PERIOD,
+                "limit": OKX_CANDLE_LIMIT,
+            },
             headers=_headers(),
             timeout=_TIMEOUT,
         )

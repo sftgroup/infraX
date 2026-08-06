@@ -956,13 +956,13 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 缺口 | 现状/证据 | 状态 |
 |:---:|---|---|:---:|
-| C-1 | **技术指标无异常 bar 检测**：极端跳空/零成交量/负价异常不过滤，直接进 RSI/MACD/BB 等指标计算 | `projects/data/app/kline_store.py` 无清洗逻辑 | 🔲 P1 |
-| C-2 | **缺失值策略缺失**：某 bar 缺因子时无统一规则（前值填充/跳过），消费方自行容忍 | `app/factors.py` 仅 DS-13 asof 对齐，未覆盖一般缺失 | 🔲 P2 |
-| C-3 | **多源时间戳精度不齐**：ms/s 混用无归一化保险（asof 只防未来函数，不防精度错位） | DS-13 history 实测 ms/s 需 SDK 层兜底 | 🔲 P1 |
-| C-4 | **实时因子无新鲜度校验**：`/factors/current` 返回陈旧值（如 2h 前 fear_greed）无告警，fail-silent 只保不崩不保新鲜 | `get_current_factors()` 仅取最新行不校验 age | 🔲 P1 |
-| C-5 | **ml_predictions 写入层无约束**：符号大小写不一（BTC vs btc）、重复 predictions，靠消费方容忍 | 生产实测发现大小写不一致 | 🔲 P1 |
+| C-1 | **技术指标无异常 bar 检测**：极端跳空/零成交量/负价异常不过滤，直接进 RSI/MACD/BB 等指标计算 | `projects/data/app/kline_store.py` 无清洗逻辑 | ✅（DQ-1） |
+| C-2 | **缺失值策略缺失**：某 bar 缺因子时无统一规则（前值填充/跳过），消费方自行容忍 | `app/factors.py` 仅 DS-13 asof 对齐，未覆盖一般缺失 | ✅（DQ-2） |
+| C-3 | **多源时间戳精度不齐**：ms/s 混用无归一化保险（asof 只防未来函数，不防精度错位） | DS-13 history 实测 ms/s 需 SDK 层兜底 | ✅（DQ-3） |
+| C-4 | **实时因子无新鲜度校验**：`/factors/current` 返回陈旧值（如 2h 前 fear_greed）无告警，fail-silent 只保不崩不保新鲜 | `get_current_factors()` 仅取最新行不校验 age | ✅（DQ-4） |
+| C-5 | **ml_predictions 写入层无约束**：符号大小写不一（BTC vs btc）、重复 predictions，靠消费方容忍 | 生产实测发现大小写不一致 | ✅（DQ-5） |
 | C-6 | **图谱注入无语义去噪**：新闻/链上/OKX 源仅去重+截断，广告/重复公告直接进 LightRAG | `projects/knowledge-injector/injector/*.py` | 🔲 P2 |
-| C-7 | **数据质量不可观测**：建议收敛显式清洗规则模块（`app/cleaning.py`，查询路径清洗）+ `/stats`/`/admin` 暴露质量指标（缺失率/异常 bar 数/源新鲜度） | 无现状（方案） | 🔲 P2 |
+| C-7 | **数据质量不可观测**：建议收敛显式清洗规则模块（`app/cleaning.py`，查询路径清洗）+ `/stats`/`/admin` 暴露质量指标（缺失率/异常 bar 数/源新鲜度） | 无现状（方案） | ✅（DQ-6） |
 
 **9.8.7 数据模块需求补充（完整规格，2026-08-07，B 端需求：先补数据模块）**
 
@@ -970,14 +970,16 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 需求 | 契约 | 验收标准 | 优先级 |
 |:---:|---|---|---|:---:|
-| DQ-1 | **异常 bar 检测**（C-1）：`/bars` 查询路径与指标计算前过滤异常 bar（极端跳空 / 零成交量 / 负价 / 价格突变） | 新增 `app/cleaning.py`，`clean_bars()` 于 `/bars` 调用；异常处理策略可配置（剔除 / `is_abnormal` 打标） | 构造含零量/负价/跳空样本 → `/bars` 不返回异常或带标记；RSI/MACD 计算不被污染 | P1 |
-| DQ-2 | **因子缺失值策略**（C-2）：`/factors/history` 对缺值因子列统一前值填充（ffill，同 symbol 内）或返回 null 占位，策略可配置并文档化 | history 响应因子列按 bar 时间序 ffill；不跨 symbol；不引入未来值 | 构造缺值序列 → history 返回填充后序列，且无未来函数 | P2 |
-| DQ-3 | **多源时间戳精度归一化**（C-3）：`/bars` `/factors/history` 查询入口强制毫秒——收到秒级 start/end 自动 ×1000，内部统一毫秒 | 入口归一化函数对 `start`/`end` 若 <1e12 视为秒自动换算 | 传秒级参数结果与毫秒级完全一致（SDK 与 HTTP 双验证） | P1 |
-| DQ-4 | **实时因子新鲜度校验**（C-4）：`/factors/current` 对每个因子返回 `age_ms` 与新鲜度标记；超过 `FRESHNESS_MS`（config）标记 `stale` 或剔除 | current 响应因子附 `_meta`：`{factor_id: {age_ms, fresh: bool}}`；config 新增 `FRESHNESS_MS` | 对 2h 前 fear_greed，响应含 `fresh:false` 标记 | P1 |
-| DQ-5 | **ml_predictions 写入约束**（C-5）：写入层统一符号规范（大写/`normalize_crypto_pair` 归一化），按 `(model, symbol, generated_at)` 幂等去重 | 采集/写入前 normalize + UPSERT；`/ml/predictions` 输出无重复、符号统一 | 构造大小写混合/重复样本 → 查询返回唯一规范化结果 | P1 |
-| DQ-6 | **数据质量可观测**（C-7）：收敛显式清洗规则模块 `app/cleaning.py`（查询路径清洗）+ 质量指标暴露 | `/stats` 新增 `quality: {missing_rate, abnormal_bars, source_freshness}`；清洗规则以函数/规则表集中维护 | 指标与库内真实数据一致；`/stats` 可直接观测质量 | P2 |
-| DQ-7 | **okx 采集链路补全**（R-3）：candles 落新栈 raw_snapshots；修复 v5 `okx_token_snapshots`（当前 0 行）；启用 mempump 定时器 | okx 采集新增 `okx_candles` 快照类型；v5 采集排查 key/调度/写入 | `/snapshots?type=okx_candles` 有数；`okx_token_snapshots` 行数 > 0 | P2 |
-| DQ-8 | **catalog 死条目治理**（btc_hashrate）：声明了但无采集器/无落库/未挂 `_SIMPLE_FACTOR_IDS`——实现采集（mempool hashrate API）或从 catalog 移除 | 二选一：接 `/api/v1/mining/hashrate` 落库并挂 `_SIMPLE_FACTOR_IDS`；或删 catalog 条目 | `/factors/catalog` 无死条目；`btc_hashrate` 有值或不存在 | P2 |
+| DQ-1 | **异常 bar 检测**（C-1）：`/bars` 查询路径与指标计算前过滤异常 bar（极端跳空 / 零成交量 / 负价 / 价格突变） | 新增 `app/cleaning.py`，`clean_bars()` 于 `/bars` 调用；异常处理策略可配置（剔除 / `is_abnormal` 打标） | 构造含零量/负价/跳空样本 → `/bars` 不返回异常或带标记；RSI/MACD 计算不被污染 | ✅ P1 |
+| DQ-2 | **因子缺失值策略**（C-2）：`/factors/history` 对缺值因子列统一前值填充（ffill，同 symbol 内）或返回 null 占位，策略可配置并文档化 | history 响应因子列按 bar 时间序 ffill；不跨 symbol；不引入未来值 | 构造缺值序列 → history 返回填充后序列，且无未来函数 | ✅ P2 |
+| DQ-3 | **多源时间戳精度归一化**（C-3）：`/bars` `/factors/history` 查询入口强制毫秒——收到秒级 start/end 自动 ×1000，内部统一毫秒 | 入口归一化函数对 `start`/`end` 若 <1e12 视为秒自动换算 | 传秒级参数结果与毫秒级完全一致（SDK 与 HTTP 双验证） | ✅ P1 |
+| DQ-4 | **实时因子新鲜度校验**（C-4）：`/factors/current` 对每个因子返回 `age_ms` 与新鲜度标记；超过 `FRESHNESS_MS`（config）标记 `stale` 或剔除 | current 响应因子附 `_meta`：`{factor_id: {age_ms, fresh: bool}}`；config 新增 `FRESHNESS_MS` | 对 2h 前 fear_greed，响应含 `fresh:false` 标记 | ✅ P1 |
+| DQ-5 | **ml_predictions 写入约束**（C-5）：写入层统一符号规范（大写/`normalize_crypto_pair` 归一化），按 `(model, symbol, generated_at)` 幂等去重 | 采集/写入前 normalize + UPSERT；`/ml/predictions` 输出无重复、符号统一 | 构造大小写混合/重复样本 → 查询返回唯一规范化结果 | ✅ P1 |
+| DQ-6 | **数据质量可观测**（C-7）：收敛显式清洗规则模块 `app/cleaning.py`（查询路径清洗）+ 质量指标暴露 | `/stats` 新增 `quality: {missing_rate, abnormal_bars, source_freshness}`；清洗规则以函数/规则表集中维护 | 指标与库内真实数据一致；`/stats` 可直接观测质量 | ✅ P2 |
+| DQ-7 | **okx 采集链路补全**（R-3）：candles 落新栈 raw_snapshots；修复 v5 `okx_token_snapshots`（当前 0 行）；启用 mempump 定时器 | okx 采集新增 `okx_candles` 快照类型；v5 采集排查 key/调度/写入 | `/snapshots?type=okx_candles` 有数；`okx_token_snapshots` 行数 > 0 | ✅ P2 |
+| DQ-8 | **catalog 死条目治理**（btc_hashrate）：声明了但无采集器/无落库/未挂 `_SIMPLE_FACTOR_IDS`——实现采集（mempool hashrate API）或从 catalog 移除 | 二选一：接 `/api/v1/mining/hashrate` 落库并挂 `_SIMPLE_FACTOR_IDS`；或删 catalog 条目 | `/factors/catalog` 无死条目；`btc_hashrate` 有值或不存在 | ✅ P2 |
+
+> **DQ-1~DQ-8 全部完成 ✅（2026-08-07 生产验证）**：data-service 新增 `app/cleaning.py`（is_abnormal/clean_bars/quality_stats）+ `app/utils/timeutil.py`（normalize_ms）；`/bars` 异常 bar 清洗（默认 `mark` 打标——外汇零量属正常不应剔除，可配 `CLEAN_MODE=drop`）；`/factors/history` ffill（`FACTORS_FFILL` 开关）；`/bars` `/factors/history` 秒级参数自动归一化；`/factors/current` 附 `_meta`（age_ms/fresh，`FRESHNESS_MS` 默认 10min）；ml_predictions 写入 `normalize_ml_symbol` 归一化 + 唯一键幂等；`/stats.quality` 输出 missing_rate/abnormal_bars/source_freshness；okx_chainos 新增 `okx_candles` 快照（生产 439 items）；旧栈 mempump 定时器启用（支持链过滤 + `stage=NEW`，生产 60 行）；v5 `okx_token_snapshots` 因 v5 token-ranking 接口 404 长期 0 行 → 新增 v6 hot-tokens 回退（生产 200/200/100+ 行，`price_change_24h` 已 ALTER NUMERIC(20,4)）；btc_hashrate 经 mempool `/v1/mining/hashrate/1d` 采集并换算 EH/s（生产 899.19）。
 
 > 注：okx `price_change_24h` numeric overflow 已修复 ✅（`a925065`，生产已 ALTER）；DS-14 Python SDK 已交付 ✅（`8e92921` + tag `v0.1.0`）；R-4 okx 生产出数已实测闭环 ✅。
 

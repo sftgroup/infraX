@@ -222,10 +222,12 @@ async def get_bars(
     """
     try:
         from app.enrich import query_bars
+        from app.utils.timeutil import normalize_ms
         if market_type is None:
             market_type = "swap" if ":" in symbol else "spot"
+        # DQ-3: 入口时间戳精度归一化（秒级 start/end 自动 ×1000）
         bars = query_bars(symbol=symbol, timeframe=timeframe, market_type=market_type,
-                          start=start, end=end, limit=limit)
+                          start=normalize_ms(start), end=normalize_ms(end), limit=limit)
         return {"symbol": symbol, "timeframe": timeframe, "market_type": market_type,
                 "count": len(bars), "bars": bars}
     except Exception as e:
@@ -325,7 +327,9 @@ async def factors_current(
         from app.factors import get_current_factors
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
         result = get_current_factors(sym_list, category=category)
-        response = {"ts": result.pop("_ts", 0), "factors": result}
+        # DQ-4: 因子新鲜度元数据（age_ms / fresh）随响应返回
+        meta = result.pop("_meta", {})
+        response = {"ts": result.pop("_ts", 0), "meta": meta, "factors": result}
         return response
     except Exception as e:
         logger.error(f"/factors/current failed: {e}")
@@ -351,13 +355,15 @@ async def factors_history(
     """
     try:
         from app.factors import get_history_factors
+        from app.utils.timeutil import normalize_ms
         id_list = [i.strip() for i in ids.split(",") if i.strip()] if ids else None
         return get_history_factors(
             symbol=symbol,
             timeframe=timeframe,
             ids=id_list,
-            start=start,
-            end=end,
+            # DQ-3: 入口时间戳精度归一化（秒级 start/end 自动 ×1000）
+            start=normalize_ms(start),
+            end=normalize_ms(end),
             limit=limit,
         )
     except Exception as e:
@@ -379,12 +385,16 @@ async def stats():
         time_range = db.execute(
             "SELECT MIN(ts), MAX(ts) FROM kline"
         ).fetchone()
+        # DQ-6: 数据质量指标（missing_rate / abnormal_bars / source_freshness）
+        from app.cleaning import quality_stats
+        quality = quality_stats(db)
         return {
             "kline_rows": kline_count,
             "snapshot_rows": snap_count,
             "symbols": symbol_count,
             "time_start": time_range[0],
             "time_end": time_range[1],
+            "quality": quality,
         }
     except Exception as e:
         logger.error(f"/stats failed: {e}")
