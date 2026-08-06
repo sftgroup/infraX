@@ -62,7 +62,7 @@ ssh ubuntu@43.163.105.172
 
 **公网入口（nginx，唯一对外面）**
 - 域名 `infrax.0xainet.top` → Cloudflare（A `104.21.21.11` / AAAA `2606:4700:…`，代理已开）；TLS 证书为 **Cloudflare Origin CA**（生产 443 已配，过期 2041-07）
-- ⚠️ **当前状态（2026-08-06 实测）**：域名 `/` 经 Cloudflare 200，但 `/api/*` 全部 502（Cloudflare 回源失败；origin 侧 `https://43.163.105.172/api/data/health` 直连 200）——**需在 Cloudflare 面板修正回源**（DNS 回源 IP=43.163.105.172、SSL 模式与 `/api/*` 相关 Origin Rule/Worker 检查）
+- ⚠️ **当前状态（2026-08-07 复测）**：域名 `/` 经 Cloudflare 200，但 `/api/*` 全部 502（`/api/data/health`、`/mcp/health`、`/api/v2/data/tokens` 均 502；origin 侧 nginx 直连均 200，access log 无 Cloudflare 回源请求）——**Cloudflare 面板回源问题未修**（DNS 回源 IP=43.163.105.172、SSL 模式与 `/api/*` 相关 Origin Rule/Worker 检查）。2026-08-07 新增 nginx 路由 `/api/v2/data/` → dc(:9102)，本机直连 200 已验证，公网同样受此 Cloudflare 502 影响
 - 域名恢复前 B 端接入方式：`curl -k -H 'Host: infrax.0xainet.top' https://43.163.105.172/api/data/health`
 - nginx 路由与 API 前缀布局见 §2.1
 

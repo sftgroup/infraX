@@ -39,7 +39,7 @@ const infrax = new InfraX({
 
 > **数据域双服务区分（data :9112 vs dc :9102）**：
 > - `infrax.data.*` → **data** 行情/因子服务：配置 `dataUrl`（及 `dataApiKey`）指向 :9112，未配置则回退 `baseUrl`；
-> - `infrax.dc.*`、`infrax.market.*` → **dc** 链上 DEX 数据服务（:9102），走 `baseUrl`；当前 nginx **未暴露** `/api/v2/` 路由，公网调用需先加反代或内网直连。
+> - `infrax.dc.*`、`infrax.market.*` → **dc** 链上 DEX 数据服务（:9102），走 `baseUrl`；nginx 已配 `/api/v2/data/*` 路由（2026-08-07），公网可达性受 Cloudflare 回源状态影响（见 infrax_tasklist §2.1）。
 >
 > ```ts
 > const infrax = new InfraX({
@@ -50,7 +50,7 @@ const infrax = new InfraX({
 >   dataApiKey: process.env.DATA_API_KEY,   // X-API-Key；缺省回退 apiKey
 > });
 > await infrax.data.factorsCatalog();       // → data
-> await infrax.dc.tokens({ limit: 5 });     // → dc（需公网路由或内网）
+> await infrax.dc.tokens({ limit: 5 });     // → dc（公网受 Cloudflare 回源 502 影响，见 §2.1）
 > ```
 
 ### 2.3 模块与方法（按服务分组）

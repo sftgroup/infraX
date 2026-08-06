@@ -11,14 +11,14 @@
 | 服务 | systemd 单元 | 端口 | 域名前缀 | 功能 |
 |---|---|---|---|---|
 | 数据服务 | `infrax-data` | 9112 | `/api/data/*`、`/api/v1/*` | K 线 / 实时报价 / 因子 / ML 预测 / 符号 |
-| 数据采集器（DEX/链上） | `infrax-dc` | 9102 | —（内网直连，nginx 未暴露 `/api/v2/`） | 链上 DEX 数据：tokens / OHLCV / 行情 / 交易 / 排行榜 |
+| 数据采集器（DEX/链上） | `infrax-dc` | 9102 | `/api/v2/data/*`（nginx 已配置 2026-08-07；公网受 Cloudflare 502 影响见 §1 注） | 链上 DEX 数据：tokens / OHLCV / 行情 / 交易 / 排行榜 |
 | 知识图谱注入器 | `infrax-knowledge-injector` | 9113 | `/api/injector/*` | 把外部数据批量注入 LightRAG 图谱 |
 | 图谱查询服务 | `infrax-ragservicer` | 9721 | `/api/rag/*` | LightRAG 知识图谱检索 / RAG 问答 / 图谱数据 |
 
 > **`infrax-data`（:9112）与 `infrax-dc`（:9102）是两个独立服务，职责不同，勿混淆：**
 > - **data**：传统行情 + 因子（crypto/美股/港股/A股/外汇/期货，见 §2），因子 catalog 所在服务；
 > - **dc**：链上 DEX 数据采集（base 链等，`/api/v2/data/tokens|market/*`），是 data 的**数据源之一**，当前仅内网消费（knowledge-injector 经 `inject_parsed("infrax_dc")` 拉取）。
-> - **SDK 接入**：`infrax.data.*` → data（`dataUrl` 可配，默认回退 `baseUrl`）；`infrax.dc.*`、`infrax.market.*` → dc（走 `baseUrl`，公网需 nginx 暴露 `/api/v2/`）。
+> - **SDK 接入**：`infrax.data.*` → data（`dataUrl` 可配，默认回退 `baseUrl`）；`infrax.dc.*`、`infrax.market.*` → dc（走 `baseUrl`，nginx 已配 `/api/v2/data/*` 路由，公网是否可达取决于 Cloudflare 回源状态，见 infrax_tasklist §2.1）。
 
 **接入约定**（对齐平台统一契约 `projects/shared/app_auth.py`）：
 - 业务端点鉴权：`Authorization: Bearer` 或 `X-API-Key` 或 `X-Service-Key`（任一带 `DATA_API_KEY` 或签发的 `dx_*` 多租户 key）；401 统一 `{"code":401,"message":"unauthorized","data":null}`
