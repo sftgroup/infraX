@@ -946,7 +946,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | R-7 | **Session Key PRD 未定稿**（v1.0 Draft）+ 声明的集成测试文件不存在（全仓无 `*.test.ts`） | `docs/SESSION_KEY_ENGINE_PRD.md` | ⚠️ |
 | R-8 | **session-key 四包未发布 npm**（`@0xinfrax/session-key-core/evm/client/server` 均 0.1.0、`workspace:*`、无 publishConfig）；infrax-dk 发布记录矛盾（SDK_INTEGRATION.md 0.3.0 vs DELIVERY_SUMMARY.md 0.2.0）；5 个 HTTP MCP（dc/wallet/mpc/sk/hub）入站鉴权裸奔（仅 hub-index 有鉴权） | 各 `package.json`；`docs/MCP_USAGE.md` L57 | 🔲（并入 B-12） |
 
-> **结论**：数据栈（data/rag/MCP/SDK v0.3.0/文档）已完整；区块链栈未达可发布状态（与 §9.8 结论一致）。高优先修复：R-1/R-2（RPC 契约错位）、R-6（Session 额度校验）；R-4 建议尽快实测 okxchainos 生产出数。
+> **结论**：数据栈（data/rag/MCP/SDK v0.3.0/文档）已完整；区块链栈未达可发布状态（与 §9.8 结论一致）。高优先修复：R-1/R-2（RPC 契约错位）、R-6（Session 额度校验）；R-4 已实测闭环（2026-08-07，okxchainos 数据实时出数正常，key 配置完整）。
 
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
