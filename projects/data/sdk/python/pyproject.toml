@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "infra-data-client"
+version = "0.1.0"
+description = "Official Python SDK for InfraX data-service — unified market data & factors (bars / ticker / factors / snapshots / symbols / stats)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "InfraX" }]
+keywords = ["market-data", "factors", "bars", "ticker", "infrax", "data-service", "crypto", "ohlcv"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = ["requests>=2.25"]
+
+[project.urls]
+Homepage = "https://infrax.io"
+
+[tool.setuptools]
+packages = ["infra_data_client"]
