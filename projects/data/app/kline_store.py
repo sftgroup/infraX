@@ -250,6 +250,7 @@ class KlineStore:
         self._exchange: Optional[ccxt.Exchange] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._multi_cycle = 0  # 多市场轮换游标（forex 周期轮流采集）
 
     # ── start / stop ────────────────────────────────────────
 
@@ -507,25 +508,32 @@ class KlineStore:
 
         数据源（绕过 Yahoo 限流）：
           - us_stocks → 1d akshare 新浪日线（stock_us_daily）；1h/4h yfinance
+                        （生产 IP 常被 Yahoo 限流 429 → 记 failed，等待 B 端提供
+                          Twelve Data 付费 tier / Alpha Vantage 配额）
           - futures   → 1d akshare 东财外盘期货日线（futures_foreign_hist）；1h/4h yfinance
-          - forex     → Twelve Data（需 key，interval 参数化 1m~1day）→ yfinance 回退
-          - cn_stocks → 腾讯日线（不复权）→ akshare 新浪回退；分钟级源待扩展
-          - hk_stocks → 腾讯日线（前复权）→ akshare 新浪回退；分钟级源待扩展
+          - forex     → Twelve Data（interval 参数化 1m~1day）。**轮换采集**：每周期只拉
+                        1 个 timeframe（7 对 × 1 请求），请求间节流 ≥8s，适配免费
+                        tier（8 次/分、800 credits/天，且与机会/宏观/DXY 等共用）
+          - cn_stocks → 1d 腾讯日线 + 15m/1h 腾讯分钟线（akshare stock_zh_a_minute，
+                        免费无额度）+ 4h 由 1h 聚合
+          - hk_stocks → 1d 腾讯日线（分钟级源待扩展，仅 1d）
 
         timeframes 取自 data_config.json multi_kline.<market>.timeframes（需求目标）；
-        源不支持的周期跳过并记入 failed（如 cn/hk 分钟级）。
+        源不支持的周期跳过并记入 failed（如 hk 分钟级）。
         """
         cfg = self._get_multi_config()
         if not cfg:
             return
-        # akshare 内部请求大多不传 timeout，若目标源无响应会无限挂起；
-        # 设置进程级 socket 默认超时，让挂起的请求快速失败并进入退避重试。
         socket.setdefaulttimeout(10)
         fetch_bars = cfg.get("fetch_bars", 200)
+        cycle = self._multi_cycle  # 轮换游标：forex 各周期轮流采集
+        self._multi_cycle = cycle + 1
         total = 0
         failed = []
         # 新浪/东财接口对快速连续请求会返回空（风控），每 symbol 间节流
         _THROTTLE = 2.0
+        # Twelve Data 免费 tier 限 8 次/分，请求间再叠加节流避免 429
+        _TD_THROTTLE = 8.0
 
         def _upsert(sym: str, tf: str, rows: list) -> bool:
             nonlocal total
@@ -557,25 +565,37 @@ class KlineStore:
                 if not _upsert(sym["symbol"], tf, rows):
                     failed.append(f"{sym['symbol']} {tf}")
 
-        # Forex → Twelve Data（interval 参数化，15m/1h/4h/1d）→ yfinance 回退
+        # Forex → Twelve Data 轮换采集：每周期只拉 1 个 timeframe（额度友好）
         fx = cfg.get("forex") or {}
-        fx_tfs = [t for t in (fx.get("timeframes") or ["1d"]) if t in ("1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d")]
-        for sym in fx.get("symbols", []):
+        fx_tfs = [t for t in (fx.get("timeframes") or ["1d"])
+                  if t in ("1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d")]
+        if fx_tfs:
+            fx_tf = fx_tfs[cycle % len(fx_tfs)]
+            for sym in fx.get("symbols", []):
+                time.sleep(_THROTTLE)
+                rows = self._fetch_forex(sym["symbol"], fx_tf, fetch_bars)
+                if not _upsert(sym["symbol"], fx_tf, rows):
+                    failed.append(f"{sym['symbol']} {fx_tf}")
+                time.sleep(_TD_THROTTLE)
+
+        # A-shares → 1d 腾讯日线 + 15m/1h 腾讯分钟线 + 4h 由 1h 聚合
+        cn = cfg.get("cn_stocks") or {}
+        cn_tfs = [t for t in (cn.get("timeframes") or ["1d"]) if t in ("15m", "1h", "4h", "1d")]
+        for sym in cn.get("symbols", []):
             time.sleep(_THROTTLE)
-            for tf in fx_tfs:
-                rows = self._fetch_forex(sym["symbol"], tf, fetch_bars)
+            market = sym.get("market", "sh")
+            for tf in cn_tfs:
+                if tf == "1d":
+                    rows = self._fetch_akshare_cn(sym["symbol"], market, fetch_bars)
+                elif tf in ("15m", "1h"):
+                    rows = self._fetch_tencent_minute(sym["symbol"], market, tf)
+                else:  # 4h → 聚合 1h 分钟线
+                    rows = self._resample_1h_to_tf(
+                        self._fetch_tencent_minute(sym["symbol"], market, "1h"), 4)
                 if not _upsert(sym["symbol"], tf, rows):
                     failed.append(f"{sym['symbol']} {tf}")
 
-        # A-shares → akshare/腾讯日线（分钟级源待扩展，仅采集 1d）
-        cn = cfg.get("cn_stocks") or {}
-        for sym in cn.get("symbols", []):
-            time.sleep(_THROTTLE)
-            rows = self._fetch_akshare_cn(sym["symbol"], sym.get("market", "sh"), fetch_bars)
-            if not _upsert(sym["symbol"], "1d", rows):
-                failed.append(sym["symbol"])
-
-        # HK stocks → akshare/腾讯日线（分钟级源待扩展，仅采集 1d）
+        # HK stocks → 1d 腾讯日线（分钟级源待扩展）
         hk = cfg.get("hk_stocks") or {}
         for sym in hk.get("symbols", []):
             time.sleep(_THROTTLE)
@@ -670,10 +690,9 @@ class KlineStore:
     def _fetch_yfinance(symbol: str, timeframe: str, bars: int) -> list:
         try:
             import yfinance as yf
-            interval_map = {"1d": "1d", "4h": "1h", "1h": "1h"}
-            period_map = {"1d": f"{bars}d", "4h": "60d", "1h": "60d"}
-            interval = interval_map.get(timeframe, "1d")
-            period = period_map.get(timeframe, f"{bars}d")
+            # Yahoo 无原生 4h：1h/4h 均拉 1h interval，4h 在下方聚合
+            interval = "1h" if timeframe in ("1h", "4h") else "1d"
+            period = {"1d": f"{bars}d", "1h": "60d", "4h": "60d"}.get(timeframe, f"{bars}d")
             ticker = yf.Ticker(symbol)
             df = ticker.history(period=period, interval=interval)
             if df is None or df.empty:
@@ -686,9 +705,12 @@ class KlineStore:
                 rows.append((ts, round(float(row["Open"]), 8), round(float(row["High"]), 8),
                              round(float(row["Low"]), 8), round(float(row["Close"]), 8),
                              round(float(row.get("Volume", 0) or 0), 8)))
+            if timeframe == "4h":
+                rows = KlineStore._resample_1h_to_tf(rows, 4)
             return rows[-bars:]
         except Exception as exc:
-            logger.warning("yfinance fetch failed %s %s: %s", symbol, timeframe, exc)
+            # 生产 IP 常被 Yahoo 限流（429），降为 debug，汇总由 multi-market failed 行承担
+            logger.debug("yfinance fetch failed %s %s: %s", symbol, timeframe, exc)
             return []
 
     @staticmethod
@@ -873,6 +895,57 @@ class KlineStore:
                 time.sleep(3)
         logger.warning("akshare HK fetch failed %s: %s", symbol, last_err)
         return []
+
+    @staticmethod
+    def _fetch_tencent_minute(symbol: str, market: str, timeframe: str) -> list:
+        """A股分钟线 from akshare 腾讯（stock_zh_a_minute，免费、无额度限制）。
+
+        timeframe: '15m' → period 15；'1h' → period 60。腾讯分钟 bar 时间戳为
+        bar 结束时间（北京时间 UTC+8），与日线 ts 约定一致（毫秒）。
+        单次约返回 1970 根；upsert 幂等，可反复拉取增量。
+        """
+        period_map = {"1m": "1", "5m": "5", "15m": "15", "30m": "30", "1h": "60"}
+        period = period_map.get(str(timeframe).strip().lower())
+        if not period:
+            return []
+        try:
+            import akshare as ak
+            df = ak.stock_zh_a_minute(symbol=f"{market}{symbol}", period=period)
+            if df is None or df.empty:
+                return []
+            rows = []
+            for _, row in df.iterrows():
+                day = str(row.get("day", ""))
+                if len(day) < 19:
+                    continue
+                dt = datetime.strptime(day[:19], "%Y-%m-%d %H:%M:%S").replace(
+                    tzinfo=timezone(timedelta(hours=8)))
+                ts = int(dt.timestamp() * 1000)
+                rows.append((ts, round(float(row["open"]), 4), round(float(row["high"]), 4),
+                             round(float(row["low"]), 4), round(float(row["close"]), 4),
+                             round(float(row.get("volume", 0) or 0), 0)))
+            return rows
+        except Exception as exc:
+            logger.debug("Tencent minute fetch failed %s %s: %s", symbol, timeframe, exc)
+            return []
+
+    @staticmethod
+    def _resample_1h_to_tf(rows: list, bars_per: int) -> list:
+        """把升序 1h bars 按 bars_per 根为一组聚合为更大周期 OHLCV。
+
+        rows: [(ts, o, h, l, c, v), ...]（ts 升序）。组内 ts 取首根，OHLC 聚合、
+        volume 求和；尾部不足一组丢弃。yfinance 4h 与 A股 4h 共用。
+        """
+        if bars_per <= 1 or len(rows) < bars_per:
+            return list(rows) if bars_per <= 1 else []
+        out = []
+        n = len(rows) - len(rows) % bars_per
+        for i in range(0, n, bars_per):
+            grp = rows[i:i + bars_per]
+            out.append((grp[0][0], grp[0][1],
+                        max(g[2] for g in grp), min(g[3] for g in grp),
+                        grp[-1][4], round(sum(g[5] for g in grp), 4)))
+        return out
 
     def _upsert_ohlcv(self, symbol: str, timeframe: str, rows: list):
         """Upsert OHLCV-only rows (no indicators) into kline table."""
