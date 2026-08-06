@@ -227,7 +227,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
         holder_count INTEGER,
         dex_name VARCHAR(100),
         pool_address VARCHAR(200),
-        price_change_24h NUMERIC(10,4),
+        price_change_24h NUMERIC(20,4),
         collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_oktx_snap_chain_token ON okx_token_snapshots (chain, token_address, collected_at DESC);
@@ -346,7 +346,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
         price_usd NUMERIC(30,10),
         volume_24h NUMERIC(40,10),
         market_cap NUMERIC(40,10),
-        price_change_24h NUMERIC(10,4),
+        price_change_24h NUMERIC(20,4),
         rank INTEGER NOT NULL DEFAULT 0,
         collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -367,7 +367,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
         token_name VARCHAR(300),
         liquidity NUMERIC(40,10),
         volume_24h NUMERIC(40,10),
-        price_change_24h NUMERIC(10,4),
+        price_change_24h NUMERIC(20,4),
         holder_count INTEGER,
         dev_address VARCHAR(200),
         dev_holding_pct NUMERIC(10,4),
