@@ -261,6 +261,9 @@ async def ticker(
         raise HTTPException(status_code=500, detail=str(e))
     if data is None:
         raise HTTPException(status_code=404, detail=f"No quote data for {symbol}")
+    # B 端反馈（P0-2）：回显 market_type，C2 切换依赖它区分 spot/swap（与 /bars 一致）
+    data = dict(data)
+    data["market_type"] = market_type
     return data
 
 
