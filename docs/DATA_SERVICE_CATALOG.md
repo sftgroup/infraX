@@ -77,6 +77,15 @@
 | A 股 | `600519` `000333` | multi_kline.cn_stocks（腾讯日线，1d） |
 | 港股 | `00700` | multi_kline.hk_stocks（腾讯日线，1d） |
 
+**历史数据回填策略（2026-08-07 定）**：
+
+| 资产类别 | 策略 | 现状 |
+|---|---|---|
+| 加密资产（crypto） | 交易所公开 API 免费，**用 ccxt 持续回填足够历史**（spot + swap，自动补缺口 `_backfill_gap`） | ✅ 已达标：1m≥30d / 5m·15m·30m≥180d / 1h·4h≥365d / 1d≥1095d（`KL_BACKFILL_DAYS` 可调） |
+| 传统资产（股票/期货/期权/外汇） | 数据源易受限（Yahoo 429 / Twelve Data 免费限流），**维持现状正常采集、尽量获取历史**：1d 走免限流的免费源（akshare 新浪/东财、腾讯日线），分钟级 yfinance/ Twelve Data 可用即采、受限则跳过记 failed | ⚠️ 1d 已达标（fetch_bars=400≈1.5y）；**分钟级基本未采**（美股 1h 仅 3 根，受 Yahoo 限流），待 B 端提供 Twelve Data 付费 tier / Alpha Vantage 配额后扩展 |
+
+> 加密资产与 DEX 数据为产品范围重点（DS-8 收敛后）；传统资产回填以**免费源能稳定获取为准**，不追受限源的深度。
+
 ### 2.2 实时报价 /ticker（DS-7）
 
 `GET /api/data/ticker?symbol=&market_type=&exchange_id=&market=`
