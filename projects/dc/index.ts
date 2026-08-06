@@ -187,7 +187,8 @@ app.get('/api/v2/data/events', requireDcApiKey, asyncHandler(async (req: any, re
   if (req.query.from_block){ conditions.push(`block_number >= $${idx++}`); values.push(parseInt(req.query.from_block)); }
   if (req.query.to_block)  { conditions.push(`block_number <= $${idx++}`); values.push(parseInt(req.query.to_block)); }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
+  // raw 字段导出（高级租户自解析）：topic_hash（topic0 签名哈希）、amount_raw（原始精度金额）、event_data（原始日志元数据 jsonb）
+  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
   const result = await eventsPool.query(q, values.concat(pageSize + 1));
   const rows = result.rows;
   let next_token: string | null = null;
@@ -243,6 +244,43 @@ app.get('/api/v2/data/tokens', requireDcApiKey, asyncHandler(async (req: any, re
   }))));
 }));
 
+// Raw receipt 导出：按 tx_hash 实时从链节点拉取**完整原始 receipt logs**
+// （topics 全量数组 + data 字节，含 topic0 事件签名哈希），供高级租户自解析。
+// 不落库、即时取，与 events 表的结构化数据互补（raw 查询 → 自解析 / 结构化 → 直接用）。
+app.get('/api/v2/data/raw-receipt', requireDcApiKey, asyncHandler(async (req: any, res: any) => {
+  const chain = (req.query.chain || '').toString().toLowerCase();
+  const txHash = (req.query.tx_hash || '').toString().toLowerCase();
+  if (!chain || !/^0x[0-9a-f]{64}$/.test(txHash)) {
+    return res.status(400).json(apiResponse(null, 'chain and tx_hash (0x + 64 hex) required', 1001));
+  }
+  if (!RPC_ENDPOINTS[chain]) {
+    return res.status(400).json(apiResponse(null, `unsupported chain: ${chain}`, 1001));
+  }
+  try {
+    const receipt = await rpcCall(chain, 'eth_getTransactionReceipt', [txHash]);
+    if (!receipt) {
+      return res.json(apiResponse({ tx_hash: txHash, chain, status: 'pending_or_not_found', logs: [] }));
+    }
+    res.json(apiResponse({
+      tx_hash: txHash,
+      chain,
+      status: receipt.status === '0x1' ? 'success' : 'failed',
+      block_number: receipt.blockNumber ? parseInt(receipt.blockNumber, 16) : null,
+      contract_address: receipt.contractAddress || null,
+      logs: (receipt.logs || []).map((l: any) => ({
+        address: l.address,
+        topics: l.topics,          // 原始 topics（topics[0] = 事件签名 keccak）
+        data: l.data,              // 原始 data（ABI 编码参数，可配合 ABI 解码）
+        block_number: l.blockNumber ? parseInt(l.blockNumber, 16) : null,
+        log_index: l.logIndex ? parseInt(l.logIndex, 16) : null,
+        transaction_hash: l.transactionHash,
+      })),
+    }));
+  } catch (e: any) {
+    res.status(502).json(apiResponse(null, 'RPC error: ' + e.message, -1));
+  }
+}));
+
 app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
   res.json(apiResponse({
     title: 'InfraX Data Center API', version: '1.0.0',
@@ -250,7 +288,8 @@ app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
       { method: 'GET', path: '/plans', description: 'List data plans' },
       { method: 'POST', path: '/subscribe', description: 'Subscribe to a plan' },
       { method: 'GET', path: '/key', description: 'Get API key' },
-      { method: 'GET', path: '/events', description: 'Query on-chain events (auth)' },
+      { method: 'GET', path: '/events', description: 'Query on-chain events (auth, 含 topic_hash/amount_raw/event_data raw 字段)' },
+      { method: 'GET', path: '/raw-receipt', description: '导出 tx 完整原始 receipt logs（topics+data，实时 RPC，auth）' },
       { method: 'GET', path: '/stats', description: 'Chain statistics (auth)' },
       { method: 'GET', path: '/tokens', description: 'DEX token catalog (auth, MQ-3)' },
       { method: 'GET', path: '/health', description: 'DC service health (auth)' },
