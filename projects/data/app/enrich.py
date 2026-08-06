@@ -54,8 +54,10 @@ def query_bars(
 
     market_type: crypto spot|swap —— swap 用 ccxt 惯例存储键 ``BTC/USDT:USDT``
     （symbol 已带 ``:quote`` 后缀时视为 swap，保持原样，数据不混淆）。
+    timeframe 大小写不敏感（存储键为小写 1d/1h/4h，'1D'/'4H' 同样命中，B 端反馈修复）。
     """
     q_symbol = _normalize_kline_symbol(symbol, market_type)
+    timeframe = str(timeframe or "1m").strip().lower()
     db = get_db()
     params: list = [q_symbol, timeframe]
 

@@ -56,7 +56,7 @@ playwright-cli --version
 
 ```bash
 # 生命周期
-playwright-cli open http://43.156.99.215:9111/index.html
+playwright-cli open https://infrax.0xainet.top/index.html
 playwright-cli close
 playwright-cli close-all
 
@@ -205,11 +205,13 @@ npx chrome-devtools-mcp@latest \
 ### 目标 URL
 
 ```
-Production:   http://43.156.99.215:9111
-Landing:      http://43.156.99.215:9111/landing.html
-Connect:      http://43.156.99.215:9111/connect.html
-Admin:        http://43.156.99.215:9111/admin-login.html
-Dashboard:    http://43.156.99.215:9111/index.html
+Production:   https://infrax.0xainet.top          # 域名根（当前 / 200；/api/* 502 待修，portal 不受影响）
+Landing:      https://infrax.0xainet.top/landing.html
+Connect:      https://infrax.0xainet.top/connect.html
+Admin:        https://infrax.0xainet.top/admin-login.html
+Dashboard:    https://infrax.0xainet.top/index.html
+# 域名异常时直连 IP 兜底（-k + Host 头）：
+#   curl -k -H 'Host: infrax.0xainet.top' https://43.163.105.172/landing.html
 ```
 
 ### 测试钱包
@@ -234,7 +236,7 @@ Password:  a87cefd6e1ce487334a67b0c
 ### Flow 1: 私钥登录 (playwright-cli)
 
 ```bash
-playwright-cli open http://43.156.99.215:9111/index.html
+playwright-cli open https://infrax.0xainet.top/index.html
 sleep 3
 playwright-cli snapshot
 playwright-cli find "Private Key"
@@ -245,7 +247,7 @@ playwright-cli close
 ### Flow 2: 模块遍历 (playwright-cli)
 
 ```bash
-playwright-cli open http://43.156.99.215:9111/index.html
+playwright-cli open https://infrax.0xainet.top/index.html
 sleep 3
 for mod in mpc waas safe dc pay; do
   playwright-cli click "[data-page='$mod']"
@@ -259,7 +261,7 @@ playwright-cli close
 
 ```
 # AI Agent 通过 MCP 协议发送:
-browser_navigate → http://43.156.99.215:9111/index.html
+browser_navigate → https://infrax.0xainet.top/index.html
 browser_snapshot → 获取页面结构
 browser_click → Private Key tab
 browser_type → 输入私钥
@@ -285,7 +287,7 @@ browser_snapshot → 验证 Dashboard 渲染
 
 | 变量 | 默认值 | 用途 |
 |------|--------|------|
-| `INFRAX_URL` | `http://43.156.99.215:9111` | 测试目标 |
+| `INFRAX_URL` | `https://infrax.0xainet.top` | 测试目标 |
 | `INFRAX_PK` | `0xb1eb7c5...cd8644` | 测试私钥 |
 | `ADMIN_PASS` | `a87cefd6e1ce487334a67b0c` | Admin 密码 |
 

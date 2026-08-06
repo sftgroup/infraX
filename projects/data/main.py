@@ -67,8 +67,7 @@ app.add_middleware(
 # 所有非鉴权错误统一包装为 {code, message, data}：
 #   - 422 校验错误 / HTTPException / 未捕获异常 → {"code": <status>, "message": ..., "data": null}
 # 对齐 ragservicer / ml-service 业务端点结构。
-# 注：鉴权 401 仍返回 app_auth.UNAUTHORIZED（{"detail": "unauthorized"}，契约固定，
-#     由 _api_auth 中间件直接返回，不经过下述 handler）。
+# 鉴权 401 同样统一 {code: 401, message: "unauthorized", data: null}（B 端反馈 P2-6）。
 
 def _error_body(code: int, message: str) -> dict:
     return {"code": code, "message": message, "data": None}
@@ -185,7 +184,8 @@ async def _api_auth(request, call_next):
     if not app_auth.is_exempt(request.url.path, prefixes=("/admin/",)):
         status = _api_auth_status(request)
         if status == 401:
-            return JSONResponse(status_code=401, content=app_auth.UNAUTHORIZED)
+            # B 端反馈（P2-6）：鉴权失败统一 {code, message, data}，与平台一致
+            return JSONResponse(status_code=401, content={"code": 401, "message": "unauthorized", "data": None})
         if status:
             message = {403: "API key disabled", 429: "Rate limit exceeded"}.get(status, "unauthorized")
             return JSONResponse(status_code=status, content={"code": status, "message": message, "data": None})
@@ -202,7 +202,7 @@ async def _api_auth(request, call_next):
 async def get_bars(
     symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
     timeframe: str = Query("1m", description="Timeframe: 1m/5m/15m/30m/1h/4h/1d"),
-    market_type: str = Query("spot", pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
+    market_type: Optional[str] = Query(None, pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
     start: Optional[int] = Query(None, description="Start unix ms"),
     end: Optional[int] = Query(None, description="End unix ms"),
     limit: int = Query(500, ge=1, le=5000),
@@ -211,9 +211,13 @@ async def get_bars(
 
     market_type=swap 时 symbol 按 ccxt 惯例 ``BTC/USDT:USDT`` 存储键查询
     （spot/swap 数据互不混淆，DS-8 方案 A）。
+    market_type 未传时按 symbol 自动判定：带 ``:quote`` 后缀 → swap，否则 spot
+    （B 端反馈：BTC/USDT:USDT 需回显 swap 而非 spot）。
     """
     try:
         from app.enrich import query_bars
+        if market_type is None:
+            market_type = "swap" if ":" in symbol else "spot"
         bars = query_bars(symbol=symbol, timeframe=timeframe, market_type=market_type,
                           start=start, end=end, limit=limit)
         return {"symbol": symbol, "timeframe": timeframe, "market_type": market_type,
@@ -228,18 +232,22 @@ async def get_bars(
 @app.get("/ticker")
 async def ticker(
     symbol: str = Query(..., description="Symbol, e.g. BTC/USDT"),
-    market_type: str = Query("spot", pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
+    market_type: Optional[str] = Query(None, pattern="^(spot|swap)$", description="Crypto market type: spot | swap"),
     exchange_id: Optional[str] = Query(None, description="Crypto exchange (default: binance)"),
     market: Optional[str] = Query(None, description="Market hint: crypto/usstock/forex/futures/cnstock/hkstock"),
 ):
     """Realtime quote aligned with AItrader KlineService.get_realtime_price.
 
     Returns {symbol, price, change, changePercent, high, low, open, previousClose, ts}.
-    Data sources: crypto → ccxt; usstock/forex/futures → yfinance; cnstock/hkstock → Tencent.
+    Data sources: crypto → ccxt; usstock/forex/futures → yfinance + Twelve Data 备用;
+    cnstock/hkstock → Tencent.
     Falls back to latest 1d kline bar when realtime source unavailable (fail-silent).
+    market_type 未传时按 symbol 自动判定（带 ``:quote`` 后缀 → swap，B 端反馈修复）。
     """
     try:
         from app.ticker import get_ticker
+        if market_type is None:
+            market_type = "swap" if ":" in symbol else "spot"
         data = get_ticker(symbol=symbol, market_type=market_type,
                           exchange_id=exchange_id, market=market)
     except Exception as e:
@@ -386,6 +394,7 @@ async def symbols(
     try:
         from app.storage import get_db
         db = get_db()
+        timeframe = timeframe.strip().lower()  # 存储键小写（1D → 1d），大小写不敏感
         rows = db.execute(
             """SELECT symbol, COUNT(*) AS n FROM kline
                WHERE timeframe = ? GROUP BY symbol HAVING n >= ?""",

@@ -66,8 +66,8 @@ InfraX 目前对外提供两大能力集群，均可通过 **REST API / MCP / SD
 | knowledge-injector | `http://127.0.0.1:9113` | —（内部服务，不对外暴露） | 仅内网访问 |
 | hub-index MCP | `http://127.0.0.1:3008` | `https://infrax.0xainet.top/mcp/message` | 不变 |
 
-> ⚠️ **DNS 切换前**：`infrax.0xainet.top` 仍指向旧服务器 `43.156.99.215`，外网地址暂不可用。
-> 切换前请使用 `https://43.163.105.172/api/data/...`，curl 加 `-k`（或配置正确 SNI）。
+> ⚠️ **域名状态（2026-08-06）**：`infrax.0xainet.top` DNS 已切至 Cloudflare（A 104.21.21.11），但 `/api/*` 经公网返回 502（Cloudflare 回源配置待修正，见 [DEPLOYMENT_DATA_STACK §2.1](./DEPLOYMENT_DATA_STACK.md)）；origin `43.163.105.172` 直连全端点正常。
+> 域名恢复前使用 `https://43.163.105.172/api/data/...`，curl 加 `-k` + `-H 'Host: infrax.0xainet.top'`（或配置正确 SNI）。
 > 健康检查免鉴权：`GET /api/data/health`、`GET /api/rag/api/v1/health`、`GET /mcp/health`。
 > knowledge-injector（:9113）与 ml-service（:9120）为内部服务，不对外暴露。
 

@@ -1,6 +1,6 @@
 # InfraX 数据服务栈部署文档
 
-> 最后更新: 2026-08-06 | 适用版本 `v0.5.1-20260804`
+> 最后更新: 2026-08-06 | 适用版本 `v0.6.0-20260806`
 >
 > 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
 
@@ -38,6 +38,7 @@
 - **knowledge-injector**: 定时把快照转成结构化文本注入 RAGservicer，构建知识图谱
 - **ragservicer**: LightRAG 微服务（实体抽取需 LLM key，embedding 需 DashScope key）
 - **ml-service**: 独立服务器常开，承载 LightGBM / FinBERT / Kronos 模型推理（详见 8.5）
+- **nginx**: 唯一公网入口（80/443，与区块链栈/web 共用）——`/api/data/*`→:9112、`/api/rag/*`→:9721、`/`→admin/web；域名 `infrax.0xainet.top`（详见 §2.1）
 
 ---
 
@@ -45,19 +46,41 @@
 
 | 项目 | 值 |
 |------|-----|
-| Host | **43.163.105.172**（新加坡 · 腾讯云） |
+| Host | **43.163.105.172**（新加坡 · 腾讯云，**单机承载全部服务**） |
 | User | ubuntu |
 | 系统 | Ubuntu 24.04.4 LTS |
 | 规格 | 2C / 3.6G / 59G |
 | 代码路径 | `/home/ubuntu/infraX-1` |
+| 承载范围 | 数据栈（9112/9113/9721/3002）+ 区块链栈（9100-9111）+ session-key（3500）+ MCP（3008/3011）+ admin/web + nginx（80/443）——18 个 systemd 服务 |
+| 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 已弃用 |
 
 ```bash
 ssh ubuntu@43.163.105.172
 ```
 
+**公网入口（nginx，唯一对外面）**
+- 域名 `infrax.0xainet.top` → Cloudflare（A `104.21.21.11` / AAAA `2606:4700:…`，代理已开）；TLS 证书为 **Cloudflare Origin CA**（生产 443 已配，过期 2041-07）
+- ⚠️ **当前状态（2026-08-06 实测）**：域名 `/` 经 Cloudflare 200，但 `/api/*` 全部 502（Cloudflare 回源失败；origin 侧 `https://43.163.105.172/api/data/health` 直连 200）——**需在 Cloudflare 面板修正回源**（DNS 回源 IP=43.163.105.172、SSL 模式与 `/api/*` 相关 Origin Rule/Worker 检查）
+- 域名恢复前 B 端接入方式：`curl -k -H 'Host: infrax.0xainet.top' https://43.163.105.172/api/data/health`
+- nginx 路由与 API 前缀布局见 §2.1
+
 **ML 推理服务器**（ml-service，**43.156.25.197**）：独立 2C4G 服务器，常开承载三模型（详见 8.5 部署步骤）。
 
-> 注：旧的区块链服务栈（9100-9111）部署在另一台服务器 **43.156.99.215**，见 [DEPLOYMENT.md](../DEPLOYMENT.md)。
+### 2.1 nginx 反向代理与 API 前缀
+
+nginx 为唯一公网入口（80 → 301 → 443），后端服务大多绑定 127.0.0.1：
+
+| 前缀 | 上游 | 说明 |
+|---|---|---|
+| `/api/data/*` | `http://127.0.0.1:9112/` | 数据栈业务端点（bars/ticker/symbols/resolve/factors/snapshots/stats/health） |
+| `/api/v1/*` | `http://127.0.0.1:9112/` | **旧契约兼容段**（`/api/v1/symbol/resolve` 等，FastAPI 统一 JSON 404，B 端反馈 P1-4） |
+| `/api/rag/*` | `http://127.0.0.1:9721/` | ragservicer |
+| `/api/v2/*`、`/api/vault` | web :9111 `server.js` → 各 91xx 服务 | 区块链栈（如 `/api/v2/subscription` → waas:9109） |
+| `/api-keys/verify` | — | 服务间/MCP key 校验 |
+| `/metrics` | :9112 | Prometheus（免鉴权） |
+| `/` | admin/web 前端 | InfraX Web3 平台（需登录态，HTML） |
+
+**API 前缀现状（B 端反馈 P2-5）**：业务 `/api/data/*`、admin `/admin/*`、`/api-keys/verify` 并存；根 `/` 与 `/openapi.json` 返回 HTML（需登录态）；`/api/data/openapi.json` 带 key 可出 JSON（公开免鉴权 docs 入口待开放，见 §9.3 反馈项）。
 
 ---
 
@@ -377,6 +400,14 @@ curl -s -c /tmp/cj -X POST http://127.0.0.1:3002/api/v2/admin/login \
 curl -s -b /tmp/cj http://127.0.0.1:3002/api/v2/data/overview   # 三服务健康 + 统计
 curl -s -b /tmp/cj http://127.0.0.1:3002/api/v2/data/llm-keys   # 脱敏 key 状态
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3002/api/v2/data/overview   # 未登录 → 401
+
+# ⑥ nginx / 公网入口（B 端反馈 P2-7 排查用）
+curl -s http://127.0.0.1:9112/health                              # 服务本身
+curl -sk -H 'Host: infrax.0xainet.top' https://127.0.0.1/api/data/health   # 本地经 nginx（带域名 Host，预期 200）
+curl -sk https://43.163.105.172/api/data/health                   # 公网直连 IP（预期 200，/health 豁免鉴权）
+curl -sk -H 'Host: infrax.0xainet.top' https://43.163.105.172/api/data/bars?symbol=BTC/USDT&timeframe=1D   # 无 key 预期 401 {code:401,...}
+curl -s https://infrax.0xainet.top/api/data/health                # 公网域名（当前 502：Cloudflare 回源失败，待修）
+getent hosts infrax.0xainet.top                                   # DNS 应为 Cloudflare 104.21.21.11
 ```
 
 预期结果（已实测 2026-08-04）：`/stats` 显示 21 symbols / 5000+ K线行；`/bars` 返回真实 OHLCV + us10y 因子；因子周期日志 `ExternalFactorCollector cycle: 3/4 sources ok`（DXY 受 yfinance 限流，其余 3 项正常）。
@@ -593,6 +624,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **多 key 轮换补齐（2026-08-06 完成，commit bbe8201）** 基础设施 `APIKeys.rotate()`（逗号分隔 key 池，admin PUT /admin/config 支持 list 输入）已覆盖：FINNHUB/TWELVE/TIINGO/NEWSAPI/ADANOS/FRED/FIRECRAWL/COINGECKO/TUSHARE；本轮修复 finnhub 相关 3 处单 key 缓存：`data_providers/finnhub.py` 解除模块级 key 缓存、`data_sources/us_stock.py` 每次请求前 `_rotate_finnhub()`（quote/stock_candles 调用点）。注：`app/market_data/*` legacy 补丁包未被运行时引用，未改
 - [x] **数据源状态监控端点 `GET /admin/status`（2026-08-06 完成，commit 538795e）** 已实现并生产实测：返回采集器运行状态（13 个全 running+thread_alive）+ 熔断器状态 + 数据新鲜度（raw_snapshots 按 provider/data_type 最近落库 ms；kline 按 timeframe rows/ts_start/ts_end）+ key 配置概览（10 个全 set）；鉴权 Bearer ADMIN_API_KEY。实测数据：kline 7 个 timeframe 全部有数（5m 31.1万行/1m 26万行），25 个快照类别新鲜度秒级~30min 内
 - [x] **交易对热管理 API `PUT /admin/symbols`（2026-08-06 完成，commit 9a1fffa + 43dc6bd）** 支持 `action: add|remove|set` 动态增删交易对（免重启）：crypto/swap 热更 `.env`（KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_*）+ `kline_store.set_runtime_symbols()` 运行时列表；us_stocks/forex/futures/cn_stocks/hk_stocks 热更 `data_config.json` multi_kline.<market> + `reload_multi_config()` 缓存失效。鉴权 Bearer ADMIN_API_KEY。生产实测：add us_stocks INTC（11 个）、remove crypto XRP/USDT（回 3 个）、add futures TF=F（9 个）全部成功且持久化（.env + data_config.json 验证）；数据落地随采集周期（crypto 5min / multi 30min）自动生效。期间修复：main.py 缺 json import 导致 multi 500（43dc6bd）
+- [x] **B 端数据调用方 7 项反馈修复（2026-08-06 完成并部署生产，代码 5 文件）** P0-1 `/bars` timeframe 大小写规范化（`app/enrich.py` query_bars + `main.py` `/symbols` + `app/factors.py`：存储键小写 `1d`，`1D` 大写查询现命中，实测 BTC/USDT count 500）；P0-2 spot/swap 区分（`main.py` `/bars` `/ticker` `market_type` 改 `Optional[str]`，`":" in symbol → swap` 自动判定，实测 `BTC/USDT:USDT` → `market_type:"swap"`）；P1-3 `/ticker` 多市场（`app/ticker.py`：`EUR/USD` 3+3 货币对识别为 forex + 符号规范化 `EURUSD=X` 与 yfinance/存储键一致；美股腾讯实时 `qt.gtimg.cn usSPY` 免费兜底；外汇 Twelve Data quote 备用源；SPY ts 更新至当日实时）；P1-4 `/symbol/resolve`（`app/symbol_search.py` 外汇分支 `EUR/USD → EURUSD=X`；nginx 新增 `location /api/v1/` → :9112 兼容旧契约路径，FastAPI 统一 404 JSON）；P2-6 鉴权 401 统一响应体 `{code:401,message:"unauthorized",data:null}`（`main.py`，生产实测生效）。**⚠️ 遗留待确认**：P2-5 API 前缀统一 + `/openapi.json` 公开文档入口（待决策）；P2-7 环境事项——公网域名 `infrax.0xainet.top` 现解析到 Cloudflare（104.21.21.11，A 记录 + AAAA 2606:4700），`/` 经 Cloudflare 200，但 `/api/*` 全部 502（回源失败）；origin `43.163.105.172` 直接访问（443 带/不带域名 Host、80→301）全端点 200、证书为 Cloudflare Origin CA（Managed CA）——**Cloudflare 面板回源配置需确认**；ticker 短 TTL 缓存默认 10s（`TICKER_CACHE_TTL_SEC`，B 端建议 ≤5s 可调）；ts 均为毫秒 UTC 符合契约
 
 **后端管理需求总览（2026-08-06，B 端提）**
 

@@ -345,6 +345,7 @@ def get_history_factors(
     db = get_db()
     cols = ", ".join(_TECH_FACTORS)
     limit = max(1, min(int(limit or 500), 5000))
+    timeframe = str(timeframe or "1m").strip().lower()  # 存储键小写，大小写不敏感
 
     def _query(sym: str):
         where = "symbol = ? AND timeframe = ?"

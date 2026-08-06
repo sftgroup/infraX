@@ -1,23 +1,26 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-08-04 | 版本 `v0.3.4-20260721`
+> 最后更新: 2026-08-06 | 版本 `v0.6.0-20260806`
 
-> 📌 **本文档覆盖区块链服务栈（9100-9111，服务器 43.156.99.215）。**
-> **数据服务栈（data :9112 / knowledge-injector :9113 / ragservicer :9721，服务器 43.163.105.172）见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)。**
+> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721/3002）+ session-key（3500）+ MCP（3008/3011）+ admin/web + nginx 公网入口（80/443）全部同机部署（18 个 systemd 服务托管）。
+> **本文档覆盖区块链服务栈（9100-9111）**；数据栈详细部署见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)。
+> 旧服务器 ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 均已弃用。
 
 ## 生产服务器
 
-| 项目 | 旧服务器 | 新服务器 |
-|------|---------|---------|
-| Host | ~~43.156.46.187~~ | **43.156.99.215** |
-| User | ubuntu | ubuntu |
-| SSH | 直连 | 直连 |
-| Ports | 3000-6100 | **9100-9111** |
-| Spec | 4C/7.5G/178G | 4C/8G + **200G 数据盘 (/dev/vdb)** |
+| 项目 | 值 |
+|------|-----|
+| Host | **43.163.105.172**（新加坡 · 腾讯云，单机承载全部服务） |
+| User | ubuntu |
+| SSH | 直连 |
+| 代码路径 | `/home/ubuntu/infraX-1` |
+| 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721/3002；session-key 3500；MCP 3008/3011；nginx 80/443 |
+| 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [DEPLOYMENT_DATA_STACK §2.1](./docs/DEPLOYMENT_DATA_STACK.md)） |
+| ml-service | 独立服务器 **43.156.25.197**:9120（不在本机） |
 
 ```bash
 # SSH 直连
-ssh ubuntu@43.156.99.215
+ssh ubuntu@43.163.105.172
 ```
 
 ## 当前运行服务（12 个 systemd）
@@ -41,7 +44,7 @@ ssh ubuntu@43.156.99.215
 ## 目录结构
 
 ```
-/opt/infraX/projects/
+/home/ubuntu/infraX-1/projects/
 ├── admin/         → Admin :9100  (Express 5 SPA + REST API)
 ├── collector/     → Collector :9101  (5 链区块扫描)
 ├── dc/            → DC :9102  (数据中心 API)
@@ -70,6 +73,8 @@ ssh ubuntu@43.156.99.215
         └── infrax.css     ← 统一样式
 ```
 
+> 数据栈项目（data/knowledge-injector/ragservicer/ml-service/admin）同位于 `/home/ubuntu/infraX-1/projects/`，详见 [docs/DEPLOYMENT_DATA_STACK.md](./docs/DEPLOYMENT_DATA_STACK.md)。
+
 ## Web Proxy 路由 (`server.js`)
 
 ```
@@ -83,6 +88,21 @@ ssh ubuntu@43.156.99.215
 /api/v2/payment → :9106
 /api/v2/admin   → :9100
 ```
+
+### nginx 公网入口（80/443，统一对外）
+
+所有公网流量统一经 nginx 进入本机（后端服务大多绑定 127.0.0.1，外部不可直连）：
+
+| 前缀 | 上游 | 说明 |
+|---|---|---|
+| `/api/data/*`、`/api/v1/*` | `http://127.0.0.1:9112/` | 数据栈（`/api/v1/*` 为旧契约兼容段） |
+| `/api/rag/*` | `http://127.0.0.1:9721/` | ragservicer |
+| `/api/v2/*`、`/api/vault` | web `server.js` → 各 91xx 服务 | 区块链栈 |
+| `/api-keys/verify`、`/metrics` | — | 鉴权校验 / 监控指标 |
+| `/` | admin/web 前端 | InfraX Web3 平台（需登录态） |
+
+- 80 端口一律 301 → 443；TLS 证书为 **Cloudflare Origin CA**（为 `infrax.0xainet.top` 签发，过期 2041）
+- 域名 `infrax.0xainet.top` DNS 现指向 Cloudflare（A 104.21.21.11），当前 `/api/*` 经公网 502（回源失败，origin 直连全 200）——**待 Cloudflare 面板修正回源**，详情与排查命令见 [DEPLOYMENT_DATA_STACK §2.1](./docs/DEPLOYMENT_DATA_STACK.md)
 
 ## 防火墙端口
 
@@ -308,11 +328,11 @@ MPC_URL=http://localhost:9104
 
 ```bash
 # 在服务器上
-cd /opt/infraX
+cd /home/ubuntu/infraX-1
 git pull origin master
 # 如有新增依赖
 for d in admin collector dc mcp-server mpc payment vault waas web; do
-  cd /opt/infraX/projects/$d && npm install 2>/dev/null || true
+  cd /home/ubuntu/infraX-1/projects/$d && npm install 2>/dev/null || true
 done
 # 重启变更的服务
 sudo systemctl restart infrax-admin
@@ -392,7 +412,7 @@ sudo -u postgres psql -d pocketx_collector -c \
 ## 负载参考
 
 ```
-新服务器 (43.156.99.215): CPU idle 90%+, 内存 ~1.5G / 8G
+生产机 (43.163.105.172): CPU idle 90%+, 内存 ~1.5G / 8G
 Collector: 5 链扫描 (sepolia/ethereum/bsc/base/oxa)，每链 ~17% CPU
 已知问题: OKX ChainOS API 404（遗留），BSC 部分端点限流
 ```

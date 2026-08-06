@@ -80,12 +80,18 @@ def infer_market(symbol: str) -> Optional[str]:
             if item.get("symbol") == symbol:
                 return market
     s = symbol.upper().strip()
-    if "/" in symbol:
-        return "crypto"
     if s.endswith("=X"):
         return "forex"
     if s.endswith("=F"):
         return "futures"
+    if "/" in symbol:
+        # 6 字母 3+3 货币对（EUR/USD、GBP/USD）→ 外汇；否则 crypto
+        base, quote = symbol.split("/", 1)
+        if ":" in quote:
+            quote = quote.split(":")[0]
+        if len(base) == 3 and len(quote) == 3 and base.isalpha() and quote.isalpha():
+            return "forex"
+        return "crypto"
     if s.isdigit():
         # A股 6 位（6→沪 0/3→深）；港股 5 位（0 开头）
         if len(s) == 5:
@@ -107,6 +113,26 @@ def _swap_symbol(symbol: str) -> str:
             return symbol
         return f"{base}/{quote}:{quote}"
     return symbol
+
+
+def _normalize_forex_symbol(symbol: str) -> str:
+    """外汇符号规范化：EUR/USD / EURUSD → yfinance 形式 EURUSD=X。
+
+    采集存储键与 yfinance/Twelve Data 均用 ``EURUSD=X``（B 端反馈：
+    /ticker?symbol=EUR/USD 曾 404——infer_market 无法识别斜杠形式）。
+    """
+    s = symbol.strip().upper()
+    if s.endswith("=X"):
+        return symbol.strip()
+    if "/" in s:
+        base, quote = s.split("/", 1)
+        if ":" in quote:
+            quote = quote.split(":")[0]
+        if len(base) == 3 and len(quote) == 3 and base.isalpha() and quote.isalpha():
+            return f"{base}{quote}=X"
+    if len(s) == 6 and s.isalpha():
+        return f"{s[:3]}{s[3:]}=" + "X"
+    return symbol.strip()
 
 
 def _cn_prefix(symbol: str) -> str:
@@ -213,11 +239,68 @@ def _fetch_yfinance(symbol: str) -> Optional[dict]:
         return None
 
 
-def _fetch_tencent(symbol: str, market: str) -> Optional[dict]:
-    """腾讯实时行情（qt.gtimg.cn）— A股/港股，免费无 key。"""
+def _fetch_twelve_data(symbol: str, market: str) -> Optional[dict]:
+    """Twelve Data quote 实时报价（备用源，Yahoo 限流/反爬时兜底）。
+
+    覆盖 usstock / forex；依赖 TWELVE_DATA_API_KEY（admin/config 可热配）。
+    yfinance 用 ``EURUSD=X``，Twelve Data 用 ``EUR/USD``。
+    """
     try:
-        prefix = "hk" if market == "hkstock" else _cn_prefix(symbol)
-        code = f"{prefix}{symbol}"
+        from app.config import APIKeys
+        key = APIKeys.rotate("TWELVE_DATA_API_KEY")
+        if not key:
+            return None
+        if market == "forex":
+            td_symbol = symbol.upper().replace("=X", "").replace("=", "")
+            if len(td_symbol) != 6:
+                return None
+            td_symbol = f"{td_symbol[:3]}/{td_symbol[3:]}"
+        else:
+            td_symbol = symbol
+        resp = requests.get(
+            "https://api.twelvedata.com/quote",
+            params={"symbol": td_symbol, "apikey": key},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        d = resp.json() or {}
+        price = _float(d.get("close"))
+        if price is None:
+            return None
+        prev_close = _float(d.get("previous_close"))
+        change = _float(d.get("change"))
+        change_pct = _float(d.get("percent_change"))
+        if change is None and prev_close:
+            change = round(price - prev_close, 8)
+        if change_pct is None and prev_close:
+            change_pct = round((price - prev_close) / prev_close * 100, 4)
+        return {
+            "symbol": symbol,
+            "price": price,
+            "change": change,
+            "changePercent": change_pct,
+            "high": _float(d.get("high")),
+            "low": _float(d.get("low")),
+            "open": _float(d.get("open")),
+            "previousClose": prev_close,
+            "ts": int(time.time() * 1000),
+        }
+    except Exception as exc:
+        logger.debug("twelve data ticker failed %s: %s", symbol, exc)
+        return None
+
+
+def _fetch_tencent(symbol: str, market: str) -> Optional[dict]:
+    """腾讯实时行情（qt.gtimg.cn）— A股/港股/美股，免费无 key。"""
+    try:
+        if market == "hkstock":
+            prefix = "hk"
+        elif market == "usstock":
+            prefix = "us"  # 美股（如 usSPY / usAAPL），免费源，Yahoo 限流时兜底
+        else:
+            prefix = _cn_prefix(symbol)
+        code = f"{prefix}{symbol.upper() if market == 'usstock' else symbol}"
         resp = requests.get(
             f"https://qt.gtimg.cn/q={code}",
             headers={"User-Agent": _UA},
@@ -245,11 +328,16 @@ def _fetch_tencent(symbol: str, market: str) -> Optional[dict]:
             change_pct = round((price - prev_close) / prev_close * 100, 2)
         ts_str = fields[30]
         ts = None
-        if len(ts_str) >= 14 and ts_str.isdigit():
+        if ts_str:
             try:
                 from datetime import datetime as _dt
-                ts = int(_dt.strptime(ts_str, "%Y%m%d%H%M%S").timestamp() * 1000)
-            except ValueError:
+                for fmt in ("%Y%m%d%H%M%S", "%Y-%m-%d %H:%M:%S"):
+                    try:
+                        ts = int(_dt.strptime(ts_str, fmt).timestamp() * 1000)
+                        break
+                    except ValueError:
+                        continue
+            except Exception:
                 ts = None
         return {
             "symbol": symbol,
@@ -343,11 +431,20 @@ def get_ticker(
     if mkt == "crypto":
         result = _fetch_crypto(symbol, market_type, exchange_id)
     elif mkt in ("usstock", "forex", "futures"):
-        result = _fetch_yfinance(symbol)
+        # 外汇符号规范化（EUR/USD → EURUSD=X，yfinance 形式）
+        quote_symbol = _normalize_forex_symbol(symbol) if mkt == "forex" else symbol
+        result = _fetch_yfinance(quote_symbol)
+        if result is None and mkt == "usstock":
+            # Yahoo 限流/反爬 → 腾讯美股实时（免费无 key）
+            result = _fetch_tencent(symbol, "usstock")
+        if result is None and mkt == "forex":
+            # Twelve Data 备用（免费 tier 限流 8/min，尽力而为）
+            result = _fetch_twelve_data(quote_symbol, mkt)
     elif mkt in ("cnstock", "hkstock"):
         result = _fetch_tencent(symbol, mkt)
     if result is None:
-        result = _kline_fallback(symbol)
+        # 兜底用规范化的存储键（外汇 EUR/USD → EURUSD=X），避免 404
+        result = _kline_fallback(quote_symbol if mkt == "forex" else symbol)
 
     with _cache_lock:
         _cache[cache_key] = (time.time(), result)

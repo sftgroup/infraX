@@ -211,6 +211,12 @@ def resolve_symbol(symbol: str, market: str = "crypto") -> Optional[str]:
         parts = sym.split(":")
         return parts[0].split("/")[0] + parts[-1]
     if "/" in sym:
+        if market == "forex":
+            # 外汇：EUR/USD → EURUSD=X（yfinance/Twelve Data/采集存储键一致）
+            base, quote = sym.split("/", 1)
+            if ":" in quote:
+                quote = quote.split(":")[0]
+            return f"{base.upper()}{quote.upper()}=X"
         return sym.replace("/", "")
 
     if market == "crypto":
