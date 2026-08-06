@@ -6,13 +6,19 @@
 
 ## 1. 服务组成与接入
 
-数据域由三个服务组成，nginx 统一反代：
+数据域由四个服务组成：
 
 | 服务 | systemd 单元 | 端口 | 域名前缀 | 功能 |
 |---|---|---|---|---|
-| 数据服务 | `infrax-data` | 9112 | `/api/data/*` | K 线 / 实时报价 / 因子 / ML 预测 / 符号 |
-| 知识图谱注入器 | `infrax-knowledge-injector` | 9113 | — | 把外部数据批量注入 LightRAG 图谱 |
+| 数据服务 | `infrax-data` | 9112 | `/api/data/*`、`/api/v1/*` | K 线 / 实时报价 / 因子 / ML 预测 / 符号 |
+| 数据采集器（DEX/链上） | `infrax-dc` | 9102 | —（内网直连，nginx 未暴露 `/api/v2/`） | 链上 DEX 数据：tokens / OHLCV / 行情 / 交易 / 排行榜 |
+| 知识图谱注入器 | `infrax-knowledge-injector` | 9113 | `/api/injector/*` | 把外部数据批量注入 LightRAG 图谱 |
 | 图谱查询服务 | `infrax-ragservicer` | 9721 | `/api/rag/*` | LightRAG 知识图谱检索 / RAG 问答 / 图谱数据 |
+
+> **`infrax-data`（:9112）与 `infrax-dc`（:9102）是两个独立服务，职责不同，勿混淆：**
+> - **data**：传统行情 + 因子（crypto/美股/港股/A股/外汇/期货，见 §2），因子 catalog 所在服务；
+> - **dc**：链上 DEX 数据采集（base 链等，`/api/v2/data/tokens|market/*`），是 data 的**数据源之一**，当前仅内网消费（knowledge-injector 经 `inject_parsed("infrax_dc")` 拉取）。
+> - **SDK 接入**：`infrax.data.*` → data（`dataUrl` 可配，默认回退 `baseUrl`）；`infrax.dc.*`、`infrax.market.*` → dc（走 `baseUrl`，公网需 nginx 暴露 `/api/v2/`）。
 
 **接入约定**（对齐平台统一契约 `projects/shared/app_auth.py`）：
 - 业务端点鉴权：`Authorization: Bearer` 或 `X-API-Key` 或 `X-Service-Key`（任一带 `DATA_API_KEY` 或签发的 `dx_*` 多租户 key）；401 统一 `{"code":401,"message":"unauthorized","data":null}`
@@ -86,9 +92,38 @@
 
 | 端点 | 返回 |
 |---|---|
-| `/factors/catalog` | 因子目录：技术指标 + macro（vix/dxy/us10y）+ sentiment（fear_greed/sentiment_score）+ onchain（btc_difficulty/btc_hashrate） |
+| `/factors/catalog` | 因子目录（**28 个**：18 内置 + 10 ML；七字段结构见下） |
 | `/factors/current?symbols=&category=` | 最新因子值（category：external/sentiment/news/opportunities/heatmap/calendar/snapshot） |
 | `/factors/history?symbol=&timeframe=&ids=` | 逐 bar 因子时序（对齐 /bars ts，回测用） |
+
+**catalog 条目统一结构**（内置 / ML / extra 三来源一致）：
+
+```json
+{
+  "id": "us10y", "name": "US 10Y Yield",
+  "category": "macro", "type": "float", "range": [0, 10],
+  "description": "美国 10 年期国债收益率", "unit": "%"
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `id` / `name` | 因子标识 / 显示名 |
+| `category` | `technical` \| `macro` \| `sentiment` \| `onchain` \| `ml` \| `external` |
+| `type` | `float` \| `int` |
+| `range` | 合理值域（`null` 表示无限制；`[0, 100]` 为含边界闭区间） |
+| `description` | 中文语义描述（新增 2026-08-07，下游展示用） |
+| `unit` | 单位：`%`（us10y）、`T`（btc_difficulty）、`EH/s`（btc_hashrate）；价格/概率/方向/指数类为 `null`（新增 2026-08-07） |
+
+**因子清单（28 个）**：
+
+- **technical（11）**：`rsi_14`、`macd`、`macd_signal`、`macd_hist`、`bb_upper`、`bb_middle`、`bb_lower`、`atr_14`、`ma_5`、`ma_10`、`ma_20`（kline_store 自动计算，与 bar 同源）
+- **macro（3）**：`vix`、`dxy`、`us10y`（unit=`%`）
+- **sentiment（2）**：`fear_greed`（int 0-100）、`sentiment_score`（float -1~1）
+- **onchain（2）**：`btc_difficulty`（unit=`T`）、`btc_hashrate`（unit=`EH/s`）
+- **ml（10，DS-13，来源 ml-service）**：`tree_direction` / `tree_prob_up`（LightGBM）、`finbert_sentiment`（FinBERT）、`consensus_score`、`bolt_direction` / `bolt_prob_up`、`moirai_direction` / `moirai_prob_up`、`timesfm_direction` / `timesfm_prob_up`（direction 数值化：up=1 / flat=0 / down=-1）
+
+**灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
 
 ### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
 

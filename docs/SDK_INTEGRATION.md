@@ -37,6 +37,22 @@ const infrax = new InfraX({
 });
 ```
 
+> **数据域双服务区分（data :9112 vs dc :9102）**：
+> - `infrax.data.*` → **data** 行情/因子服务：配置 `dataUrl`（及 `dataApiKey`）指向 :9112，未配置则回退 `baseUrl`；
+> - `infrax.dc.*`、`infrax.market.*` → **dc** 链上 DEX 数据服务（:9102），走 `baseUrl`；当前 nginx **未暴露** `/api/v2/` 路由，公网调用需先加反代或内网直连。
+>
+> ```ts
+> const infrax = new InfraX({
+>   baseUrl: 'https://43.163.105.172',
+>   apiKey: process.env.INFRAX_API_KEY,
+>   // data 服务独立入口（:9112；缺省回退 baseUrl）
+>   dataUrl: 'http://<host>:9112',
+>   dataApiKey: process.env.DATA_API_KEY,   // X-API-Key；缺省回退 apiKey
+> });
+> await infrax.data.factorsCatalog();       // → data
+> await infrax.dc.tokens({ limit: 5 });     // → dc（需公网路由或内网）
+> ```
+
 ### 2.3 模块与方法（按服务分组）
 
 | 服务 | 模块方法（`infrax.*`） | 对应 REST 端点 |
