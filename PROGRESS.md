@@ -7,7 +7,8 @@
 
 **数据栈（已完成，见 tasklist §9.1~9.7）**
 - data :9112 / knowledge-injector :9113 / ragservicer :9721 / hub-index MCP :3008 / ml-service 独立 :9120 全部生产运行
-- **B 端 7 项反馈已修复并部署生产（2026-08-06，见 tasklist §9.3）**：P0-1 `/bars` timeframe 大小写规范化（`1D` 现命中存储键 `1d`，实测 count 500）、P0-2 swap 自动判定（`BTC/USDT:USDT` → `market_type:swap`）、P1-3 `/ticker` 多市场（EUR/USD 外汇识别 + 腾讯美股实时 + Twelve Data 备用；SPY 实时到当日）、P1-4 `/symbol/resolve` 外汇规范化（`EURUSD=X`）+ nginx `/api/v1/` 兼容段、P2-6 401 统一 `{code,message,data}`（生产实测生效）。⚠️ 待确认：P2-5 前缀统一（openapi 公开入口，待决策）、P2-7 公网域名 `infrax.0xainet.top` 502（DNS→Cloudflare，回源 `/api/*` 失败；origin `43.163.105.172` 直接访问全端点 200，健康）
+- **B 端 7 项反馈已修复并部署生产（2026-08-06，见 tasklist §9.3）**：P0-1 `/bars` timeframe 大小写规范化（`1D` 现命中存储键 `1d`，实测 count 500）、P0-2 swap 自动判定（`BTC/USDT:USDT` → `market_type:swap`）、P1-3 `/ticker` 多市场（EUR/USD 外汇识别 + 腾讯美股实时 + Twelve Data 备用；SPY 实时到当日）、P1-4 `/symbol/resolve` 外汇规范化（`EURUSD=X`）+ nginx `/api/v1/` 兼容段、P2-6 401 统一 `{code,message,data}`（生产实测生效）。⚠️ 待确认：P2-7 公网域名 `infrax.0xainet.top` 502（DNS→Cloudflare，回源 `/api/*` 失败；origin `43.163.105.172` 直接访问全端点 200，健康）
+- **B 端 7 项全量回归通过（2026-08-06 晚，生产实测）**：P0-1 BTC/ETH 1D count **1096**（≥3y 达标）；P0-2 ticker 已回显 market_type（swap/spot 可区分，C2 切换依赖）；P1-3 EUR/USD 200、SPY ts=2026-08-05 16:00 UTC（最新美股收盘）；P1-4 `EUR/USD→EURUSD=X`；P2-5 docs/redoc/openapi.json **免 key 公开**（`/api/data/docs`、`/api/data/openapi.json` 200，commit 33a9b9e）；P2-6 401 统一格式；**nginx `/api/v1/` 兼容段已实际插入并 reload**（此前声称已加但未生效，实测补上）。⚠️ 唯一遗留：P2-7 公网域名 `/api/*` 502（Cloudflare 面板回源配置待修，origin 直连全 200）
 - 统一鉴权契约 app_auth（Bearer/X-API-Key/X-Service-Key）；admin 面板 **API Keys** 页统一管理 `dx_`/`mx_`/`lr_` 三类 key；MCP 入站强制鉴权（mx_ key）
 - JS SDK `@0xinfrax/infrax-dk@0.3.0` 已发布 npm；集成文档 INTEGRATION_PLATFORM / INTEGRATION_DATA_SERVICE / INTEGRATION_LIGHTRAG
 - 9.7 差距项 G-1~G-9 全部实现（PyPI 发布待 token）
