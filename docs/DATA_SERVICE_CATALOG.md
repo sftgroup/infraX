@@ -1,0 +1,219 @@
+# InfraX 数据服务数据目录（DATA SERVICE CATALOG）
+
+> 本文档明确列出**数据服务可获取的数据和类型**，含行情、因子、ML 预测与 **graph 图谱数据**。
+> 契约见 `projects/data/AITRADER_DATA_SERVICE_REQ.md`（DS-1 ~ DS-12）。
+> 数据覆盖为 2026-08-06 生产库抽查（`43.163.105.172`）。
+
+## 1. 服务组成与接入
+
+数据域由三个服务组成，nginx 统一反代：
+
+| 服务 | systemd 单元 | 端口 | 域名前缀 | 功能 |
+|---|---|---|---|---|
+| 数据服务 | `infrax-data` | 9112 | `/api/data/*` | K 线 / 实时报价 / 因子 / ML 预测 / 符号 |
+| 知识图谱注入器 | `infrax-knowledge-injector` | 9113 | — | 把外部数据批量注入 LightRAG 图谱 |
+| 图谱查询服务 | `infrax-ragservicer` | 9721 | `/api/rag/*` | LightRAG 知识图谱检索 / RAG 问答 / 图谱数据 |
+
+**接入约定**（对齐平台统一契约 `projects/shared/app_auth.py`）：
+- 业务端点鉴权：`Authorization: Bearer` 或 `X-API-Key` 或 `X-Service-Key`（任一带 `DATA_API_KEY` 或签发的 `dx_*` 多租户 key）；401 统一 `{"code":401,"message":"unauthorized","data":null}`
+- 公开免 key：`/health`、`/metrics`、`/docs`、`/redoc`、`/openapi.json`
+- 可选信封：请求带 `?envelope=1` 或 `X-Envelope: 1` → 响应包装为 `{code, message, data}`
+- 时间戳：**一律毫秒 UTC（unix ms）**
+
+---
+
+## 2. 行情数据（infrax-data）
+
+### 2.1 K 线 /bars（DS-1 / DS-8）
+
+`GET /api/data/bars?symbol=BTC/USDT&timeframe=1D&market_type=spot|swap&start=&end=&limit=`
+
+**返回字段**（每根 bar）：
+
+| 分组 | 字段 |
+|---|---|
+| OHLCV | `ts`, `open`, `high`, `low`, `close`, `volume` |
+| 技术指标（自动计算） | `rsi_14`, `macd`, `macd_signal`, `macd_hist`, `bb_upper`, `bb_middle`, `bb_lower`, `atr_14`, `ma_5`, `ma_10`, `ma_20` |
+| 外部因子（按最近时间 join） | catalog 中声明的因子：`fear_greed`, `vix`, `dxy`, `us10y`, `btc_difficulty`, `sentiment_score` 等 |
+
+**timeframe 与覆盖达标**（生产实测 2026-08-06）：
+
+| timeframe | 存储键 | 根数 | 覆盖区间 | 达标要求 | 状态 |
+|---|---|---|---|---|---|
+| 1m | `1m` | 310,313 | 2026-07-06 ~ 08-06（31d） | ≥30d | ✅ |
+| 5m | `5m` | 364,444 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
+| 15m | `15m` | 121,480 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
+| 30m | `30m` | 60,741 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
+| 1h | `1h` | 60,164 | 2025-08-05 ~ 08-06（1y） | ≥1y | ✅ |
+| 4h | `4h` | 15,320 | 2025-08-05 ~ 08-06（1y） | ≥1y | ✅ |
+| 1D | `1d` | 24,889 | 2023-08-07 ~ 08-06（3y） | ≥3y | ✅ |
+
+> `timeframe` 大小写不敏感（`1D`/`4H` 均命中存储键 `1d`/`4h`）。
+
+**市场覆盖**（`market_type` 自动判定：符号含 `:quote` → swap，否则 spot）：
+
+| 市场 | 符号形式 | 覆盖对象 |
+|---|---|---|
+| crypto spot | `BTC/USDT` | BTC/ETH/SOL/XRP/BNB/DOGE 等（binance spot，quote=USDT 全量） |
+| crypto swap | `BTC/USDT:USDT` | 同上（binance usdm，quote=USDT） |
+| 美股 | `SPY` `AAPL` | multi_kline.us_stocks：AAPL/MSFT/GOOGL/AMZN/NVDA/META/TSLA/JPM/V/XOM/INTC/SPY/QQQ（1d） |
+| 外汇 | `EURUSD=X` | multi_kline.forex：EURUSD/GBPUSD/USDJPY/AUDUSD/USDCAD/USDCHF（1d） |
+| 期货 | `GC=F` `CL=F` | multi_kline.futures：GC/SI/CL/NG/HG/ES/NQ/YM 等（1d） |
+| A 股 | `600519` `000333` | multi_kline.cn_stocks（腾讯日线，1d） |
+| 港股 | `00700` | multi_kline.hk_stocks（腾讯日线，1d） |
+
+### 2.2 实时报价 /ticker（DS-7）
+
+`GET /api/data/ticker?symbol=&market_type=&exchange_id=&market=`
+
+**返回字段**：`symbol`, `price`, `change`, `changePercent`, `high`, `low`, `open`, `previousClose`, `ts`, `market_type`（回显 spot/swap，C2 切换依赖）
+
+**数据源回退链**（fail-silent，短 TTL 内存缓存默认 10s，`TICKER_CACHE_TTL_SEC` 可调）：
+
+| 市场 | 实时源 | 备用 |
+|---|---|---|
+| crypto | ccxt binance（spot/swap） | kline 1d 兜底 |
+| 美股 | yfinance fast_info | 腾讯美股实时（qt.gtimg.cn，免费）→ kline 兜底 |
+| 外汇 | yfinance（`EURUSD=X`） | Twelve Data（免费 8 次/min）→ kline 兜底 |
+| 期货 | yfinance（`GC=F`） | kline 兜底 |
+| A 股 / 港股 | 腾讯实时（sh/sz/hk 前缀） | kline 兜底 |
+
+---
+
+## 3. 因子与快照数据（infrax-data）
+
+### 3.1 因子端点（DS-2）
+
+| 端点 | 返回 |
+|---|---|
+| `/factors/catalog` | 因子目录：技术指标 + macro（vix/dxy/us10y）+ sentiment（fear_greed/sentiment_score）+ onchain（btc_difficulty/btc_hashrate） |
+| `/factors/current?symbols=&category=` | 最新因子值（category：external/sentiment/news/opportunities/heatmap/calendar/snapshot） |
+| `/factors/history?symbol=&timeframe=&ids=` | 逐 bar 因子时序（对齐 /bars ts，回测用） |
+
+### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
+
+`GET /api/data/snapshots?type=` —— raw_snapshots 最新结构（heatmap/calendar 等返回原始结构）。
+
+### 3.3 全部数据类型清单（raw_snapshots 27 类，生产实证 2026-08-06）
+
+| provider | data_type | 内容 | 近次落库 |
+|---|---|---|---|
+| `market` | `crypto_prices` | CoinGecko 现货价格 | 实时 |
+| `market` | `indices` | 全球股指 | 实时 |
+| `market` | `heatmap` | crypto 板块热度图 | 实时 |
+| `macro` | `vix` / `dxy` / `us10y` | 波动率 / 美元指数 / 美债 10Y | 实时 |
+| `macro` | `us_indicators` | FRED 宏观指标（CPI/GDP 等） | 实时 |
+| `sentiment` | `fear_greed` | 恐惧贪婪指数 | 实时 |
+| `sentiment` | `sentiment_score` / `put_call_ratio` / `yield_curve` | 新闻情绪 / 认沽认购比 / 收益率曲线 | 实时 |
+| `sentiment` | `adanos_sentiment` | Adanos 舆情 | 实时 |
+| `news` | `news` | 新闻（→ finbert_sentiment 输入） | 分钟级 |
+| `fundamental` | `earnings` | 财报日历 | 实时 |
+| `calendar` | `calendar` | 经济事件日历 | 实时 |
+| `defi` | `tvl` | DeFi 总锁仓量（分链） | 实时 |
+| `volatility` | `volatility` | VXN/GVZ 波动率指数 | 实时 |
+| `onchain` | `btc_difficulty` / `btc_transfers` | BTC 挖矿难度 / 巨鲸转账 | 实时 |
+| `collector_onchain` | `onchain_checkpoints` | 链上检查点聚合 | 实时 |
+| `global_market` | `commodities` / `forex_pairs` / `market_overview` | 商品 / 外汇对 / 多市场概览 | 30min |
+| `okx_chainos` | `okx_hot_tokens` / `okx_index_prices` | OKX ChainOS 热点代币 / 链指数 | 实时 |
+| `ml` | `tree_predictions` / `consensus` | LightGBM 方向预测 / 多模型共识 | 日更 |
+| `opportunities` | `opportunities` | 交易机会信号 | 实时 |
+
+---
+
+## 4. ML 预测数据（infrax-data）
+
+| 端点 | 内容 |
+|---|---|
+| `/ml/predictions?model=bolt|moirai|timesfm&symbol=` | P2 单模型预测明细：`{generated_at, direction, prob_up, uncertainty, point_forecast, quantiles}` |
+
+采集器生成的预测快照（见上表 `ml/*`）供 AI 策略使用。
+
+---
+
+## 5. 符号与市场元数据（infrax-data）
+
+| 端点 | 返回 |
+|---|---|
+| `/symbols?timeframe=&min_bars=` | 指定 timeframe 内 bar 数 ≥ min_bars 的符号清单（ml-service 训练用） |
+| `/symbols/search?keyword=&market=` | 模糊搜索（crypto/usstock/forex/futures/cnstock/hkstock），返回 `{symbol, market, market_type, exchange, active}` |
+| `/symbol/resolve?symbol=&market=` | 单符号→标准交易对（DS-4/11）：`BTC→BTCUSDT`、`EUR/USD→EURUSD=X` |
+| `/policy/broker-market` | 券商市场策略（DS-5）：crypto 交易所清单，default=Binance |
+
+---
+
+## 6. Graph 图谱数据（ragservicer + knowledge-injector）
+
+### 6.1 图谱是什么
+
+基于 **LightRAG** 的知识图谱：注入的文档经 LLM 抽取**实体（entities）与关系（relations）**构建图结构，同时建向量索引。支持多租户（tenant）× 多命名空间（namespace）隔离。
+
+- 写入：**knowledge-injector**（9113）把外部数据源/文档批量转成 LightRAG 注入
+- 存储与检索：**ragservicer**（9721）持有图谱实例（LightRAG 存储落盘 `projects/ragservicer/data/`，已在 .gitignore）
+
+### 6.2 图谱查询端点（ragservicer，前缀 `/api/rag/v1/`）
+
+| 端点 | 说明 |
+|---|---|
+| `POST /api/rag/v1/namespaces/{ns}/query` | 图谱混合检索，返回 **entities + relations + chunks**（不生成 LLM 答案，供调用方自接 LLM） |
+| `POST /api/rag/v1/namespaces/{ns}/retrieve` | 纯检索（`top_k` 可调），只回上下文 |
+| `POST /api/rag/v1/namespaces/{ns}/documents` | 注入单篇文档 → 自动抽实体关系建图 + 向量化 |
+| `POST /api/rag/v1/namespaces/{ns}/documents/batch` | 批量注入 |
+| `GET /api/rag/v1/namespaces/{ns}/documents` / `DELETE .../{doc_id}` | 文档列表 / 删除 |
+| `GET /api/rag/v1/namespaces/{ns}/tasks/{task_id}` | 注入任务状态（读写分离异步队列） |
+| `GET /api/rag/v1/tenants`、`POST /api/rag/v1/tenants`、`.../{id}/keys` | 租户与 key 管理（admin） |
+| `GET /api/rag/v1/instances`、`/api/rag/v1/admin/config`、`/admin/tasks` | 实例 / 热配置 / 任务（admin） |
+
+**查询 mode**（LightRAG QueryParam，`/query` 与 `/retrieve` 共用）：
+
+| mode | 语义 |
+|---|---|
+| `local` | 图谱局部检索（实体邻居扩展） |
+| `global` | 图谱全局社区检索 |
+| `hybrid` | local + global 融合 |
+| `nl` | 自然语言图谱检索 |
+| `mix`（默认） | vector + graph + keyword 混合 |
+| `naive` | 纯向量 / 关键词 |
+
+### 6.3 图谱注入端点（knowledge-injector，9113）
+
+| 端点 | 说明 |
+|---|---|
+| `POST /inject/{source}` | 按数据源注入图谱 |
+| `POST /inject/all` | 全量注入 |
+| `POST /inject/parsed` | 注入已解析文档 |
+| `POST /query` | 图谱查询 |
+| `GET /status` / `/injectors` / `/stats` / `/stats/recent` | 注入器状态 / 统计 |
+| `GET|PUT /admin/config` | key 热配置（admin） |
+
+### 6.4 MCP 接入
+
+ragservicer 内置 **MCP Server**（STDIO），图谱检索工具经 MCP 协议暴露给智能体（`mcp_server/tools.py`、`mcp_server/server.py`）。
+
+---
+
+## 7. 数据源总览
+
+| 域 | 数据源 |
+|---|---|
+| crypto | ccxt（binance spot/usdm；okx/bybit 备用）、CoinGecko（价格）、OKX ChainOS |
+| 美股 | yfinance、腾讯美股（qt.gtimg.cn）、akshare 日线、Finnhub/Twelve Data（符号 lookup） |
+| 外汇 | Twelve Data、yfinance（`EURUSD=X`） |
+| 期货 | yfinance（`* =F`）、akshare |
+| A 股 / 港股 | 腾讯日线（sh/sz/hk）、AkShare 基本面 |
+| 宏观 | FRED（vix/dxy/us10y/us_indicators）、恐惧贪婪 API |
+| 舆情 | NEWSAPI / Adanos / FinBERT 情绪 |
+| 链上 | BTC 难度/转账（公共链上数据源）、OKX ChainOS |
+| 图谱 | LightRAG（实体-关系图 + 向量 + 关键词三路检索） |
+
+---
+
+## 8. 附：管理端点
+
+| 端点 | 说明 |
+|---|---|
+| `/admin/config` GET/PUT | 数据源 API key 热配置（掩码回显） |
+| `/admin/status` | 采集器运行状态 + 熔断器 + 数据新鲜度 + key 概览 |
+| `/admin/symbols` PUT | 交易对热管理（add/remove/set，无需重启） |
+| `/admin/api-keys` CRUD + `/rotate` | 多租户 key 签发 / 轮换 / 删除（仅存哈希） |
+| `/api-keys/verify` | 校验外部服务 key（scope=mcp/payment/vault/mpc） |
+| `/stats` `/health` `/metrics` | 库统计 / 健康 / Prometheus |
