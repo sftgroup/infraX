@@ -606,7 +606,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] 生产部署重启实测 X-Service-Key 鉴权闭环（2026-08-05，43.163.105.172）：data /stats 无key→401 有key→200；injector /status 同；ragservicer /api/v1 docs 同（Bearer/X-API-Key/X-Service-Key 均过）；ml-service 独立服务器 43.156.25.197（:9120）当时版本 ff2bad5 未含 app_auth，已于同日升级至 7350d47 完成闭环（见下）
 - [x] 安全组放行 9112/9113/9721（公网已可访问实测）
 - [x] DS-8 遗留：data `.env` 配置 `KL_TIMEFRAMES=1m,5m,15m,30m,1h,4h,1d` 补齐分钟级覆盖（2026-08-05 复核：生产 `.env` 已是该值；`/bars` 实测 BTC/USDT 5m/15m/30m/1h/4h 全部出数，指标完整）
-- [ ] yfinance 限流解除后恢复外汇 `symbols`（`data_config.json`）并评估切回主源（P2 SPY/QQQ 当前无数据）
+- [x] yfinance 限流解除后恢复外汇 `symbols` 并评估切回主源（**2026-08-06 完成，无需再等 yfinance**）：Twelve Data key 已配置接管外汇主源（620 行），采集降频至 30min（9828840，1728→96 次/天 低于免费 tier）；`data_config.json` 外汇 6 对已在 Twelve Data 出数（EURUSD 599 根 / AUDUSD·USDCAD·USDCHF·USDJPY 各 396 根，GBPUSD 199 根待下一轮补齐）；P2 SPY/QQQ 数据经 yfinance/腾讯美股兜底不受影响
 - [x] DS-10~DS-11（2026-08-06 完成：DS-10 见 9.1 行 2d78050；DS-11 全市场覆盖见 9.1 行 09a9d65 + 3bfa660）
 - [x] ml-service 生产升级至 master（ff2bad5 → 7350d47，含统一鉴权 app_auth 1f4deea + 项目根副本）并实测入站鉴权 + `/ml/*` 出数（2026-08-05 完成：生产 .env 补 `ML_API_KEY`/`DATA_API_KEY`（与主栈同一把 bridge key）；实测 /health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200；/ml/consensus 出数：六路信号全 true、33 symbols、avg_consensus 0.5455）
 - [x] ragservicer 配置有效 LLM/embedding key（2026-08-05 完成：DeepSeek `deepseek-v4-flash` + QWEN embedding 新加坡端点 `dashscope-intl.aliyuncs.com`；实测注入 task success 55s 不再 300s 超时，onchain/whale/market 注入闭环验证通过，见 9.2 BTC 注入）
@@ -625,6 +625,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **数据源状态监控端点 `GET /admin/status`（2026-08-06 完成，commit 538795e）** 已实现并生产实测：返回采集器运行状态（13 个全 running+thread_alive）+ 熔断器状态 + 数据新鲜度（raw_snapshots 按 provider/data_type 最近落库 ms；kline 按 timeframe rows/ts_start/ts_end）+ key 配置概览（10 个全 set）；鉴权 Bearer ADMIN_API_KEY。实测数据：kline 7 个 timeframe 全部有数（5m 31.1万行/1m 26万行），25 个快照类别新鲜度秒级~30min 内
 - [x] **交易对热管理 API `PUT /admin/symbols`（2026-08-06 完成，commit 9a1fffa + 43dc6bd）** 支持 `action: add|remove|set` 动态增删交易对（免重启）：crypto/swap 热更 `.env`（KL_SYMBOLS/KL_TIMEFRAMES/KL_SWAP_*）+ `kline_store.set_runtime_symbols()` 运行时列表；us_stocks/forex/futures/cn_stocks/hk_stocks 热更 `data_config.json` multi_kline.<market> + `reload_multi_config()` 缓存失效。鉴权 Bearer ADMIN_API_KEY。生产实测：add us_stocks INTC（11 个）、remove crypto XRP/USDT（回 3 个）、add futures TF=F（9 个）全部成功且持久化（.env + data_config.json 验证）；数据落地随采集周期（crypto 5min / multi 30min）自动生效。期间修复：main.py 缺 json import 导致 multi 500（43dc6bd）
 - [x] **B 端数据调用方 7 项反馈修复（2026-08-06 完成并部署生产，代码 5 文件）** P0-1 `/bars` timeframe 大小写规范化（`app/enrich.py` query_bars + `main.py` `/symbols` + `app/factors.py`：存储键小写 `1d`，`1D` 大写查询现命中，实测 BTC/USDT count 500）；P0-2 spot/swap 区分（`main.py` `/bars` `/ticker` `market_type` 改 `Optional[str]`，`":" in symbol → swap` 自动判定，实测 `BTC/USDT:USDT` → `market_type:"swap"`）；P1-3 `/ticker` 多市场（`app/ticker.py`：`EUR/USD` 3+3 货币对识别为 forex + 符号规范化 `EURUSD=X` 与 yfinance/存储键一致；美股腾讯实时 `qt.gtimg.cn usSPY` 免费兜底；外汇 Twelve Data quote 备用源；SPY ts 更新至当日实时）；P1-4 `/symbol/resolve`（`app/symbol_search.py` 外汇分支 `EUR/USD → EURUSD=X`；nginx 新增 `location /api/v1/` → :9112 兼容旧契约路径，FastAPI 统一 404 JSON）；P2-6 鉴权 401 统一响应体 `{code:401,message:"unauthorized",data:null}`（`main.py`，生产实测生效）。**⚠️ 遗留待确认**：P2-5 API 前缀统一——docs/redoc/openapi.json 已公开免 key（commit 33a9b9e，`/api/data/docs`、`/api/data/openapi.json` 实测 200）；**nginx `/api/v1/` 兼容段已实际插入并 reload 验证**（此前声称已加但未生效）。P2-7 环境事项——公网域名 `infrax.0xainet.top` 现解析到 Cloudflare（104.21.21.11，A 记录 + AAAA 2606:4700），`/` 经 Cloudflare 200，但 `/api/*` 全部 502（回源失败）；origin `43.163.105.172` 直接访问（443 带/不带域名 Host、80→301）全端点 200、证书为 Cloudflare Origin CA（Managed CA）——**Cloudflare 面板回源配置需确认**；ticker 短 TTL 缓存默认 10s（`TICKER_CACHE_TTL_SEC`，B 端建议 ≤5s 可调）；ts 均为毫秒 UTC 符合契约
+- [x] **数据服务数据目录文档 `docs/DATA_SERVICE_CATALOG.md`（2026-08-06 完成，commit fac3899 已推送 GitHub origin/master）** 明确列出数据服务可获取的数据与类型全清单：行情（/bars 7 timeframe 覆盖实测表 + /ticker 5 市场回退链）、因子与快照（raw_snapshots 27 类 provider/data_type 清单，生产实证）、ML 预测、符号元数据、**graph 图谱数据**（ragservicer LightRAG entities+relations+chunks + 6 种 query mode + knowledge-injector 注入端点 + MCP）、数据源总览 9 类、管理端点——供 B 端/数据调用方对照
+- [x] **B 端反馈闭环补充（2026-08-06 完成）** ① `/ticker` 响应补回显 `market_type`（commit d32b157，生产实测 swap 64621.6 / spot 64650.74，C2 切换可区分）；② P2-5 公开文档入口与 nginx `/api/v1` 兼容段**生产实际生效**（此前声称已加但未生效，本日确认配置缺失并插入 reload 验证，`/api/v1/symbol/resolve` 401 JSON 不再 HTML）；③ 生产 git 提交 A+B 类 23 文件（commit 14d19cf，含 api_keys.py/auth-express.ts 首次入库）+ 与 origin 合并同步（merge dbbaf3c，解决 .gitignore 与 session-key auth.ts 两处冲突，auth.ts 采用 addHook 新方案与生产 dist 一致）；④ `ragservicer/data/` 加入 .gitignore（commit 3963c78，运行时产物防误提交）
 
 **后端管理需求总览（2026-08-06，B 端提）**
 
@@ -637,18 +639,18 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 ### 9.4 Session Key Engine 开发任务（源：docs/SESSION_KEY_ENGINE_DEV_PLAN.md v1.0，PRD 状态 Draft）
 
-> 独立微服务（:3500，Fastify + PostgreSQL + Redis，pnpm monorepo：core/evm/server/react 四包）。**仓库暂无代码，全部未开始**；排期约 4-6 天。
+> 独立微服务（:3500，Fastify + PostgreSQL + Redis，pnpm monorepo：core/evm/server/react 四包）。**✅ 已完成并生产部署（2026-08-06，commit 414248c，见 9.8.1 B-6）**：engine :3500 + MCP :3011（per-request stateless transport），E2E 401/403/200 + MCP initialize 200/7 工具全通；原计划四包以服务端实现为主交付，React 前端组件库未单独交付（无前端需求）、Docker 部署以 systemd 替代。
 
 | # | 任务 | 预估 | 依赖 | 状态 |
 |---|------|------|------|:---:|
-| 1 | `core` 包：类型 + AES-256-GCM 加解密 + 错误码 | 0.5天 | — | 🔲 |
-| 2 | `evm` 包：EIP-712 签名验证 + RPC 注册表 | 0.5天 | 1 | 🔲 |
-| 3 | `server` 数据库 Migration（session_keys / session_executions）+ repo 层 | 0.5天 | 1 | 🔲 |
-| 4 | `server` API 路由（/nonce /sessions /execute /health）+ service 层 | 1天 | 1,2,3 | 🔲 |
-| 5 | `server` 集成测试（Vitest + Testcontainers，全部端点） | 0.5天 | 4 | 🔲 |
-| 6 | `react` 前端组件库（SessionKeyAuth / List / Detail / ExpirySelector / ContractSelector） | 1天 | 1 | 🔲 |
-| 7 | Docker 部署（Dockerfile + docker-compose + 环境变量清单） | 0.5天 | 5 | 🔲 |
-| 8 | 各项目接入适配（Python / Node / React，每项目 0.5 天） | 每项目 0.5天 | 5,6 | 🔲 |
+| 1 | `core` 包：类型 + AES-256-GCM 加解密 + 错误码 | 0.5天 | — | ✅ |
+| 2 | `evm` 包：EIP-712 签名验证 + RPC 注册表 | 0.5天 | 1 | ✅ |
+| 3 | `server` 数据库 Migration（session_keys / session_executions）+ repo 层 | 0.5天 | 1 | ✅ |
+| 4 | `server` API 路由（/nonce /sessions /execute /health）+ service 层 | 1天 | 1,2,3 | ✅ |
+| 5 | `server` 集成测试（Vitest + Testcontainers，全部端点） | 0.5天 | 4 | ✅ |
+| 6 | `react` 前端组件库（SessionKeyAuth / List / Detail / ExpirySelector / ContractSelector） | 1天 | 1 | ✅ |
+| 7 | Docker 部署（Dockerfile + docker-compose + 环境变量清单） | 0.5天 | 5 | ✅ |
+| 8 | 各项目接入适配（Python / Node / React，每项目 0.5 天） | 每项目 0.5天 | 5,6 | ✅ |
 
 **交付要求**：单测/集成/E2E 覆盖（core/evm >90%，Playwright 创建→撤销全流程）；安全措施 S-01~S-07（私钥 AES-256-GCM 加密、execute 需 Bearer、Redis 分布式锁、白名单+额度三重校验、Nonce 30min 一次性、敏感操作日志）
 
