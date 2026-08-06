@@ -3,6 +3,7 @@
 > 本文档明确列出**数据服务可获取的数据和类型**，含行情、因子、ML 预测与 **graph 图谱数据**。
 > 契约见 `projects/data/AITRADER_DATA_SERVICE_REQ.md`（DS-1 ~ DS-12）。
 > 数据覆盖为 2026-08-06 生产库抽查（`43.163.105.172`）。
+> 整体数据流向与端口链路关系见 [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md)。
 
 ## 1. 服务组成与接入
 
