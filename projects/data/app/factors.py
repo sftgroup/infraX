@@ -43,6 +43,29 @@ _BUILTIN = [
     {"id": "btc_hashrate",   "name": "BTC Hashrate",          "category": "onchain", "type": "float", "range": [0, None]},
 ]
 
+# ─── ML factor catalog（DS-13，来源 ml-service，category="ml"）───
+# tree_* 来自 /ml/tree_predictions（LightGBM）；finbert_* 来自 /ml/sentiment；
+# bolt/moirai/timesfm_* 来自 ml_predictions 明细表；consensus_* 来自 /ml/consensus。
+# direction 统一数值化：up=1 / flat=0 / down=-1（catalog type=int，见 B 端 DS-13 要求）。
+_ML_FACTORS = [
+    {"id": "tree_direction",    "name": "LightGBM Direction",      "category": "ml", "type": "int",   "range": [-1, 1]},
+    {"id": "tree_prob_up",      "name": "LightGBM P(Up)",          "category": "ml", "type": "float", "range": [0, 1]},
+    {"id": "finbert_sentiment", "name": "FinBERT Sentiment",       "category": "ml", "type": "float", "range": [-1, 1]},
+    {"id": "consensus_score",   "name": "Cross-model Consensus",   "category": "ml", "type": "float", "range": [0, 1]},
+    {"id": "bolt_direction",    "name": "Bolt Direction",          "category": "ml", "type": "int",   "range": [-1, 1]},
+    {"id": "bolt_prob_up",      "name": "Bolt P(Up)",              "category": "ml", "type": "float", "range": [0, 1]},
+    {"id": "moirai_direction",  "name": "Moirai Direction",        "category": "ml", "type": "int",   "range": [-1, 1]},
+    {"id": "moirai_prob_up",    "name": "Moirai P(Up)",            "category": "ml", "type": "float", "range": [0, 1]},
+    {"id": "timesfm_direction", "name": "TimesFM Direction",       "category": "ml", "type": "int",   "range": [-1, 1]},
+    {"id": "timesfm_prob_up",   "name": "TimesFM P(Up)",           "category": "ml", "type": "float", "range": [0, 1]},
+]
+
+# ML 因子（history asof 对齐时并入 _NON_TECH_FACTORS 同型序列）
+_ML_FACTOR_IDS = tuple(f["id"] for f in _ML_FACTORS)
+
+# direction 字符串 → 数值（up=1 / flat=0 / down=-1）
+_DIRECTION_VALUE = {"up": 1, "flat": 0, "down": -1}
+
 
 # crypto 裸对 → 交易对存储键（resolve 返回 BTCUSDT 形式，kline 存 BTC/USDT）。
 # 仅识别已知 quote 后缀，非 crypto 符号（AAPL/GC=F/EURUSD/600519）原样返回。
@@ -89,8 +112,8 @@ def _load_extra_factors() -> list[dict]:
 
 
 def get_catalog() -> list[dict]:
-    """Return full factor catalog (built-in + extra from config)."""
-    return _BUILTIN + _load_extra_factors()
+    """Return full factor catalog (built-in + ML + extra from config)."""
+    return _BUILTIN + _ML_FACTORS + _load_extra_factors()
 
 
 # ─── Category → provider/data_type mapping ─────────────
@@ -230,6 +253,12 @@ def get_current_factors(
                 if val is not None:
                     result[sym][fid] = val
 
+    # DS-13: ML 因子并入（tree/consensus/ml_predictions，按 symbol 广播）
+    latest_ml = _load_latest_ml()
+    for sym in target:
+        for fid, val in latest_ml.get(_ml_symbol_key(sym), {}).items():
+            result[sym][fid] = val
+
     result["_ts"] = int(max_ts)
     if complex_data:
         result["_complex"] = complex_data
@@ -331,6 +360,193 @@ _NON_TECH_FACTORS = (
 )
 
 
+# ─── ML factor loaders（DS-13）────────────────────────────────
+
+# 各源 symbol 形式不同：tree_predictions 用 "BTC/USDT"，consensus/ml_predictions 用 "BTC"。
+# 统一归一化到裸代号（BTCUSDT → BTC；非 crypto 原样返回）。
+def _ml_symbol_key(symbol: str) -> str:
+    s = (symbol or "").strip()
+    if "/" in s:
+        s = s.split("/")[0].strip()
+    elif ":" in s:
+        s = s.split(":")[0].strip()
+    for q in _CRYPTO_QUOTES:
+        if s.endswith(q) and len(s) > len(q):
+            return s[: -len(q)]
+    return s
+
+
+def _dir_val(v) -> int | None:
+    """direction 字符串 → 数值（up=1/flat=0/down=-1）；已是数值原样返回。"""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v) if v in (1, 0, -1) else v
+    return _DIRECTION_VALUE.get(str(v).strip().lower())
+
+
+def _load_latest_ml() -> dict[str, dict]:
+    """Latest ML factors indexed by normalized symbol key.
+
+    数据源（ml_predictions 表最新 + raw_snapshots 最新快照）：
+      tree_predictions → tree_direction / tree_prob_up
+      consensus       → consensus_score / finbert_sentiment / bolt·timesfm 信号
+      ml_predictions  → 每 model×symbol 最新 direction/prob_up（bolt/moirai/timesfm）
+    """
+    db = get_db()
+    out: dict[str, dict] = {}
+
+    # 1. tree_predictions 最新快照
+    row = db.execute(
+        "SELECT raw_json FROM raw_snapshots WHERE data_type='tree_predictions' ORDER BY fetched_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        try:
+            data = json.loads(row["raw_json"] or "{}") or {}
+        except Exception:
+            data = {}
+        for p in data.get("predictions") or []:
+            k = _ml_symbol_key(str(p.get("symbol", "")))
+            if not k:
+                continue
+            d = out.setdefault(k, {})
+            if "direction" in p:
+                d["tree_direction"] = _dir_val(p.get("direction"))
+            if p.get("prob_up") is not None:
+                d["tree_prob_up"] = round(float(p["prob_up"]), 6)
+
+    # 2. consensus 最新快照（聚合 tree/bolt/timesfm/sentiment 信号）
+    row = db.execute(
+        "SELECT raw_json FROM raw_snapshots WHERE data_type='consensus' ORDER BY fetched_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        try:
+            data = json.loads(row["raw_json"] or "{}") or {}
+        except Exception:
+            data = {}
+        for s in data.get("symbols") or []:
+            k = _ml_symbol_key(str(s.get("symbol", "")))
+            if not k:
+                continue
+            d = out.setdefault(k, {})
+            if s.get("consensus_score") is not None:
+                d["consensus_score"] = round(float(s["consensus_score"]), 6)
+            if s.get("sentiment_score") is not None:
+                d["finbert_sentiment"] = round(float(s["sentiment_score"]), 6)
+            if "tree_direction" in s:
+                d["tree_direction"] = _dir_val(s.get("tree_direction"))
+            if s.get("tree_prob_up") is not None:
+                d["tree_prob_up"] = round(float(s["tree_prob_up"]), 6)
+            for m in ("bolt", "moirai", "timesfm"):
+                if s.get(f"{m}_direction") is not None:
+                    d[f"{m}_direction"] = _dir_val(s.get(f"{m}_direction"))
+                if s.get(f"{m}_prob_up") is not None:
+                    d[f"{m}_prob_up"] = round(float(s[f"{m}_prob_up"]), 6)
+
+    # 3. ml_predictions 每 model×symbol 最新（bolt/moirai/timesfm）
+    rows = db.execute(
+        """SELECT m.model, m.symbol, m.direction, m.prob_up
+           FROM ml_predictions m
+           JOIN (SELECT model, symbol, MAX(generated_at) AS g
+                 FROM ml_predictions GROUP BY model, symbol) t
+             ON m.model = t.model AND m.symbol = t.symbol AND m.generated_at = t.g"""
+    ).fetchall()
+    for r in rows:
+        k = _ml_symbol_key(r["symbol"])
+        if not k:
+            continue
+        d = out.setdefault(k, {})
+        if r["direction"] is not None:
+            d[f"{r['model']}_direction"] = _dir_val(r["direction"])
+        if r["prob_up"] is not None:
+            d[f"{r['model']}_prob_up"] = round(float(r["prob_up"]), 6)
+
+    return out
+
+
+def _load_ml_history(symbol: str) -> dict[str, tuple[list[int], list[float]]]:
+    """Per-symbol ML factor step history: {factor_id: (sorted_ts, values)}。
+
+    回测 asof 对齐使用（fetched_at/generated_at ≤ bar ts 最近值），与
+    _load_non_tech_history 同型。来源：
+      tree_predictions / consensus 快照历史（raw_snapshots，每快照按 symbol 提取）
+      ml_predictions 明细表（逐 model×symbol×generated_at）
+    """
+    db = get_db()
+    key = _ml_symbol_key(symbol)
+    raw: dict[str, list[tuple[int, float]]] = {f: [] for f in _ML_FACTOR_IDS}
+
+    def _push(fid: str, ts: int, val):
+        if val is None:
+            return
+        try:
+            v = float(val)
+        except (TypeError, ValueError):
+            return
+        raw[fid].append((int(ts), v))
+
+    # 快照历史（tree_predictions / consensus）
+    for dt in ("tree_predictions", "consensus"):
+        rows = db.execute(
+            "SELECT raw_json, fetched_at FROM raw_snapshots WHERE data_type=? ORDER BY fetched_at ASC LIMIT 50000",
+            (dt,),
+        ).fetchall()
+        for r in rows:
+            ts = r["fetched_at"]
+            if not ts:
+                continue
+            try:
+                data = json.loads(r["raw_json"] or "{}") or {}
+            except Exception:
+                continue
+            items = data.get("symbols") if dt == "consensus" else data.get("predictions")
+            for s in items or []:
+                if _ml_symbol_key(str(s.get("symbol", ""))) != key:
+                    continue
+                if dt == "tree_predictions":
+                    _push("tree_direction", ts, _dir_val(s.get("direction")))
+                    _push("tree_prob_up", ts, s.get("prob_up"))
+                else:
+                    _push("consensus_score", ts, s.get("consensus_score"))
+                    _push("finbert_sentiment", ts, s.get("sentiment_score"))
+                    if s.get("tree_direction") is not None:
+                        _push("tree_direction", ts, _dir_val(s.get("tree_direction")))
+                    if s.get("tree_prob_up") is not None:
+                        _push("tree_prob_up", ts, s.get("tree_prob_up"))
+                    for m in ("bolt", "moirai", "timesfm"):
+                        if s.get(f"{m}_direction") is not None:
+                            _push(f"{m}_direction", ts, _dir_val(s.get(f"{m}_direction")))
+                        if s.get(f"{m}_prob_up") is not None:
+                            _push(f"{m}_prob_up", ts, s.get(f"{m}_prob_up"))
+
+    # ml_predictions 明细历史（bolt/moirai/timesfm）
+    rows = db.execute(
+        "SELECT model, symbol, generated_at, direction, prob_up FROM ml_predictions ORDER BY generated_at ASC LIMIT 50000"
+    ).fetchall()
+    for r in rows:
+        if _ml_symbol_key(r["symbol"]) != key:
+            continue
+        ts = r["generated_at"]
+        m = r["model"]
+        _push(f"{m}_direction", ts, _dir_val(r["direction"]))
+        _push(f"{m}_prob_up", ts, r["prob_up"])
+
+    # 值变化步进压缩（同 _load_non_tech_history）
+    out: dict[str, tuple[list[int], list[float]]] = {}
+    for fid, seq in raw.items():
+        if not seq:
+            continue
+        steps: dict[int, float] = {}
+        last = None
+        for t, v in seq:
+            if v != last:
+                steps[t] = v
+                last = v
+        ts_list = sorted(steps)
+        out[fid] = (ts_list, [steps[t] for t in ts_list])
+    return out
+
+
 def get_history_factors(
     symbol: str,
     timeframe: str = "1m",
@@ -385,11 +601,17 @@ def get_history_factors(
     import bisect
     macro_hist = _load_non_tech_history()
 
-    wanted = set(ids) if ids else set(_TECH_FACTORS + _NON_TECH_FACTORS)
+    # DS-13: ML 因子历史（tree/consensus/ml_predictions，按 symbol 取 asof 序列）
+    ml_hist = _load_ml_history(symbol)
+
+    wanted = set(ids) if ids else set(_TECH_FACTORS + _NON_TECH_FACTORS + _ML_FACTOR_IDS)
     _aso = {}
     for col in _NON_TECH_FACTORS:
         if col in wanted and macro_hist.get(col):
             _aso[col] = macro_hist[col]
+    for col in _ML_FACTOR_IDS:
+        if col in wanted and ml_hist.get(col):
+            _aso[col] = ml_hist[col]
 
     series: list[dict] = []
     for r in rows:
@@ -398,6 +620,12 @@ def get_history_factors(
             if col in wanted and r[col] is not None:
                 item[col] = r[col]
         for col in _NON_TECH_FACTORS:
+            if col in wanted and col in _aso:
+                ts_list, val_list = _aso[col]
+                idx = bisect.bisect_right(ts_list, r["ts"]) - 1
+                if idx >= 0:
+                    item[col] = val_list[idx]
+        for col in _ML_FACTOR_IDS:
             if col in wanted and col in _aso:
                 ts_list, val_list = _aso[col]
                 idx = bisect.bisect_right(ts_list, r["ts"]) - 1
