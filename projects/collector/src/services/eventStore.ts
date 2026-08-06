@@ -46,7 +46,9 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
             evt.from_address,
             evt.to_address,
             evt.token_address,
-            evt.token_symbol,
+            // 兜底：normalizer 某类事件未填 token_symbol（null）会违反 NOT NULL 约束，
+            // 导致 postgres ERROR 日志每秒刷屏（曾堆满 30G 系统盘）。空串可入库。
+            evt.token_symbol ?? '',
             evt.token_id,
             evt.amount,
             evt.amount_raw,
