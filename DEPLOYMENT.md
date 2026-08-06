@@ -15,7 +15,7 @@
 | SSH | 直连 |
 | 代码路径 | `/home/ubuntu/infraX-1` |
 | 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721/3002；session-key 3500；MCP 3008/3011；nginx 80/443 |
-| 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [DEPLOYMENT_DATA_STACK §2.1](./docs/infrax_tasklist.md)） |
+| 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [infrax_tasklist §2.1](./docs/infrax_tasklist.md)） |
 | ml-service | 独立服务器 **43.156.25.197**:9120（不在本机） |
 
 ```bash
@@ -102,7 +102,7 @@ ssh ubuntu@43.163.105.172
 | `/` | admin/web 前端 | InfraX Web3 平台（需登录态） |
 
 - 80 端口一律 301 → 443；TLS 证书为 **Cloudflare Origin CA**（为 `infrax.0xainet.top` 签发，过期 2041）
-- 域名 `infrax.0xainet.top` DNS 现指向 Cloudflare（A 104.21.21.11），当前 `/api/*` 经公网 502（回源失败，origin 直连全 200）——**待 Cloudflare 面板修正回源**，详情与排查命令见 [DEPLOYMENT_DATA_STACK §2.1](./docs/infrax_tasklist.md)
+- 域名 `infrax.0xainet.top` DNS 现指向 Cloudflare（A 104.21.21.11），当前 `/api/*` 经公网 502（回源失败，origin 直连全 200）——**待 Cloudflare 面板修正回源**，详情与排查命令见 [infrax_tasklist §2.1](./docs/infrax_tasklist.md)
 
 ## 防火墙端口
 
