@@ -962,6 +962,39 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | C-6 | **图谱注入无语义去噪**：新闻/链上/OKX 源仅去重+截断，广告/重复公告直接进 LightRAG | `projects/knowledge-injector/injector/*.py` | 🔲 P2 |
 | C-7 | **数据质量不可观测**：建议收敛显式清洗规则模块（`app/cleaning.py`，查询路径清洗）+ `/stats`/`/admin` 暴露质量指标（缺失率/异常 bar 数/源新鲜度） | 无现状（方案） | 🔲 P2 |
 
+**9.8.7 数据模块需求补充（完整规格，2026-08-07，B 端需求：先补数据模块）**
+
+> 数据模块 = data-service（:9112）+ collector 数据采集链路。将 C-1~C-7 及数据侧 R 项细化为可执行需求（DQ 编号）。每条含 需求 / 契约 / 验收标准 / 优先级。
+
+| 编号 | 需求 | 契约 | 验收标准 | 优先级 |
+|:---:|---|---|---|:---:|
+| DQ-1 | **异常 bar 检测**（C-1）：`/bars` 查询路径与指标计算前过滤异常 bar（极端跳空 / 零成交量 / 负价 / 价格突变） | 新增 `app/cleaning.py`，`clean_bars()` 于 `/bars` 调用；异常处理策略可配置（剔除 / `is_abnormal` 打标） | 构造含零量/负价/跳空样本 → `/bars` 不返回异常或带标记；RSI/MACD 计算不被污染 | P1 |
+| DQ-2 | **因子缺失值策略**（C-2）：`/factors/history` 对缺值因子列统一前值填充（ffill，同 symbol 内）或返回 null 占位，策略可配置并文档化 | history 响应因子列按 bar 时间序 ffill；不跨 symbol；不引入未来值 | 构造缺值序列 → history 返回填充后序列，且无未来函数 | P2 |
+| DQ-3 | **多源时间戳精度归一化**（C-3）：`/bars` `/factors/history` 查询入口强制毫秒——收到秒级 start/end 自动 ×1000，内部统一毫秒 | 入口归一化函数对 `start`/`end` 若 <1e12 视为秒自动换算 | 传秒级参数结果与毫秒级完全一致（SDK 与 HTTP 双验证） | P1 |
+| DQ-4 | **实时因子新鲜度校验**（C-4）：`/factors/current` 对每个因子返回 `age_ms` 与新鲜度标记；超过 `FRESHNESS_MS`（config）标记 `stale` 或剔除 | current 响应因子附 `_meta`：`{factor_id: {age_ms, fresh: bool}}`；config 新增 `FRESHNESS_MS` | 对 2h 前 fear_greed，响应含 `fresh:false` 标记 | P1 |
+| DQ-5 | **ml_predictions 写入约束**（C-5）：写入层统一符号规范（大写/`normalize_crypto_pair` 归一化），按 `(model, symbol, generated_at)` 幂等去重 | 采集/写入前 normalize + UPSERT；`/ml/predictions` 输出无重复、符号统一 | 构造大小写混合/重复样本 → 查询返回唯一规范化结果 | P1 |
+| DQ-6 | **数据质量可观测**（C-7）：收敛显式清洗规则模块 `app/cleaning.py`（查询路径清洗）+ 质量指标暴露 | `/stats` 新增 `quality: {missing_rate, abnormal_bars, source_freshness}`；清洗规则以函数/规则表集中维护 | 指标与库内真实数据一致；`/stats` 可直接观测质量 | P2 |
+| DQ-7 | **okx 采集链路补全**（R-3）：candles 落新栈 raw_snapshots；修复 v5 `okx_token_snapshots`（当前 0 行）；启用 mempump 定时器 | okx 采集新增 `okx_candles` 快照类型；v5 采集排查 key/调度/写入 | `/snapshots?type=okx_candles` 有数；`okx_token_snapshots` 行数 > 0 | P2 |
+| DQ-8 | **catalog 死条目治理**（btc_hashrate）：声明了但无采集器/无落库/未挂 `_SIMPLE_FACTOR_IDS`——实现采集（mempool hashrate API）或从 catalog 移除 | 二选一：接 `/api/v1/mining/hashrate` 落库并挂 `_SIMPLE_FACTOR_IDS`；或删 catalog 条目 | `/factors/catalog` 无死条目；`btc_hashrate` 有值或不存在 | P2 |
+
+> 注：okx `price_change_24h` numeric overflow 已修复 ✅（`a925065`，生产已 ALTER）；DS-14 Python SDK 已交付 ✅（`8e92921` + tag `v0.1.0`）；R-4 okx 生产出数已实测闭环 ✅。
+
+**9.8.8 其他微服务需求补充（完整规格，2026-08-07，B 端需求：再补其他微服务）**
+
+> 其他微服务 = 区块链栈（waas/dc/mpc/payment/session-key）+ 数据相关微服务（collector/knowledge-injector）。将 R 项、C-6 及 B-10 关键项细化为可执行需求（MQ 编号）。
+
+| 编号 | 需求 | 契约 | 验收标准 | 优先级 |
+|:---:|---|---|---|:---:|
+| MQ-1 | **通用 RPC 转发代理**（R-1 / B-10-4）：waas 新增 `POST /api/v2/wallet/rpc`，收编 SDK `wallet.rpc()`（现 404） | `POST /api/v2/wallet/rpc` `{chain, method, params[]}` → 转发对应 RPC 节点，返回标准 JSON-RPC `{result/error}`；鉴权沿用统一契约 | SDK `wallet.rpc()` 返回真实链上结果；未授权 401 | P1 |
+| MQ-2 | **SDK WalletAPI 契约对齐**（R-2）：`wallet.send/simulate/sweep/txStatus` 由不存在端点改为 waas 真实 `/api/v2/tx/*` | SDK 方法 → waas `txRoutes` 对应端点（参数/响应按 waas 契约） | E2E 各方法 200 且返回真实 tx 数据 | P1 |
+| MQ-3 | **dc `tokens` 端点补全**（B-10-3）：MCP dc-index 的 `dc_tokens` 调 `/api/v2/data/tokens` 必 404——dc 补端点或工具改接 `/plans` `/chains` | dc 新增 `GET /api/v2/data/tokens`（返回租户链/计划明细）或 dc-index 工具改接现有端点 | MCP `dc_tokens` 调用返回真实数据、不再 404 | P1 |
+| MQ-4 | **Session Key 额度三重校验落地**（R-6）：execution-service 接 `addSpent()`，`maxPerTx/maxTotal` 真实校验，`quota_exhausted` 可达；`expireStale()` 过期清理接线 | 超 maxPerTx/maxTotal 拒绝执行并返回 `quota_exhausted`；过期 key 定时清理 | 构造超限调用 → 拒绝；过期 key 不再可用 | P1 |
+| MQ-5 | **Session PRD 定稿 + 测试补齐**（R-7）：PRD v1.0 发布（去 Draft），补声明缺失的集成测试 | PRD 标注 Released；全仓补充 `*.test.ts` 覆盖执行/额度/过期 | PRD 非 Draft；测试可运行通过 | P2 |
+| MQ-6 | **session-key 四包发布 + MCP/SDK 鉴权**（R-8）：发布 `@0xinfrax/session-key-core/evm/client/server` 至 npm；5 个 HTTP MCP（dc/wallet/mpc/sk/hub）入站鉴权；修正 SDK 发布记录矛盾（0.3.0 vs 0.2.0） | npm publish（去 `workspace:*` 补 publishConfig）；MCP 入站校验 `X-Service-Key`/Bearer | `pip/npm` 安装成功；未授权 MCP 调用 401；文档记录一致 | P2 |
+| MQ-7 | **MPC SDK 扩展**（R-5 / B-12-2）：infrax-dk `MPCAPI` 由 5/15 方法扩至全端点（签名/交易/合约读写/余额/gas） | SDK 方法对齐 mpc server 15 端点（`/api/v2/mpc/*`） | SDK 各方法 E2E 200 真实返回 | P2 |
+| MQ-8 | **图谱注入语义去噪**（C-6）：knowledge-injector 注入前过滤广告/重复公告/低价值噪音（黑名单规则 + 相似文本去重） | 注入器加 `denoise` 步骤（规则表 + 相似度阈值），注入 doc 数显著下降 | 图库噪音文档比例下降（抽样对比） | P2 |
+| MQ-9 | **payment/mpc 路由挂载确认**（B-10-5）：waas `paymentRoutes`/`mpcRoutes` 已定义未挂载——确认并挂载 | `server.ts` 挂载两路由；端点可访问 | 对应端点路由可达（非 404） | P1 |
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。
