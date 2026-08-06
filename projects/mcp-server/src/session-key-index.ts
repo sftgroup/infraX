@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { z } from "zod";
+import { inboundAuth } from "./mcp-auth.js";
 
 const SK_URL = process.env.SESSION_KEY_URL || "http://localhost:3500";
 const SK_API_KEY = process.env.SESSION_KEY_API_KEY || "";
@@ -160,6 +161,7 @@ const PORT = parseInt(process.env.PORT || "3011", 10);
 
 const app = express();
 app.use(express.json());
+app.use(inboundAuth);
 
 // stateless per-request transport：每次请求新建并 connect，
 // res 'close' 时 close() 会重置 Protocol._transport，允许下次请求重新 connect

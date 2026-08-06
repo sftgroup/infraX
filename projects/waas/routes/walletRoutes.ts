@@ -80,6 +80,28 @@ router.get(
 );
 
 /**
+ * POST /api/v2/wallet/rpc (MQ-1)
+ * 通用 RPC 转发代理 — 转发 {chain, method, params[]} 到对应 RPC 节点
+ * Auth: Wallet signature required
+ * Body: { chain: string, method: string, params?: any[] }
+ */
+router.post(
+  '/rpc',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { chain, method, params } = req.body;
+    if (!chain || typeof chain !== 'string' || !method || typeof method !== 'string') {
+      return res.status(400).json(apiResponse(null, 'Missing required fields: chain, method', 1001));
+    }
+    if (params !== undefined && !Array.isArray(params)) {
+      return res.status(400).json(apiResponse(null, 'params must be an array', 1001));
+    }
+    const result = await walletService.rpcProxy(chain, method, params || []);
+    res.json(apiResponse({ chain, method, result }, 'Success'));
+  })
+);
+
+/**
  * GET /api/v2/wallet/address
  * Get deposit address for a specific chain
  * Auth: Wallet signature required

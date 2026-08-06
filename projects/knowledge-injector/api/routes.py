@@ -189,6 +189,12 @@ def create_app() -> Flask:
         return jsonify({
             "lightrag_enabled": injector.enabled,
             "injectors": _injector_methods(),
+            # MQ-8 / C-6: 注入前语义去噪状态（开启/阈值/拦截统计）
+            "denoise": {
+                "enabled": config.SETTINGS.denoise_enabled,
+                "similarity_threshold": config.SETTINGS.denoise_similarity_threshold,
+                "stats": injector.denoise_stats(),
+            },
         })
 
     @app.route("/injectors")

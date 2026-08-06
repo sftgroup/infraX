@@ -258,7 +258,7 @@ export async function getWalletDetail(userId: string, chainId: string): Promise<
 // ══════════════════════════════════════════════════════════════
 
 /** Chain name → RPC URL lookup */
-function getRpcUrl(chain: string): string {
+export function getRpcUrl(chain: string): string {
   const rpcs: Record<string, string | undefined> = {
     sepolia: config.chainRpc?.sepolia || config.sepoliaRpcUrl,
     eth: config.chainRpc?.eth || config.ethRpcUrl || config.sepoliaRpcUrl,
@@ -269,6 +269,32 @@ function getRpcUrl(chain: string): string {
   const url = rpcs[chain.toLowerCase()];
   if (!url) throw Errors.paramError(`Unsupported NC chain: ${chain}`);
   return url;
+}
+
+/**
+ * MQ-1: 通用 RPC 转发代理。
+ * 将 {chain, method, params[]} 转发到对应 RPC 节点，返回标准 JSON-RPC result；
+ * 节点返回 error 时抛参数错误（含 error.message）。
+ */
+export async function rpcProxy(chain: string, method: string, params: unknown[] = []): Promise<any> {
+  const url = getRpcUrl(chain);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: controller.signal,
+    });
+    const json = await resp.json();
+    if (json.error) {
+      throw Errors.paramError(`RPC error: ${json.error.message || JSON.stringify(json.error)}`);
+    }
+    return json.result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Minimal ERC20 ABI for balanceOf + decimals + symbol

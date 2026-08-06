@@ -1,9 +1,11 @@
 import axios from 'axios';
+import { ethers } from 'ethers';
 import { config } from '../config';
 import { pool } from '../models/database';
 import { logger } from '../utils/logger';
 import { Errors, AppError, ErrorCode } from '../utils/errors';
 import { generateId } from '../utils/helpers';
+import { getRpcUrl } from './walletService';
 
 /**
  * BE-04: Transaction Service
@@ -458,4 +460,46 @@ export async function batchTransfer(
 ): Promise<any> {
   const { processBatchTransfer } = await import('./batchService');
   return processBatchTransfer(userId, walletId, transfers, paymentPassword);
+}
+
+/**
+ * MQ-2: 清空钱包原生余额到指定地址（sweep）。
+ * 链上查询余额（ether）→ 全额构造一笔 sendTransaction（gas 由赞助方承担），
+ * 余额为 0 时不发交易，返回 swept:false。
+ */
+export async function sweepNative(params: {
+  userId: string;
+  walletId: string;
+  toAddress: string;
+  chain: string;
+  paymentPassword: string;
+}): Promise<any> {
+  const { userId, walletId, toAddress, chain, paymentPassword } = params;
+
+  const walletResult = await pool.query(
+    'SELECT address FROM custodial_wallets WHERE id = $1 AND user_id = $2',
+    [walletId, userId]
+  );
+  if (walletResult.rows.length === 0) {
+    throw Errors.notFound('Wallet');
+  }
+  const fromAddress = walletResult.rows[0].address;
+
+  const provider = new ethers.JsonRpcProvider(getRpcUrl(chain));
+  const balanceWei = await provider.getBalance(fromAddress);
+  if (balanceWei === 0n) {
+    return { swept: false, txHash: null, balance: '0', chain };
+  }
+  const balanceEth = ethers.formatEther(balanceWei);
+
+  const result = await sendTransaction({
+    userId,
+    walletId,
+    toAddress,
+    amount: balanceEth,
+    tokenAddress: '*',
+    chain,
+    paymentPassword,
+  });
+  return { swept: true, balance: balanceEth, chain, ...result };
 }

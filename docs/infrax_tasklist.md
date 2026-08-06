@@ -862,7 +862,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对 — 核对通过（完整 schema，可被 openapi-generator 消费）
 - [x] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）— 核对通过（`SERVICE_ENDPOINTS_OBSERVABILITY.md` §4/§5 端点表与代码一致）
 - [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（FastAPI 自带 /openapi.json + /docs）；**✅ G-9 已实现 Flask OpenAPI**：injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths），手写 OpenAPI 3.0 spec，生产免 key 实测 200
-- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — **✅ G-9 已发布**：npm `@0xinfrax/infrax-dk@0.2.0` 已发布 registry 验证；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，待 token 发布（排期）
+- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — **✅ G-9 已发布**：npm `@0xinfrax/infrax-dk@0.3.0` 已发布 registry 验证；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，待 token 发布（排期）
 
 **9.7 差距报告（2026-08-06 审查输出，G-1~G-9 已按序实现）**
 
@@ -878,7 +878,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | ✅ **已修复**：新增 `projects/shared/metrics.py` 统一 Prometheus 指标（`http_requests_total` + `http_request_duration_seconds` + 进程指标），四服务接入 `/metrics`（data/ml 走 `register_fastapi`，injector/rag 走 `register_flask`），`/metrics` 纳入 app_auth 豁免免 key 拉取；与 HTTP 轮询探针互补 |
 | G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝）；**生产已启用**（四服务 `.env` 已配置同一 `MONITOR_API_KEY` 并重启），实测 monitor key GET 200 / POST 401、bridge key 不受影响（key 存于生产 `.env`，不入 repo，需轮换时替换后重启即可） |
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
-| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.2.0` 已发布（registry.npmjs.org 已验证 main/types/engines）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
+| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.3.0` 已发布（registry.npmjs.org 已验证 main/types/engines）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
 
 **9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-9 全部实现**（G-9 中 PyPI 发布待 token 排期，其余闭环，本轮提交见 git log）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
 
@@ -961,7 +961,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | C-3 | **多源时间戳精度不齐**：ms/s 混用无归一化保险（asof 只防未来函数，不防精度错位） | DS-13 history 实测 ms/s 需 SDK 层兜底 | ✅（DQ-3） |
 | C-4 | **实时因子无新鲜度校验**：`/factors/current` 返回陈旧值（如 2h 前 fear_greed）无告警，fail-silent 只保不崩不保新鲜 | `get_current_factors()` 仅取最新行不校验 age | ✅（DQ-4） |
 | C-5 | **ml_predictions 写入层无约束**：符号大小写不一（BTC vs btc）、重复 predictions，靠消费方容忍 | 生产实测发现大小写不一致 | ✅（DQ-5） |
-| C-6 | **图谱注入无语义去噪**：新闻/链上/OKX 源仅去重+截断，广告/重复公告直接进 LightRAG | `projects/knowledge-injector/injector/*.py` | 🔲 P2 |
+| C-6 | **图谱注入无语义去噪**：新闻/链上/OKX 源仅去重+截断，广告/重复公告直接进 LightRAG | `projects/knowledge-injector/injector/*.py` | ✅（MQ-8） |
 | C-7 | **数据质量不可观测**：建议收敛显式清洗规则模块（`app/cleaning.py`，查询路径清洗）+ `/stats`/`/admin` 暴露质量指标（缺失率/异常 bar 数/源新鲜度） | 无现状（方案） | ✅（DQ-6） |
 
 **9.8.7 数据模块需求补充（完整规格，2026-08-07，B 端需求：先补数据模块）**
@@ -989,15 +989,17 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 需求 | 契约 | 验收标准 | 优先级 |
 |:---:|---|---|---|:---:|
-| MQ-1 | **通用 RPC 转发代理**（R-1 / B-10-4）：waas 新增 `POST /api/v2/wallet/rpc`，收编 SDK `wallet.rpc()`（现 404） | `POST /api/v2/wallet/rpc` `{chain, method, params[]}` → 转发对应 RPC 节点，返回标准 JSON-RPC `{result/error}`；鉴权沿用统一契约 | SDK `wallet.rpc()` 返回真实链上结果；未授权 401 | P1 |
-| MQ-2 | **SDK WalletAPI 契约对齐**（R-2）：`wallet.send/simulate/sweep/txStatus` 由不存在端点改为 waas 真实 `/api/v2/tx/*` | SDK 方法 → waas `txRoutes` 对应端点（参数/响应按 waas 契约） | E2E 各方法 200 且返回真实 tx 数据 | P1 |
-| MQ-3 | **dc `tokens` 端点补全**（B-10-3）：MCP dc-index 的 `dc_tokens` 调 `/api/v2/data/tokens` 必 404——dc 补端点或工具改接 `/plans` `/chains` | dc 新增 `GET /api/v2/data/tokens`（返回租户链/计划明细）或 dc-index 工具改接现有端点 | MCP `dc_tokens` 调用返回真实数据、不再 404 | P1 |
-| MQ-4 | **Session Key 额度三重校验落地**（R-6）：execution-service 接 `addSpent()`，`maxPerTx/maxTotal` 真实校验，`quota_exhausted` 可达；`expireStale()` 过期清理接线 | 超 maxPerTx/maxTotal 拒绝执行并返回 `quota_exhausted`；过期 key 定时清理 | 构造超限调用 → 拒绝；过期 key 不再可用 | P1 |
-| MQ-5 | **Session PRD 定稿 + 测试补齐**（R-7）：PRD v1.0 发布（去 Draft），补声明缺失的集成测试 | PRD 标注 Released；全仓补充 `*.test.ts` 覆盖执行/额度/过期 | PRD 非 Draft；测试可运行通过 | P2 |
-| MQ-6 | **session-key 四包发布 + MCP/SDK 鉴权**（R-8）：发布 `@0xinfrax/session-key-core/evm/client/server` 至 npm；5 个 HTTP MCP（dc/wallet/mpc/sk/hub）入站鉴权；修正 SDK 发布记录矛盾（0.3.0 vs 0.2.0） | npm publish（去 `workspace:*` 补 publishConfig）；MCP 入站校验 `X-Service-Key`/Bearer | `pip/npm` 安装成功；未授权 MCP 调用 401；文档记录一致 | P2 |
-| MQ-7 | **MPC SDK 扩展**（R-5 / B-12-2）：infrax-dk `MPCAPI` 由 5/15 方法扩至全端点（签名/交易/合约读写/余额/gas） | SDK 方法对齐 mpc server 15 端点（`/api/v2/mpc/*`） | SDK 各方法 E2E 200 真实返回 | P2 |
-| MQ-8 | **图谱注入语义去噪**（C-6）：knowledge-injector 注入前过滤广告/重复公告/低价值噪音（黑名单规则 + 相似文本去重） | 注入器加 `denoise` 步骤（规则表 + 相似度阈值），注入 doc 数显著下降 | 图库噪音文档比例下降（抽样对比） | P2 |
-| MQ-9 | **payment/mpc 路由挂载确认**（B-10-5）：waas `paymentRoutes`/`mpcRoutes` 已定义未挂载——确认并挂载 | `server.ts` 挂载两路由；端点可访问 | 对应端点路由可达（非 404） | P1 |
+| MQ-1 | **通用 RPC 转发代理**（R-1 / B-10-4）：waas 新增 `POST /api/v2/wallet/rpc`，收编 SDK `wallet.rpc()`（现 404） | `POST /api/v2/wallet/rpc` `{chain, method, params[]}` → 转发对应 RPC 节点，返回标准 JSON-RPC `{result/error}`；鉴权沿用统一契约 | SDK `wallet.rpc()` 返回真实链上结果；未授权 401 | ✅ P1 |
+| MQ-2 | **SDK WalletAPI 契约对齐**（R-2）：`wallet.send/simulate/sweep/txStatus` 由不存在端点改为 waas 真实 `/api/v2/tx/*` | SDK 方法 → waas `txRoutes` 对应端点（参数/响应按 waas 契约） | E2E 各方法 200 且返回真实 tx 数据 | ✅ P1 |
+| MQ-3 | **dc `tokens` 端点补全**（B-10-3）：MCP dc-index 的 `dc_tokens` 调 `/api/v2/data/tokens` 必 404——dc 补端点或工具改接 `/plans` `/chains` | dc 新增 `GET /api/v2/data/tokens`（返回租户链/计划明细）或 dc-index 工具改接现有端点 | MCP `dc_tokens` 调用返回真实数据、不再 404 | ✅ P1 |
+| MQ-4 | **Session Key 额度三重校验落地**（R-6）：execution-service 接 `addSpent()`，`maxPerTx/maxTotal` 真实校验，`quota_exhausted` 可达；`expireStale()` 过期清理接线 | 超 maxPerTx/maxTotal 拒绝执行并返回 `quota_exhausted`；过期 key 定时清理 | 构造超限调用 → 拒绝；过期 key 不再可用 | ✅ P1 |
+| MQ-5 | **Session PRD 定稿 + 测试补齐**（R-7）：PRD v1.0 发布（去 Draft），补声明缺失的集成测试 | PRD 标注 Released；全仓补充 `*.test.ts` 覆盖执行/额度/过期 | PRD 非 Draft；测试可运行通过 | ✅ P2 |
+| MQ-6 | **session-key 四包发布 + MCP/SDK 鉴权**（R-8）：发布 `@0xinfrax/session-key-core/evm/client/server` 至 npm；5 个 HTTP MCP（dc/wallet/mpc/sk/hub）入站鉴权；修正 SDK 发布记录矛盾（0.3.0 vs 0.2.0） | npm publish（去 `workspace:*` 补 publishConfig）；MCP 入站校验 `X-Service-Key`/Bearer | `pip/npm` 安装成功；未授权 MCP 调用 401；文档记录一致 | ✅ P2 |
+| MQ-7 | **MPC SDK 扩展**（R-5 / B-12-2）：infrax-dk `MPCAPI` 由 5/15 方法扩至全端点（签名/交易/合约读写/余额/gas） | SDK 方法对齐 mpc server 15 端点（`/api/v2/mpc/*`） | SDK 各方法 E2E 200 真实返回 | ✅ P2 |
+| MQ-8 | **图谱注入语义去噪**（C-6）：knowledge-injector 注入前过滤广告/重复公告/低价值噪音（黑名单规则 + 相似文本去重） | 注入器加 `denoise` 步骤（规则表 + 相似度阈值），注入 doc 数显著下降 | 图库噪音文档比例下降（抽样对比） | ✅ P2 |
+| MQ-9 | **payment/mpc 路由挂载确认**（B-10-5）：waas `paymentRoutes`/`mpcRoutes` 已定义未挂载——确认并挂载 | `server.ts` 挂载两路由；端点可访问 | 对应端点路由可达（非 404） | ✅ P1 |
+
+> **MQ-1~MQ-9 全部完成 ✅（2026-08-07 本地开发完成）**：waas 新增 `POST /api/v2/wallet/rpc` 通用 RPC 转发代理（`getRpcUrl` + `rpcProxy`，JSON-RPC 透传）+ `sweepNative`；SDK `WalletAPI` 对齐 waas 真实端点（send/simulate/sweep/txStatus/rpc）；dc 新增 `GET /api/v2/data/tokens`（`okx_token_snapshots`）；session-key execution-service 三重额度校验（maxPerTx/maxTotal/addSpent + expireStale 接线，crypto import 修复）+ 11 单测全绿 + PRD Released；session-key 四包发布配置（`workspace:*`→`^0.1.0` + publishConfig）+ 5 个 MCP 入站鉴权（`mcp-auth.ts` `inboundAuth`）+ SDK 发布记录修正 0.3.0；infrax-dk `MPCAPI` 5→15 方法（unlockSession/lockSession/sessionStatus/balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate）；knowledge-injector 注入前语义去噪（`injector/denoise.py` 黑名单正则 + 4-gram Jaccard 相似去重，窗口 200，阈值 0.86，`DENOISE_ENABLED` 可关，9 单测 + 121 全量测试全绿）；waas payment/mpc 路由确认为死代码已删除（生产独立服务 :9106/:9104 active）。**排期项**：session-key 四包 npm 实际发布、knowledge-injector PyPI 发布。
 
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
@@ -1024,10 +1026,10 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `projects/data/AITRADER_DATA_SERVICE_REQ.md` | B 端 data-service 需求（DS-1~DS-14） | §9.1 | 全部 ✅（DS-13/14 已交付 2026-08-07） |
 | `docs/DATA_MODULE_RAG_PLAN.md` | 模型与 RAG 里程碑（M0~M4 + P2 历史） | §9.2 | M0~M4 ✅ |
 | `projects/ragservicer/docs/REQUIREMENTS.md` | LightRAG 微服务需求（F-T01~F-Q03 + SDK 分发） | §9.2 | ✅ 契约已实现（:9721 生产运行） |
-| `docs/MCP_REQUIREMENTS.md` | MCP 工具清单（Wallet/DC/Market/Vault/MPC/SK 6 组） | §9.6 + §9.7 | ✅ 已上线（MQ-6：入站鉴权待补） |
-| `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` | Session Key 开发任务（v1.0） | §9.4 | ⚠️ PRD Draft（MQ-5） |
-| `docs/SESSION_KEY_ENGINE_PRD.md` | Session Key PRD（S-01~S-11） | §9.4 | ⚠️ Draft（MQ-5） |
+| `docs/MCP_REQUIREMENTS.md` | MCP 工具清单（Wallet/DC/Market/Vault/MPC/SK 6 组） | §9.6 + §9.7 | ✅ 已上线（MQ-6：5 个 MCP 入站鉴权已完成） |
+| `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` | Session Key 开发任务（v1.0） | §9.4 | ✅ Released（MQ-5） |
+| `docs/SESSION_KEY_ENGINE_PRD.md` | Session Key PRD（S-01~S-11） | §9.4 | ✅ Released（MQ-5） |
 | `docs/MERGE_PLAN_AITRADER.md` | AItrader 合并计划 | §9.5 | — |
 | `prd/PRD.md` | MCP & Skill 产品需求（v1.1） | §9.6 | ⚠️ 待审阅 |
-| `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：发布记录矛盾待修正） |
+| `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：SDK 发布记录已修正 0.3.0） |
 | `docs/DEPLOYMENT.md` / `docs/PROJECT_STATUS.md` 等 | 区块链栈部署/状态（旧布局） | §9.8 | ⚠️ 引用已随改名更新 |

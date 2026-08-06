@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { z } from "zod";
+import { inboundAuth } from "./mcp-auth.js";
 
 const DC_URL = process.env.DC_URL || process.env.DC_API_URL || "http://localhost:9102";
 
@@ -142,6 +143,7 @@ server.tool(
 
 const app = express();
 app.use(express.json());
+app.use(inboundAuth);
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "infrax-dc-mcp", uptime: process.uptime() }));
 

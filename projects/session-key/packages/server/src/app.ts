@@ -33,6 +33,17 @@ export async function start() {
   await authPlugin(app);
   registerRoutes(app, { nonceService, sessionService, executionService });
 
+  // MQ-4: 过期 session 定时清理（每 5 分钟，unref 不阻塞进程退出）
+  const expireTimer = setInterval(async () => {
+    try {
+      const n = await sessionRepo.expireStale();
+      if (n > 0) app.log.info(`Expired ${n} stale session(s)`);
+    } catch (err: any) {
+      app.log.error('expireStale failed', err);
+    }
+  }, 5 * 60 * 1000);
+  expireTimer.unref();
+
   app.listen({ port: config.port, host: '0.0.0.0' }, (err, address) => {
     if (err) { app.log.error(err); process.exit(1); }
     app.log.info(`Session Key Engine running on ${address}`);

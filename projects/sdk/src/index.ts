@@ -25,12 +25,14 @@ export interface InfraXResponse<T = any> {
 
 export interface WalletBalanceParams { address: string; chain?: string; token?: string; }
 export interface WalletBalanceResult { address: string; chain: string; balance: string; token?: string; decimals?: number; }
-export interface WalletSendParams { from: string; to: string; amount: string; chain?: string; token?: string; }
-export interface WalletSendResult { txHash: string; chain: string; from: string; to: string; amount: string; }
-export interface WalletSimulateParams { from: string; to: string; amount?: string; data?: string; chain?: string; }
-export interface WalletSimulateResult { gasEstimate: string; gasPrice?: string; totalCost?: string; }
-export interface WalletRpcParams { chain?: string; method?: string; params?: any[]; }
-export interface WalletRpcResult { chain: string; response: any; }
+// MQ-2: 契约对齐 waas /api/v2/tx/*（原 /wallet/send /wallet/simulate 不存在）
+export interface WalletSendParams { walletId: string; toAddress: string; amount: string; chain: string; paymentPassword: string; tokenAddress?: string; }
+export interface WalletSendResult { txId: string; txHash: string | null; status: string; gasSponsored: boolean; strategy: string; }
+export interface WalletSimulateParams { walletId: string; toAddress: string; amount: string; chain: string; tokenAddress?: string; }
+export interface WalletSimulateResult { gasLimit: string; gasPrice: string; estimatedCost: string; }
+export interface WalletSweepParams { walletId: string; toAddress: string; chain: string; paymentPassword: string; }
+export interface WalletRpcParams { chain: string; method: string; params?: any[]; }
+export interface WalletRpcResult { chain: string; method: string; result: any; }
 
 // Safe
 export interface SafeProposeParams { safeAddress: string; to: string; value?: string; data?: string; }
@@ -70,10 +72,28 @@ export interface VaultCreateTxParams { safeId: string; to: string; amount: strin
 
 // MPC
 export interface MPCSendCodeParams { email: string; }
-export interface MPCRegisterParams { email: string; code: string; }
+export interface MPCRegisterParams { email: string; code: string; walletAddress?: string; }
 export interface MPCWalletResult { email: string; address: string; walletId: string; }
-export interface MPCStatusParams { email: string; }
+export interface MPCStatusParams { email?: string; walletAddress?: string; }
 export interface MPCStatusResult { exists: boolean; address?: string; walletId?: string; }
+// MQ-7: 对齐 mpc server 15 端点（session/签名/交易/合约/余额/gas）
+export interface MPCSessionUnlockParams { email: string; code: string; }
+export interface MPCSessionUnlockResult { token: string; address: string; unlockedAt: string; expiresAt: string; }
+export interface MPCSessionStatusParams { token: string; }
+export interface MPCSessionStatusResult { unlocked: boolean; address?: string; unlockedAt?: string; expiresAt?: string; remainingSeconds?: number; }
+export interface MPCBalanceParams { token: string; chain?: string; tokenAddress?: string; }
+export interface MPCBalanceResult { address: string; chain: string; nativeBalance: string; nativeSymbol: string; token?: { address: string; symbol?: string; balance?: string; decimals?: number; error?: string; }; }
+export interface MPCSignMessageParams { token: string; message: string; }
+export interface MPCSignResult { signature: string; address: string; }
+export interface MPCSignTypedDataParams { token: string; domain: Record<string, any>; types: Record<string, any>; value: Record<string, any>; }
+export interface MPCSendTransactionParams { token: string; to: string; amount: string; chain?: string; tokenAddress?: string; }
+export interface MPCSendTransactionResult { txHash: string; from: string; to: string; amount: string; chain: string; token: string; blockNumber?: number; gasUsed?: string; }
+export interface MPCContractReadParams { contractAddress: string; abi: any; method: string; args?: any[]; chain?: string; }
+export interface MPCContractReadResult { contractAddress: string; method: string; result: any; }
+export interface MPCContractWriteParams { token: string; contractAddress: string; abi: any; method: string; args?: any[]; chain?: string; value?: string; gasLimit?: string; }
+export interface MPCContractWriteResult { txHash: string; from: string; contractAddress: string; method: string; chain: string; blockNumber?: number; gasUsed?: string; }
+export interface MPCGasEstimateParams { to?: string; value?: string; data?: string; chain?: string; }
+export interface MPCGasEstimateResult { chain: string; gasLimit: string; gasPrice: string; estimatedCost: string; estimatedCostWei: string; }
 
 // Market — OKX ChainOS v6 Market API
 export interface MarketTokenInfo { chain: string; tokenAddress: string; symbol: string; name: string; price: number; volume24h: number; marketCap: number; liquidity: number; holders: number; change24h: number; }
@@ -171,12 +191,13 @@ class HttpClient {
 class WalletAPI {
   constructor(private http: HttpClient) {}
   async balance(params: WalletBalanceParams) { const q = new URLSearchParams(); q.set('address', params.address); if (params.chain) q.set('chain', params.chain); if (params.token) q.set('token', params.token); return this.http.get<WalletBalanceResult>('/api/v2/wallet/balance?' + q.toString()); }
-  async send(params: WalletSendParams) { return this.http.post<WalletSendResult>('/api/v2/wallet/send', params); }
-  async simulate(params: WalletSimulateParams) { return this.http.post<WalletSimulateResult>('/api/v2/wallet/simulate', params); }
+  // MQ-2: 契约对齐 waas 真实端点（/api/v2/tx/*）
+  async send(params: WalletSendParams) { return this.http.post<WalletSendResult>('/api/v2/tx/send', params); }
+  async simulate(params: WalletSimulateParams) { return this.http.post<WalletSimulateResult>('/api/v2/tx/estimate-gas', params); }
   async health() { return this.http.get<{ status: string }>('/health'); }
-  async rpc(params: WalletRpcParams = {}) { return this.http.post<WalletRpcResult>('/api/v2/wallet/rpc', params); }
-  async sweep(params: { chain?: string; toAddress?: string } = {}) { return this.http.post<any>('/api/v2/wallet/sweep', params); }
-  async txStatus(params: { txHash: string; chain?: string }) { const q = new URLSearchParams(); q.set('tx_hash', params.txHash); if (params.chain) q.set('chain', params.chain); return this.http.get<any>('/api/v2/wallet/tx-status?' + q.toString()); }
+  async rpc(params: WalletRpcParams) { return this.http.post<WalletRpcResult>('/api/v2/wallet/rpc', params); }
+  async sweep(params: WalletSweepParams) { return this.http.post<any>('/api/v2/tx/sweep', params); }
+  async txStatus(params: { txHash: string; chain?: string }) { return this.http.get<any>('/api/v2/tx/status/' + encodeURIComponent(params.txHash)); }
 }
 
 // ═══════════════ Safe — multi-sig on-chain operations ═══════════════
@@ -272,8 +293,26 @@ class MPCAPI {
   async sendCode(params: MPCSendCodeParams) { return this.http.post<any>('/api/v2/mpc/send-code', params); }
   async register(params: MPCRegisterParams) { return this.http.post<MPCWalletResult>('/api/v2/mpc/register', params); }
   async recover(params: MPCRegisterParams) { return this.http.post<MPCWalletResult>('/api/v2/mpc/recover', params); }
-  async status(params: MPCStatusParams) { return this.http.get<MPCStatusResult>('/api/v2/mpc/status?email=' + encodeURIComponent(params.email)); }
+  // MQ-7: status 支持 email 或 walletAddress（mpc server 双查询键）
+  async status(params: MPCStatusParams) {
+    const q = new URLSearchParams();
+    if (params.walletAddress) q.set('walletAddress', params.walletAddress);
+    else if (params.email) q.set('email', params.email);
+    return this.http.get<MPCStatusResult>('/api/v2/mpc/status?' + q.toString());
+  }
   async createWallet(params: MPCSendCodeParams) { const s1 = await this.sendCode(params); if (s1.code !== 0) return s1; return { code: 0, message: 'Verification code sent. Call mpc.register() to complete.', email: params.email }; }
+  // ── Session（MQ-7）──
+  async unlockSession(params: MPCSessionUnlockParams) { return this.http.post<MPCSessionUnlockResult>('/api/v2/mpc/session/unlock', params); }
+  async lockSession(token: string) { return this.http.post<{ locked: boolean }>('/api/v2/mpc/session/lock', { token }); }
+  async sessionStatus(params: MPCSessionStatusParams) { return this.http.get<MPCSessionStatusResult>('/api/v2/mpc/session/status?token=' + encodeURIComponent(params.token)); }
+  // ── 链上操作（MQ-7）──
+  async balance(params: MPCBalanceParams) { return this.http.post<MPCBalanceResult>('/api/v2/mpc/balance', params); }
+  async signMessage(params: MPCSignMessageParams) { return this.http.post<MPCSignResult>('/api/v2/mpc/sign-message', params); }
+  async signTypedData(params: MPCSignTypedDataParams) { return this.http.post<MPCSignResult>('/api/v2/mpc/sign-typed-data', params); }
+  async sendTransaction(params: MPCSendTransactionParams) { return this.http.post<MPCSendTransactionResult>('/api/v2/mpc/send-transaction', params); }
+  async contractRead(params: MPCContractReadParams) { return this.http.post<MPCContractReadResult>('/api/v2/mpc/contract-read', params); }
+  async contractWrite(params: MPCContractWriteParams) { return this.http.post<MPCContractWriteResult>('/api/v2/mpc/contract-write', params); }
+  async gasEstimate(params: MPCGasEstimateParams = {}) { return this.http.post<MPCGasEstimateResult>('/api/v2/mpc/gas-estimate', params); }
 }
 
 // ═══════════════ Market — OKX ChainOS v6 DEX Market ═══════════════

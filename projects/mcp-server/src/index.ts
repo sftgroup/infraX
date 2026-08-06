@@ -6,10 +6,12 @@
 import express from 'express';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+import { inboundAuth } from './mcp-auth.js';
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true }));
+app.use(inboundAuth);
 
 const WAAS = process.env.WAAS_URL || process.env.WALLET_API_URL || 'http://localhost:9109';
 const API_KEY = process.env.WAAS_KEY || process.env.WAAS_API_KEY || 'dev-cwallet-key';

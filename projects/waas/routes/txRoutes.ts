@@ -110,6 +110,33 @@ router.get(
 );
 
 /**
+ * POST /api/v2/tx/sweep (MQ-2)
+ * 清空钱包原生余额到指定地址（sweep）
+ * Auth: Wallet signature required
+ * Body: { walletId, toAddress, chain, paymentPassword }
+ */
+router.post(
+  '/sweep',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { walletId, toAddress, chain, paymentPassword } = req.body;
+    const userId = req.user!.id;
+
+    if (!walletId || !toAddress || !chain || !paymentPassword) {
+      return res.status(400).json(
+        apiResponse(null, 'Missing required fields: walletId, toAddress, chain, paymentPassword', 1001)
+      );
+    }
+    if (!isValidEthereumAddress(toAddress)) {
+      return res.status(400).json(apiResponse(null, 'Invalid ethereum address format', 1006));
+    }
+
+    const result = await txService.sweepNative({ userId, walletId, toAddress, chain, paymentPassword });
+    res.json(apiResponse(result, 'Sweep processed'));
+  })
+);
+
+/**
  * POST /api/v2/tx/batch
  * Batch transfer (admin only)
  * Auth: Wallet signature + Admin required

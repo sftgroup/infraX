@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
@@ -10,8 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@0xinfrax/session-key-core": "workspace:*",
-    "@0xinfrax/session-key-evm": "workspace:*",
+    "@0xinfrax/session-key-core": "^0.1.0",
+    "@0xinfrax/session-key-evm": "^0.1.0",
     "@fastify/cors": "^11.0.0",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.0",

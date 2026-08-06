@@ -126,6 +126,14 @@ class Settings:
     host: str = field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
     port: int = int(os.getenv("PORT", "9113"))
 
+    # ── MQ-8 / C-6: 注入前语义去噪 ──
+    denoise_enabled: bool = field(
+        default_factory=lambda: os.getenv("DENOISE_ENABLED", "true").lower() in ("1", "true", "yes")
+    )
+    denoise_similarity_threshold: float = float(
+        os.getenv("DENOISE_SIMILARITY_THRESHOLD", "0.86")
+    )
+
     @property
     def lightrag_enabled(self) -> bool:
         return bool(self.lightrag_url)

@@ -25,6 +25,7 @@ from typing import Any
 from injector.client import LightRAGClient
 from injector import textify as txt
 from injector.stats import STATS
+from injector.denoise import Denoiser
 from config import SETTINGS
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,18 @@ class GraphInjector:
         self._client = client or LightRAGClient()
         self._dry_run = dry_run
         self._db = db
+        # MQ-8 / C-6: 注入前语义去噪（可经 DENOISE_ENABLED 关闭）
+        self._denoiser = Denoiser(
+            similarity_threshold=SETTINGS.denoise_similarity_threshold,
+        )
 
     @property
     def enabled(self) -> bool:
         return self._client._enabled
+
+    def denoise_stats(self) -> dict:
+        """MQ-8 / C-6: 去噪拦截统计（供 /status 诊断）。"""
+        return self._denoiser.stats()
 
     def _save_raw(
         self, raw: Any, provider: str, data_type: str, symbol: str = ""
@@ -95,6 +104,16 @@ class GraphInjector:
         """
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M")
         full_source = f"{file_source}:{ts}"
+
+        # MQ-8 / C-6: 注入前语义去噪（黑名单规则 + 相似文本去重）
+        if SETTINGS.denoise_enabled:
+            inject_ok, denied_reason = self._denoiser.should_inject(text)
+            if not inject_ok:
+                logger.info("Denoise skipped %s (%s)", full_source, denied_reason)
+                # 被拒仍存档原始数据（可审计），但不注入 LightRAG、不记 failed 日志
+                if self._db is not None and raw is not None and provider:
+                    self._db.save_snapshot(provider, data_type, raw, symbol)
+                return False
 
         # 1. 存档原始数据（优先使用已有 snap_id）
         if snap_id is None and self._db is not None and raw is not None and provider:

@@ -38,7 +38,7 @@
 | G-6 | 四服务 /metrics | `shared/metrics.py` 统一 Prometheus 指标（http_requests_total / duration 直方图 / 进程） | ✅ 生产验证 |
 | G-7 | 独立只读监控 key | app_auth `method`+`monitor_key`，四服务接入 `MONITOR_API_KEY`（GET 放行 / POST 拒绝） | ✅ 生产启用 |
 | G-8 | 结构化审计日志 | ragservicer `audit_logs` 表 + audit_log_middleware 落库 | ✅ 生产验证 |
-| G-9 | SDK 发布 + Flask OpenAPI | npm `@0xinfrax/infrax-dk@0.2.0` 已发布；injector/ragservicer `/openapi.json`（10/15 paths）上线；PyPI 待 token | ✅（PyPI 排期） |
+| G-9 | SDK 发布 + Flask OpenAPI | npm `@0xinfrax/infrax-dk@0.3.0` 已发布；injector/ragservicer `/openapi.json`（10/15 paths）上线；PyPI 待 token | ✅（PyPI 排期） |
 
 ### C. 前置后端管理功能（本轮之前交付）
 

@@ -22,7 +22,8 @@ import internalRoutes from './routes/internalRoutes';
 import saasRoutes from './routes/saasRoutes';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import dataSubscriptionRoutes from './routes/dataSubscriptionRoutes';
-// paymentRoutes moved to independent service (:6004) — see projects/payment/server.ts
+// MQ-9: payment/mpc 路由已迁独立服务（projects/payment/server.ts :9106 / projects/mpc/server.ts :9104），
+// waas 不再挂载（遗留 routes/paymentRoutes.ts、routes/mpcRoutes.ts、services/mpcService.ts 已删除）
 
 const app = express();
 
@@ -84,8 +85,8 @@ app.get('/admin', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.type('html').send(html);
 });
-// Payment routes moved to independent service (:6004) — see projects/payment/server.ts
-// MPC routes moved to independent service (:6003) — see projects/mpc/server.ts
+// MQ-9: Payment routes served by independent service :9106 — projects/payment/server.ts
+// MQ-9: MPC routes served by independent service :9104 — projects/mpc/server.ts
 
 // 404 handler
 app.use(notFoundHandler);

@@ -216,6 +216,33 @@ app.get('/api/v2/data/checkpoints', requireDcApiKey, asyncHandler(async (_req: a
   res.json(apiResponse(r.rows));
 }));
 
+// MQ-3: B-end token 目录（SDK dc.tokens() / MCP dc_tokens 调用的端点，原 404）
+// 数据来源 collector okx_token_snapshots（每 token 取最新一条，去重）
+app.get('/api/v2/data/tokens', requireDcApiKey, asyncHandler(async (req: any, res: any) => {
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (req.query.symbol) { conditions.push(`token_symbol ILIKE $${idx++}`); values.push(`%${req.query.symbol}%`); }
+  if (req.query.chain) { conditions.push(`chain = $${idx++}`); values.push(String(req.query.chain).toLowerCase()); }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+  const r = await eventsPool.query(
+    `SELECT DISTINCT ON (token_address) token_address, token_symbol, token_name, chain, price_usd
+     FROM okx_token_snapshots ${where}
+     ORDER BY token_address, collected_at DESC
+     LIMIT $${idx}`,
+    values.concat(limit)
+  );
+  res.json(apiResponse(r.rows.map((t: any) => ({
+    symbol: t.token_symbol,
+    name: t.token_name || t.token_symbol,
+    address: t.token_address,
+    chain: t.chain,
+    decimals: 18,
+    price_usd: parseFloat(t.price_usd) || 0,
+  }))));
+}));
+
 app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
   res.json(apiResponse({
     title: 'InfraX Data Center API', version: '1.0.0',
@@ -225,6 +252,7 @@ app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
       { method: 'GET', path: '/key', description: 'Get API key' },
       { method: 'GET', path: '/events', description: 'Query on-chain events (auth)' },
       { method: 'GET', path: '/stats', description: 'Chain statistics (auth)' },
+      { method: 'GET', path: '/tokens', description: 'DEX token catalog (auth, MQ-3)' },
       { method: 'GET', path: '/health', description: 'DC service health (auth)' },
       { method: 'GET', path: '/checkpoints', description: 'Scan checkpoints (auth)' },
     ],

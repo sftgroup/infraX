@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { AppError, Errors } from '@0xinfrax/session-key-core';
 import type { IBlockchainAdapter, Chain } from '@0xinfrax/session-key-core';
 import { SessionRepo } from '../repos/session-repo.js';
@@ -26,6 +27,25 @@ export class ExecutionService {
       if (session.status === 'expired') throw new AppError(Errors.SESSION_EXPIRED.statusCode, Errors.SESSION_EXPIRED.code, Errors.SESSION_EXPIRED.msg);
       if (session.status === 'revoked') throw new AppError(Errors.SESSION_REVOKED.statusCode, Errors.SESSION_REVOKED.code, Errors.SESSION_REVOKED.msg);
       if (session.status === 'quota_exhausted') throw new AppError(Errors.QUOTA_EXHAUSTED.statusCode, Errors.QUOTA_EXHAUSTED.code, Errors.QUOTA_EXHAUSTED.msg);
+
+      // MQ-4 三重校验（R-6）：过期 / 单笔上限 / 累计上限
+      if (new Date(session.validUntil).getTime() < Date.now()) {
+        await this.sessionRepo.updateStatus(params.sessionId, 'expired');
+        throw new AppError(Errors.SESSION_EXPIRED.statusCode, Errors.SESSION_EXPIRED.code, Errors.SESSION_EXPIRED.msg);
+      }
+
+      // value 为链上 wei（18 decimals）→ 换算为原生币金额与 maxPerTx/maxTotal（USDC 单位）比较
+      const rawValue = String(params.value || '0').trim();
+      const valueWei = /^\d+$/.test(rawValue) ? BigInt(rawValue) : BigInt(Math.round(Number(rawValue) * 1e18));
+      const amountEth = Number(valueWei) / 1e18;
+
+      if (amountEth > parseFloat(session.maxPerTx)) {
+        throw new AppError(Errors.PER_TX_EXCEEDED.statusCode, Errors.PER_TX_EXCEEDED.code, Errors.PER_TX_EXCEEDED.msg);
+      }
+      if (parseFloat(session.totalSpent || '0') + amountEth > parseFloat(session.maxTotal)) {
+        await this.sessionRepo.updateStatus(params.sessionId, 'quota_exhausted');
+        throw new AppError(Errors.QUOTA_EXHAUSTED.statusCode, Errors.QUOTA_EXHAUSTED.code, Errors.QUOTA_EXHAUSTED.msg);
+      }
 
       // Contract whitelist
       const normalizedTo = params.to.toLowerCase();
@@ -59,6 +79,11 @@ export class ExecutionService {
         status: result.success ? 'success' : 'failed',
         errorReason: result.reason,
       });
+
+      // MQ-4: 记账已花费额度（仅成功交易）
+      if (result.success && amountEth > 0) {
+        await this.sessionRepo.addSpent(params.sessionId, amountEth.toFixed(18));
+      }
 
       return {
         executionId: crypto.randomUUID(),

@@ -4,12 +4,14 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc",
     "test": "vitest run"
   },
   "dependencies": {
-    "@0xinfrax/session-key-core": "workspace:*",
+    "@0xinfrax/session-key-core": "^0.1.0",
     "viem": "^2.21.0"
   },
   "devDependencies": {

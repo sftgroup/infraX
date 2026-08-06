@@ -1,6 +1,6 @@
 # PRD - Session Key Engine 独立模块
 
-> **版本**: v1.0 | **日期**: 2026-07-31 | **状态**: Draft
+> **版本**: v1.0 | **日期**: 2026-07-31 | **状态**: Released
 > **作者**: Wayne (team1) | **受众**: Steven + 开发团队
 
 ---
@@ -637,3 +637,4 @@ function MyApp() {
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v1.0 | 2026-07-31 | 初稿：PRD 完整版 |
+| v1.0 | 2026-08-07 | 定稿 Released（MQ-5）：执行/额度/过期 三重校验落地并补集成测试 `packages/server/src/services/execution-service.test.ts`（11 用例全绿） |
