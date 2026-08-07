@@ -9,7 +9,9 @@
  *   POST /v1/rpc/:chain              读（CHAIN_RPC_READ_KEY 或广播 key）
  *   POST /v1/broadcast/:chain        广播（仅 CHAIN_RPC_BROADCAST_KEY）
  *   GET  /v1/status                  池状态（脱敏，读 key）
+ *   WS   /v1/ws                      订阅代理（读 key；仅 eth_subscribe/eth_unsubscribe）
  */
+import http from 'http';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -20,6 +22,7 @@ import { RpcPoolManager } from './services/rpcPool';
 import { buildRpcPoolConfig } from './services/rpcPoolConfig';
 import { createReadAuth, createBroadcastAuth } from './middleware/auth';
 import { createRpcRouter, createBroadcastRouter } from './routes/rpcRoutes';
+import { attachWs } from './routes/ws';
 
 const app = express();
 
@@ -28,12 +31,35 @@ app.use(cors());
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 
-// ── 请求日志（访问可观测性；不记录 headers，避免泄露鉴权 key） ──
+// ── 请求日志（DC-9 端点细分；不记录 headers，避免泄露鉴权 key） ──
 app.use((req, res, next) => {
-  if (req.path === '/health') return next();
+  if (config.logSkipHealth && req.path === '/health') return next();
   const t0 = Date.now();
   res.on('finish', () => {
-    logger.info(`[chain-rpc] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - t0}ms`);
+    // 注意：finish 时 req.path 已被路由改写（strip 前缀），须用 req.originalUrl
+    const p = req.originalUrl;
+    const meta: Record<string, unknown> = {
+      route: p.startsWith('/v1/rpc') ? 'rpc'
+        : p.startsWith('/v1/broadcast') ? 'broadcast'
+          : p.startsWith('/v1/status') ? 'status' : 'other',
+      status: res.statusCode,
+      dur: `${Date.now() - t0}ms`,
+    };
+    const m = p.match(/^\/v1\/(?:rpc|broadcast)\/([^/]+)$/);
+    if (m) meta.chain = m[1];
+    if (config.logMethod || config.logParams) {
+      const body = req.body as any;
+      if (body && typeof body === 'object') {
+        // DC-6: batch 请求记录条数
+        if (Array.isArray(body)) {
+          if (config.logMethod) meta.batch = body.length;
+        } else {
+          if (config.logMethod && body.method) meta.method = body.method;
+          if (config.logParams && body.params !== undefined) meta.params = body.params;
+        }
+      }
+    }
+    logger.info('[chain-rpc]', meta);
   });
   next();
 });
@@ -46,7 +72,15 @@ if (active === 0) {
 } else {
   logger.info(`[chain-rpc] RPC pool loaded: ${active} endpoints across ${Object.keys(cfg).join(', ')}`);
 }
-const pool = new RpcPoolManager(cfg);
+const pool = new RpcPoolManager(cfg, {
+  healthIntervalMs: config.healthIntervalMs,
+  maxRetries: config.maxRetries,
+  requestTimeoutMs: config.requestTimeoutMs,
+});
+// DC-7: 池参数（env 可配，启动时打印便于核对）
+logger.info(
+  `[chain-rpc] pool params: healthInterval=${config.healthIntervalMs}ms retries=${config.maxRetries} timeout=${config.requestTimeoutMs}ms`
+);
 
 // ── 健康检查（公开） ───────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -57,7 +91,7 @@ app.get('/health', (_req, res) => {
 app.use('/v1/rpc', createReadAuth(), createRpcRouter(pool));
 app.use('/v1/broadcast', createBroadcastAuth(), createBroadcastRouter(pool));
 app.get('/v1/status', createReadAuth(), (_req, res) => {
-  res.json({ code: 0, message: 'ok', data: { chains: pool.status() } });
+  res.json({ code: 0, message: 'ok', data: { chains: pool.status(config.statusUrlMode as 'none' | 'host' | 'full') } });
 });
 
 // ── 404 ────────────────────────────────────────────────
@@ -71,7 +105,10 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ detail: 'internal error' });
 });
 
-app.listen(config.port, () => {
+const server = http.createServer(app);
+attachWs(server, pool);
+
+server.listen(config.port, () => {
   logger.info(`[chain-rpc] listening on :${config.port} (env=${config.nodeEnv})`);
   logger.info(
     `[chain-rpc] auth: read=${config.readKey ? 'configured' : 'OPEN'} broadcast=${config.broadcastKey ? 'configured' : 'OPEN'} externalVerify=${config.enableExternalVerify}`

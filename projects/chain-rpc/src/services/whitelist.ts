@@ -52,4 +52,9 @@ export function isReadMethod(chain: string, method: string): boolean {
   return EVM_READ_METHODS.has(m);
 }
 
-export const BROADCAST_METHODS = new Set(['eth_sendRawTransaction']);
+// DC-4: 广播支持 EVM eth_sendRawTransaction + Solana sendTransaction
+export const BROADCAST_METHODS = new Set(['eth_sendRawTransaction', 'sendTransaction']);
+
+export function isBroadcastMethod(method: string): boolean {
+  return BROADCAST_METHODS.has((method || '').trim());
+}

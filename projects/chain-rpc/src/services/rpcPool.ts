@@ -13,9 +13,34 @@ import axios from 'axios';
 import { logger } from '../logger';
 import { RpcEndpoint, RpcPoolConfig, normalizeChain } from './rpcPoolConfig';
 
-const HEALTH_CHECK_INTERVAL_MS = 30_000;
-const MAX_RETRIES = 3;
-const REQUEST_TIMEOUT_MS = 15_000;
+/** DC-7: 池运行参数（env 可配，见 config.ts） */
+export interface RpcPoolManagerOptions {
+  healthIntervalMs?: number;
+  maxRetries?: number;
+  requestTimeoutMs?: number;
+}
+
+/** DC-9: 仅返回 URL 的 host 部分（不含路径/query，避免暴露 key） */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}
+
+/** DC-9: 完整 URL 但 query 中 key/token/secret/auth 参数值打码为 *** */
+export function maskUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const k of Object.keys(u.searchParams)) {
+      if (/key|token|secret|auth/i.test(k)) u.searchParams.set(k, '***');
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
 
 export class ChainRpcError extends Error {
   constructor(
@@ -32,9 +57,15 @@ export class RpcPoolManager {
   private config: RpcPoolConfig;
   private healthCheckTimer: NodeJS.Timeout | null = null;
   private roundRobin: Map<string, number> = new Map();
+  private readonly healthIntervalMs: number;
+  private readonly maxRetries: number;
+  private readonly requestTimeoutMs: number;
 
-  constructor(config: RpcPoolConfig) {
+  constructor(config: RpcPoolConfig, options: RpcPoolManagerOptions = {}) {
     this.config = config;
+    this.healthIntervalMs = options.healthIntervalMs ?? 30_000;
+    this.maxRetries = options.maxRetries ?? 3;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
     this.startHealthChecks();
   }
 
@@ -131,7 +162,23 @@ export class RpcPoolManager {
   }
 
   /**
-   * 交易广播：eth_sendRawTransaction（调用方已签名，网关不持有私钥）。
+   * DC-5: 返回链上活跃端点的一个 WebSocket URL（http(s)→ws(s)），供订阅代理使用。
+   */
+  getWsEndpoint(chain: string): string | null {
+    const norm = normalizeChain(chain);
+    if (!norm) return null;
+    try {
+      const ep = this.pickEndpoint(norm);
+      return ep.url.replace(/^http/, 'ws');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 交易广播（调用方已签名，网关不持有私钥）：
+   *   EVM    → eth_sendRawTransaction(rawTx)
+   *   Solana → sendTransaction(txBase58/Base64)（返回 signature）
    */
   async broadcast(chain: string, rawTransaction: string): Promise<string> {
     const norm = normalizeChain(chain);
@@ -141,11 +188,14 @@ export class RpcPoolManager {
     if (!rawTransaction || typeof rawTransaction !== 'string') {
       throw new ChainRpcError('rawTransaction is required', 'missing_raw_tx', 400);
     }
+    if (norm === 'solana') {
+      return this.call(norm, 'sendTransaction', [rawTransaction]);
+    }
     return this.call(norm, 'eth_sendRawTransaction', [rawTransaction]);
   }
 
   /**
-   * 广播确认：轮询 eth_getTransactionReceipt 直至有回执或超时。
+   * 广播确认轮询：EVM → eth_getTransactionReceipt；Solana → getSignatureStatuses。
    * 返回 {confirmed, txHash, receipt|null, reason?}。
    */
   async waitReceipt(chain: string, txHash: string, timeoutMs = 30_000, intervalMs = 3_000): Promise<any> {
@@ -154,6 +204,17 @@ export class RpcPoolManager {
       throw new ChainRpcError(`Unsupported chain: ${chain}`, 'unsupported_chain', 400);
     }
     const deadline = Date.now() + timeoutMs;
+    if (norm === 'solana') {
+      while (Date.now() < deadline) {
+        const statuses = await this.call(norm, 'getSignatureStatuses', [[txHash]]);
+        const s = statuses?.value?.[0] || null;
+        if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') {
+          return { confirmed: true, txHash, receipt: { signatureStatus: s }, reason: null };
+        }
+        await sleep(intervalMs);
+      }
+      return { confirmed: false, txHash, receipt: null, reason: 'timeout' };
+    }
     while (Date.now() < deadline) {
       const receipt = await this.call(norm, 'eth_getTransactionReceipt', [txHash]);
       if (receipt) {
@@ -165,20 +226,25 @@ export class RpcPoolManager {
   }
 
   /**
-   * 池状态（脱敏：仅暴露 key/status/provider，不暴露 url —— url 可能含 API key）。
+   * DC-9: 池状态（脱敏策略可配置：none 无 url / host 仅 host / full 完整 url + query key 打码）。
    */
-  status(): Record<string, unknown> {
+  status(mode: 'none' | 'host' | 'full' = 'none'): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [chain, eps] of Object.entries(this.config)) {
       out[chain] = {
         total: eps.length,
         active: this.activeEndpoints(chain).length,
-        endpoints: eps.map((e) => ({
-          key: e.key,
-          provider: e.provider,
-          tier: e.tier,
-          status: e.status,
-        })),
+        endpoints: eps.map((e) => {
+          const base: any = {
+            key: e.key,
+            provider: e.provider,
+            tier: e.tier,
+            status: e.status,
+          };
+          if (mode === 'host') base.url = safeHost(e.url);
+          else if (mode === 'full') base.url = maskUrl(e.url);
+          return base;
+        }),
       };
     }
     return out;
@@ -224,7 +290,7 @@ export class RpcPoolManager {
   private async rpcCall(endpoint: RpcEndpoint, method: string, params: any[]): Promise<any> {
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         if (endpoint.tokens.remaining <= 0) {
           const resetDelay = endpoint.tokens.resetAt - Date.now();
@@ -238,7 +304,7 @@ export class RpcPoolManager {
         const response = await axios.post(
           endpoint.url,
           { jsonrpc: '2.0', id: Date.now(), method, params },
-          { timeout: REQUEST_TIMEOUT_MS, headers: { 'Content-Type': 'application/json' } }
+          { timeout: this.requestTimeoutMs, headers: { 'Content-Type': 'application/json' } }
         );
 
         endpoint.tokens.remaining--;
@@ -256,14 +322,14 @@ export class RpcPoolManager {
           await sleep(attempt * 2000);
           continue;
         }
-        if (attempt < MAX_RETRIES) {
+        if (attempt < this.maxRetries) {
           await sleep(attempt * 1000);
         }
       }
     }
 
     this.markEndpointDegraded(endpoint);
-    throw lastError || new Error(`RPC call ${method} failed after ${MAX_RETRIES} attempts`);
+    throw lastError || new Error(`RPC call ${method} failed after ${this.maxRetries} attempts`);
   }
 
   private markEndpointDegraded(endpoint: RpcEndpoint): void {
@@ -279,7 +345,7 @@ export class RpcPoolManager {
   private startHealthChecks(): void {
     this.healthCheckTimer = setInterval(() => {
       void this.runHealthChecks();
-    }, HEALTH_CHECK_INTERVAL_MS);
+    }, this.healthIntervalMs);
     if (this.healthCheckTimer && 'unref' in this.healthCheckTimer) {
       this.healthCheckTimer.unref?.();
     }

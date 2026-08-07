@@ -35,6 +35,19 @@ export const config = {
   broadcastWaitSec: parseFloat(process.env.CHAIN_RPC_WAIT_SEC || '30'),
   broadcastIntervalMs: parseInt(process.env.CHAIN_RPC_WAIT_INTERVAL_MS || '3000', 10),
 
+  // ── 池参数可配置（DC-7） ──────────────────────────────
+  healthIntervalMs: parseInt(process.env.CHAIN_RPC_HEALTH_INTERVAL_MS || '30000', 10),
+  maxRetries: parseInt(process.env.CHAIN_RPC_MAX_RETRIES || '3', 10),
+  requestTimeoutMs: parseInt(process.env.CHAIN_RPC_REQUEST_TIMEOUT_MS || '15000', 10),
+
   // ── 端点级开关 ───────────────────────────────────────
   enableExternalVerify: boolOr(process.env.CHAIN_RPC_ENABLE_EXTERNAL_VERIFY, false),
+
+  // ── 可观测（DC-9） ────────────────────────────────────
+  // 请求日志端点细分：是否记录 RPC 方法名 / params（含地址哈希，默认关）/ 跳过 /health
+  logMethod: boolOr(process.env.CHAIN_RPC_LOG_METHOD, true),
+  logParams: boolOr(process.env.CHAIN_RPC_LOG_PARAMS, false),
+  logSkipHealth: boolOr(process.env.CHAIN_RPC_LOG_SKIP_HEALTH, true),
+  // /v1/status 端点 URL 显示模式：none（默认，脱敏无 url）| host（仅 host）| full（完整 url + query key 打码）
+  statusUrlMode: (process.env.CHAIN_RPC_STATUS_URL_MODE || 'none').toLowerCase(),
 };
