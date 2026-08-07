@@ -1,6 +1,6 @@
 # InfraX 统一任务清单（infrax_tasklist）
 
-> 最后更新: 2026-08-07 | 适用版本 `v0.6.0-20260806`
+> 最后更新: 2026-08-08 | 适用版本 `v0.6.0-20260806`
 >
 > 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
 >
@@ -599,7 +599,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-11 | `/symbol/resolve` 多市场覆盖确认 | ✅ | P1 | **全市场覆盖已实现**（09a9d65 + 3bfa660，2026-08-06 生产实测）：新增 `app/symbol_lookup.py` 在线符号搜索（美股→Finnhub search 主 + TwelveData symbol_search 备；外汇/期货→TwelveData；A股/港股→AkShare 全量表 24h 缓存 + TwelveData 备）；resolve 实测 apple→AAPL、MSFT→MSFT、600519→600519、00700→00700、EUR/USD→EURUSD、gold→GOLD；search 实测茅台→600519、腾讯→00700（中文名匹配）、apple→AAPL/APLE 等（Finnhub 已过滤 .SS/.HK/.L 非美后缀）；种子→在线回退链，全市场路由 market 参数统一 crypto/usstock/forex/futures/cnstock/hkstock |
 | DS-12 | 入站鉴权 `X-Service-Key`（`/health` 豁免） | ✅ | P1 | 1f4deea 统一鉴权契约 app_auth 落地；生产三服务实测闭环（见 9.3） |
 | DS-13 | ML 因子并入标准因子面（catalog/current/history） | ✅ | P1 | `app/factors.py` 新增 10 个 ML 因子（category="ml"：tree/finbert/consensus/bolt/moirai/timesfm 的 direction+prob，direction 统一数值化 up=1/flat=0/down=-1）；catalog 28 因子、current 按 symbol 广播、history asof 对齐（fetched_at ≤ bar ts，无未来函数）；2026-08-07 已部署生产实测三端点全出数 |
-| DS-14 | 官方 Python SDK（封装全部端点） | ✅ | P1 | `projects/data/sdk/python/`（包名 infra-data-client 0.1.0，SemVer）：单构造 `Client(base_url, api_key)` 内置 X-Service-Key、`verify` 可配置、429 重试/退避（Retry-After 优先）、fail-silent 默认返回 None 不抛错、秒↔毫秒自动归一化、全方法类型注解；覆盖 /bars /factors/* /snapshots /ticker /symbol/resolve /symbols/search /policy/broker-market /stats /health；wheel 构建通过 + 生产实测 12 方法全绿 |
+| DS-14 | 官方 Python SDK（封装全部端点） | ✅ | P1 | `projects/data/sdk/python/`（包名 infra-data-client，现 **0.2.0**，SemVer）：单构造 `Client(base_url, api_key)` 内置 X-Service-Key、`verify` 可配置、429 重试/退避（Retry-After 优先）、fail-silent 默认返回 None 不抛错、秒↔毫秒自动归一化、全方法类型注解；覆盖 /bars /factors/* /snapshots /ticker /symbol/resolve /symbols/search /policy/broker-market /stats /health + **`get_ml_predictions()`（2026-08-08 v0.2.0 新增，/ml/predictions 快照优先路径）**；集成示例 `examples/ml_predictions_integration.py`（快照优先 + data=null 兜底 + /ml/cache/stats 就绪判断）；wheel 构建通过 + 生产实测 12 方法全绿 |
 
 ### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
 
@@ -647,6 +647,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **B 端缺口⑤：多市场分钟级 K 线采集（2026-08-06 完成 v2，commit b8cf9a6 + 后续 4h 复用修复）** 生产实测发现：Twelve Data 免费 tier 每日 800 credits 被全服务共享消耗（当日实际 3087）、yfinance 从生产 IP 被 Yahoo 稳定 429、东财 push2his 网络阻断。落地能力（生产实测 23:14）：**cn_stocks 15m/1h/4h 全落库**（腾讯分钟线 1970 根 + 1h 聚合 4h，600519 等 6 只，免费无额度）；**forex 改为轮换采集**（每周期只拉 1 个 timeframe × 7 对 + 请求间 8s 节流，28→7 请求/周期，额度友好，当日已超支待 UTC 重置后出数）；**yfinance 4h 修复**（先拉 1h 再聚合，V/XOM 1h/4h 实测落库 400/103 根）；**us_stocks/futures 1h/4h 受 Yahoo 限流部分成功**（V/XOM 通、SPY 等失败记 failed）。⚠️ 遗留：hk 分钟级源未找到（仅 1d）；Twelve Data 额度超支需 B 端提供付费 tier 或降其他消费方
 - [~] **B 端缺口⑤后续：外汇轮换出数验证（进行中，2026-08-06 23:2x）** 轮换采集代码已就绪并部署生产（commit b8cf9a6：每周期只拉 1 个 timeframe × 7 对外汇 + 请求间 8s 节流，28→7 请求/周期），但 Twelve Data 免费 tier 当日额度被全服务共享超支（实际 3087/800）→ 当日 15m 请求全 429。**待 08-06 23:59 UTC（08-07 08:00 CST）额度重置后轮换自动出数**，验证 7 对外汇 15m/1h/4h/1d 落库后再标记完成
 - [x] **B 端 DS-11 决策点：`/symbol/resolve` 多市场覆盖（2026-08-06 答复，commit 后续）** 生产实测全市场矩阵：crypto（BTC/BTCUSDT 含 swap）✅、外汇 `EUR/USD`→`EURUSD=X` ✅（斜杠与裸对 EURUSD 均支持，裸对识别为本次新增）、usstock/futures/cnstock/hkstock 种子直通（SPY/GC=F/600519/00700）✅。**决策：全市场已覆盖，AItrader 无需保留非 crypto 本地降级；调用需显式传 market 参数**（默认 crypto 会把 SPY 误匹配 SPYUSDT）。已同步 B_END_PROGRESS_CHASER.md §2/§3
+- [x] **ml-service 性能改造 + 双 SDK 发布 + 文档同步（2026-08-08 完成，commit a7cf6bc + ed076a3 + e9cc90f + eb1a66f + 512685f，均推送 GitHub origin/master）** ① **异步化 + 缓存预热**：重计算端点（tree_predictions/volatility/bolt/moirai/timesfm/consensus）全部走 `app/async_cache.py`（AsyncCacheRunner：缓存 miss 后台 daemon 线程计算、请求立即返回 `data=null`；prewarm_loop 周期刷新），TTL 缓存 `peek/bump`，`ML_PREWARM_ENABLED/DELAY_SEC/INTERVAL_SEC`（默认 true/60/900），新增 `/ml/cache/stats` 监控端点（免鉴权，total hits/misses + 各端点 cached/expires_in/last_compute_ms）；② **consensus 事件循环阻塞修复**（原 async def 同步调 build_consensus 卡死 /health → 改 def + _async_runner）；③ **响应结构统一**：volatility/bolt/moirai/timesfm 由裸数组统一为 `{generated_at, n_symbols, model, avg_<score_key>, symbols}`（volatility→volatility_score，其余→prob_up），tree/consensus 保持原 dict；缓存 miss 时 `data=null` 属预期；④ **宏观因子**：FRED VIXCLS/DTWEXBGS/DGS10 → vix/dxy/us10y + FNG 显示名 "Fear & Greed"（alternative.me 365 天回填）；⑤ **文档 5 份**：SERVICE_API_REFERENCE §3 ml-service 章节、SDK_INTEGRATION（ml 消费要点）、MCP_USAGE（ml_predictions 链路）、DATA_SERVICE_CATALOG（因子 FRED 源/显示名 + §4 拆分）、SERVICE_ENDPOINTS_OBSERVABILITY（ml 端点表/预热）、DATA_SERVICE.md v2.0 重写（端口 9112/46 符号/7 timeframe）；⑥ **Python SDK infra-data-client 0.2.0**：新增 `get_ml_predictions(model, symbol, ...)`（/ml/predictions 快照优先，404→None fail-silent）+ `examples/ml_predictions_integration.py`（快照优先 + data=null 兜底 + cache/stats 就绪判断，生产两条路径实测通过）；⑦ **npm @0xinfrax/infrax-dk 0.4.0 已发布**（registry latest 验证）：新增 `infra.ml.*` 命名空间 9 方法（treePredictions/volatility/bolt/moirai/timesfm/consensus/macroFeatures/sentiment/cacheStats），`mlUrl`/`mlApiKey` 独立配置，生产实测 bolt 30 symbols / cacheStats / data.mlPredictions 全通。**集成方配合点**：优先读 data `/api/data/ml/predictions` 快照；直连 ml-service 缓存 miss 得到 `data=null`，用 `/ml/cache/stats` 判断就绪并按 TTL（默认 1800s）轮询
 
 **后端管理需求总览（2026-08-06，B 端提）**
 
@@ -872,7 +873,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] ③ FastAPI 服务（data :9112 / ml-service :9120）`/openapi.json` 可用性与结构核对 — 核对通过（完整 schema，可被 openapi-generator 消费）
 - [x] ④ Flask 服务（injector :9113 / ragservicer :9721）无自动 OpenAPI —— 契约人工维护核对（§4/§5 表）— 核对通过（`SERVICE_ENDPOINTS_OBSERVABILITY.md` §4/§5 端点表与代码一致）
 - [x] ⑤ openapi-generator / 手写 client 生成方案评估（输出建议）— 评估完成：data/ml 可直接 openapi-generator（FastAPI 自带 /openapi.json + /docs）；**✅ G-9 已实现 Flask OpenAPI**：injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths），手写 OpenAPI 3.0 spec，生产免 key 实测 200
-- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — **✅ G-9 已发布**：npm `@0xinfrax/infrax-dk@0.3.0` 已发布 registry 验证；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，待 token 发布（排期）
+- [x] ⑥ SDK 版本管理方式（PyPI/npm 发布 vs 仓库内引用）决策 — **✅ G-9 已发布**：npm `@0xinfrax/infrax-dk@0.4.0` 已发布 registry 验证（2026-08-08 新增 `infra.ml.*` ml-service 实时推理命名空间）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，待 token 发布（排期）
 
 **9.7 差距报告（2026-08-06 审查输出，G-1~G-9 已按序实现）**
 
@@ -888,7 +889,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | G-6 | 中 | 四服务均无 `/metrics` / OpenTelemetry | 无法接入标准指标采集 | ✅ **已修复**：新增 `projects/shared/metrics.py` 统一 Prometheus 指标（`http_requests_total` + `http_request_duration_seconds` + 进程指标），四服务接入 `/metrics`（data/ml 走 `register_fastapi`，injector/rag 走 `register_flask`），`/metrics` 纳入 app_auth 豁免免 key 拉取；与 HTTP 轮询探针互补 |
 | G-7 | 低 | 监控复用 bridge key，无独立只读 key | 监控凭据权限过大 | ✅ **已修复**：`app_auth.is_authorized` 增加 `method`+`monitor_key` 只读支持，四服务接入 `MONITOR_API_KEY`（仅 GET/HEAD/OPTIONS 放行，写操作拒绝）；**生产已启用**（四服务 `.env` 已配置同一 `MONITOR_API_KEY` 并重启），实测 monitor key GET 200 / POST 401、bridge key 不受影响（key 存于生产 `.env`，不入 repo，需轮换时替换后重启即可） |
 | G-8 | 低 | 管理操作无结构化审计日志（仅日志行） | 审计追溯缺失 | ✅ **已修复**：ragservicer 新增 `audit_logs` 表 + `add_audit_log` + `audit_log_middleware` 落库（tenant/endpoint/method/status/duration_ms；落库失败不影响请求）。注：`require_admin` Bearer-only 契约保留（B 端未要求三 header） |
-| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.3.0` 已发布（registry.npmjs.org 已验证 main/types/engines）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
+| G-9 | 低 | SDK 未发布 npm/PyPI；Flask 无自动 OpenAPI | 外部获取 SDK 需 clone 仓库 | ✅ **大部分完成**：npm `@0xinfrax/infrax-dk@0.4.0` 已发布（registry.npmjs.org 已验证 main/types/engines；0.4.0 含 `infra.ml.*` 9 方法，2026-08-08）；injector `/openapi.json`（10 paths）+ ragservicer `/api/v1/openapi.json`（15 paths）已上线生产（免 key 访问实测 200）；PyPI `lightrag-client 2.0.0` 构建 + twine check 通过，**待 PyPI token 发布（排期项）** |
 
 **9.7 审查结论**：四服务对外集成面与 `SERVICE_ENDPOINTS_OBSERVABILITY.md` 一致；统一鉴权契约（app_auth）、错误体（data D2）、数据面契约（7.2 详细核对表）均已闭环；差距项 **G-1~G-9 全部实现**（G-9 中 PyPI 发布待 token 排期，其余闭环，本轮提交见 git log）。**9.7 首轮修复提交**：`0f6d3d5`（D7/D8）、`1ddcc97`（injector namespace）、`1cf5a4d`（rag _write_env 锁）。
 
@@ -991,7 +992,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > **DQ-1~DQ-8 全部完成 ✅（2026-08-07 生产验证）**：data-service 新增 `app/cleaning.py`（is_abnormal/clean_bars/quality_stats）+ `app/utils/timeutil.py`（normalize_ms）；`/bars` 异常 bar 清洗（默认 `mark` 打标——外汇零量属正常不应剔除，可配 `CLEAN_MODE=drop`）；`/factors/history` ffill（`FACTORS_FFILL` 开关）；`/bars` `/factors/history` 秒级参数自动归一化；`/factors/current` 附 `_meta`（age_ms/fresh，`FRESHNESS_MS` 默认 10min）；ml_predictions 写入 `normalize_ml_symbol` 归一化 + 唯一键幂等；`/stats.quality` 输出 missing_rate/abnormal_bars/source_freshness；okx_chainos 新增 `okx_candles` 快照（生产 439 items）；旧栈 mempump 定时器启用（支持链过滤 + `stage=NEW`，生产 60 行）；v5 `okx_token_snapshots` 因 v5 token-ranking 接口 404 长期 0 行 → 新增 v6 hot-tokens 回退（生产 200/200/100+ 行，`price_change_24h` 已 ALTER NUMERIC(20,4)）；btc_hashrate 经 mempool `/v1/mining/hashrate/1d` 采集并换算 EH/s（生产 899.19）。
 
-> 注：okx `price_change_24h` numeric overflow 已修复 ✅（`a925065`，生产已 ALTER）；DS-14 Python SDK 已交付 ✅（`8e92921` + tag `v0.1.0`）；R-4 okx 生产出数已实测闭环 ✅。
+> 注：okx `price_change_24h` numeric overflow 已修复 ✅（`a925065`，生产已 ALTER）；DS-14 Python SDK 已交付 ✅（`8e92921` + tag `v0.1.0`；**v0.2.0 于 2026-08-08 新增 `get_ml_predictions`**）；R-4 okx 生产出数已实测闭环 ✅。
 
 **9.8.8 其他微服务需求补充（完整规格，2026-08-07，B 端需求：再补其他微服务）**
 
