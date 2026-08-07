@@ -28,6 +28,16 @@ app.use(cors());
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 
+// ── 请求日志（访问可观测性；不记录 headers，避免泄露鉴权 key） ──
+app.use((req, res, next) => {
+  if (req.path === '/health') return next();
+  const t0 = Date.now();
+  res.on('finish', () => {
+    logger.info(`[chain-rpc] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - t0}ms`);
+  });
+  next();
+});
+
 // ── RPC 池初始化（路由依赖，须先于路由挂载） ─────────────
 const cfg = buildRpcPoolConfig(config.supportedChains);
 const active = Object.values(cfg).reduce((s, eps) => s + eps.length, 0);

@@ -297,10 +297,14 @@ export async function rpcProxy(chain: string, method: string, params: unknown[] 
         });
         if (resp.ok) {
           const json = await resp.json();
-          if (json.error) {
-            throw Errors.paramError(`RPC error: ${json.error.message || JSON.stringify(json.error)}`);
+          // chain-rpc 统一信封 {code, message, data:{chain, method, result}}
+          if (json.code === 0) {
+            return json.data?.result;
           }
-          return json.result;
+          const detail = json.detail || (json.error
+            ? (json.error.message || JSON.stringify(json.error))
+            : (json.message || JSON.stringify(json)));
+          throw Errors.paramError(`RPC error: ${detail}`);
         }
         // 网关返回非 2xx（如方法被白名单拒绝）→ 记录并回退直连
         console.warn(`[waas] chain-rpc gateway ${resp.status} for ${chain}.${method}, falling back to direct RPC`);
