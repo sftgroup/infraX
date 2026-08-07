@@ -32,8 +32,10 @@ import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
   baseUrl: 'https://43.163.105.172',   // 生产入口（域名恢复后用 https://infrax.0xainet.top）
-  apiKey: process.env.INFRAX_API_KEY,  // 平台签发 key（dx_/vx_/mp_ 等，Bearer 携带）
-  // verifyTls: false,                 // 域名证书未配前需跳过校验
+  apiKey: process.env.INFRAX_API_KEY,  // 平台签发 key（dx_/vx_/mp_ 等，自动带 x-api-key 头）
+  // ⚠️ JS SDK 无内置 TLS 跳过选项：当前生产自签证书下需
+  //    NODE_TLS_REJECT_UNAUTHORIZED=0（Node）或待域名证书恢复后再用 https；
+  //    内网直连 http://<host>:9112 无此问题。
 });
 ```
 
