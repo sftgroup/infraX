@@ -18,6 +18,10 @@ export interface InfraXConfig {
   mlUrl?: string;
   /** ml-service API key (ML_API_KEY); falls back to apiKey */
   mlApiKey?: string;
+  /** chain-rpc gateway (:9130) base URL for chain RPC reads & broadcast; falls back to baseUrl */
+  chainRpcUrl?: string;
+  /** chain-rpc gateway API key（读；广播需服务端单独签发 CHAIN_RPC_BROADCAST_KEY）; falls back to apiKey */
+  chainRpcApiKey?: string;
   timeout?: number;
 }
 
@@ -615,6 +619,53 @@ class MlAPI {
   }
 }
 
+// ═══════════════ ChainRpc — chain-rpc 网关 (:9130) 链上读 + 广播 ═══════════════
+// MQ-10：全仓唯一链上 RPC 网关（与 WAAS 解耦）。所有中心化服务统一走该网关
+// 读取链上数据 / 广播已签名交易；网关不持有任何私钥。
+// 读端点带 chainRpcApiKey（x-api-key）；广播端点需要服务端签发的广播 key，
+// 无法经 SDK 传入时请直接调 REST（POST /v1/broadcast/:chain + X-Service-Key）。
+
+export interface ChainRpcReadParams { chain: string; method: string; params?: any[]; }
+export interface ChainRpcReadResult { chain: string; method: string; result: any; }
+export interface ChainRpcBroadcastParams { chain: string; rawTransaction: string; wait?: boolean; timeoutMs?: number; }
+export interface ChainRpcBroadcastResult {
+  chain: string;
+  txHash: string;
+  confirmed: boolean;
+  receipt: any | null;
+  reason?: string;
+}
+
+class ChainRpcAPI {
+  constructor(private http: HttpClient) {}
+
+  /** 通用链上读调用（方法走白名单：eth_* 读方法 / solana get*） */
+  async call(params: ChainRpcReadParams) {
+    return this.http.post<ChainRpcReadResult>(`/v1/rpc/${encodeURIComponent(params.chain)}`, {
+      method: params.method,
+      params: params.params || [],
+    });
+  }
+
+  /** 交易广播（rawTransaction 为调用方已签名数据；wait=true 时轮询回执） */
+  async broadcast(params: ChainRpcBroadcastParams) {
+    return this.http.post<ChainRpcBroadcastResult>(
+      `/v1/broadcast/${encodeURIComponent(params.chain)}`,
+      { rawTransaction: params.rawTransaction, wait: params.wait, timeoutMs: params.timeoutMs }
+    );
+  }
+
+  /** 池状态（脱敏：端点 key/status，不含 url） */
+  async status() {
+    return this.http.get<any>('/v1/status');
+  }
+
+  /** 服务健康 */
+  async health() {
+    return this.http.get<any>('/health');
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -629,6 +680,7 @@ export class InfraX {
   readonly market: MarketAPI;
   readonly data: DataAPI;
   readonly ml: MlAPI;
+  readonly chainRpc: ChainRpcAPI;
 
   private http: HttpClient;
 
@@ -654,6 +706,12 @@ export class InfraX {
       ...config,
       baseUrl: config.mlUrl || config.baseUrl,
       apiKey: config.mlApiKey || config.apiKey,
+    }));
+    // chain-rpc 网关独立 baseUrl（chainRpcUrl 优先，回退 baseUrl）+ 独立 key（chainRpcApiKey 优先，回退 apiKey）
+    this.chainRpc = new ChainRpcAPI(new HttpClient({
+      ...config,
+      baseUrl: config.chainRpcUrl || config.baseUrl,
+      apiKey: config.chainRpcApiKey || config.apiKey,
     }));
   }
 

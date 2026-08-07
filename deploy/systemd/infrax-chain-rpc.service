@@ -1,0 +1,31 @@
+[Unit]
+Description=InfraX chain-rpc gateway (MQ-10)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/chain-rpc
+# ── 部署前必填：替换 CHANGE_ME_* 为真实密钥（勿提交真实密钥到 git） ──
+Environment="CHAIN_RPC_READ_KEY=CHANGE_ME_READ_KEY"
+Environment="CHAIN_RPC_BROADCAST_KEY=CHANGE_ME_BROADCAST_KEY"
+# 可选：data 服务统一签发 key 的实时校验（scope=rpc / rpc_broadcast）
+Environment="CHAIN_RPC_ENABLE_EXTERNAL_VERIFY=false"
+Environment="DATA_SERVICE_URL=http://127.0.0.1:9112"
+Environment="DATA_API_KEY="
+Environment="PORT=9130"
+Environment="CHAIN_RPC_CHAINS=sepolia,ethereum,bsc,base,oxa,solana"
+Environment="SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com"
+Environment="ETH_RPC_URL=https://ethereum-rpc.publicnode.com"
+Environment="BSC_RPC_URL=https://bsc-dataseed.bnbchain.org"
+Environment="BASE_RPC_URL=https://mainnet.base.org"
+Environment="OXA_RPC_URL=https://rpc.l1.oxachain.io"
+Environment="CHAIN_RPC_WAIT_SEC=30"
+Environment="CHAIN_RPC_WAIT_INTERVAL_MS=3000"
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/chain-rpc/node_modules/.bin:$PATH"
+ExecStart=/usr/bin/tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

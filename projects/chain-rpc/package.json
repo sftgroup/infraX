@@ -1,0 +1,27 @@
+{
+  "name": "@0xinfrax/chain-rpc",
+  "version": "0.1.0",
+  "description": "InfraX Chain RPC Gateway — 全仓唯一链上 RPC 读取 + 交易广播网关（与 WAAS 解耦）",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "helmet": "^8.3.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.6.0"
+  }
+}

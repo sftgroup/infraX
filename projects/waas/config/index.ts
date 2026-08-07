@@ -112,6 +112,14 @@ export const config = {
   bscRpcUrl: process.env.BSC_RPC_URL || '',
   baseRpcUrl: process.env.BASE_RPC_URL || '',
 
+  // MQ-10: 链上 RPC 网关（全仓唯一链上 RPC 读/广播入口，与 WAAS 解耦）
+  // 配置 CHAIN_RPC_URL 后，通用 RPC 读取（rpcProxy）优先转发 chain-rpc；
+  // 未配置或网关不可用时回退直连 chainRpc 单 URL（兼容旧行为）。
+  chainRpcGateway: {
+    baseUrl: process.env.CHAIN_RPC_URL || '',
+    readKey: process.env.CHAIN_RPC_READ_KEY || '',
+  },
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'debug',
 };

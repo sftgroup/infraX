@@ -272,11 +272,46 @@ export function getRpcUrl(chain: string): string {
 }
 
 /**
- * MQ-1: 通用 RPC 转发代理。
+ * MQ-1/MQ-10: 通用 RPC 转发代理。
  * 将 {chain, method, params[]} 转发到对应 RPC 节点，返回标准 JSON-RPC result；
  * 节点返回 error 时抛参数错误（含 error.message）。
+ * MQ-10：配置 CHAIN_RPC_URL 后优先经 chain-rpc 网关（读 key）；网关不可用
+ * 回退直连 chainRpc 单 URL（兼容旧行为）。
  */
 export async function rpcProxy(chain: string, method: string, params: unknown[] = []): Promise<any> {
+  // 优先走 chain-rpc 网关（统一池化 RPC，与 WAAS 解耦）
+  const gateway = config.chainRpcGateway;
+  if (gateway.baseUrl) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      try {
+        const resp = await fetch(`${gateway.baseUrl.replace(/\/$/, '')}/v1/rpc/${encodeURIComponent(chain)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Service-Key': gateway.readKey || '',
+          },
+          body: JSON.stringify({ method, params }),
+          signal: controller.signal,
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.error) {
+            throw Errors.paramError(`RPC error: ${json.error.message || JSON.stringify(json.error)}`);
+          }
+          return json.result;
+        }
+        // 网关返回非 2xx（如方法被白名单拒绝）→ 记录并回退直连
+        console.warn(`[waas] chain-rpc gateway ${resp.status} for ${chain}.${method}, falling back to direct RPC`);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err: any) {
+      console.warn(`[waas] chain-rpc gateway unreachable (${err?.message}), falling back to direct RPC`);
+    }
+  }
+
   const url = getRpcUrl(chain);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
