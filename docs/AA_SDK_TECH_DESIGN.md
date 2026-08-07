@@ -1,8 +1,10 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.4 | **日期**: 2026-08-07 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.5 | **日期**: 2026-08-08 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
+>
+> **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@infrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
 >
 > **v1.4（2026-08-07）**：新增 §1.3 三层架构与 InfraX 统一管理：aa-sdk 定位升级为 InfraX 共享 SDK（`@infrax/aa-sdk` 白标），PocketX 仅基于 SDK 构建；链上/服务能力归 InfraX 统一承载；新增 product 多租户隔离（`SessionStore` 键 `(product, network, sessionId)`）。
 >
