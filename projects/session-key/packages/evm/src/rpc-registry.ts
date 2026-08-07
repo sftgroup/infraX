@@ -17,12 +17,18 @@ export function buildRpcRegistry(): Record<string, string> {
 }
 
 const publicClientCache = new Map<string, PublicClient>();
-const rpcRegistry = buildRpcRegistry();
+let rpcRegistry: Record<string, string> | null = null;
+
+function getRpcRegistry(): Record<string, string> {
+  // 懒加载：仅在首次实际使用 RPC 时读取环境变量，import 包本身不要求 env
+  if (rpcRegistry === null) rpcRegistry = buildRpcRegistry();
+  return rpcRegistry;
+}
 
 export function getPublicClient(chain: string): PublicClient {
   const cached = publicClientCache.get(chain);
   if (cached) return cached;
-  const rpcUrl = rpcRegistry[chain];
+  const rpcUrl = getRpcRegistry()[chain];
   if (!rpcUrl) throw new Error(`No RPC URL for chain: ${chain}`);
   const client = createPublicClient({ transport: http(rpcUrl) });
   publicClientCache.set(chain, client);
@@ -30,7 +36,7 @@ export function getPublicClient(chain: string): PublicClient {
 }
 
 export function getWalletClient(chain: string, account: Account): WalletClient<Transport, any, any> {
-  const rpcUrl = rpcRegistry[chain];
+  const rpcUrl = getRpcRegistry()[chain];
   if (!rpcUrl) throw new Error(`No RPC URL for chain: ${chain}`);
   return createWalletClient({ account, transport: http(rpcUrl) });
 }
