@@ -2,7 +2,7 @@
 
 InfraX **data-service**（统一市场数据微服务，`/bars` / `/factors/*` / `/snapshots` / `/ticker` / `/symbols/*` / `/stats` / `/health`）的官方 Python 客户端。B 端（AItrader 侧）用这一个类替换各自重复实现的 `data_client.py` / `factor_client.py`，收敛鉴权、TLS、限流、时间换算口径。
 
-- 版本：**0.1.0**（SemVer；契约变更走 minor，bug 修复走 patch，AItrader 侧升级 SDK 即可，无需改业务代码）
+- 版本：**0.2.0**（SemVer；契约变更走 minor，bug 修复走 patch，AItrader 侧升级 SDK 即可，无需改业务代码）
 - 依赖：`requests>=2.25`（Python ≥ 3.9）
 
 ## 安装
@@ -54,6 +54,7 @@ hits = client.search_symbols("btc", market="crypto", limit=10)
 | `get_history_factors(symbol, timeframe, ids, start, end, limit)` | `GET /factors/history` | 逐 bar 因子历史（asof 对齐，回测无未来函数） |
 | `get_snapshots(snapshot_type)` | `GET /snapshots` | 板块快照（heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain/commodities/forex_pairs/market_overview） |
 | `get_ticker(symbol, market_type, exchange_id, market)` | `GET /ticker` | 实时报价 |
+| `get_ml_predictions(model, symbol, start, end, limit)` | `GET /ml/predictions` | **P2 模型预测快照（优先路径，30min 落库）**；model=bolt\|moirai\|timesfm，无快照返回 None |
 | `resolve_symbol(symbol, market)` | `GET /symbol/resolve` | 符号解析（全市场，DS-11） |
 | `search_symbols(keyword, market, limit)` | `GET /symbols/search` | 符号模糊搜索（DS-9） |
 | `get_broker_market_policy()` | `GET /policy/broker-market` | 券商市场策略 |
@@ -71,11 +72,14 @@ hits = client.search_symbols("btc", market="crypto", limit=10)
 
 ## 示例
 
-见 [examples/quickstart.py](examples/quickstart.py)。
+- [examples/quickstart.py](examples/quickstart.py) — 全端点走查
+- [examples/ml_predictions_integration.py](examples/ml_predictions_integration.py) — **ML 预测集成**：快照优先 + ml-service 直连 `data=null` 兜底（含 `/ml/cache/stats` 就绪判断）
 
 ```bash
 cd projects/data/sdk/python
 python examples/quickstart.py --base-url http://127.0.0.1:9112 --api-key <KEY>
+python examples/ml_predictions_integration.py --symbol BTC/USDT --model bolt \
+    --data-url http://127.0.0.1:9112 --data-key <KEY> --ml-url http://43.156.25.197:9120
 ```
 
 ## 发布（SemVer）
@@ -83,7 +87,7 @@ python examples/quickstart.py --base-url http://127.0.0.1:9112 --api-key <KEY>
 ```bash
 cd projects/data/sdk/python
 pip install build
-python -m build        # 产出 dist/infra_data_client-0.1.0-*.whl / .tar.gz
+python -m build        # 产出 dist/infra_data_client-0.2.0-*.whl / .tar.gz
 # 上传到私有 pip 源，或直接分发 wheel
 ```
 

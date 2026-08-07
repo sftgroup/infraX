@@ -28,7 +28,7 @@ from typing import Any, Optional, Union
 import requests
 import urllib3
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # 平台统一鉴权头（data-service 接受 X-Service-Key / Bearer / X-API-Key 任一）
 _API_KEY_HEADER = "X-Service-Key"
@@ -307,6 +307,35 @@ class InfraDataClient:
             "/symbols/search",
             params={"keyword": keyword, "market": market, "limit": limit},
         )
+
+    # ── ML 预测（快照，P2 模型）───────────────────────────
+
+    def get_ml_predictions(
+        self,
+        model: str,
+        symbol: str,
+        start: Optional[Union[int, float]] = None,
+        end: Optional[Union[int, float]] = None,
+        limit: int = 500,
+    ) -> Optional[dict]:
+        """P2 单模型预测历史（**data 侧采集快照，优先路径**，30min 落库稳定可查）。
+
+        model: bolt | moirai | timesfm（正则校验，其他值 422）
+        symbol: BTC / BTC/USDT / EURUSD=X 等（服务端归一化，大小写不敏感）
+        start/end: 秒或毫秒均可，自动归一化为毫秒
+        返回 {model, symbol, count, predictions:[{generated_at, direction,
+        prob_up, uncertainty, point_forecast, quantiles}, ...]}（generated_at 升序）；
+        该符号尚无快照 → 404 → None（fail_silent）。
+
+        实时性优先时请直连 ml-service `/ml/*`（缓存 miss 返回 data=null，
+        需按 TTL 轮询，见 examples/ml_predictions_integration.py）。
+        """
+        params: dict[str, Any] = {"model": model, "symbol": symbol, "limit": limit}
+        if start is not None:
+            params["start"] = _to_ms(start)
+        if end is not None:
+            params["end"] = _to_ms(end)
+        return self._request("GET", "/ml/predictions", params=params)
 
     # ── Policy / Stats / Health ───────────────────────────
 
