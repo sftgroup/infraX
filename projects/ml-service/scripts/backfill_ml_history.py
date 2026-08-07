@@ -41,6 +41,10 @@ import time
 from typing import Any, Iterator
 
 import numpy as np
+import pandas as pd
+
+# scripts/ 子目录运行 → 把项目根加入 sys.path（config 在项目根）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config  # noqa: F401  (app 模块依赖 config 顶层导入)
 from app import data_client
