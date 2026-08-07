@@ -143,7 +143,7 @@
 
 > **宏观因子数据源与显示名（2026-08-08 更新）**：macro 因子 `vix`/`dxy`/`us10y` 由 FRED 系列 **`VIXCLS` / `DTWEXBGS` / `DGS10`** 供给（`data_config.json` 的 `macro.fred_series` 可扩展，映射见 `app/factors.py` `_MACRO_SERIES_NAMES`）；`fear_greed` 显示名映射为 **"Fear & Greed"**（`_MACRO_DISPLAY_EXTRA`，替代 alternative.me 默认显示）。`/factors/history` 不传 `limit` 时默认返回最近 **500** 根（上限 5000）。
 
-> **⚠️ ML 因子历史极短（2026-08-07 已知缺口）**：`ml_predictions` 明细（bolt/moirai/timesfm）与 `tree_predictions`（LightGBM）自 2026-08-05 起才有数据（生产 `ml_predictions` 仅 74 行）。回测含 ML 因子时早期区间全空。回填方案（需 ml-service 配合，暂登记 infrax_tasklist §9.8.8 排期）：对已上线符号按历史 bars 回放推理写 `ml_predictions`；在回填完成前，ML 因子仅适用于 2026-08-05 之后的区间。
+> **⚠️ ML 因子历史极短（2026-08-08 现状）**：`ml_predictions` 明细（bolt/moirai/timesfm）与 `tree_predictions`（LightGBM）自 2026-08-05 起才有数据（生产 `ml_predictions` 现 **768 行 / 30 符号 / 08-05 起**：由 `P2MlCollector` 每 30min 前向快照累积，**历史回放回填未做**）。回测含 ML 因子时早期区间全空。回填方案（需 ml-service 配合，暂登记 infrax_tasklist §9.8.8 排期）：对已上线符号按历史 bars 回放推理写 `ml_predictions`；在回填完成前，ML 因子仅适用于 2026-08-05 之后的区间。
 
 **灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
 

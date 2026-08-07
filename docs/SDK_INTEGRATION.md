@@ -140,6 +140,8 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 
 **推荐路径**：ML 预测优先读 **data-service `/api/data/ml/predictions`**（`infrax.data.mlPredictions()`，30min 周期快照落库，稳定低延迟）；需要实时推理结果时才直连 ml-service 以下端点。
 
+> **鉴权说明（B 端必读）**：data 快照路径用 **data 签发的 `dx_*` key 即可**（SDK `apiKey`/`dataApiKey`，走统一三选一 header）；**直连 ml-service 实时端点需要单独的 `ML_API_KEY`**——ml-service 目前是**单一静态 key**（`app_auth.py` 单 key 常量时间比较，无租户多 key 签发体系，与 data 的 `dx_*` 不同）。未发放 `ML_API_KEY` 的 B 端请走 data 快照路径；如确需实时直连，需向平台申请或由 data-service 侧代理透传（`/api/data/ml/*` 带 ML_API_KEY 调用 ml-service）。
+
 > **Python SDK**：`InfraDataClient.get_ml_predictions(model, symbol, start, end, limit)`（v0.2.0+）已内置快照读取（无快照 404→None，fail-silent）。完整集成示例（快照优先 + ml-service 直连 `data=null` 兜底 + `/ml/cache/stats` 就绪判断，生产实测通过）见 `projects/data/sdk/python/examples/ml_predictions_integration.py`。
 
 **端点清单**（模型不可用/数据不足时 `data=null`，fail-silent）：
