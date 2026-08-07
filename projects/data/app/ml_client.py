@@ -18,11 +18,11 @@ from app.config import ML_SERVICE_URL, ML_API_KEY
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 60  # ml-service 首次训练/加载模型可能较慢
+_TIMEOUT = 300  # tree 首次训练+全量预测可达分钟级；给足预算
 
 # consensus 首次聚合触发 tree 训练判定 + Kronos 全量推理（可达 ~200s）；
-# 命中 ml-service 25min TTL 缓存后秒回。给足首次预算。
-_TIMEOUT_CONSENSUS = 300
+# P2 三模型全量预测亦为分钟级；命中 ml-service TTL 缓存后秒回。给足首次预算。
+_TIMEOUT_CONSENSUS = 600
 
 
 def _headers() -> dict:

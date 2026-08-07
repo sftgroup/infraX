@@ -528,6 +528,29 @@ async def snapshots(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Macro history (FRED 观测值序列，1 年回填，供宏观趋势/ML 特征) ──
+
+@app.get("/macro/history")
+async def macro_history(
+    series: Optional[str] = Query(None, description="Comma-separated FRED series ids (default: all)"),
+    start: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    end: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(5000, ge=1, le=50000),
+):
+    """Return FRED macro observation history grouped by series.
+
+    ``series`` filters by FRED series id（CPIAUCSL/PAYEMS/FEDFUNDS...），
+    返回的键为展示名（CPI/NFP/Fed Funds Rate，与 us_indicators 对齐）。
+    """
+    try:
+        from app.factors import get_macro_history
+        series_ids = [s.strip() for s in series.split(",") if s.strip()] if series else None
+        return get_macro_history(series_ids=series_ids, start_date=start, end_date=end, limit=limit)
+    except Exception as e:
+        logger.error(f"/macro/history failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Admin Config (data-source API keys, hot-reload) ──────────
 
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
@@ -995,12 +1018,13 @@ async def _startup():
         ExternalFactorCollector, CalendarCollector, SnapshotCollector, HeatmapCollector,
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
         FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
-        GlobalMarketCollector, OnchainCollector, OkxChainosCollector,
+        GlobalMarketCollector, OnchainCollector, OkxChainosCollector, MacroHistoryCollector,
     )
     _collectors = [
         ("external_factors", ExternalFactorCollector()),
         ("calendar", CalendarCollector()),
         ("snapshots", SnapshotCollector()),
+        ("macro_history", MacroHistoryCollector()),
         ("heatmap", HeatmapCollector()),
         ("news", NewsCollector()),
         ("sentiment", SentimentCollector()),

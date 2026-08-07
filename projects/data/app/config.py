@@ -43,6 +43,7 @@ TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 CRYPTOCOMPARE_API_KEY = os.getenv("CRYPTOCOMPARE_API_KEY", "")
 NEWSAPI_API_KEY = os.getenv("NEWSAPI_API_KEY", "")
 ADANOS_API_KEY = os.getenv("ADANOS_API_KEY", "")
+FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 # Tushare（HTTP POST + token，非 API key 格式；白名单见 main.py _DATA_KEY_FIELDS）
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 

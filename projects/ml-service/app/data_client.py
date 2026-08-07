@@ -139,3 +139,49 @@ def fetch_symbols(timeframe: str = "1d", min_bars: int = 120) -> list[str]:
     except Exception as exc:
         logger.debug("data-service /symbols parse failed: %s", exc)
         return []
+
+
+def fetch_snapshot_factor(data_type: str, field: str) -> dict | None:
+    """拉取 data-service 最新快照中的单个数值因子（如 vix/dxy/us10y）。
+
+    返回 {"value": float, "ts": int} 或 None（未配置/失败/无快照）。
+    快照单键值 {value: ...} 或 {us10y: ...} 均可。
+    """
+    score, ts = _fetch_snapshot_score(data_type, field)
+    if score is None:
+        return None
+    return {"value": score, "ts": ts}
+
+
+def fetch_macro_history() -> dict | None:
+    """拉取 data-service FRED 宏观历史（/macro/history，1 年观测值序列）。
+
+    返回 {"ts": int, "series": {name: [{"date", "value"}, ...]}} 或 None。
+    """
+    base = _base_url()
+    if not base:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/macro/history",
+            params={"limit": 50000},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service /macro/history → %s", resp.status_code)
+            return None
+        data = resp.json()
+        series = (data or {}).get("series")
+        if not isinstance(series, dict) or not series:
+            return None
+        return {"ts": int((data or {}).get("ts", 0) or 0), "series": series}
+    except requests.Timeout:
+        logger.debug("data-service /macro/history timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /macro/history request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /macro/history parse failed: %s", exc)
+        return None

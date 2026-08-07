@@ -14,3 +14,4 @@ from .p2_ml import P2MlCollector
 from .global_market import GlobalMarketCollector
 from .onchain import OnchainCollector
 from .okx_chainos import OkxChainosCollector
+from .macro_history import MacroHistoryCollector

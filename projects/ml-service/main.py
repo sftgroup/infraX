@@ -1,13 +1,21 @@
 """ml-service — 独立模型推理服务（FastAPI :9120）。
 
-承载三个真实模型（懒加载，无模拟回退）：
+承载六个真实模型（懒加载，无模拟回退）：
   GET  /ml/tree_predictions   LightGBM 方向预测（训练+预测）
   POST /ml/sentiment          FinBERT 文本情绪（新闻文章 → 聚合情绪）
   GET  /ml/volatility         Kronos 波动率预测（多路径采样）
+  GET  /ml/bolt               Chronos-Bolt 单变量概率预测（P2）
+  GET  /ml/moirai             Moirai 2.0 多变量跨资产预测（P2）
+  GET  /ml/timesfm            TimesFM 2.5 长上下文点预测（P2）
+  GET  /ml/consensus          跨模型信号共识聚合
+  GET  /ml/macro_features     FRED 宏观特征 + DXY/VIX/US10Y 快照
 
 数据来源：data-service /bars + /symbols（HTTP）。
 模型不可用 / 依赖缺失 / 数据不足时返回 data=null（fail-silent），
 不产生任何模拟数据。
+
+重计算端点统一走 TTL 缓存 + 异步后台计算 + 周期预热（app.async_cache）：
+缓存 miss 时请求立即返回 data=null，不阻塞请求线程池。
 
 启用（部署机）：
   1. pip install -r requirements.txt
@@ -20,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -75,7 +84,8 @@ def _authorized(request: Request) -> bool:
 async def _api_auth(request: Request, call_next):
     if not app_auth.is_exempt(
         request.url.path,
-        exact={"/health", "/docs", "/redoc", "/openapi.json", "/metrics"},
+        exact={"/health", "/docs", "/redoc", "/openapi.json", "/metrics",
+               "/ml/cache/stats"},
     ):
         if not _authorized(request):
             return JSONResponse(
@@ -107,18 +117,143 @@ async def health():
     return {"code": 0, "message": "ok", "data": {"service": "infrax-ml-service", "version": "1.0.0"}}
 
 
+# ── 端点结果缓存（ML_CACHE_TTL_SEC，默认 30min） ────────────
+# 重计算端点 TTL 缓存：TTL 内命中秒回，不重算分钟级推理；
+# compute 返回 None（fail-silent）时不缓存，下次请求重试。
+
+from app.cache import TTLCache  # noqa: E402
+
+_endpoint_cache = TTLCache()
+
+
+def _cached(key: str, compute):
+    """端点 TTL 缓存：命中秒回；未命中计算并缓存（None 不缓存）。"""
+    return _endpoint_cache.get_or_compute(key, compute, config.ML_CACHE_TTL_SEC)
+
+
+def _wrap_results(results, score_key: str):
+    """裸数组 → dict + 聚合指标（对齐 tree_predictions 结构）。
+
+    结构：{"generated_at", "n_symbols", "model", "avg_<score_key>", "symbols"}。
+    结果为空（None/[]）返回 None（fail-silent）。
+    """
+    if not results:
+        return None
+    scores = [r[score_key] for r in results if isinstance(r.get(score_key), (int, float))]
+    return {
+        "generated_at": int(time.time() * 1000),
+        "n_symbols": len(results),
+        "model": next((r.get("model") for r in results if r.get("model")), None),
+        "avg_" + score_key: round(sum(scores) / len(scores), 4) if scores else None,
+        "symbols": results,
+    }
+
+
+# ── 异步计算 + 预热（app.async_cache） ────────────────────
+# 重计算端点（tree/volatility/bolt/moirai/timesfm）统一走 AsyncCacheRunner：
+# miss 缓存时在后台 daemon 线程计算，请求立即返回（不阻塞 worker 线程池，
+# 避免全量预测拖死 /health 等轻端点）；预热线程周期刷新缓存（启动 delay
+# 后开始，缓存缺失/过期才触发），保证缓存常满、请求几乎总是命中。
+from app.async_cache import AsyncCacheRunner, prewarm_loop  # noqa: E402
+
+_async_runner = AsyncCacheRunner(_endpoint_cache, config.ML_CACHE_TTL_SEC)
+
+
+def _compute_tree():
+    from app.analytics import tree_models as tm
+    return tm.predict_payload()
+
+
+def _compute_volatility():
+    from app.providers import kronos
+    return kronos.predict_all_volatility()
+
+
+def _compute_bolt():
+    from app.providers import chronos_bolt
+    return chronos_bolt.predict_all()
+
+
+def _compute_moirai():
+    from app.providers import moirai2
+    return moirai2.predict_all()
+
+
+def _compute_timesfm():
+    from app.providers import timesfm25
+    return timesfm25.predict_all()
+
+
+def _compute_consensus():
+    from app.analytics import consensus as cs
+    return cs.build_consensus()
+
+
+# 预热任务表：全部重计算端点（启用与否由 compute 内部 fail-silent 决定）
+_PRECOMPUTE: dict = {
+    "tree_predictions": _compute_tree,
+    "volatility": _compute_volatility,
+    "bolt": _compute_bolt,
+    "moirai": _compute_moirai,
+    "timesfm": _compute_timesfm,
+    "consensus": _compute_consensus,
+}
+
+
+@app.on_event("startup")
+def _start_prewarm() -> None:
+    """启动预热线程：delay 后开始周期检查，缓存缺失/过期时后台刷新。"""
+    if not config.ML_PREWARM_ENABLED:
+        logger.info("ml-service prewarm disabled (ML_PREWARM_ENABLED=false)")
+        return
+    t = threading.Thread(
+        target=prewarm_loop,
+        args=(_async_runner, _PRECOMPUTE,
+              config.ML_PREWARM_DELAY_SEC, config.ML_PREWARM_INTERVAL_SEC),
+        name="ml-prewarm",
+        daemon=True,
+    )
+    t.start()
+    logger.info(
+        "ml-service prewarm started (delay=%.0fs interval=%.0fs, tasks=%s)",
+        config.ML_PREWARM_DELAY_SEC, config.ML_PREWARM_INTERVAL_SEC,
+        sorted(_PRECOMPUTE),
+    )
+
+
+# ── 缓存统计（与 /metrics 同级豁免鉴权，监控探针免 key 拉取） ──────
+
+@app.get("/ml/cache/stats")
+async def cache_stats():
+    """端点结果缓存统计：总量（命中/未命中/过期/计算次数/累计耗时）+ 各端点明细。
+
+    明细含 last_compute_ms（该端点最近一次全量预测耗时，毫秒）、
+    last_compute_at、cached/expires_in（当前缓存状态）。
+    """
+    return {"code": 0, "message": "ok", "data": _endpoint_cache.stats()}
+
+
 # ── LightGBM 方向预测 ──────────────────────────────────────
 
 @app.get("/ml/tree_predictions")
-async def tree_predictions():
+def tree_predictions():
     """训练（如需）+ 预测全部 symbol → 方向/概率/机会评分/波动率档位。
 
     返回 data: {"generated_at", "model": {...}, "predictions": [...]} 或 null。
+    数据可用时附带 macro_context（FRED 宏观特征，仅新增字段，向后兼容）。
+    缓存 miss 时后台计算并立即返回 null（预热线程保证缓存常满）。
     """
     try:
-        from app.analytics import tree_models as tm
-        payload = tm.predict_payload()
-        return {"code": 0, "message": "ok", "data": payload}
+        payload = _async_runner.get("tree_predictions", _compute_tree)
+        if isinstance(payload, dict):
+            try:
+                from app import macro_features as mf
+                ctx = mf.compute_macro_features()
+                if ctx:
+                    payload["macro_context"] = ctx
+            except Exception:
+                pass
+        return {"code": 0, "message": "ok", "data": payload or None}
     except Exception as exc:
         logger.warning("tree_predictions failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}
@@ -152,16 +287,17 @@ async def sentiment(request: Request):
 # ── Kronos 波动率预测 ──────────────────────────────────────
 
 @app.get("/ml/volatility")
-async def volatility():
+def volatility():
     """对目标资产做 Kronos 多路径波动率预测。
 
-    返回 data: [{symbol, volatility_score, volatility_level,
-                 direction_consensus, uncertainty, last_close}, ...] 或 null。
+    返回 data: {"generated_at", "n_symbols", "model", "avg_volatility_score",
+                "symbols": [{symbol, volatility_score, volatility_level,
+                             direction_consensus, uncertainty, last_close}, ...]}
+    或 null。缓存 miss 时后台计算并立即返回 null（异步，不阻塞请求线程）。
     """
     try:
-        from app.providers import kronos
-        results = kronos.predict_all_volatility()
-        return {"code": 0, "message": "ok", "data": results or None}
+        results = _async_runner.get("volatility", _compute_volatility)
+        return {"code": 0, "message": "ok", "data": _wrap_results(results, "volatility_score")}
     except Exception as exc:
         logger.warning("volatility failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}
@@ -170,66 +306,86 @@ async def volatility():
 # ── Cross-model consensus ─────────────────────────────────
 
 @app.get("/ml/consensus")
-async def consensus():
-    """跨模型信号共识聚合（tree + Kronos + FinBERT）。
+def consensus():
+    """跨模型信号共识聚合（tree + Kronos + FinBERT + P2）。
 
     确定性规则：consensus_score（方向一致度）/ divergence / risk_flag。
     三路信号全部不可用时返回 data=null（fail-silent）。
+    缓存 miss 时后台计算并立即返回 null（异步，不阻塞事件循环/请求线程）。
     """
     try:
-        from app.analytics import consensus as cs
-        payload = cs.build_consensus()
+        payload = _async_runner.get("consensus", _compute_consensus)
         return {"code": 0, "message": "ok", "data": payload}
     except Exception as exc:
         logger.warning("consensus failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}
 
 
+# ── 宏观特征（FRED 历史趋势 + DXY/VIX/US10Y） ─────────────
+
+@app.get("/ml/macro_features")
+def macro_features_endpoint():
+    """宏观环境特征：FRED 系列派生特征（latest/chg_30d/chg_90d/trend/percentile）
+    + DXY/VIX/US10Y 最新快照。TTL 缓存，宏观数据未就绪时返回 null。
+    """
+    try:
+        def _compute():
+            from app import macro_features as mf
+            return mf.compute_macro_features()
+
+        features = _cached("macro_features", _compute)
+        return {"code": 0, "message": "ok", "data": features or None}
+    except Exception as exc:
+        logger.warning("macro_features failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": None}
+
+
 # ── P2 时序基础模型（Bolt / Moirai / TimesFM） ─────────────
 
 @app.get("/ml/bolt")
-async def bolt_predictions():
+def bolt_predictions():
     """Chronos-Bolt 单变量概率基线（分位数预测）。
 
-    返回 data: [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
-                 direction, prob_up, uncertainty}, ...] 或 null。
+    返回 data: {"generated_at", "n_symbols", "model", "avg_prob_up",
+                "symbols": [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
+                             direction, prob_up, uncertainty}, ...]} 或 null。
     """
     try:
-        from app.providers import chronos_bolt
-        results = chronos_bolt.predict_all()
-        return {"code": 0, "message": "ok", "data": results or None}
+        results = _async_runner.get("bolt", _compute_bolt)
+        return {"code": 0, "message": "ok", "data": _wrap_results(results, "prob_up")}
     except Exception as exc:
         logger.warning("bolt failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}
 
 
 @app.get("/ml/moirai")
-async def moirai_predictions():
+def moirai_predictions():
     """Moirai 2.0 多变量跨资产联动预测（全部资产一批喂入）。
 
-    返回 data: [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
-                 direction, prob_up, uncertainty, linked_symbols}, ...] 或 null。
+    返回 data: {"generated_at", "n_symbols", "model", "avg_prob_up",
+                "symbols": [{symbol, point_forecast, quantiles{0.1/0.5/0.9},
+                             direction, prob_up, uncertainty, linked_symbols}, ...]}
+    或 null。
     """
     try:
-        from app.providers import moirai2
-        results = moirai2.predict_all()
-        return {"code": 0, "message": "ok", "data": results or None}
+        results = _async_runner.get("moirai", _compute_moirai)
+        return {"code": 0, "message": "ok", "data": _wrap_results(results, "prob_up")}
     except Exception as exc:
         logger.warning("moirai failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}
 
 
 @app.get("/ml/timesfm")
-async def timesfm_predictions():
+def timesfm_predictions():
     """TimesFM 2.5 长上下文点预测 + 置信区间。
 
-    返回 data: [{symbol, point_forecast, quantiles{min/max},
-                 direction, prob_up, uncertainty}, ...] 或 null。
+    返回 data: {"generated_at", "n_symbols", "model", "avg_prob_up",
+                "symbols": [{symbol, point_forecast, quantiles{min/max},
+                             direction, prob_up, uncertainty}, ...]} 或 null。
     """
     try:
-        from app.providers import timesfm25
-        results = timesfm25.predict_all()
-        return {"code": 0, "message": "ok", "data": results or None}
+        results = _async_runner.get("timesfm", _compute_timesfm)
+        return {"code": 0, "message": "ok", "data": _wrap_results(results, "prob_up")}
     except Exception as exc:
         logger.warning("timesfm failed: %s", exc)
         return {"code": 0, "message": "ok", "data": None}

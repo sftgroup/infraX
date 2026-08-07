@@ -41,8 +41,20 @@ def fetch_fear_greed_index() -> dict[str, Any] | None:
 # ─── VIX ──────────────────────────────────────────
 
 
+def _snap_factor(data_type: str, field: str) -> dict[str, Any] | None:
+    """data-service 快照取单因子（优先于 yfinance，规避 429 限流）。fail-silent。"""
+    try:
+        from providers.data_service import fetch_snapshot_factor
+        return fetch_snapshot_factor(data_type, field)
+    except Exception:
+        return None
+
+
 def fetch_vix() -> dict[str, Any] | None:
-    """Fetch VIX from yfinance."""
+    """Fetch VIX: data-service 快照优先（CBOE 源）→ yfinance 兜底。"""
+    snap = _snap_factor("vix", "value")
+    if snap:
+        return {"value": round(float(snap["value"]), 2)}
     try:
         from providers._yf_helpers import safe_history
 
@@ -63,7 +75,10 @@ def fetch_vix() -> dict[str, Any] | None:
 
 
 def fetch_dollar_index() -> dict[str, Any] | None:
-    """Fetch US Dollar Index from yfinance."""
+    """Fetch US Dollar Index: data-service 快照优先（FRED/Twelve Data 源）→ yfinance 兜底。"""
+    snap = _snap_factor("dxy", "value")
+    if snap:
+        return {"value": round(float(snap["value"]), 2)}
     try:
         from providers._yf_helpers import safe_history
 
@@ -84,7 +99,10 @@ def fetch_dollar_index() -> dict[str, Any] | None:
 
 
 def fetch_yield_curve() -> dict[str, Any] | None:
-    """Fetch US10Y from yfinance."""
+    """Fetch US10Y: data-service 快照优先（akshare/东财 源）→ yfinance 兜底。"""
+    snap = _snap_factor("us10y", "us10y")
+    if snap:
+        return {"us10y": round(float(snap["value"]), 2)}
     try:
         from providers._yf_helpers import safe_history
 

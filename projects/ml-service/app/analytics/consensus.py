@@ -108,6 +108,36 @@ def _p2_by_symbol(results: Optional[list[dict]]) -> dict[str, dict]:
     return {_normalize_symbol(v.get("symbol")): v for v in (results or []) if v.get("symbol")}
 
 
+def _macro_bias(macro_features: Optional[dict]) -> str:
+    """宏观环境偏置标签（确定性规则）：risk-off / risk-on / dollar-strength / neutral。"""
+    mkt = (macro_features or {}).get("market") or {}
+    vix = mkt.get("vix")
+    dxy = mkt.get("dxy")
+    if vix is not None and vix > 25:
+        return "risk-off"
+    if vix is not None and vix < 15:
+        return "risk-on"
+    if dxy is not None and dxy > 104:
+        return "dollar-strength"
+    return "neutral"
+
+
+def _macro_risk_penalty(macro_features: Optional[dict]) -> int:
+    """宏观环境风险加分（0/1/2）：VIX 高企 + 货币紧缩（Fed 加息 + CPI 上行）。"""
+    if not macro_features:
+        return 0
+    mkt = macro_features.get("market") or {}
+    series = macro_features.get("series") or {}
+    penalty = 0
+    if isinstance(mkt.get("vix"), (int, float)) and mkt["vix"] > 25:
+        penalty += 1
+    ff_trend = (series.get("Fed Funds Rate") or {}).get("trend")
+    cpi_trend = (series.get("CPI") or {}).get("trend")
+    if ff_trend == "rising" and cpi_trend == "rising":
+        penalty += 1
+    return min(penalty, 2)
+
+
 def aggregate(
     tree_payload: Optional[dict],
     volatility_results: Optional[list[dict]],
@@ -115,6 +145,7 @@ def aggregate(
     bolt_results: Optional[list[dict]] = None,
     moirai_results: Optional[list[dict]] = None,
     timesfm_results: Optional[list[dict]] = None,
+    macro_features: Optional[dict] = None,
 ) -> Optional[dict]:
     """确定性规则聚合六路信号 → 共识 payload。
 
@@ -125,6 +156,8 @@ def aggregate(
         bolt_results:      chronos_bolt.predict_all() 返回（None/[] 表示不可用）
         moirai_results:    moirai2.predict_all() 返回
         timesfm_results:   timesfm25.predict_all() 返回
+        macro_features:    macro_features.compute_macro_features() 返回
+                          （宏观环境增强：风险修正 + macro_bias + macro_context）
 
     返回:
         共识 dict 或 None（全部信号不可用）。
@@ -142,6 +175,7 @@ def aggregate(
     p2_maps = {name: _p2_by_symbol(results) for name, results in p2_results.items()}
     sentiment_score = (sentiment or {}).get("score")
     sentiment_vote = _sentiment_vote(sentiment_score) if isinstance(sentiment_score, (int, float)) else None
+    macro_penalty = _macro_risk_penalty(macro_features)
 
     symbols = sorted(set(tree_map) | set(vol_map) | set().union(*(p2_maps.values())))
     per_symbol: list[dict[str, Any]] = []
@@ -190,6 +224,7 @@ def aggregate(
             risk += 1
         if divergence:
             risk += 1
+        risk += macro_penalty  # 宏观环境风险修正（VIX 高企 / 货币紧缩）
         risk_flag = _RISK_FLAG.get(min(risk, 2), "low")
         risk_levels.append(risk_flag)
 
@@ -222,7 +257,7 @@ def aggregate(
     avg = round(sum(consensus_scores) / len(consensus_scores), 4) if consensus_scores else None
     market_risk = max(risk_levels, key=lambda r: _RISK_RANK[r]) if risk_levels else "low"
 
-    return {
+    payload: dict[str, Any] = {
         "generated_at": int(time.time() * 1000),
         "signals": {
             "tree": bool(tree_payload),
@@ -238,6 +273,10 @@ def aggregate(
         "n_divergence": divergences,
         "symbols": per_symbol,
     }
+    if macro_features:
+        payload["macro_bias"] = _macro_bias(macro_features)
+        payload["macro_context"] = macro_features
+    return payload
 
 
 def build_consensus() -> Optional[dict]:
@@ -286,9 +325,16 @@ def build_consensus() -> Optional[dict]:
         timesfm_results = timesfm25.predict_all()
     except Exception as exc:
         logger.debug("consensus timesfm signal unavailable: %s", exc)
+    macro_features = None
+    try:
+        from app import macro_features as mf
+        macro_features = mf.compute_macro_features()
+    except Exception as exc:
+        logger.debug("consensus macro features unavailable: %s", exc)
     payload = aggregate(
         tree_payload, volatility_results, sentiment,
         bolt_results, moirai_results, timesfm_results,
+        macro_features=macro_features,
     )
     _set_cache(payload)
     return payload

@@ -43,6 +43,21 @@ ML_API_KEY = os.getenv(
     os.getenv("RAGSERVICER_API_KEY", os.getenv("DOC_API_KEY", os.getenv("LIGHTRAG_API_KEY", ""))),
 )
 
+# ── 端点结果缓存（TTL，秒） ──────────────────────────────
+# 重计算端点（tree/volatility/bolt/moirai/timesfm）结果缓存时长，
+# TTL 内直接返回上次结果不重算（collector 30min 周期 + 缓存 30min →
+# 实际约每 60min 重算一次，避免每次周期都全量跑分钟级推理）。
+ML_CACHE_TTL_SEC = float(os.getenv("ML_CACHE_TTL_SEC", "1800"))
+
+# ── 异步计算 + 预热（ML_PREWARM_*） ───────────────────────
+# 重计算端点 miss 缓存时在后台 daemon 线程计算（请求立即返回，不阻塞
+# worker 线程池，避免全量预测拖死 /health 等轻端点）；预热线程周期
+# 串行检查各 key，缓存缺失/过期时后台刷新 → 缓存常满、请求几乎总是命中。
+# PREWARM_INTERVAL 建议 < ML_CACHE_TTL_SEC（默认 900 < 1800）。
+ML_PREWARM_ENABLED = os.getenv("ML_PREWARM_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+ML_PREWARM_DELAY_SEC = float(os.getenv("ML_PREWARM_DELAY_SEC", "60"))
+ML_PREWARM_INTERVAL_SEC = float(os.getenv("ML_PREWARM_INTERVAL_SEC", "900"))
+
 # G-7: 监控只读 key（仅允许 GET/HEAD/OPTIONS 读操作，与 bridge key 权限解耦）
 MONITOR_API_KEY = os.getenv("MONITOR_API_KEY", "")
 

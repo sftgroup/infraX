@@ -31,24 +31,41 @@ logger = logging.getLogger(__name__)
 _TARGETS = ["BTC", "ETH", "SPY", "QQQ"]
 
 
+def dedupe_symbols(symbols: list[str]) -> list[str]:
+    """去除重复永续合约（保持原顺序）。
+
+    规则：凡符号带 `:` 且其前缀（`:` 之前的部分）也存在于池中，视为
+    同一标的的永续/合约变体（如 BTC/USDT:USDT ↔ BTC/USDT），剔除变体。
+    无现货对标的永续（前缀不在池中）保留。
+    """
+    present = set(symbols)
+    out: list[str] = []
+    for sym in symbols:
+        if ":" in sym and sym.split(":", 1)[0] in present:
+            continue
+        out.append(sym)
+    return out
+
+
 def get_target_symbols() -> list[str]:
     """动态目标符号池（覆盖传统资产 1D + 加密资产，与 tree 模型对齐）。
 
     优先级：P2_TARGET_SYMBOLS 显式覆盖 → data-service /symbols（timeframe=1d
     且 bar 数达标，2026-08-07 起改为动态，覆盖美股/期货/外汇/A股/港股 + crypto）
-    → 失败回退核心 _TARGETS。
+    → 失败回退核心 _TARGETS。任一路径均做永续去重（dedupe_symbols）。
     """
     explicit = config.P2_TARGET_SYMBOLS
     if explicit:
-        return [s.strip() for s in explicit.split(",") if s.strip()]
+        syms = [s.strip() for s in explicit.split(",") if s.strip()]
+        return dedupe_symbols(syms)
     try:
         syms = data_client.fetch_symbols(timeframe="1d", min_bars=config.TREE_ML_MIN_BARS)
         if syms:
-            return syms
+            return dedupe_symbols(syms)
         logger.debug("Kronos get_target_symbols: data-service /symbols empty, fallback")
     except Exception as exc:
         logger.debug("Kronos get_target_symbols failed, fallback: %s", exc)
-    return _TARGETS
+    return dedupe_symbols(_TARGETS)
 
 # 波动率档位阈值（volatility_score ∈ [0, 1]）
 _VOL_LEVELS = [

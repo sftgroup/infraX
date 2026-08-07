@@ -55,6 +55,12 @@ FRED_OBSERVATIONS_URL = os.getenv(
     "https://api.stlouisfed.org/fred/series/observations",
 )
 
+# 经济日历：FRED release 发布日期（releases/dates），免费 key 可用
+FRED_RELEASES_DATES_URL = os.getenv(
+    "FRED_RELEASES_DATES_URL",
+    "https://api.stlouisfed.org/fred/releases/dates",
+)
+
 # ── Finnhub ────────────────────────────────────────────────
 
 FINNHUB_EARNINGS_URL = os.getenv(

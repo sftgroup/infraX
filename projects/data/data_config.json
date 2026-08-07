@@ -63,7 +63,10 @@
       "PAYEMS":   "NFP",
       "UNRATE":   "Unemployment",
       "GDP":      "GDP",
-      "FEDFUNDS": "Fed Funds Rate"
+      "FEDFUNDS": "Fed Funds Rate",
+      "VIXCLS":   "VIX",
+      "DTWEXBGS": "DXY",
+      "DGS10":    "US10Y"
     }
   },
 
@@ -76,9 +79,16 @@
   },
 
   "calendar": {
-    "_comment": "经济日历采集。优先使用 Finnhub API（免费 tier），回退到静态日期。",
+    "_comment": "经济日历采集。优先 FRED /releases/dates（免费 key，真实 release 排期），Finnhub 次之，最后静态 FOMC 回退。fred_releases 的 release_id 见 FRED Releases API（82=FOMC,10=CPI,46=PPI,50=Employment Situation,53=GDP）。",
     "source": "auto",
     "lookahead_days": 7,
+    "fred_releases": [
+      {"release_id": 82, "name": "Fed policy (FRED release)", "impact": "high", "category": "monetary"},
+      {"release_id": 10, "name": "CPI (FRED release)",        "impact": "high", "category": "inflation"},
+      {"release_id": 46, "name": "PPI (FRED release)",        "impact": "medium", "category": "inflation"},
+      {"release_id": 50, "name": "Employment Situation (FRED release)", "impact": "high", "category": "employment"},
+      {"release_id": 53, "name": "GDP (FRED release)",        "impact": "high", "category": "growth"}
+    ],
     "event_types": [
       {"name": "FOMC Meeting",       "impact": "high", "category": "monetary"},
       {"name": "CPI MoM",            "impact": "high", "category": "inflation"},

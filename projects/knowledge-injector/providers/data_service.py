@@ -315,3 +315,48 @@ def fetch_ml_predictions(
     except Exception as exc:
         logger.debug("data-service /ml/predictions %s/%s parse failed: %s", model, symbol, exc)
         return None
+
+
+def fetch_snapshot_factor(data_type: str, field: str) -> dict[str, Any] | None:
+    """拉取 data-service 最新快照中的单个数值因子（vix/dxy/us10y 等）。
+
+    快照单键值形如 {"value": 15.8} 或 {"us10y": 4.69}，由 field 指定取哪个键。
+    返回 {"value": float, "ts": int} 或 None（未配置/失败/无快照/非数值）。
+
+    用途：macro / macro_trend 注入器数据源回退链的第一优先级 ——
+    直接走 data-service 快照（由 ExternalFactorCollector 采集，CBOE/FRED 源），
+    避免 yfinance 429 限流导致注入失败。
+    """
+    base_url = (SETTINGS.data_service_url or "").strip().rstrip("/")
+    if not base_url:
+        return None
+    try:
+        key = SETTINGS.injector_api_key or SETTINGS.ragservicer_api_key
+        headers = {"X-API-Key": key} if key else {}
+        resp = requests.get(
+            f"{base_url}/snapshots",
+            params={"type": data_type},
+            headers=headers,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service /snapshots %s → %s", data_type, resp.status_code)
+            return None
+        data = resp.json()
+        raw = (data.get("snapshots") or {}).get(data_type)
+        if isinstance(raw, dict):
+            val = raw.get(field)
+        else:
+            val = raw
+        if not isinstance(val, (int, float)):
+            return None
+        return {"value": float(val), "ts": data.get("ts", 0)}
+    except requests.Timeout:
+        logger.debug("data-service /snapshots %s timeout (%ss)", data_type, _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /snapshots %s request failed: %s", data_type, exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /snapshots %s parse failed: %s", data_type, exc)
+        return None

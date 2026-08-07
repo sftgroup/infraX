@@ -129,4 +129,15 @@ CREATE TABLE IF NOT EXISTS ml_predictions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mlpred_model_sym_ts ON ml_predictions(model, symbol, generated_at);
+
+CREATE TABLE IF NOT EXISTS macro_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_id   TEXT    NOT NULL,   -- FRED series id（CPIAUCSL / PAYEMS / FEDFUNDS ...）
+    date        TEXT    NOT NULL,   -- 观测日期 YYYY-MM-DD
+    value       REAL,
+    fetched_at  REAL    NOT NULL,   -- 落库时间（unix ms）
+    UNIQUE(series_id, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_macrohist_series_date ON macro_history(series_id, date);
 """

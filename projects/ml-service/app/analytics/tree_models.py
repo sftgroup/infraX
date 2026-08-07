@@ -185,12 +185,18 @@ def volatility_level(vol_pct: float) -> str:
 # ── 数据加载（HTTP → DataFrame） ───────────────────────────
 
 def _kline_symbols(min_bars: int = None) -> list[str]:
-    """data-service 中 timeframe='1d' 且行数 >= min_bars 的 symbol 列表。"""
-    min_bars = min_bars or config.TREE_ML_MIN_BARS
+    """目标 symbol 列表：统一走 kronos.get_target_symbols()。
+
+    P2_TARGET_SYMBOLS 可配（逗号分隔）→ data-service /symbols → 核心回退集；
+    任一来源均做永续合约去重，保证 tree 与 kronos/bolt/moirai/timesfm
+    使用同一符号池预测。
+    """
     try:
-        return data_client.fetch_symbols(timeframe=TIMEFRAME, min_bars=min_bars)
+        from app.providers.kronos import get_target_symbols
+
+        return get_target_symbols()
     except Exception as exc:
-        logger.debug("tree_ml fetch_symbols failed: %s", exc)
+        logger.debug("tree_ml get_target_symbols failed: %s", exc)
         return []
 
 

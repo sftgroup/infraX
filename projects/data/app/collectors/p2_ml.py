@@ -5,6 +5,8 @@
 → 逐 symbol 写 ml_predictions 明细表（model × symbol × generated_at 唯一，
 INSERT OR IGNORE 幂等）→ 顺带滚动清理 P2_RETENTION_DAYS 前的历史。
 
+三端点 ThreadPoolExecutor 并发拉取（每个独立 600s 超时预算），互不等待。
+
 设计（见 docs/DATA_MODULE_RAG_PLAN.md §5.7）：
   - fail-silent：ML_SERVICE_URL 未配置 / 端点失败 / 数据为空时整线程空转，
     任一模型失败不影响其他模型
@@ -17,6 +19,7 @@ import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from app import ml_client
@@ -109,16 +112,20 @@ class P2MlCollector:
         now_ms = int(time.time() * 1000)
         fetchers = {"bolt": ml_client.fetch_bolt, "moirai": ml_client.fetch_moirai,
                     "timesfm": ml_client.fetch_timesfm}
-        for model in _MODELS:
-            try:
-                results = fetchers[model]()
-            except Exception as exc:
-                logger.debug("P2MlCollector %s fetch failed: %s", model, exc)
-                continue
-            if not results:
-                logger.debug("P2MlCollector %s: no data, skip", model)
-                continue
-            n = _save_predictions(model, results, now_ms)
-            logger.info("P2MlCollector %s: saved %d predictions (symbols=%d)",
-                        model, n, len(results))
+        # 三模型并发拉取（各自分钟级全量推理/首次缓存 miss 互不等待）；
+        # ml-service 端点命中 TTL 缓存后秒回，miss 时并行计算。
+        with ThreadPoolExecutor(max_workers=len(_MODELS)) as pool:
+            futures = {model: pool.submit(fetchers[model]) for model in _MODELS}
+            for model in _MODELS:
+                try:
+                    results = futures[model].result()
+                except Exception as exc:
+                    logger.debug("P2MlCollector %s fetch failed: %s", model, exc)
+                    continue
+                if not results:
+                    logger.debug("P2MlCollector %s: no data, skip", model)
+                    continue
+                n = _save_predictions(model, results, now_ms)
+                logger.info("P2MlCollector %s: saved %d predictions (symbols=%d)",
+                            model, n, len(results))
         _purge_old(P2_RETENTION_DAYS)

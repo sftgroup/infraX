@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -419,6 +420,15 @@ _NON_TECH_FACTORS = (
     "vix", "dxy", "us10y", "fear_greed", "sentiment_score",
 )
 
+# 非技术因子 → macro_history 系列映射（FRED/alternative.me 1 年日频历史）。
+# /factors/history 把这些系列合并进 asof 序列，覆盖 raw_snapshots 未积累的早期 bar。
+_FACTOR_MACRO_SERIES: dict[str, str] = {
+    "vix": "VIXCLS",
+    "dxy": "DTWEXBGS",
+    "us10y": "DGS10",
+    "fear_greed": "FNG",
+}
+
 
 # ─── ML factor loaders（DS-13）────────────────────────────────
 
@@ -655,6 +665,15 @@ def get_history_factors(
         if end is not None:
             where += " AND ts <= ?"
             params.append(end)
+        if start is None and end is None:
+            # 未指定时间区间时默认取「最近 limit 根」（趋势图/最新因子场景），
+            # 内层降序取最近 N 根、外层升序输出；带 start/end 时保持升序过滤。
+            sql = (
+                f"SELECT ts, {cols} FROM ("
+                f"SELECT ts, {cols} FROM kline WHERE {where} ORDER BY ts DESC LIMIT ?"
+                f") ORDER BY ts ASC"
+            )
+            return db.execute(sql, (*params, limit)).fetchall()
         return db.execute(
             f"SELECT ts, {cols} FROM kline WHERE {where} ORDER BY ts ASC LIMIT ?",
             (*params, limit),
@@ -758,6 +777,31 @@ def _load_non_tech_history() -> dict[str, tuple[list[int], list[float]]]:
             continue
         by_type[r["data_type"]].append((int(r["fetched_at"]), float(val)))
 
+    # 宏观历史（macro_history 表，FRED 日频 / FNG 1 年）合并进非技术因子 asof 序列：
+    # raw_snapshots 只积累最近数天，早期 bar 无快照可对齐 → 用 macro_history 补齐（B 端反馈）。
+    try:
+        mrows = db.execute(
+            f"SELECT series_id, date, value FROM macro_history "
+            f"WHERE series_id IN ({','.join('?' * len(_FACTOR_MACRO_SERIES))}) "
+            f"AND value IS NOT NULL ORDER BY date ASC",
+            list(_FACTOR_MACRO_SERIES.values()),
+        ).fetchall()
+        for r in mrows:
+            try:
+                t = int(
+                    datetime.strptime(r["date"], "%Y-%m-%d")
+                    .replace(tzinfo=timezone.utc)
+                    .timestamp() * 1000
+                )
+            except (TypeError, ValueError):
+                continue
+            for fid, sid in _FACTOR_MACRO_SERIES.items():
+                if r["series_id"] == sid:
+                    by_type[fid].append((t, float(r["value"])))
+                    break
+    except Exception:
+        logger.debug("macro_history merge into non-tech factors failed", exc_info=True)
+
     out: dict[str, tuple[list[int], list[float]]] = {}
     for fid, seq in by_type.items():
         if not seq:
@@ -836,3 +880,116 @@ def query_ml_predictions(
             "quantiles": json.loads(r["quantiles"]) if r["quantiles"] else None,
         })
     return result
+
+
+# ─── 宏观历史（macro_history 表，FRED 观测值 1 年回填）────────────
+
+_MACRO_SERIES_NAMES: dict[str, str] = {
+    "CPIAUCSL": "CPI",
+    "PCEPILFE": "Core PCE",
+    "PAYEMS": "NFP",
+    "UNRATE": "Unemployment",
+    "GDP": "GDP",
+    "FEDFUNDS": "Fed Funds Rate",
+    "VIXCLS": "VIX",
+    "DTWEXBGS": "DXY",
+    "DGS10": "US10Y",
+}
+
+# 非 FRED 系列（alternative.me 等）显示名：仅供 /macro/history 展示，
+# 不并入 fred_series，避免 FRED 采集器尝试拉取非 FRED 系列。
+_MACRO_DISPLAY_EXTRA: dict[str, str] = {
+    "FNG": "Fear & Greed",
+}
+
+
+def macro_series_map() -> dict[str, str]:
+    """data_config.json → macro.fred_series 映射（series_id → 展示名）。
+
+    兜底 _MACRO_SERIES_NAMES（与 us_indicators 快照键一致）。
+    """
+    path = os.getenv("DATA_CONFIG_PATH", "data_config.json")
+    try:
+        cfg = json.loads(Path(path).read_text()) if Path(path).exists() else {}
+        series = cfg.get("macro", {}).get("fred_series", {}) or {}
+        if series:
+            return dict(series)
+    except Exception:
+        pass
+    return dict(_MACRO_SERIES_NAMES)
+
+
+def save_macro_observations(series_id: str, observations: list[dict], now_ms: Optional[int] = None):
+    """Upsert FRED 观测值到 macro_history（幂等，INSERT OR IGNORE）。
+
+    observations: [{"date": "2026-06-01", "value": 332.5}, ...]
+    """
+    if not observations:
+        return 0
+    now_ms = int(now_ms or time.time() * 1000)
+    db = get_db()
+    rows = []
+    for obs in observations:
+        date_str = (obs or {}).get("date", "")
+        value = (obs or {}).get("value")
+        if not date_str or value is None:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        rows.append((series_id, date_str, value, now_ms))
+    if not rows:
+        return 0
+    db.executemany(
+        """INSERT OR IGNORE INTO macro_history (series_id, date, value, fetched_at)
+           VALUES (?, ?, ?, ?)""",
+        rows,
+    )
+    db.commit()
+    return len(rows)
+
+
+def get_macro_history(
+    series_ids: Optional[list[str]] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 5000,
+) -> dict:
+    """按 series 分组返回宏观历史序列。
+
+    返回 {"ts": int, "series": {name: [{"date", "value"}, ...]}}。
+    series_ids 为 None 时返回全部已采集系列；name 用 data_config 映射展示名。
+    """
+    db = get_db()
+    names = macro_series_map()
+    names = {**names, **_MACRO_DISPLAY_EXTRA}
+    sql = "SELECT series_id, date, value FROM macro_history"
+    params: list = []
+    if series_ids:
+        sql += f" WHERE series_id IN ({','.join('?' * len(series_ids))})"
+        params.extend(series_ids)
+    if start_date:
+        sql += " AND date >= ?" if series_ids else " WHERE date >= ?"
+        params.append(start_date)
+    if end_date:
+        sql += (" AND " if ("WHERE" in sql or "AND" in sql) else " WHERE ") + "date <= ?"
+        params.append(end_date)
+    sql += " ORDER BY series_id, date ASC LIMIT ?"
+    params.append(max(1, min(int(limit or 5000), 50000)))
+
+    rows = db.execute(sql, params).fetchall()
+    series: dict[str, list[dict]] = {}
+    for r in rows:
+        sid = r["series_id"]
+        name = names.get(sid, sid)
+        series.setdefault(name, []).append({
+            "date": r["date"],
+            "value": r["value"],
+        })
+    ts_row = db.execute("SELECT MAX(fetched_at) AS t FROM macro_history").fetchone()
+    return {
+        "ts": int(ts_row["t"] or 0) if ts_row else 0,
+        "series": series,
+    }
+
