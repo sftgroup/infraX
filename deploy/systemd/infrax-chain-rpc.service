@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/infraX/projects/chain-rpc
+WorkingDirectory=/home/ubuntu/infraX-1/projects/chain-rpc
 # ── 部署前必填：替换 CHANGE_ME_* 为真实密钥（勿提交真实密钥到 git） ──
 Environment="CHAIN_RPC_READ_KEY=CHANGE_ME_READ_KEY"
 Environment="CHAIN_RPC_BROADCAST_KEY=CHANGE_ME_BROADCAST_KEY"
@@ -20,10 +20,11 @@ Environment="ETH_RPC_URL=https://ethereum-rpc.publicnode.com"
 Environment="BSC_RPC_URL=https://bsc-dataseed.bnbchain.org"
 Environment="BASE_RPC_URL=https://mainnet.base.org"
 Environment="OXA_RPC_URL=https://rpc.l1.oxachain.io"
+Environment="SOLANA_RPC_URL=https://api.mainnet-beta.solana.com"
 Environment="CHAIN_RPC_WAIT_SEC=30"
 Environment="CHAIN_RPC_WAIT_INTERVAL_MS=3000"
-Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/chain-rpc/node_modules/.bin:$PATH"
-ExecStart=/usr/bin/tsx src/index.ts
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/home/ubuntu/infraX-1/projects/chain-rpc/node_modules/.bin:$PATH"
+ExecStart=/home/ubuntu/infraX-1/projects/chain-rpc/node_modules/.bin/tsx src/index.ts
 Restart=on-failure
 RestartSec=5
 
