@@ -89,7 +89,9 @@ curl -s -X POST http://<host>:3008/mcp/message \
 | `data_symbol_resolve` | symbol*, market | 符号解析（BTC→BTCUSDT） |
 | `data_broker_policy` | — | 券商市场策略 |
 | `data_stats` | — | 库统计 |
-| `ml_predictions` | symbol* | P2 模型预测 |
+| `ml_predictions` | symbol* | P2 模型预测（bolt/moirai/timesfm，data 侧采集快照；返回 `{generated_at, direction, prob_up, point_forecast, quantiles}`） |
+
+> **ML 数据链路（2026-08 起）**：ml-service（:9120）实时推理 → data 采集器 30min 周期拉取落库 → hub-index `ml_predictions` / `/api/data/ml/predictions` 查询快照。ml-service 直连端点已**异步化 + 缓存预热**（缓存 miss 时立即返回 `data=null`，后台计算，预热线程保证缓存常满），生产场景优先走 data 快照；ml-service 直连端点的完整端点清单/响应结构见 `docs/SERVICE_API_REFERENCE.md §3`。
 
 ### 3.2 图谱（injector :9113 / ragservicer :9721）
 

@@ -141,6 +141,8 @@
 - **onchain（2）**：`btc_difficulty`（unit=`T`）、`btc_hashrate`（unit=`EH/s`）
 - **ml（10，DS-13，来源 ml-service）**：`tree_direction` / `tree_prob_up`（LightGBM）、`finbert_sentiment`（FinBERT）、`consensus_score`、`bolt_direction` / `bolt_prob_up`、`moirai_direction` / `moirai_prob_up`、`timesfm_direction` / `timesfm_prob_up`（direction 数值化：up=1 / flat=0 / down=-1）
 
+> **宏观因子数据源与显示名（2026-08-08 更新）**：macro 因子 `vix`/`dxy`/`us10y` 由 FRED 系列 **`VIXCLS` / `DTWEXBGS` / `DGS10`** 供给（`data_config.json` 的 `macro.fred_series` 可扩展，映射见 `app/factors.py` `_MACRO_SERIES_NAMES`）；`fear_greed` 显示名映射为 **"Fear & Greed"**（`_MACRO_DISPLAY_EXTRA`，替代 alternative.me 默认显示）。`/factors/history` 不传 `limit` 时默认返回最近 **500** 根（上限 5000）。
+
 > **⚠️ ML 因子历史极短（2026-08-07 已知缺口）**：`ml_predictions` 明细（bolt/moirai/timesfm）与 `tree_predictions`（LightGBM）自 2026-08-05 起才有数据（生产 `ml_predictions` 仅 74 行）。回测含 ML 因子时早期区间全空。回填方案（需 ml-service 配合，暂登记 infrax_tasklist §9.8.8 排期）：对已上线符号按历史 bars 回放推理写 `ml_predictions`；在回填完成前，ML 因子仅适用于 2026-08-05 之后的区间。
 
 **灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
@@ -175,13 +177,28 @@
 
 ---
 
-## 4. ML 预测数据（infrax-data）
+## 4. ML 预测数据（infrax-data + ml-service）
 
 | 端点 | 内容 |
 |---|---|
-| `/ml/predictions?model=bolt|moirai|timesfm&symbol=` | P2 单模型预测明细：`{generated_at, direction, prob_up, uncertainty, point_forecast, quantiles}` |
+| `/api/data/ml/predictions?model=bolt\|moirai\|timesfm&symbol=` | P2 单模型预测明细（**data 侧采集快照**）：`{generated_at, direction, prob_up, uncertainty, point_forecast, quantiles}` |
+| `/api/data/factors/current?category=ml` | 上述预测 + tree/consensus 落库为 ML 因子（`tree_direction`、`consensus_score` 等） |
 
 采集器生成的预测快照（见上表 `ml/*`）供 AI 策略使用。
+
+### 4.1 ml-service 直连端点（:9120，实时推理）
+
+| 端点 | 模型 | 内容 |
+|---|---|---|
+| `/ml/tree_predictions` | LightGBM | 方向预测（全 symbol） |
+| `/ml/volatility` | Kronos | 波动率预测 |
+| `/ml/bolt` `/ml/moirai` `/ml/timesfm` | Chronos-Bolt / Moirai 2.0 / TimesFM 2.5 | P2 概率预测 |
+| `/ml/consensus` | 多模型聚合 | 跨模型信号共识 |
+| `/ml/sentiment` | FinBERT | 新闻文本情绪（POST） |
+| `/ml/macro_features` | FRED 派生 | 宏观环境特征 |
+| `/ml/cache/stats` | — | 缓存统计（免鉴权） |
+
+**异步 + 预热机制（2026-08 性能改造）**：直连端点结果走 TTL 缓存（`ML_CACHE_TTL_SEC` 默认 1800s）；缓存 miss 时**立即返回 `data=null`**，推理在后台线程完成；预热线程（`ML_PREWARM_*` 默认开）周期刷新缓存。volatility/bolt/moirai/timesfm 响应已统一为 **dict + 聚合指标**（`{generated_at, n_symbols, model, avg_<score_key>, symbols[]}`，`symbols[]` 内单 symbol 字段不变）。生产符号池以 `P2_TARGET_SYMBOLS` 显式配置 30 个目标符号（覆盖 data-service 动态 46 符号池）。完整说明见 `docs/SERVICE_API_REFERENCE.md §3`。
 
 ---
 

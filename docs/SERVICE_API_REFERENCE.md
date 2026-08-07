@@ -1,8 +1,8 @@
 # InfraX 对外微服务 API 参考（API Query Reference）
 
 > 面向外部调用方（B 端 / 数据调用方 / 集成方）的**对外可用的服务与端点清单**。
-> 覆盖：VAULT / Session Key / MPC / WAAS / DATA / LightRAG 六大微服务。
-> 数据来源：生产代码盘点 + 生产实测（2026-08-06，`43.163.105.172`）。
+> 覆盖：VAULT / Session Key / MPC / WAAS / DATA / LightRAG / ML 七大微服务。
+> 数据来源：生产代码盘点 + 生产实测（2026-08-06，`43.163.105.172`；ML 章节更新于 2026-08-08）。
 > 鉴权契约：统一平台鉴权（`Authorization: Bearer` | `X-API-Key` | `X-Service-Key` 三选一，详见 §1）。
 
 ---
@@ -61,7 +61,61 @@
 
 ---
 
-## 3. VAULT 多签保险库（:9107，MCP :9108）
+## 3. ML 预测服务（ml-service，:9120，独立推理引擎）
+
+**功能**：独立模型推理服务，承载 **LightGBM / FinBERT / Kronos / Chronos-Bolt / Moirai 2.0 / TimesFM 2.5** 六个模型；数据来自 data-service `/bars` + `/symbols`（HTTP），不直连 SQLite。模型不可用/数据不足时 `data=null`（fail-silent，无模拟数据）。
+**鉴权**：✅ app_auth 统一（`ML_API_KEY`，未配置保持开放）；豁免 `/health` `/docs` `/redoc` `/openapi.json` `/metrics` `/ml/cache/stats`。
+**与 DATA 的关系**：data-service `/api/data/ml/predictions` 与 `/api/data/factors/current`（category=ml）是 ml-service 输出的**采集快照**（collector 周期拉取落库）；ml-service 直连端点返回**实时推理结果**。低延迟/稳定优先走 data 快照，实时性优先走 ml-service。
+
+### 3.1 端点清单
+
+| 端点 | 方法 | 功能 | 响应结构 |
+|---|---|---|---|
+| `/ml/tree_predictions` | GET | LightGBM 方向预测（训练+预测全 symbol） | `{generated_at, model, predictions[], macro_context?}` |
+| `/ml/volatility` | GET | Kronos 波动率预测（多路径采样） | `{generated_at, n_symbols, model, avg_volatility_score, symbols[]}` |
+| `/ml/bolt` | GET | Chronos-Bolt 单变量概率预测（P2） | `{generated_at, n_symbols, model, avg_prob_up, symbols[]}` |
+| `/ml/moirai` | GET | Moirai 2.0 多变量跨资产预测（P2） | 同上（symbols 内多 `linked_symbols` 联动字段） |
+| `/ml/timesfm` | GET | TimesFM 2.5 长上下文点预测（P2） | `{generated_at, n_symbols, model, avg_prob_up, symbols[]}` |
+| `/ml/consensus` | GET | 跨模型信号共识聚合（tree+Kronos+FinBERT+P2） | `{generated_at, signals, n_symbols, avg_consensus_score, market_risk_flag, n_divergence, symbols[]}` |
+| `/ml/sentiment` | POST | FinBERT 文本情绪（body: `{"articles":[...]}`） | 聚合情绪统计或 null |
+| `/ml/macro_features` | GET | FRED 宏观特征 + DXY/VIX/US10Y 快照 | 特征 dict 或 null |
+| `/ml/cache/stats` | GET | 缓存统计（命中/未命中/耗时/各端点缓存状态） | `{code, message, data}`（豁免鉴权，监控用） |
+
+> 直连端点鉴权：配置 `ML_API_KEY` 后需带 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key`；未配置保持开放（内网部署建议配置）。统一 401 响应 `{"detail":"unauthorized"}`。
+
+### 3.2 异步计算 + 缓存预热（2026-08 性能改造，调用方必读）
+
+1. **TTL 缓存**（`ML_CACHE_TTL_SEC`，默认 **1800s**）：重计算端点结果缓存，TTL 内命中秒回，不重跑分钟级推理。
+2. **异步兜底**：缓存 miss 时请求**立即返回 `data=null`**，计算结果在后台 daemon 线程完成并写回缓存——请求永不因全量推理而阻塞（此前全量预测曾拖死 /health）。
+3. **预热线程**（`ML_PREWARM_ENABLED=true` 默认开）：启动 `ML_PREWARM_DELAY_SEC`（60s）后周期检查（`ML_PREWARM_INTERVAL_SEC` 900s），缓存缺失/过期时后台刷新 → **缓存常满，请求几乎总是命中**。
+
+**调用方配合**：首次请求（或重启后预热完成前）可能收到 `data=null`，属预期行为。建议 ① 优先读 data-service `/api/data/ml/predictions` 快照（30min 周期落库，更稳定）；② 对 ml-service 直连端点轮询重试（间隔 ≥ TTL，或依据 `/ml/cache/stats` 判断缓存就绪）；③ 用 `/ml/cache/stats` 观察各端点缓存命中/预热状态（豁免鉴权）。
+
+### 3.3 统一响应结构（volatility / bolt / moirai / timesfm）
+
+裸数组已升级为 **dict + 聚合指标**（对齐 tree_predictions / consensus 结构）：
+
+```json
+{
+  "generated_at": 1786089600000,
+  "n_symbols": 30,
+  "model": "chronos-bolt-small",
+  "avg_prob_up": 0.5231,
+  "symbols": [
+    {"symbol": "BTC/USDT", "direction": 1, "prob_up": 0.61,
+     "point_forecast": 64512.3, "quantiles": {"0.1": 61200.5, "0.5": 64512.3, "0.9": 67890.1},
+     "uncertainty": 0.21}
+  ]
+}
+```
+
+- `n_symbols`：覆盖 symbol 数（生产 `.env` 以 `P2_TARGET_SYMBOLS` 显式配置 **30 个目标池**，覆盖 data-service 动态 46 符号池）
+- `avg_<score_key>`：全池概率/评分均值（volatility 用 `avg_volatility_score`，其余 4 端点为 `avg_prob_up`）
+- `symbols[]` 内单 symbol 字段（direction/prob_up/point_forecast/quantiles/uncertainty）**保持不变**，向后兼容
+
+---
+
+## 4. VAULT 多签保险库（:9107，MCP :9108）
 
 **功能**：Safe 多签管理（create/propose/confirm/execute 链上闭环）+ owner 管理（B-5 链上多签）+ 风控规则。
 **鉴权**：✅ `scope=vault`（vx_ key）/ 本地 `VAULT_API_KEY`；`/health` 豁免。
@@ -109,7 +163,7 @@
 
 ---
 
-## 5. MPC 钱包（:9104，MCP :9105）
+## 6. MPC 钱包（:9104，MCP :9105）
 
 **功能**：邮箱验证码 → 注册/恢复 MPC 密钥分片托管钱包 → 会话解锁 → 签名/交易/合约调用。
 **鉴权**：✅ `scope=mpc`（mp_ key）/ 本地 `MPC_API_KEY`；`/health` 豁免。
@@ -136,7 +190,7 @@
 
 ---
 
-## 6. WAAS 钱包即服务（:9109）
+## 7. WAAS 钱包即服务（:9109）
 
 **功能**：SaaS 多租户钱包基础设施（认证/钱包/交易/风控/事件回调/套餐/数据订阅/apikey）。
 **鉴权**：⚠️ **未接入平台统一契约**。自有体系：租户 `x-api-key`（`requireTenantApiKey`，saas 部分路由）+ `x-api-key` 内部 key（`requireApiKey`，internal/event 部分路由）+ admin JWT。**wallet/tx/risk/subscription/dashboard/dataSubscription/payment 大部分端点无鉴权中间件**（生产实测 `/api/v2/data/plans` 无 key 200）。
@@ -159,7 +213,7 @@
 
 ---
 
-## 7. LightRAG 知识图谱（ragservicer :9721 `/api/rag/*` + knowledge-injector :9113）
+## 8. LightRAG 知识图谱（ragservicer :9721 `/api/rag/*` + knowledge-injector :9113）
 
 **功能**：LightRAG 实体-关系图谱 + 向量索引 + 关键词三路检索；多租户 namespace 隔离；知识注入。
 **鉴权**：✅ app_auth 统一（lr_ key）；`/health` `/openapi.json` 豁免；admin 端点 Bearer-only（403 "Admin access required"）。
@@ -199,11 +253,12 @@
 
 ---
 
-## 8. 端口与服务总览
+## 9. 端口与服务总览
 
 | 服务 | 端口 | nginx 前缀 | SDK | MCP |
 |---|---|---|---|---|
 | infrax-data | 9112 | `/api/data/*` | ✅ infrax-dk | ✅ hub-index data_* |
+| infrax-ml-service | 9120 | — | ✅ OpenAPI 原生 | ⚠️ 经 hub-index data 快照（ml_predictions） |
 | infrax-knowledge-injector | 9113 | — | — | — |
 | infrax-ragservicer | 9721 | `/api/rag/*` | ✅ lightrag-client / ragservicer-sdk | ✅ STDIO 5 工具 |
 | infrax-vault | 9107 | — | ✅ infrax-dk | ✅ :9108 13 工具 |

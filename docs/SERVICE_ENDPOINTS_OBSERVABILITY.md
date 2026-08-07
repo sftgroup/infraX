@@ -126,8 +126,12 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | GET | `/ml/volatility` | Kronos 波动率预测 | ML_API_KEY |
 | GET | `/ml/consensus` | 跨模型信号共识 | ML_API_KEY |
 | GET | `/ml/bolt` `/ml/moirai` `/ml/timesfm` | P2 时序模型概率预测 | ML_API_KEY |
+| GET | `/ml/macro_features` | FRED 宏观特征 + DXY/VIX/US10Y 快照 | ML_API_KEY |
+| GET | `/ml/cache/stats` | 端点缓存统计（命中/未命中/耗时/各端点状态） | 豁免 |
 
 所有 ML 端点 fail-silent：模型不可用返回 `data: null`。
+
+> **异步 + 预热（2026-08 性能改造）**：重计算端点（tree/volatility/bolt/moirai/timesfm/consensus）结果走 TTL 缓存（`ML_CACHE_TTL_SEC` 默认 1800s）；缓存 miss 时**立即返回 `data=null`**，推理在后台 daemon 线程完成（不再阻塞请求线程池）；预热线程（`ML_PREWARM_ENABLED=true` 默认开，delay 60s / interval 900s）周期刷新缓存。volatility/bolt/moirai/timesfm 响应已统一为 `{generated_at, n_symbols, model, avg_<score_key>, symbols[]}` dict 结构（`symbols[]` 内字段不变）。监控可直接用 `/ml/cache/stats`（豁免鉴权）观察各端点缓存命中与最近计算耗时。
 
 > **部署状态**：已部署于独立服务器 43.156.25.197（:9120，`infrax-ml-service.service` 运行中）。2026-08-05 升级至 master `7350d47`（含统一鉴权 app_auth 1f4deea），生产 .env 已补 `ML_API_KEY`/`DATA_API_KEY`（主栈同一把 bridge key）；实测 §2 鉴权契约生效（/health 200 豁免、/ml/* 无 key 401、Bearer/X-API-Key/X-Service-Key 均 200）、/ml/consensus 六路信号出数。
 
@@ -153,6 +157,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | 存活 | `GET http://<host>:9113/health` | `code==0` + `lightrag_enabled` |
 | 存活 | `GET http://<host>:9721/api/v1/health` | `code==0` |
 | 存活（ml） | `GET http://43.156.25.197:9120/health` | `code==0`（ML 端点另可用 `/ml/consensus` 探测） |
+| ML 缓存/推理健康 | `GET http://43.156.25.197:9120/ml/cache/stats` | 各端点 `hits`/`misses`/`cached`/`expires_in`/`last_compute_ms`（免鉴权） |
 | 数据规模/新鲜度 | `GET :9112/stats` | `snapshot_rows`、`time_end` |
 | 快照数据面 | `GET :9112/snapshots?type=onchain` 等 | 各 type 非空 + `ts` |
 | 采集健康 | `GET :9112/factors/current` | `_ts` 新鲜度 |

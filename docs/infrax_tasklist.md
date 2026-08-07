@@ -325,6 +325,10 @@ curl -H "X-Service-Key: dx_..." http://<host>:9112/stats
 | `XGB_ENABLED` / `RF_ENABLED` | false | XGBoost / Random Forest 方向预测对比家族开关；与 LightGBM **同一数据集/同一切分**训练，仅作对照（RF 用 sklearn 自带） |
 | `FINBERT_ENABLED` / `FINBERT_MODEL` | false / `ProsusAI/finbert` | FinBERT 新闻情绪开关与模型名（可换 `yiyanghkust/finbert-tone` 支持中英） |
 | `KRONOS_ENABLED` / `KRONOS_MODEL` / `KRONOS_LOOKBACK`(400) / `KRONOS_PRED_LEN`(30) / `KRONOS_SAMPLE_COUNT`(12) | false / `NeoQuasar/Kronos-mini` / … | Kronos 波动率预测开关与参数；需 systemd `PYTHONPATH` 指向 Kronos 源码 |
+| `BOLT_ENABLED` / `MOIRAI_ENABLED` / `TIMESFM_ENABLED` | false | P2 时序基础模型开关（Chronos-Bolt / Moirai 2.0 / TimesFM 2.5） |
+| `P2_TARGET_SYMBOLS` | 空 | 目标符号池（逗号分隔，显式覆盖 data-service 动态发现；空走动态） |
+| `ML_CACHE_TTL_SEC` | 1800 | 端点结果缓存时长（秒）；TTL 内命中秒回不重算 |
+| `ML_PREWARM_ENABLED` / `ML_PREWARM_DELAY_SEC` / `ML_PREWARM_INTERVAL_SEC` | true / 60 / 900 | 预热线程开关与周期（缓存缺失/过期时后台刷新；interval 建议 < TTL） |
 
 **主栈联动配置**（见 8.5 主栈切换）：
 - data `.env`：`ML_SERVICE_URL=http://43.156.25.197:9120`（可选 `ML_API_KEY`）
@@ -497,10 +501,16 @@ sudo journalctl -u infrax-knowledge-injector -f
 | **Kronos-mini**（P0） | `KRONOS_ENABLED` | K 线波动率/方向预测 | 经 data-service `/bars`（yfinance 回退） |
 
 **端点**（全部 `{"code":0,"message":"ok","data":...}` 信封，异常 data=None）：
-- `GET /ml/tree_predictions` — 主家族（LightGBM）快照（model 含 n_samples/val_accuracy + predictions），另含 `families` 字段：启用对比家族（xgboost / random_forest）各自的 model + predictions
+- `GET /ml/tree_predictions` — 主家族（LightGBM）快照（model 含 n_samples/val_accuracy + predictions），另含 `families` 字段：启用对比家族（xgboost / random_forest）各自的 model + predictions；数据可用时附带 `macro_context`（FRED 宏观特征）
 - `POST /ml/sentiment` — body `{"articles":[...]}`，返回聚合情绪 stats
-- `GET /ml/volatility` — Kronos 对 BTC/ETH/SPY/QQQ 的波动率预测列表
-- `GET /health` — 健康检查（`/health` `/docs` 免鉴权）
+- `GET /ml/volatility` — Kronos 对目标资产池的波动率预测（`{generated_at, n_symbols, model, avg_volatility_score, symbols[]}`）
+- `GET /ml/bolt` `/ml/moirai` `/ml/timesfm` — P2 时序模型概率预测（`{generated_at, n_symbols, model, avg_prob_up, symbols[]}`）
+- `GET /ml/consensus` — 跨模型信号共识（tree + Kronos + FinBERT + P2，`{generated_at, signals, n_symbols, avg_consensus_score, market_risk_flag, n_divergence, symbols[]}`）
+- `GET /ml/macro_features` — FRED 宏观特征 + DXY/VIX/US10Y 快照
+- `GET /ml/cache/stats` — 端点缓存统计（免鉴权）
+- `GET /health` — 健康检查（`/health` `/docs` `/ml/cache/stats` 免鉴权）
+
+**异步 + 预热（2026-08 性能改造）**：重计算端点（tree/volatility/bolt/moirai/timesfm/consensus）结果走 TTL 缓存 `ML_CACHE_TTL_SEC`（默认 1800s）；缓存 miss 时请求立即返回 `data=null`，推理在后台 daemon 线程完成（不阻塞请求线程池）；预热线程周期刷新缓存（`ML_PREWARM_ENABLED=true` 默认开，`ML_PREWARM_DELAY_SEC` 60s / `ML_PREWARM_INTERVAL_SEC` 900s）。生产符号池可用 `P2_TARGET_SYMBOLS` 显式覆盖（默认从 data-service `/symbols` 动态拉取）。
 
 **鉴权**：ml-service 配置 `ML_API_KEY` 后，主栈调用需 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`；未配置则开放。
 

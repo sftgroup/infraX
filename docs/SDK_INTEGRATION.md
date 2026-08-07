@@ -128,6 +128,47 @@ client.delete(doc_id="..."); client.list_instances()
 npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.json -g typescript-axios -o ./client
 ```
 
+### 4.1 ml-service（:9120）消费要点
+
+**推荐路径**：ML 预测优先读 **data-service `/api/data/ml/predictions`**（`infrax.data.mlPredictions()`，30min 周期快照落库，稳定低延迟）；需要实时推理结果时才直连 ml-service 以下端点。
+
+**端点清单**（模型不可用/数据不足时 `data=null`，fail-silent）：
+
+| 端点 | 模型 | 用途 |
+|---|---|---|
+| `/ml/tree_predictions` | LightGBM | 方向预测（全 symbol） |
+| `/ml/volatility` | Kronos | 波动率预测 |
+| `/ml/bolt` `/ml/moirai` `/ml/timesfm` | Chronos-Bolt / Moirai 2.0 / TimesFM 2.5 | P2 时序基础模型概率预测 |
+| `/ml/consensus` | 多模型聚合 | 跨模型信号共识 |
+| `/ml/sentiment` | FinBERT | 新闻文本情绪（POST） |
+| `/ml/macro_features` | FRED 派生 | 宏观环境特征 |
+| `/ml/cache/stats` | — | 缓存统计（免鉴权） |
+
+**异步 + 预热语义（2026-08 改造，调用方必读）**：
+
+1. 所有重计算端点结果走 **TTL 缓存**（`ML_CACHE_TTL_SEC` 默认 1800s）；
+2. 缓存 **miss 时请求立即返回 `data=null`**，推理在后台线程完成——前端看到 null 不代表故障；
+3. 预热线程（`ML_PREWARM_*`，默认开）周期刷新缓存，**缓存常满、请求几乎总是命中**；
+4. 调用建议：首次调用若返回 null，按 `ML_CACHE_TTL_SEC`（30min）间隔轮询重试；或先查 `/ml/cache/stats` 确认缓存就绪。
+
+**统一响应结构**（volatility/bolt/moirai/timesfm，2026-08 起由裸数组升级为 dict）：
+
+```json
+{
+  "code": 0, "message": "ok",
+  "data": {
+    "generated_at": 1786089600000, "n_symbols": 30, "model": "chronos-bolt-small",
+    "avg_prob_up": 0.5231,
+    "symbols": [{"symbol": "BTC/USDT", "direction": 1, "prob_up": 0.61,
+                 "point_forecast": 64512.3,
+                 "quantiles": {"0.1": 61200.5, "0.5": 64512.3, "0.9": 67890.1},
+                 "uncertainty": 0.21}]
+  }
+}
+```
+
+> 兼容性：`symbols[]` 内字段不变；新增顶层 `n_symbols` / `avg_<score_key>` / `model` 聚合指标。`?envelope=1` / `X-Envelope: 1` 时统一包装 `{code, message, data}`。
+
 ---
 
 ## 5. 鉴权集成要点
