@@ -1024,6 +1024,18 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] T-7 **配置收敛（部分）**：**waas 生产已启用网关转发（2026-08-08）**——unit 注入 `CHAIN_RPC_URL` + 读 key，`rpcProxy` 信封解析修复（chain-rpc 统一信封 `data.result`），内联 E2E 走网关 200（sepolia 区块号 / eth 别名 chainId）；chain-rpc 补请求日志中间件（访问可观测，不记 headers）。**评估结论**：dc `rpcCall` 仅 tx receipt 一场景（低成本）建议先收敛；collector relayer 广播可选收敛（collector 批量扫描保持自建池——网关端点同源，避免加一跳）；mpc `getProvider`（ethers 直连，balance/tx/合约/gas 多端点）中成本，后续候选
 - [x] T-8 **部署验证**：**生产部署完成（2026-08-08，43.163.105.172 systemd `infrax-chain-rpc` :9130，开机自启）**——全 6 链 read E2E 通过（sepolia 区块号 / eth 别名 → ethereum / solana getHealth+getSlot）；鉴权矩阵 401（未授权）/403（写方法白名单）/401（读 key 打广播）通过；广播 key 链路可达（无效 rawTx 502 上游错误）；`/v1/status` 6 链健康、端点脱敏；真实密钥已生成仅存生产 unit（`/etc/systemd/system/infrax-chain-rpc.service`），不入 git
 
+**MQ-10 收敛与后续优化方案（2026-08-08 定稿）**：现状——读+广播能力已独立为 chain-rpc 网关（生产 :9130），但消费端收敛未完成：waas ✅（已转发）、dc/collector/mpc 仍各自直连（5 套 URL、无池化/重试/降级）；网关侧仍有能力短板（广播仅 EVM、无 WS/批量、参数硬编码）。收敛原则：**低吞吐 HTTP 读场景优先收敛，批量扫描保持自建池（网关端点同源，避免加一跳 + 限流瓶颈），ethers 深度耦合场景暂缓**。
+
+- [x] **DC-1（✅ 2026-08-08 完成）dc 收敛**：`rpcCall` 优先走网关（`CHAIN_RPC_URL` + 读 key），失败回退直连；覆盖 raw-receipt（`eth_getTransactionReceipt`）+ balance（`eth_getBalance`）两场景；两方法均在网关白名单。生产验证：unit 注入网关配置，balance 5 链走网关 200（chain-rpc 日志确认 `POST /v1/rpc/*`），raw-receipt 走网关 200（pending 分支）
+- [ ] **DC-2 collector 收敛（可选）**：relayer 广播（`CHAIN_RPCS` 3 端点硬编码）改走网关 `/v1/broadcast`（broadcast key）；批量扫描 `fetchBlockRange/fetchLogs` **保持自建池**（同源端点，避免加一跳 + 限流瓶颈）
+- [ ] **DC-3 mpc 收敛（暂缓/高成本）**：ethers `JsonRpcProvider` 单 URL 抽象与网关读/广播分离端点冲突；需拆分读（网关 provider + 自定义 fetch headers）与广播（独立调 `/v1/broadcast`）；6 处调用点，回归风险中，mpc 无高可用诉求时暂缓
+- [ ] **DC-4 Solana 广播**：`sendTransaction` 加入广播白名单 + broadcast 路由支持非 EVM（txHash 语义、确认轮询适配）
+- [ ] **DC-5 WebSocket 订阅**：`eth_subscribe`/`newHeads`/`logs` 等订阅类方法（当前仅 HTTP + 白名单无订阅，需新增 WS 端点 + 连接级订阅管理）
+- [ ] **DC-6 批量批处理**：JSON-RPC batch（数组请求）支持，降低高频读的请求数
+- [ ] **DC-7 参数可配置化**：健康检查间隔（30s）、退避重试次数（3）、超时等硬编码 → env 配置
+- [ ] **DC-8 新链类型接入**：非 EVM/Solana（如 Cosmos/Polkadot）需健康检查分支特判 + 方法白名单扩展（rpcPool 现 solana 特判）
+- [ ] **DC-9 网关可观测**：请求日志按端点细分、状态端点 URL 脱敏策略可配置（现脱敏不可见，运维需时可配）
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。

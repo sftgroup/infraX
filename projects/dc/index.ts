@@ -322,7 +322,35 @@ const RPC_ENDPOINTS: Record<string, string> = {
   oxa:     "https://rpc.l1.oxachain.io",
 };
 
+// MQ-10 DC-1: 优先走 chain-rpc 网关（统一池化 RPC，读 key）；
+// 未配置 CHAIN_RPC_URL 或网关失败时回退直连 RPC_ENDPOINTS（兼容旧行为）。
+const CHAIN_RPC_URL = process.env.CHAIN_RPC_URL || '';
+const CHAIN_RPC_READ_KEY = process.env.CHAIN_RPC_READ_KEY || '';
+
 async function rpcCall(chain: string, method: string, params: any[]): Promise<any> {
+  if (CHAIN_RPC_URL) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const r = await fetch(`${CHAIN_RPC_URL.replace(/\/$/, '')}/v1/rpc/${encodeURIComponent(chain)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Service-Key": CHAIN_RPC_READ_KEY || "" },
+          body: JSON.stringify({ method, params }),
+          signal: controller.signal,
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || `gateway ${r.status}`);
+        // chain-rpc 统一信封 {code, message, data:{chain, method, result}}
+        if (j.code === 0) return j.data?.result;
+        throw new Error(j.message || "gateway error");
+      } finally { clearTimeout(timeout); }
+    } catch (e: any) {
+      console.warn(`[DC] chain-rpc gateway fallback for ${chain}.${method}: ${e.message}`);
+    }
+  }
+
+  // 直连 fallback（原有逻辑）
   const url = RPC_ENDPOINTS[chain];
   if (!url) throw new Error(`No RPC for ${chain}`);
   const controller = new AbortController();
