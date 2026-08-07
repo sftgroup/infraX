@@ -1,7 +1,7 @@
 {
   "name": "@0xinfrax/infrax-dk",
-  "version": "0.3.0",
-  "description": "InfraX JavaScript SDK — wallet, multisig vault, payment (x402), SaaS tenants, on-chain data (DC), MPC key-shard wallets, OKX ChainOS market data and InfraX data service (bars/snapshots/factors/ticker/symbols).",
+  "version": "0.4.0",
+  "description": "InfraX JavaScript SDK — wallet, multisig vault, payment (x402), SaaS tenants, on-chain data (DC), MPC key-shard wallets, OKX ChainOS market data, InfraX data service (bars/snapshots/factors/ticker/symbols/ml-predictions) and ml-service realtime inference (tree/volatility/bolt/moirai/timesfm/consensus).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

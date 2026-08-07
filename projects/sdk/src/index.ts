@@ -1,7 +1,7 @@
 /**
- * InfraX SDK v0.2
+ * InfraX SDK v0.4
  *
- * Full coverage: Wallet / Safe / Payment / SaaS / DC / Vault / MPC
+ * Full coverage: Wallet / Safe / Payment / SaaS / DC / Vault / MPC / Data / ML
  */
 
 // ═══════════════ Types ═══════════════
@@ -14,6 +14,10 @@ export interface InfraXConfig {
   dataUrl?: string;
   /** Data service API key (X-API-Key); falls back to apiKey */
   dataApiKey?: string;
+  /** ml-service (:9120) base URL for real-time inference endpoints; falls back to baseUrl */
+  mlUrl?: string;
+  /** ml-service API key (ML_API_KEY); falls back to apiKey */
+  mlApiKey?: string;
   timeout?: number;
 }
 
@@ -131,6 +135,27 @@ export interface DataSymbolSearchParams { keyword: string; market?: string; limi
 export interface DataSymbolResolveParams { symbol: string; market?: string; }
 export interface DataMlPredictionsParams { model: 'bolt' | 'moirai' | 'timesfm'; symbol: string; start?: number; end?: number; limit?: number; }
 export interface DataStats { kline_rows: number; snapshot_rows: number; symbols: number; time_start: number | null; time_end: number | null; }
+
+// ML — ml-service (:9120) 实时推理端点（统一 dict + 聚合指标；缓存 miss 时 data=null）
+export interface MlSymbolPrediction {
+  symbol: string;
+  direction: 1 | 0 | -1;
+  prob_up?: number;
+  point_forecast?: number[];
+  quantiles?: Record<string, number[]>;
+  uncertainty?: string | number;
+  [k: string]: any;
+}
+export interface MlUnifiedResult {
+  generated_at?: number;
+  n_symbols?: number;
+  model?: string;
+  avg_prob_up?: number;
+  avg_volatility_score?: number;
+  symbols?: MlSymbolPrediction[];
+  [k: string]: any;
+}
+export interface MlSentimentParams { articles: Array<Record<string, any>>; }
 
 // ═══════════════ HTTP ═══════════════
 
@@ -534,6 +559,62 @@ class DataAPI {
   }
 }
 
+// ═══════════════ ML — ml-service (:9120) 实时推理 ═══════════════
+// 覆盖 ml-service 重计算端点（2026-08 起统一 dict + 聚合指标）。
+// 语义：结果走 TTL 缓存（ML_CACHE_TTL_SEC 默认 1800s）+ 后台异步计算 + 周期预热；
+// 缓存 miss / 模型不可用 / 数据不足时 **data=null 属预期行为**（非故障）。
+// 推荐路径：优先读 data 侧快照 infrax.data.mlPredictions()；实时性优先才直连本命名空间。
+// /ml/cache/stats 免鉴权；其余端点带 mlApiKey（x-api-key）。
+
+class MlAPI {
+  constructor(private http: HttpClient) {}
+
+  /** LightGBM 方向预测（训练+预测全 symbol，附 macro_context） */
+  async treePredictions() {
+    return this.http.get<MlUnifiedResult>('/ml/tree_predictions');
+  }
+
+  /** Kronos 波动率预测（统一结构，聚合键 avg_volatility_score） */
+  async volatility() {
+    return this.http.get<MlUnifiedResult>('/ml/volatility');
+  }
+
+  /** Chronos-Bolt 单变量概率预测（P2，聚合键 avg_prob_up） */
+  async bolt() {
+    return this.http.get<MlUnifiedResult>('/ml/bolt');
+  }
+
+  /** Moirai 2.0 多变量跨资产预测（P2） */
+  async moirai() {
+    return this.http.get<MlUnifiedResult>('/ml/moirai');
+  }
+
+  /** TimesFM 2.5 长上下文点预测（P2） */
+  async timesfm() {
+    return this.http.get<MlUnifiedResult>('/ml/timesfm');
+  }
+
+  /** 跨模型信号共识（tree+Kronos+FinBERT+P2） */
+  async consensus() {
+    return this.http.get<MlUnifiedResult>('/ml/consensus');
+  }
+
+  /** FRED 宏观特征 + DXY/VIX/US10Y 快照 */
+  async macroFeatures() {
+    return this.http.get<any>('/ml/macro_features');
+  }
+
+  /** FinBERT 新闻文本情绪（POST articles） */
+  async sentiment(params: MlSentimentParams) {
+    return this.http.post<any>('/ml/sentiment', params);
+  }
+
+  /** 端点缓存统计（免鉴权）：total hits/misses + 各端点 cached/expires_in/last_compute_ms */
+  async cacheStats() {
+    return this.http.get<any>('/ml/cache/stats');
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -547,6 +628,7 @@ export class InfraX {
   readonly mpc: MPCAPI;
   readonly market: MarketAPI;
   readonly data: DataAPI;
+  readonly ml: MlAPI;
 
   private http: HttpClient;
 
@@ -566,6 +648,12 @@ export class InfraX {
       ...config,
       baseUrl: config.dataUrl || config.baseUrl,
       apiKey: config.dataApiKey || config.apiKey,
+    }));
+    // ml-service 独立 baseUrl（mlUrl 优先，回退 baseUrl）+ 独立 key（mlApiKey 优先，回退 apiKey）
+    this.ml = new MlAPI(new HttpClient({
+      ...config,
+      baseUrl: config.mlUrl || config.baseUrl,
+      apiKey: config.mlApiKey || config.apiKey,
     }));
   }
 

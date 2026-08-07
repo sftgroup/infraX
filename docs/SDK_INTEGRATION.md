@@ -8,7 +8,7 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | 0.3.0 | ✅ 已发布（registry 已验证） | DATA / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 |
+| `@0xinfrax/infrax-dk`（npm） | 0.4.0 | ✅ 已发布（registry 已验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 |
 | `lightrag-client`（PyPI） | 2.0.0 | ⏳ 构建+twine check 通过，待 PyPI token 发布 | LightRAG（ragservicer） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
@@ -48,8 +48,13 @@ const infrax = new InfraX({
 >   // data 服务独立入口（:9112；缺省回退 baseUrl）
 >   dataUrl: 'http://<host>:9112',
 >   dataApiKey: process.env.DATA_API_KEY,   // X-API-Key；缺省回退 apiKey
+>   // ml-service 独立入口（:9120；缺省回退 baseUrl）
+>   mlUrl: 'http://43.156.25.197:9120',
+>   mlApiKey: process.env.ML_API_KEY,       // X-API-Key；缺省回退 apiKey
 > });
 > await infrax.data.factorsCatalog();       // → data
+> await infrax.ml.cacheStats();             // → ml-service（免鉴权）
+> await infrax.ml.bolt();                   // → ml-service（统一 dict；缓存 miss 时 data=null）
 > await infrax.dc.tokens({ limit: 5 });     // → dc（公网受 Cloudflare 回源 502 影响，见 §2.1）
 > ```
 
@@ -58,6 +63,7 @@ const infrax = new InfraX({
 | 服务 | 模块方法（`infrax.*`） | 对应 REST 端点 |
 |---|---|---|
 | **DATA 行情/因子** | `data.bars()`、`data.ticker()`、`data.factorsCurrent()`、`data.factorsHistory()`、`data.snapshots()`、`data.symbolSearch()`、`data.symbolResolve()`、`data.mlPredictions()`、`data.stats()` | `/api/data/*`（9112） |
+| **ML 实时推理** | `ml.treePredictions()`、`ml.volatility()`、`ml.bolt()`、`ml.moirai()`、`ml.timesfm()`、`ml.consensus()`、`ml.sentiment()`、`ml.macroFeatures()`、`ml.cacheStats()`（免鉴权） | ml-service :9120 `/ml/*`（统一 dict+聚合；**缓存 miss 时 `data=null` 属预期**，配合 `/ml/cache/stats` 判断就绪） |
 | **VAULT 多签** | `vault.safes()`、`vault.safeDetail()`、`vault.createSafe()`、`vault.proposeTx()`、`vault.confirmTx()`、`vault.executeTx()`、`vault.createTx()` | `/api/vault/*`（9107） |
 | **MPC 钱包** | `mpc.sendCode()`、`mpc.register()`、`mpc.status()`、`mpc.signMessage()`、`mpc.signTypedData()`、`mpc.sendTransaction()` | `/api/v2/mpc/*`（9104） |
 | **WAAS 钱包/支付/SaaS** | `wallet.balance()`、`wallet.send()`、`wallet.simulate()`、`wallet.rpc()`；`payment.create()`、`payment.status()`、`x402.pay()`；`saas.createTenant()`、`saas.listTenants()`、`saas.rotateApiKey()` | `/api/v2/*`（9109） |
