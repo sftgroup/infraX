@@ -15,12 +15,15 @@ from lightrag_client import LightRAGClient
 
 rs = LightRAGClient(base_url="http://localhost:9721", api_key="lr_xxx", tenant_id="market")
 
-# Insert documents
+# Insert documents (async by default → returns {task_id, status, doc_id})
 rs.insert("market", "BTC 走势受美联储利率政策影响", "doc-1")
 rs.insert_batch("market", [
     {"text": "DeFi TVL 回升", "doc_id": "doc-2"},
     {"text": "链上巨鲸增持", "doc_id": "doc-3"},
 ])
+# ⚠️ 写入为异步：后台完成「抽实体建图 + 向量化」后才可检索到。
+# 写入后建议轮询 GET /api/v1/namespaces/<ns>/tasks/<task_id> 至 status=indexed
+# （端到端样例见 examples/lightrag_store_and_query.py）
 
 # Query (context retrieval, no LLM answer)
 result = rs.query("market", "比特币走势")

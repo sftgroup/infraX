@@ -1,8 +1,9 @@
 # InfraX LightRAG 知识库使用文档
 
-> 最后更新：2026-08-06 | 适用版本：lightrag-client 2.0.0（本地构建，PyPI 待发布）
+> 最后更新：2026-08-08 | 适用版本：lightrag-client 2.0.0（wheel 本地安装；PyPI 发布已延后，待 InfraX 提供 token 后公开）
 > 适用方：服务平台等需要**存放资料并做语义检索**（GraphRAG）的下游系统
 > 覆盖：ragservicer（:9721，知识库引擎）· knowledge-injector（:9113，自动注入）· Python SDK（lightrag-client）
+> 完整可运行样例：`projects/ragservicer/sdk/python/examples/lightrag_store_and_query.py`
 
 ---
 
@@ -104,9 +105,9 @@ curl -X POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/research/docum
 # → 202 {"code":0,"message":"ok","data":{"task_id":"...","status":"queued","doc_id":"factor-doc-v1"}}
 ```
 
-### 5.2 Python SDK（推荐，lightrag-client）
+### 5.2 Python SDK（推荐，lightrag-client 2.0.0）
 
-**包尚未发布 PyPI**，从我们提供的 wheel 本地安装：
+**包尚未发布 PyPI**（发布延后），从我们提供的 wheel 本地安装：
 
 ```bash
 # 方式 A：直接安装 wheel（由 InfraX 提供文件）
@@ -116,6 +117,23 @@ pip install lightrag_client-2.0.0-py3-none-any.whl
 git clone <repo>
 cd projects/ragservicer/sdk/python && pip install .
 ```
+
+**SDK 方法一览**（全部走标准信封 `{code, message, data}`，成功返回 `data`，失败抛 `LightRAGClientError`，带 `.status/.code/.message`）：
+
+| 方法 | 说明 |
+|---|---|
+| `insert(ns, text, doc_id)` | 写入单篇文档（**默认异步**：立即返回 `{task_id, status, doc_id}`，后台抽实体建图+向量化） |
+| `insert_batch(ns, documents)` | 批量写入，`documents=[{text, doc_id}, ...]`（异步） |
+| `list_documents(ns, page=1, limit=20)` | 分页列出文档 `{namespace, documents, total, page, limit}` |
+| `delete(ns, doc_id)` | 删除文档 |
+| `query(ns, query, mode="mix")` | 混合检索（mode ∈ naive/local/global/hybrid/mix），返回 `{context, mode, tenant, namespace}` |
+| `retrieve(ns, query, mode="mix", top_k=5)` | 纯上下文检索，可调 top_k |
+| `create_tenant / list_tenants / delete_tenant` | 租户管理（admin） |
+| `generate_api_key(tid, name, expires_days) / list_api_keys(tid) / revoke_api_key(key_id)` | API key 管理（admin） |
+| `get_config / update_config(llm=..., embedding=...)` | LLM/embedding 配置热更新（admin，secret 用 `"********"` 保留） |
+| `health()` | 健康检查 |
+
+> **异步语义（重要）**：`insert`/`insert_batch`/`delete` 服务端**默认异步**（`data.get("async", True)`）→ 请求立即返回 `202 {task_id, status:"queued", doc_id}`，索引在后台队列执行。写入后建议**轮询 `tasks/<task_id>`** 至 `status=indexed` 再查询，检索结果更完整。REST 层可用 `?sync=1` 或 body `"async": false` 强制同步（SDK 未暴露该参数）。
 
 **写入样例：**
 
@@ -128,7 +146,7 @@ client = LightRAGClient(
     tenant_id="service-platform",  # 传了则自动加 X-Tenant-ID
 )
 
-# 单条写入（异步默认；传 sync 轮询状态）
+# 单条写入（异步，立即返回 task_id）
 r = client.insert("research", "策略说明：动量因子...", doc_id="mom-factor-001")
 print(r)  # {'task_id': '...', 'status': 'queued', 'doc_id': 'mom-factor-001'}
 
@@ -145,6 +163,16 @@ client.list_documents("research", page=1, limit=20)
 # 删除
 client.delete("research", "report-2026q2-001")
 ```
+
+**任务状态轮询（REST）**：
+
+```bash
+curl "https://infrax.0xainet.top/api/rag/api/v1/namespaces/research/tasks/<task_id>" \
+  -H "X-Service-Key: $RAG_KEY"
+# → {"code":0,"message":"ok","data":{"task_id":"...","status":"indexed","doc_id":"...","tenant":"...","namespace":"..."}}
+```
+
+> `status` 取值：`queued` → `indexing` → `indexed`（成功）/ `error`（失败，附 `error` 字段）。
 
 ---
 
@@ -169,13 +197,44 @@ curl -X POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/research/query
 
 ### 6.2 SDK
 
+**检索 mode 语义**（`query` 与 `retrieve` 共用）：
+
+| mode | 语义 |
+|---|---|
+| `local` | 图谱局部检索（实体邻居扩展，精确细节） |
+| `global` | 图谱全局社区检索（全局主题） |
+| `hybrid` | local + global 融合 |
+| `mix`（默认） | vector + graph + keyword 混合（最通用） |
+| `naive` | 纯向量 / 关键词 |
+
 ```python
-# 混合检索（实体图 + 向量）
+# 混合检索（实体图 + 向量），返回 {context, mode, tenant, namespace}
 r = client.query("research", "我们关于风险预算有哪些规定？", mode="hybrid")
 print(r["context"])
 
-# 自定义 top_k
+# 纯上下文检索 + 自定义 top_k
 r = client.retrieve("research", "流动性管理", mode="local", top_k=10)
+
+# 错误处理：API 失败抛 LightRAGClientError（含 status/code/message）
+try:
+    client.query("research", "查询", mode="invalid_mode")
+except LightRAGClientError as exc:
+    print(f"[{exc.status}] {exc.code}: {exc.message}")
+```
+
+> **检索 vs 存储一致性**：写入是异步的，刚写入即查可能查不到——先轮询 `tasks/<task_id>` 至 `indexed` 再检索（见 §5.2）。
+
+---
+
+## 6.5 端到端样例（存 + 取）
+
+完整可运行脚本见 **`projects/ragservicer/sdk/python/examples/lightrag_store_and_query.py`**（单文件，演示：初始化 → 单条/批量写入 → 轮询任务状态 → mix/local/global 三种检索 → 列出/删除文档 → 错误处理）。直接运行：
+
+```bash
+cd projects/ragservicer/sdk/python && pip install -e .
+python examples/lightrag_store_and_query.py \
+  --base-url https://infrax.0xainet.top/api/rag \
+  --api-key lr_... --tenant service-platform --namespace research
 ```
 
 ---

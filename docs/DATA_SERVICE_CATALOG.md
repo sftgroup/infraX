@@ -2,7 +2,7 @@
 
 > 本文档明确列出**数据服务可获取的数据和类型**，含行情、因子、ML 预测与 **graph 图谱数据**。
 > 契约见 `projects/data/AITRADER_DATA_SERVICE_REQ.md`（DS-1 ~ DS-12）。
-> 数据覆盖为 2026-08-06 生产库抽查（`43.163.105.172`）。
+> 数据覆盖为 2026-08-08 生产库抽查（`43.163.105.172`，46 符号全覆盖）。
 > 整体数据流向与端口链路关系见 [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md)。
 
 ## 1. 服务组成与接入
@@ -44,17 +44,17 @@
 | 技术指标（自动计算） | `rsi_14`, `macd`, `macd_signal`, `macd_hist`, `bb_upper`, `bb_middle`, `bb_lower`, `atr_14`, `ma_5`, `ma_10`, `ma_20` |
 | 外部因子（按最近时间 join） | catalog 中声明的因子：`fear_greed`, `vix`, `dxy`, `us10y`, `btc_difficulty`, `sentiment_score` 等 |
 
-**timeframe 与覆盖达标**（生产实测 2026-08-06）：
+**timeframe 与覆盖达标**（生产实测 2026-08-08，46 符号）：
 
 | timeframe | 存储键 | 根数 | 覆盖区间 | 达标要求 | 状态 |
 |---|---|---|---|---|---|
-| 1m | `1m` | 310,313 | 2026-07-06 ~ 08-06（31d） | ≥30d | ✅ |
-| 5m | `5m` | 364,444 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
-| 15m | `15m` | 121,480 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
-| 30m | `30m` | 60,741 | 2026-02-06 ~ 08-06（6m） | ≥180d | ✅ |
-| 1h | `1h` | 60,164 | 2025-08-05 ~ 08-06（1y） | ≥1y | ✅ |
-| 4h | `4h` | 15,320 | 2025-08-05 ~ 08-06（1y） | ≥1y | ✅ |
-| 1D | `1d` | 24,889 | 2023-08-07 ~ 08-06（3y） | ≥3y | ✅ |
+| 1m | `1m` | 321,887 | 2026-07-06 ~ 08-07（33d） | ≥30d | ✅ |
+| 5m | `5m` | 366,760 | 2026-02-06 ~ 08-07（6m） | ≥180d | ✅ |
+| 15m | `15m` | 137,363 | 2026-01-30 ~ 08-07（6m+） | ≥180d | ✅ |
+| 30m | `30m` | 61,125 | 2026-02-06 ~ 08-07（6m） | ≥180d | ✅ |
+| 1h | `1h` | 83,632 | 2024-07-25 ~ 08-07（2y） | ≥1y | ✅ |
+| 4h | `4h` | 36,746 | 2024-07-25 ~ 08-07（2y） | ≥1y | ✅ |
+| 1D | `1d` | 26,133 | 2023-08-07 ~ 08-07（3y） | ≥3y | ✅ |
 
 > `timeframe` 大小写不敏感（`1D`/`4H` 均命中存储键 `1d`/`4h`）。
 >
@@ -63,26 +63,26 @@
 > 2. 再次 `start=<上次最大 ts>+1ms&limit=5000` → 直到返回不足 5000 根
 > 3. 样例：`/api/data/bars?symbol=BTC/USDT&timeframe=1m&start=0&limit=5000` → 下一页 `&start=1751001600001`
 >
-> **1m 数据量说明**：上表 310,313 为**全部符号 1m 总和**；单符号 BTC spot 1m 约 4.5 万根（31 天连续），文档早期「1m=31 万根」为误读（31 万是汇总值）。
+> **1m 数据量说明**：上表 321,887 为**全部符号 1m 总和**；单符号 BTC spot 1m 约 4.5 万根（33 天连续），文档早期「1m=31 万根」为误读（31 万是汇总值）。
 
 **市场覆盖**（`market_type` 自动判定：符号含 `:quote` → swap，否则 spot）：
 
-| 市场 | 符号形式 | 覆盖对象 |
+| 市场 | 符号形式 | 覆盖对象（2026-08-08 实测） |
 |---|---|---|
-| crypto spot | `BTC/USDT` | BTC/ETH/SOL/XRP/BNB/DOGE 等（binance spot，quote=USDT 全量） |
+| crypto spot | `BTC/USDT` | BTC/ETH/SOL/XRP（binance spot，quote=USDT 全量，1d 1097 根≈3y，swap 同步） |
 | crypto swap | `BTC/USDT:USDT` | 同上（binance usdm，quote=USDT） |
-| 美股 | `SPY` `AAPL` | multi_kline.us_stocks：AAPL/MSFT/GOOGL/AMZN/NVDA/META/TSLA/JPM/V/XOM/INTC/SPY/QQQ（1d） |
-| 外汇 | `EURUSD=X` | multi_kline.forex：EURUSD/GBPUSD/USDJPY/AUDUSD/USDCAD/USDCHF（1d） |
-| 期货 | `GC=F` `CL=F` | multi_kline.futures：GC/SI/CL/NG/HG/ES/NQ/YM 等（1d） |
-| A 股 | `600519` `000333` | multi_kline.cn_stocks（腾讯日线，1d） |
-| 港股 | `00700` | multi_kline.hk_stocks（腾讯日线，1d） |
+| 美股 | `SPY` `AAPL` | multi_kline.us_stocks **13**：AAPL/MSFT/GOOGL/AMZN/NVDA/META/TSLA/JPM/V/XOM/INTC/SPY/QQQ（1d 402 根≈1.5y） |
+| 外汇 | `EURUSD=X` | multi_kline.forex **7 对**：EURUSD/GBPUSD/USDJPY/AUDUSD/USDCAD/USDCHF/NZDUSD（1d 796-800 根≈1.5y） |
+| 期货 | `GC=F` `CL=F` | multi_kline.futures **8**：GC/SI/CL/NG/HG/ES/NQ/YM（1d 402 根） |
+| A 股 | `600519` `000333` | multi_kline.cn_stocks **6**：600519/000333/000858/002594/300750/601318（腾讯日线，1d 402 根） |
+| 港股 | `00700` | multi_kline.hk_stocks **5**：00700/01810/09618/09988/09999（腾讯日线，1d 402 根） |
 
 **历史数据回填策略（2026-08-07 定）**：
 
-| 资产类别 | 策略 | 现状 |
+| 资产类别 | 策略 | 现状（2026-08-08） |
 |---|---|---|
-| 加密资产（crypto） | 交易所公开 API 免费，**用 ccxt 持续回填足够历史**（spot + swap，自动补缺口 `_backfill_gap`） | ✅ 已达标：1m≥30d / 5m·15m·30m≥180d / 1h·4h≥365d / 1d≥1095d（`KL_BACKFILL_DAYS` 可调） |
-| 传统资产（股票/期货/期权/外汇） | 数据源易受限（Yahoo 429 / Twelve Data 免费限流），**维持现状正常采集、尽量获取历史**：1d 走免限流的免费源（akshare 新浪/东财、腾讯日线），分钟级 yfinance/ Twelve Data 可用即采、受限则跳过记 failed | ⚠️ 1d 已达标（fetch_bars=400≈1.5y）；**分钟级基本未采**（美股 1h 仅 3 根，受 Yahoo 限流），待 B 端提供 Twelve Data 付费 tier / Alpha Vantage 配额后扩展 |
+| 加密资产（crypto） | 交易所公开 API 免费，**用 ccxt 持续回填足够历史**（spot + swap，自动补缺口 `_backfill_gap`） | ✅ 已达标：1m≥30d / 5m·15m·30m≥180d / 1h·4h≥730d / 1d≥1095d（`KL_BACKFILL_DAYS` 可调） |
+| 传统资产（股票/期货/期权/外汇） | 数据源易受限（Yahoo 429 / Twelve Data 免费限流），**维持现状正常采集、尽量获取历史**：1d 走免限流的免费源（akshare 新浪/东财、腾讯日线），分钟级 yfinance/ Twelve Data 可用即采、受限则跳过记 failed | ✅ **1d 已全量达标**：外汇 7 对 796-800 根（Twelve Data 2026-08 补齐 GBPUSD 至 800）、股/期/港/A 股 402 根（≈1.5y）；⚠️ 分钟级基本未采（美股 1h 受 Yahoo 限流），待 B 端提供 Twelve Data 付费 tier / Alpha Vantage 配额后扩展 |
 
 > 加密资产与 DEX 数据为产品范围重点（DS-8 收敛后）；传统资产回填以**免费源能稳定获取为准**，不追受限源的深度。
 
@@ -143,15 +143,35 @@
 
 > **宏观因子数据源与显示名（2026-08-08 更新）**：macro 因子 `vix`/`dxy`/`us10y` 由 FRED 系列 **`VIXCLS` / `DTWEXBGS` / `DGS10`** 供给（`data_config.json` 的 `macro.fred_series` 可扩展，映射见 `app/factors.py` `_MACRO_SERIES_NAMES`）；`fear_greed` 显示名映射为 **"Fear & Greed"**（`_MACRO_DISPLAY_EXTRA`，替代 alternative.me 默认显示）。`/factors/history` 不传 `limit` 时默认返回最近 **500** 根（上限 5000）。
 
-> **✅ ML 因子历史已回填（2026-08-08 全部完成）**：ml-service 对已上线 30 符号按历史 1d bars 回放推理并落库——`ml_predictions` 现 **14524 行**（bolt **5126** / moirai **4294** / timesfm **5104**，三模型时间范围均 **2024-09-09 → 2026-08-07**），`tree_predictions` 快照 **1781** 行（**2023-10-06 → 2026-08-07**，LightGBM stale-model 逐日回放聚合）。回测含 ML 因子时早期区间不再为空（2024-09-09 起有 bolt/moirai/timesfm，2023-10-06 起有 tree；timesfm 于停服窗口回填，实测 36min，详见 infrax_tasklist DS-15）。
+> **✅ ML 因子历史已回填（2026-08-08 全部完成）**：ml-service 对已上线 30 符号按历史 1d bars 回放推理并落库——`ml_predictions` 现 **14524 行**（bolt **5126** / moirai **4294** / timesfm **5104**，三模型时间范围均 **2024-09-09 → 2026-08-07**），`tree_predictions` 快照 **1782** 行（**2023-10-06 → 2026-08-07**，LightGBM stale-model 逐日回放聚合）。回测含 ML 因子时早期区间不再为空（2024-09-09 起有 bolt/moirai/timesfm，2023-10-06 起有 tree；timesfm 于停服窗口回填，实测 36min，详见 infrax_tasklist DS-15）。
 
 **灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
+
+**B 端使用方式（2026-08-08 定稿）**：统一鉴权头三选一 `Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`（`dx_*` 租户 key 或 `DATA_API_KEY`）；时间戳一律 unix ms；公网直连 `https://43.163.105.172`（详见 §1）。
+
+```bash
+export DX_KEY='dx_...'   # 已向 5 家 B 端签发的租户 key
+
+# 1) 行情 K 线（含技术指标 + 最近因子 join）
+curl "https://43.163.105.172/api/data/bars?symbol=BTC/USDT&timeframe=1d&limit=100" -H "X-API-Key: $DX_KEY"
+
+# 2) 最新因子值（category=ml 取全部 ML 因子）
+curl "https://43.163.105.172/api/data/factors/current?symbols=BTC,ETH&category=ml" -H "X-API-Key: $DX_KEY"
+
+# 3) 因子历史（回测，逐 bar 对齐 /bars ts；不传 limit 默认 500 根）
+curl "https://43.163.105.172/api/data/factors/history?symbol=BTC/USDT&timeframe=1d&ids=tree_direction,bolt_prob_up,moirai_direction,timesfm_direction&limit=500" -H "X-API-Key: $DX_KEY"
+
+# 4) ML 预测快照明细（data=null 表示该时刻无快照，需容错）
+curl "https://43.163.105.172/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
+```
+
+Python SDK：`infra_data_client`（本地 wheel v0.2.0，`get_ml_predictions` 等）用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
 
 ### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
 
 `GET /api/data/snapshots?type=` —— raw_snapshots 最新结构（heatmap/calendar 等返回原始结构）。
 
-### 3.3 全部数据类型清单（raw_snapshots 27 类，生产实证 2026-08-06）
+### 3.3 全部数据类型清单（raw_snapshots 32 类，生产实证 2026-08-08）
 
 | provider | data_type | 内容 | 近次落库 |
 |---|---|---|---|
@@ -163,15 +183,16 @@
 | `sentiment` | `fear_greed` | 恐惧贪婪指数 | 实时 |
 | `sentiment` | `sentiment_score` / `put_call_ratio` / `yield_curve` | 新闻情绪 / 认沽认购比 / 收益率曲线 | 实时 |
 | `sentiment` | `adanos_sentiment` | Adanos 舆情 | 实时 |
+| `sentiment` | `finbert_sentiment` | FinBERT 情绪（新闻→模型分类） | 日更 |
 | `news` | `news` | 新闻（→ finbert_sentiment 输入） | 分钟级 |
 | `fundamental` | `earnings` | 财报日历 | 实时 |
 | `calendar` | `calendar` | 经济事件日历 | 实时 |
 | `defi` | `tvl` | DeFi 总锁仓量（分链） | 实时 |
 | `volatility` | `volatility` | VXN/GVZ 波动率指数 | 实时 |
-| `onchain` | `btc_difficulty` / `btc_transfers` / `whale_balances` | BTC 挖矿难度 / 巨鲸转账 / 巨鲸余额（新增 2026-08-07） | 实时 |
+| `onchain` | `btc_difficulty` / `btc_transfers` / `btc_hashrate` / `whale_balances` | BTC 挖矿难度 / 巨鲸转账 / 全网算力 / 巨鲸余额 | 实时 |
 | `collector_onchain` | `onchain_checkpoints` | 链上检查点聚合 | 实时 |
 | `global_market` | `commodities` / `forex_pairs` / `market_overview` | 商品 / 外汇对 / 多市场概览 | 30min |
-| `okx_chainos` | `okx_hot_tokens` / `okx_index_prices` | OKX ChainOS 热点代币 / 链指数 | 实时 |
+| `okx_chainos` | `okx_hot_tokens` / `okx_index_prices` / `okx_candles` | OKX ChainOS 热点代币 / 链指数 / K 线 | 实时 |
 | `ml` | `tree_predictions` / `consensus` | LightGBM 方向预测 / 多模型共识 | 日更 |
 | `opportunities` | `opportunities` | 交易机会信号 | 实时 |
 
