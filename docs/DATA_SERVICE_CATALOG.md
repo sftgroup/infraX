@@ -143,7 +143,7 @@
 
 > **宏观因子数据源与显示名（2026-08-08 更新）**：macro 因子 `vix`/`dxy`/`us10y` 由 FRED 系列 **`VIXCLS` / `DTWEXBGS` / `DGS10`** 供给（`data_config.json` 的 `macro.fred_series` 可扩展，映射见 `app/factors.py` `_MACRO_SERIES_NAMES`）；`fear_greed` 显示名映射为 **"Fear & Greed"**（`_MACRO_DISPLAY_EXTRA`，替代 alternative.me 默认显示）。`/factors/history` 不传 `limit` 时默认返回最近 **500** 根（上限 5000）。
 
-> **✅ ML 因子历史已回填（2026-08-08 阶段一完成）**：ml-service 对已上线 30 符号按历史 1d bars 回放推理并落库——`ml_predictions` 现 **9668 行**（bolt **5126** / moirai **4294**，时间范围 **2024-09-09 → 2026-08-07**；timesfm 248 行为 30min 前向快照，2026-08-04 起），`tree_predictions` 快照 **1781** 行（**2023-10-06 → 2026-08-07**，LightGBM stale-model 逐日回放聚合）。回测含 ML 因子时早期区间不再为空（2024-09-09 起有 bolt/moirai，2023-10-06 起有 tree；timesfm 历史回放待阶段二低峰停服窗口执行，详见 infrax_tasklist §9.8.8）。
+> **✅ ML 因子历史已回填（2026-08-08 全部完成）**：ml-service 对已上线 30 符号按历史 1d bars 回放推理并落库——`ml_predictions` 现 **14524 行**（bolt **5126** / moirai **4294** / timesfm **5104**，三模型时间范围均 **2024-09-09 → 2026-08-07**），`tree_predictions` 快照 **1781** 行（**2023-10-06 → 2026-08-07**，LightGBM stale-model 逐日回放聚合）。回测含 ML 因子时早期区间不再为空（2024-09-09 起有 bolt/moirai/timesfm，2023-10-06 起有 tree；timesfm 于停服窗口回填，实测 36min，详见 infrax_tasklist DS-15）。
 
 **灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
 
