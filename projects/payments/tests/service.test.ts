@@ -1,0 +1,290 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PaymentsService } from '../src/service'
+import { PaymentError } from '../src/errors'
+import type { PlanInfo, VerifiedPayment } from '../src/types'
+import { fakeStripeSession, makeService, makeStore, stubFetch } from './helpers'
+
+const SUB = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266'
+
+const plan = (price = 1000000000000000000n): PlanInfo => ({
+  planId: 1,
+  agentId: 1,
+  creator: '0x0000000000000000000000000000000000000000',
+  price,
+  period: 'month',
+  active: true,
+  payToken: '0x0000000000000000000000000000000000000000',
+  trialDays: 0,
+})
+
+const verified = (over: Partial<VerifiedPayment> = {}): VerifiedPayment => ({
+  reference: 'ref_1',
+  payer: SUB,
+  creditedWei: 1000000000000000000n,
+  asset: '0x0000000000000000000000000000000000000000',
+  chain: 'sepolia',
+  ...over,
+})
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('PaymentsService.createPayment (fiat)', () => {
+  it('throws NOT_CONFIGURED (503) when stripe is absent', async () => {
+    const { payments } = makeService({ withStripe: false })
+    await expect(
+      payments.createPayment({ method: 'fiat', subscriber: SUB, amountCents: 100 })
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED', status: 503 })
+  })
+
+  it('throws INVALID_INPUT (400) without a subscriber', async () => {
+    const { payments } = makeService()
+    await expect(payments.createPayment({ method: 'fiat', amountCents: 100 })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+      status: 400,
+    })
+  })
+
+  it('throws AMOUNT_TOO_SMALL (400) below the Stripe minimum', async () => {
+    const { payments } = makeService()
+    await expect(payments.createPayment({ method: 'fiat', subscriber: SUB, amountCents: 49 })).rejects.toMatchObject({
+      code: 'AMOUNT_TOO_SMALL',
+      status: 400,
+    })
+  })
+
+  it('auto-prices an on-chain plan (1 native × $1 = 100¢) and records an intent', async () => {
+    stubFetch(fakeStripeSession())
+    const { store, payments } = makeService()
+    vi.spyOn(payments.chain, 'getPlan').mockResolvedValue(plan())
+
+    const result = await payments.createPayment({
+      method: 'fiat',
+      subscriber: SUB,
+      period: 'month',
+      pricing: { planId: 1 },
+      metadata: { agentId: 1, planId: 1 },
+      clientReference: `${SUB}|1|1`,
+    })
+    expect(result.method).toBe('fiat')
+    if (result.method !== 'fiat') return
+    expect(result.paymentId.startsWith('pi_')).toBe(true)
+    expect(result.clientReference).toBe(`${SUB}|1|1`)
+    expect(result.sessionUrl).toContain('/checkout/')
+    // intent recorded with the auto-priced metadata passthrough
+    expect(store.recordIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: result.paymentId,
+        method: 'fiat',
+        subscriber: SUB,
+        currency: 'usd',
+        status: 'created',
+        metadata: { agentId: 1, planId: 1 },
+      })
+    )
+    // provider received the auto-priced amount
+    const decoded = decodeURIComponent(String((fetch as any).mock.calls[0][1].body))
+    expect(decoded).toContain('line_items[0][price_data][unit_amount]=100')
+  })
+
+  it('uses an explicit amountCents and skips auto-pricing', async () => {
+    stubFetch(fakeStripeSession())
+    const { payments } = makeService()
+    const spy = vi.spyOn(payments.chain, 'getPlan').mockResolvedValue(plan())
+    await payments.createPayment({ method: 'fiat', subscriber: SUB, amountCents: 500 })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('throws AUTO_PRICE_FAILED (400) when the plan is unreadable', async () => {
+    stubFetch(fakeStripeSession())
+    const { payments } = makeService()
+    vi.spyOn(payments.chain, 'getPlan').mockRejectedValue(new Error('rpc down'))
+    await expect(
+      payments.createPayment({ method: 'fiat', subscriber: SUB, pricing: { planId: 99 } })
+    ).rejects.toMatchObject({ code: 'AUTO_PRICE_FAILED', status: 400 })
+  })
+})
+
+describe('PaymentsService.createPayment (chain / unknown)', () => {
+  it('records a chain intent and returns a paymentId', async () => {
+    const { store, payments } = makeService()
+    const result = await payments.createPayment({
+      method: 'chain',
+      subscriber: SUB,
+      chain: 'sepolia',
+      metadata: { agentId: 1 },
+    })
+    expect(result.method).toBe('chain')
+    if (result.method !== 'chain') return
+    expect(result.paymentId.startsWith('pi_')).toBe(true)
+    expect(store.recordIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: result.paymentId, method: 'chain', status: 'created', chain: 'sepolia' })
+    )
+  })
+
+  it('throws NOT_CONFIGURED for rails without a configured seam', async () => {
+    const { payments } = makeService()
+    // mpp is a real rail now; without mppStore configured it must fail cleanly.
+    await expect(payments.createPayment({ method: 'mpp' } as any)).rejects.toMatchObject({
+      code: 'NOT_CONFIGURED',
+    })
+    // A completely unknown method is still rejected outright.
+    await expect(payments.createPayment({ method: 'teleport' } as any)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_METHOD',
+    })
+  })
+})
+
+describe('PaymentsService.verifyPayment (x402)', () => {
+  it('credits, records a paid intent (x402:<tx>) and fires onCredit', async () => {
+    let credited = 0
+    const { store, payments } = makeService({}, { onCredit: async () => { credited += 1 } })
+    vi.spyOn(payments.x402!, 'verifyAndCredit').mockResolvedValue(verified())
+    const ok = await payments.verifyPayment('0xabc', 'sepolia')
+    expect(ok?.payer).toBe(SUB)
+    expect(store.recordIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: 'x402:0xabc',
+        method: 'x402',
+        status: 'paid',
+        amountWei: 1000000000000000000n,
+      })
+    )
+    expect(credited).toBe(1)
+  })
+
+  it('does not record when the tx is not a valid payment', async () => {
+    const { store, payments } = makeService()
+    vi.spyOn(payments.x402!, 'verifyAndCredit').mockResolvedValue(null)
+    await expect(payments.verifyPayment('0xdead', 'sepolia')).resolves.toBeNull()
+    expect(store.recordIntent).not.toHaveBeenCalled()
+  })
+
+  it('throws NOT_CONFIGURED (503) when x402 is absent', async () => {
+    const { payments } = makeService({ withX402: false })
+    await expect(payments.verifyPayment('0xabc')).rejects.toMatchObject({ code: 'NOT_CONFIGURED', status: 503 })
+  })
+})
+
+describe('PaymentsService.handleWebhook', () => {
+  it('forwards valid signed events to onWebhookEvent', async () => {
+    let seen: string | null = null
+    const { payments } = makeService({}, { onWebhookEvent: async (e) => { seen = e.type } })
+    const payload = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_1' } } })
+    const t = Math.floor(Date.now() / 1000)
+    const { createHmac } = await import('node:crypto')
+    const sig = createHmac('sha256', 'whsec_test').update(`${t}.${payload}`).digest('hex')
+    await payments.handleWebhook(payload, `t=${t},v1=${sig}`)
+    expect(seen).toBe('checkout.session.completed')
+  })
+
+  it('rejects invalid signatures with INVALID_SIGNATURE (400)', async () => {
+    const { payments } = makeService()
+    await expect(
+      payments.handleWebhook('{}', `t=${Math.floor(Date.now() / 1000)},v1=${'ab'.repeat(16)}`)
+    ).rejects.toMatchObject({ code: 'INVALID_SIGNATURE', status: 400 })
+  })
+})
+
+describe('PaymentsService.updateIntentStatus', () => {
+  it('validates the status and delegates to the injected store', async () => {
+    const { store, payments } = makeService()
+    await payments.updateIntentStatus('pi_1', 'paid')
+    expect(store.updateIntentStatus).toHaveBeenCalledWith('pi_1', 'paid')
+
+    await expect(payments.updateIntentStatus('pi_1', 'bogus' as any)).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+      status: 400,
+    })
+    // invalid status must not reach the store
+    expect(store.updateIntentStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a no-op when the store does not implement the optional seam', async () => {
+    const bare = makeStore()
+    delete (bare as any).updateIntentStatus
+    const { payments } = makeService({}, { store: bare })
+    await expect(payments.updateIntentStatus('pi_1', 'paid')).resolves.toBeUndefined()
+  })
+})
+
+describe('PaymentsService lifecycle events (payment_events)', () => {
+  it('emits payment.intent.created for fiat checkouts', async () => {
+    stubFetch(fakeStripeSession())
+    const { store, payments } = makeService()
+    const result = await payments.createPayment({
+      method: 'fiat',
+      subscriber: SUB,
+      amountCents: 100,
+      metadata: { agentId: 1 },
+    })
+    if (result.method !== 'fiat') return
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'payment.intent.created',
+        reference: result.paymentId,
+        payload: expect.objectContaining({ paymentId: result.paymentId, method: 'fiat', sessionId: 'cs_1' }),
+      })
+    )
+  })
+
+  it('emits payment.intent.created for chain intents', async () => {
+    const { store, payments } = makeService()
+    const result = await payments.createPayment({ method: 'chain', subscriber: SUB, chain: 'sepolia' })
+    if (result.method !== 'chain') return
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'payment.intent.created', reference: result.paymentId })
+    )
+  })
+
+  it('emits payment.credited when an on-chain payment is verified', async () => {
+    const { store, payments } = makeService()
+    vi.spyOn(payments.x402!, 'verifyAndCredit').mockResolvedValue(verified())
+    await payments.verifyPayment('0xabc', 'sepolia')
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'payment.credited',
+        reference: 'ref_1',
+        payload: expect.objectContaining({ reference: 'ref_1', payer: SUB, amountWei: 1000000000000000000n }),
+      })
+    )
+  })
+
+  it('emits payment.intent.status when the lifecycle advances', async () => {
+    const { store, payments } = makeService()
+    await payments.updateIntentStatus('pi_1', 'paid')
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'payment.intent.status', reference: 'pi_1', payload: { paymentId: 'pi_1', status: 'paid' } })
+    )
+  })
+
+  it('emits payment.webhook.received for signed provider events', async () => {
+    const { store, payments } = makeService()
+    const payload = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_1' } } })
+    const t = Math.floor(Date.now() / 1000)
+    const { createHmac } = await import('node:crypto')
+    const sig = createHmac('sha256', 'whsec_test').update(`${t}.${payload}`).digest('hex')
+    await payments.handleWebhook(payload, `t=${t},v1=${sig}`)
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'payment.webhook.received', reference: 'cs_1' })
+    )
+  })
+
+  it('is a no-op when the store does not implement emitEvent', async () => {
+    const bare = makeStore()
+    delete (bare as any).emitEvent
+    const { payments } = makeService({}, { store: bare })
+    await expect(payments.updateIntentStatus('pi_1', 'paid')).resolves.toBeUndefined()
+  })
+})
+
+describe('PaymentsService delegates to the injected store', () => {
+  it('resolveAccess / balanceOf / deduct go through the store seam', async () => {
+    const { store, payments } = makeService()
+    await payments.resolveAccess(SUB, { agentId: 1 })
+    expect(store.resolveAccess).toHaveBeenCalledWith(SUB, { agentId: 1 }, undefined)
+    await payments.balanceOf(SUB)
+    expect(store.balanceOf).toHaveBeenCalledWith(SUB, '0x0000000000000000000000000000000000000000')
+    await payments.deduct(SUB, 100n)
+    expect(store.deduct).toHaveBeenCalled()
+  })
+})

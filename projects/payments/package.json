@@ -1,0 +1,71 @@
+{
+  "name": "@0xinfrax/payments",
+  "version": "0.1.0",
+  "description": "0xinfrax Payments — zero-business-coupling payment engine (chain / Stripe / x402 / MPP / a2a). Embedded service or standalone library.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js"
+    },
+    "./router": {
+      "types": "./dist/router.d.ts",
+      "require": "./dist/router.js",
+      "import": "./dist/router.js"
+    },
+    "./db/*": "./db/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "db"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "author": "InfraX (sftgroup)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sftgroup/infraX.git"
+  },
+  "homepage": "https://github.com/sftgroup/infraX/tree/main/projects/payments",
+  "bugs": {
+    "url": "https://github.com/sftgroup/infraX/issues"
+  },
+  "keywords": [
+    "infrax",
+    "payments",
+    "x402",
+    "payment-channel",
+    "mpp",
+    "a2a",
+    "stablecoin",
+    "stripe",
+    "web3"
+  ],
+  "dependencies": {
+    "pg": "^8.13.0",
+    "viem": "^2.55.0"
+  },
+  "peerDependencies": {
+    "express": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
+    "express": "^4.19.2",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.9"
+  }
+}
