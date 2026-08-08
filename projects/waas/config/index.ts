@@ -99,25 +99,18 @@ export const config = {
     defaultMaxFee: process.env.FEE_DEFAULT_MAX_FEE || '0',
   },
 
-  // RPC URLs per chain — Non-Custodial wallet queries chain directly
-  chainRpc: {
-    sepolia: process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',
-    eth: process.env.ETH_RPC_URL || process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',
-    base: process.env.BASE_RPC_URL || '',
-    bsc: process.env.BSC_RPC_URL || '',
-  },
-  // SEPOLIA_RPC_URL (legacy compat)
-  sepoliaRpcUrl: process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',
-  ethRpcUrl: process.env.ETH_RPC_URL || '',
-  bscRpcUrl: process.env.BSC_RPC_URL || '',
-  baseRpcUrl: process.env.BASE_RPC_URL || '',
-
-  // MQ-10: 链上 RPC 网关（全仓唯一链上 RPC 读/广播入口，与 WAAS 解耦）
-  // 配置 CHAIN_RPC_URL 后，通用 RPC 读取（rpcProxy）优先转发 chain-rpc；
-  // 未配置或网关不可用时回退直连 chainRpc 单 URL（兼容旧行为）。
+  // DC-10: 链上 RPC 网关（全仓唯一链上 RPC 读/广播入口，与 WAAS 解耦）。
+  // 读/广播分级 key：读 key 仅 /v1/rpc、广播 key 仅 /v1/broadcast（读 key 无法触达广播端点）。
   chainRpcGateway: {
     baseUrl: process.env.CHAIN_RPC_URL || '',
     readKey: process.env.CHAIN_RPC_READ_KEY || '',
+    broadcastKey: process.env.CHAIN_RPC_BROADCAST_KEY || '',
+  },
+
+  // MQ-10 补充 D: Admin login credentials (env-driven; missing => fail-closed, no default password)
+  admin: {
+    username: process.env.ADMIN_USER || '',
+    password: process.env.ADMIN_PASS || '',
   },
 
   // Logging

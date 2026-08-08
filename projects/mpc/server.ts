@@ -6,6 +6,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { ethers } from 'ethers';
 import { createAuthMiddleware } from '../shared/auth-express';
+import { GatewayProvider } from './gatewayProvider';
 
 const app = express();
 app.use(express.json());
@@ -111,22 +112,23 @@ function verifyCode(email: string, code: string): void {
   mpcCodes.delete(email.toLowerCase());
 }
 
-const RPC_ENDPOINTS: Record<string, string> = {
-  sepolia: process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
-  eth:     process.env.ETH_RPC_URL     || 'https://ethereum-rpc.publicnode.com',
-  bsc:     process.env.BSC_RPC_URL     || 'https://bsc-dataseed.bnbchain.org',
-  base:    process.env.BASE_RPC_URL    || 'https://mainnet.base.org',
-  oxa:     process.env.OXA_RPC_URL     || 'https://rpc.l1.oxachain.io',
-};
+// ─── Chain RPC（DC-3：统一经 chain-rpc 网关汇总分发，禁止直连上游） ───
+const CHAIN_RPC_URL = (process.env.CHAIN_RPC_URL || 'http://127.0.0.1:9130').replace(/\/+$/, '');
+const CHAIN_RPC_READ_KEY = process.env.CHAIN_RPC_READ_KEY || '';
+const CHAIN_RPC_BROADCAST_KEY = process.env.CHAIN_RPC_BROADCAST_KEY || '';
 
 const CHAIN_IDS: Record<string, number> = {
   sepolia: 11155111, eth: 1, bsc: 56, base: 8453, oxa: 19505,
 };
 
 function getProvider(chain: string): ethers.JsonRpcProvider {
-  const url = RPC_ENDPOINTS[chain];
-  if (!url) throw Object.assign(new Error(`Unsupported chain: ${chain}`), { statusCode: 400 });
-  return new ethers.JsonRpcProvider(url);
+  const chainId = CHAIN_IDS[chain];
+  if (!chainId) throw Object.assign(new Error(`Unsupported chain: ${chain}`), { statusCode: 400 });
+  return new GatewayProvider(chain, chainId, {
+    gateway: CHAIN_RPC_URL,
+    readKey: CHAIN_RPC_READ_KEY,
+    broadcastKey: CHAIN_RPC_BROADCAST_KEY,
+  });
 }
 
 const AGENT_TX_LIMIT_ETH = parseFloat(process.env.MPC_AGENT_TX_LIMIT_ETH || '0.1');

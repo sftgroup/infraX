@@ -1,79 +1,40 @@
-import { ethers } from 'ethers';
-import { logger } from '../logger';
-
 /**
  * Relayer Service
  * Broadcast signed raw transactions to EVM chains.
- * EVM: eth_sendRawTransaction via ethers.JsonRpcProvider
+ * EVM: eth_sendRawTransaction 统一经 chain-rpc 网关广播（唯一广播入口，禁止直连上游 RPC）。
  */
 
-// Chain → RPC URL (fallback providers — free tier)
-const CHAIN_RPCS: Record<string, string[]> = {
-  ethereum: ['https://eth.llamarpc.com', 'https://rpc.ankr.com/eth', 'https://ethereum-rpc.publicnode.com'],
-  bsc: ['https://binance.llamarpc.com', 'https://rpc.ankr.com/bsc', 'https://bsc-rpc.publicnode.com'],
-  base: ['https://mainnet.base.org', 'https://base.llamarpc.com', 'https://base-rpc.publicnode.com'],
-  sepolia: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://rpc2.sepolia.org', 'https://sepolia.gateway.tenderly.co'],
-};
-
-const SUPPORTED_CHAINS = Object.keys(CHAIN_RPCS);
-
-// MQ-10 DC-2: 广播优先走 chain-rpc 网关（统一广播入口，broadcast key）；
-// 未配置 CHAIN_RPC_URL 或网关失败回退直连 CHAIN_RPCS（兼容旧行为）。
-const CHAIN_RPC_URL = process.env.CHAIN_RPC_URL || '';
+// MQ-10 DC-2/DC-9: 广播统一走 chain-rpc 网关（broadcast key）；网关不可用直接抛错，
+// 禁止回退直连上游 RPC（全链统一汇总分发）。
+const CHAIN_RPC_URL = (process.env.CHAIN_RPC_URL || '').replace(/\/+$/, '');
 const CHAIN_RPC_BROADCAST_KEY = process.env.CHAIN_RPC_BROADCAST_KEY || '';
 
+// 支持的 EVM 链（入参校验；链与端点权威链表在网关侧维护）
+const SUPPORTED_CHAINS = ['ethereum', 'bsc', 'base', 'sepolia'];
+
 /**
- * Broadcast an EVM signed transaction (0x hex) to the target chain.
- * Prefers chain-rpc gateway; falls back to direct RPC endpoints until one succeeds.
+ * Broadcast an EVM signed transaction (0x hex) to the target chain via the gateway.
  */
 async function relayEvmTx(chain: string, txHex: string): Promise<string> {
-  // ── 优先走 chain-rpc 网关 ──
-  if (CHAIN_RPC_URL) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      try {
-        const r = await fetch(`${CHAIN_RPC_URL.replace(/\/$/, '')}/v1/broadcast/${encodeURIComponent(chain)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Service-Key': CHAIN_RPC_BROADCAST_KEY || '' },
-          body: JSON.stringify({ rawTransaction: txHex, wait: false }),
-          signal: controller.signal,
-        });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.detail || `gateway ${r.status}`);
-        // chain-rpc 统一信封 {code, message, data:{chain, txHash, ...}}
-        if (j.code !== 0) throw new Error(j.message || 'gateway error');
-        if (!j.data?.txHash) throw new Error('gateway broadcast returned no txHash');
-        return j.data.txHash;
-      } finally { clearTimeout(timeout); }
-    } catch (err: any) {
-      logger.warn('[relayer] chain-rpc gateway broadcast failed, falling back to direct RPC', {
-        chain,
-        error: err.message?.slice(0, 120),
-      });
-    }
+  if (!CHAIN_RPC_URL) {
+    throw new Error('[relayer] CHAIN_RPC_URL not configured: gateway is the only broadcast entry');
   }
-
-  // ── 直连 fallback（原有逻辑） ──
-  const rpcs = CHAIN_RPCS[chain];
-  let lastError: Error | null = null;
-
-  for (const rpcUrl of rpcs) {
-    try {
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      const result = await provider.broadcastTransaction(txHex);
-      return result.hash;
-    } catch (err: any) {
-      lastError = err;
-      logger.warn('[relayer] EVM RPC attempt failed, trying next', {
-        chain,
-        rpc: rpcUrl.slice(0, 40) + '...',
-        error: err.message?.slice(0, 80),
-      });
-    }
-  }
-
-  throw new Error(lastError?.message || 'All RPC endpoints failed');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const r = await fetch(`${CHAIN_RPC_URL}/v1/broadcast/${encodeURIComponent(chain)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Service-Key': CHAIN_RPC_BROADCAST_KEY || '' },
+      body: JSON.stringify({ rawTransaction: txHex, wait: false }),
+      signal: controller.signal,
+    });
+    const j: any = await r.json();
+    if (!r.ok) throw new Error(j.detail || `gateway ${r.status}`);
+    // chain-rpc 统一信封 {code, message, data:{chain, txHash, ...}}
+    if (j.code !== 0) throw new Error(j.message || 'gateway error');
+    if (!j.data?.txHash) throw new Error('gateway broadcast returned no txHash');
+    return j.data.txHash;
+  } finally { clearTimeout(timeout); }
 }
 
 /**
@@ -81,9 +42,7 @@ async function relayEvmTx(chain: string, txHex: string): Promise<string> {
  */
 export async function relayTx(chain: string, tx: string): Promise<string> {
   const chainLower = chain.toLowerCase();
-  const rpcs = CHAIN_RPCS[chainLower];
-
-  if (!rpcs) {
+  if (!SUPPORTED_CHAINS.includes(chainLower)) {
     throw new Error(`Unsupported chain: ${chain}. Supported: ${SUPPORTED_CHAINS.join(', ')}`);
   }
 

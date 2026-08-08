@@ -234,7 +234,7 @@ export async function initDatabase(): Promise<void> {
     if (chainRows[0].cnt === 0) {
       await client.query(`
         INSERT INTO chains (id, chain_id, display_name, chain_type, rpc_url, native_currency, block_time_seconds) VALUES
-        ($1, '11155111', 'Sepolia', 'evm', 'https://1rpc.io/sepolia', 'sETH', 12),
+        ($1, '11155111', 'Sepolia', 'evm', '', 'sETH', 12),
         ($2, '1', 'Ethereum', 'evm', '', 'ETH', 12),
         ($3, '56', 'BSC', 'evm', '', 'BNB', 3),
         ($4, '8453', 'Base', 'evm', '', 'ETH', 2)

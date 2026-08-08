@@ -12,6 +12,7 @@
 import axios from 'axios';
 import { logger } from '../logger';
 import { RpcEndpoint, RpcPoolConfig, normalizeChain } from './rpcPoolConfig';
+import { profileFor } from './chainProfiles';
 
 /** DC-7: 池运行参数（env 可配，见 config.ts） */
 export interface RpcPoolManagerOptions {
@@ -131,14 +132,17 @@ export class RpcPoolManager {
   }
 
   async getLatestBlock(chain: string): Promise<number> {
-    const activeEps = this.activeEndpoints(chain);
+    const norm = normalizeChain(chain);
+    if (!norm) {
+      throw new ChainRpcError(`Unsupported chain: ${chain}`, 'unsupported_chain', 400);
+    }
+    const activeEps = this.activeEndpoints(norm);
     if (activeEps.length === 0) {
       throw new ChainRpcError(`No active RPC endpoints for chain ${chain}`, 'no_active_endpoint', 503);
     }
-    if (chain === 'solana') {
-      return this.rpcCall(activeEps[0], 'getSlot', []).then((r: any) => parseInt(r, 10) || 0);
-    }
-    return this.rpcCall(activeEps[0], 'eth_blockNumber', []).then((hex: string) => parseInt(hex, 16));
+    // DC-8: 链类型查表（EVM→eth_blockNumber，Solana→getSlot）
+    const p = profileFor(norm);
+    return this.rpcCall(activeEps[0], p.latestBlockMethod, []).then((r) => p.latestBlockParse(r));
   }
 
   // ================================================================
@@ -188,14 +192,13 @@ export class RpcPoolManager {
     if (!rawTransaction || typeof rawTransaction !== 'string') {
       throw new ChainRpcError('rawTransaction is required', 'missing_raw_tx', 400);
     }
-    if (norm === 'solana') {
-      return this.call(norm, 'sendTransaction', [rawTransaction]);
-    }
-    return this.call(norm, 'eth_sendRawTransaction', [rawTransaction]);
+    // DC-8: 链类型查表（EVM→eth_sendRawTransaction，Solana→sendTransaction）
+    const p = profileFor(norm);
+    return this.call(norm, p.broadcastMethod, [rawTransaction]);
   }
 
   /**
-   * 广播确认轮询：EVM → eth_getTransactionReceipt；Solana → getSignatureStatuses。
+   * 广播确认轮询：按链类型查表（EVM→eth_getTransactionReceipt；Solana→getSignatureStatuses）。
    * 返回 {confirmed, txHash, receipt|null, reason?}。
    */
   async waitReceipt(chain: string, txHash: string, timeoutMs = 30_000, intervalMs = 3_000): Promise<any> {
@@ -203,21 +206,12 @@ export class RpcPoolManager {
     if (!norm) {
       throw new ChainRpcError(`Unsupported chain: ${chain}`, 'unsupported_chain', 400);
     }
+    const p = profileFor(norm);
     const deadline = Date.now() + timeoutMs;
-    if (norm === 'solana') {
-      while (Date.now() < deadline) {
-        const statuses = await this.call(norm, 'getSignatureStatuses', [[txHash]]);
-        const s = statuses?.value?.[0] || null;
-        if (s?.confirmationStatus === 'confirmed' || s?.confirmationStatus === 'finalized') {
-          return { confirmed: true, txHash, receipt: { signatureStatus: s }, reason: null };
-        }
-        await sleep(intervalMs);
-      }
-      return { confirmed: false, txHash, receipt: null, reason: 'timeout' };
-    }
     while (Date.now() < deadline) {
-      const receipt = await this.call(norm, 'eth_getTransactionReceipt', [txHash]);
-      if (receipt) {
+      const result = await this.call(norm, p.receiptMethod, p.receiptParams(txHash));
+      if (p.receiptConfirmed(result)) {
+        const receipt = p.key === 'solana' ? { signatureStatus: result?.value?.[0] } : result;
         return { confirmed: true, txHash, receipt, reason: null };
       }
       await sleep(intervalMs);
@@ -355,9 +349,10 @@ export class RpcPoolManager {
     for (const [chain, endpoints] of Object.entries(this.config)) {
       for (const ep of endpoints) {
         try {
-          const method = chain === 'solana' ? 'getHealth' : 'eth_blockNumber';
-          const result = await this.rpcCall(ep, method, []);
-          const ok = chain === 'solana' ? result === 'ok' : parseInt(result, 16) > 0;
+          // DC-8: 健康检查方法按链类型查表（EVM→eth_blockNumber，Solana→getHealth）
+          const p = profileFor(chain);
+          const result = await this.rpcCall(ep, p.healthMethod, []);
+          const ok = p.healthOk(result);
           if (ok) {
             if (ep.status !== 'healthy') logger.info(`[rpc-pool] Endpoint recovered: ${ep.key} (${chain})`);
             ep.status = 'healthy';

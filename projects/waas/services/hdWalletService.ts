@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { Errors } from '../utils/errors';
+import { GatewayProvider } from './gatewayProvider';
 
 /**
  * HD Wallet Service — BIP44 deterministic address derivation
@@ -107,6 +108,7 @@ export function deriveAddressForChain(
 /**
  * Sign and send a transaction from a derived key
  * Returns tx hash
+ * DC-10: 统一经 chain-rpc 网关（禁止直连上游 RPC）——签名广播走 /v1/broadcast（广播 key）。
  */
 export async function signAndSendTransaction(
   mnemonic: string,
@@ -114,10 +116,10 @@ export async function signAndSendTransaction(
   chainId: string,
   to: string,
   valueWei: string,
-  rpcUrl: string
+  chain: string
 ): Promise<string> {
   try {
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const provider = new GatewayProvider(chain);
     const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, derivationPath);
     const wallet = hdNode.connect(provider);
 

@@ -8,6 +8,7 @@ import { Errors } from '../utils/errors';
 import { generateId } from '../utils/helpers';
 import { deriveAddressForChain, getHDMnemonic, getPrivateKey } from './hdWalletService';
 import { encryptPrivateKey } from './encryptionService';
+import { GatewayProvider } from './gatewayProvider';
 
 
 interface CWalletBalanceResponse {
@@ -253,84 +254,50 @@ export async function getWalletDetail(userId: string, chainId: string): Promise<
 }
 
 // ══════════════════════════════════════════════════════════════
-// Non-Custodial (NC) Wallet — Direct RPC chain queries
-// Reads on-chain data via RPC instead of cwallet HSM service
+// Non-Custodial (NC) Wallet — chain queries（统一经 chain-rpc 网关，禁止直连上游 RPC）
 // ══════════════════════════════════════════════════════════════
 
-/** Chain name → RPC URL lookup */
-export function getRpcUrl(chain: string): string {
-  const rpcs: Record<string, string | undefined> = {
-    sepolia: config.chainRpc?.sepolia || config.sepoliaRpcUrl,
-    eth: config.chainRpc?.eth || config.ethRpcUrl || config.sepoliaRpcUrl,
-    ethereum: config.chainRpc?.eth || config.ethRpcUrl || config.sepoliaRpcUrl,
-    base: config.chainRpc?.base || config.baseRpcUrl,
-    bsc: config.chainRpc?.bsc || config.bscRpcUrl,
-  };
-  const url = rpcs[chain.toLowerCase()];
-  if (!url) throw Errors.paramError(`Unsupported NC chain: ${chain}`);
-  return url;
+/** DC-10: 统一取网关 provider（读/广播分级 key 由 GatewayProvider 内部处理） */
+export function getProvider(chain: string): GatewayProvider {
+  return new GatewayProvider(chain);
 }
 
 /**
  * MQ-1/MQ-10: 通用 RPC 转发代理。
- * 将 {chain, method, params[]} 转发到对应 RPC 节点，返回标准 JSON-RPC result；
- * 节点返回 error 时抛参数错误（含 error.message）。
- * MQ-10：配置 CHAIN_RPC_URL 后优先经 chain-rpc 网关（读 key）；网关不可用
- * 回退直连 chainRpc 单 URL（兼容旧行为）。
+ * 将 {chain, method, params[]} 转发到 chain-rpc 网关（唯一读入口，读 key），
+ * 返回标准 JSON-RPC result；网关不可用直接抛错（DC-9：禁止回退直连上游 RPC）。
  */
 export async function rpcProxy(chain: string, method: string, params: unknown[] = []): Promise<any> {
-  // 优先走 chain-rpc 网关（统一池化 RPC，与 WAAS 解耦）
   const gateway = config.chainRpcGateway;
-  if (gateway.baseUrl) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
-      try {
-        const resp = await fetch(`${gateway.baseUrl.replace(/\/$/, '')}/v1/rpc/${encodeURIComponent(chain)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Service-Key': gateway.readKey || '',
-          },
-          body: JSON.stringify({ method, params }),
-          signal: controller.signal,
-        });
-        if (resp.ok) {
-          const json = await resp.json();
-          // chain-rpc 统一信封 {code, message, data:{chain, method, result}}
-          if (json.code === 0) {
-            return json.data?.result;
-          }
-          const detail = json.detail || (json.error
-            ? (json.error.message || JSON.stringify(json.error))
-            : (json.message || JSON.stringify(json)));
-          throw Errors.paramError(`RPC error: ${detail}`);
-        }
-        // 网关返回非 2xx（如方法被白名单拒绝）→ 记录并回退直连
-        console.warn(`[waas] chain-rpc gateway ${resp.status} for ${chain}.${method}, falling back to direct RPC`);
-      } finally {
-        clearTimeout(timer);
-      }
-    } catch (err: any) {
-      console.warn(`[waas] chain-rpc gateway unreachable (${err?.message}), falling back to direct RPC`);
-    }
+  if (!gateway.baseUrl) {
+    throw Errors.paramError('CHAIN_RPC_URL not configured: gateway is the only RPC entry');
   }
-
-  const url = getRpcUrl(chain);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const resp = await fetch(url, {
+    const resp = await fetch(`${gateway.baseUrl.replace(/\/$/, '')}/v1/rpc/${encodeURIComponent(chain)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Service-Key': gateway.readKey || '',
+      },
+      body: JSON.stringify({ method, params }),
       signal: controller.signal,
     });
-    const json = await resp.json();
-    if (json.error) {
-      throw Errors.paramError(`RPC error: ${json.error.message || JSON.stringify(json.error)}`);
+    if (resp.ok) {
+      const json = await resp.json();
+      // chain-rpc 统一信封 {code, message, data:{chain, method, result}}
+      if (json.code === 0) {
+        return json.data?.result;
+      }
+      const detail = json.detail || (json.error
+        ? (json.error.message || JSON.stringify(json.error))
+        : (json.message || JSON.stringify(json)));
+      throw Errors.paramError(`RPC error: ${detail}`);
     }
-    return json.result;
+    // 网关返回非 2xx（如方法被白名单拒绝）→ 直接报错，禁止回退直连
+    const detail = await resp.text().catch(() => '');
+    throw Errors.paramError(`chain-rpc gateway ${resp.status} for ${chain}.${method}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
   } finally {
     clearTimeout(timer);
   }
@@ -385,8 +352,7 @@ export async function getNCBalance(
 
   for (const chain of chains) {
     try {
-      const rpcUrl = getRpcUrl(chain);
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new GatewayProvider(chain);
 
       // ETH balance
       const ethBal = await getEthBalance(provider, walletAddress);
@@ -434,8 +400,7 @@ export async function getNCTransactions(
   const limit = options?.limit || 10;
 
   try {
-    const rpcUrl = getRpcUrl(chain);
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const provider = new GatewayProvider(chain);
 
     // Fetch recent blocks and scan for transactions involving walletAddress
     const currentBlock = await provider.getBlockNumber();
@@ -506,8 +471,7 @@ export async function getTokenInfo(
   chain: string,
   tokenAddress: string
 ): Promise<{ symbol: string; decimals: number; name: string }> {
-  const rpcUrl = getRpcUrl(chain);
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const provider = new GatewayProvider(chain);
   const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
 
   const [symbol, decimals] = await Promise.all([
@@ -528,8 +492,7 @@ export async function getTokenBalance(
   tokenAddress: string,
   walletAddress: string
 ): Promise<{ balance: string; balanceFormatted: string; symbol: string; decimals: number }> {
-  const rpcUrl = getRpcUrl(chain);
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const provider = new GatewayProvider(chain);
   const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
 
   const [balance, decimals, symbol] = await Promise.all([
@@ -551,8 +514,7 @@ export async function getNFTs(
   address: string,
   chain: string
 ): Promise<Array<{ token_id: string; contract_address: string; token_name?: string; symbol?: string }>> {
-  const rpcUrl = getRpcUrl(chain);
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const provider = new GatewayProvider(chain);
 
   // ERC-721 Transfer event: Transfer(address indexed from, address indexed to, uint256 indexed tokenId)
   const transferTopic = ethers.id('Transfer(address,address,uint256)');

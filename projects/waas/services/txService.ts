@@ -5,7 +5,7 @@ import { pool } from '../models/database';
 import { logger } from '../utils/logger';
 import { Errors, AppError, ErrorCode } from '../utils/errors';
 import { generateId } from '../utils/helpers';
-import { getRpcUrl } from './walletService';
+import { GatewayProvider } from './gatewayProvider';
 
 /**
  * BE-04: Transaction Service
@@ -485,7 +485,7 @@ export async function sweepNative(params: {
   }
   const fromAddress = walletResult.rows[0].address;
 
-  const provider = new ethers.JsonRpcProvider(getRpcUrl(chain));
+  const provider = new GatewayProvider(chain);
   const balanceWei = await provider.getBalance(fromAddress);
   if (balanceWei === 0n) {
     return { swept: false, txHash: null, balance: '0', chain };

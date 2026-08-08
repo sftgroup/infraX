@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { ethers } from 'ethers';
 import { pool } from '../models/database';
 import { logger } from '../utils/logger';
+import { GatewayProvider } from './gatewayProvider';
 // ═══════════════════════════════════════════════
 // Callback helpers
 // ═══════════════════════════════════════════════
@@ -422,10 +423,8 @@ export async function approveWithdrawal(tenantId: string, withdrawalId: string, 
       return { ...withdrawal, status: 'confirmed', txHash: null, note: 'simulated (no gas pool key)' };
     }
 
-    // Use Sepolia RPC from config or env
-    const rpcUrl = config.sepoliaRpcUrl || process.env.SEPOLIA_RPC_URL ||
-      'https://ethereum-sepolia-rpc.publicnode.com';
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // DC-10: 统一经 chain-rpc 网关（禁止直连上游 RPC）
+    const provider = new GatewayProvider('sepolia');
     const gasWallet = new ethers.Wallet(pk, provider);
 
     // Get from-address private key via HD wallet + encrypted key lookup

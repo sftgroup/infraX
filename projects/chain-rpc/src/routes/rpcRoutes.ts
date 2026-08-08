@@ -38,8 +38,11 @@ export function createRpcRouter(pool: RpcPoolManager): Router {
           return;
         }
         const results = [];
-        for (const item of body) {
-          results.push(await handleBatchItem(pool, norm, item));
+        // 受限并发执行（避免顺序等待导致 batch 延迟 = 条数×单条延迟；同时控制瞬时上游压力）
+        const BATCH_CONCURRENCY = 8;
+        for (let i = 0; i < body.length; i += BATCH_CONCURRENCY) {
+          const chunk = body.slice(i, i + BATCH_CONCURRENCY);
+          results.push(...(await Promise.all(chunk.map((item) => handleBatchItem(pool, norm, item)))));
         }
         res.json({ code: 0, message: 'ok', data: { chain: norm, batch: true, count: results.length, results } });
         return;

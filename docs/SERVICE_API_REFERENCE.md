@@ -216,7 +216,7 @@
 ## 8. LightRAG 知识图谱（ragservicer :9721 `/api/rag/*` + knowledge-injector :9113）
 
 **功能**：LightRAG 实体-关系图谱 + 向量索引 + 关键词三路检索；多租户 namespace 隔离；知识注入。
-**鉴权**：✅ app_auth 统一（lr_ key）；`/health` `/openapi.json` 豁免；admin 端点 Bearer-only（403 "Admin access required"）。
+**鉴权**：✅ app_auth 统一（lr_ key）；`/api/v1/health` `/api/v1/openapi.json` 豁免（Blueprint 前缀 `/api/v1`）；admin 端点 Bearer-only（403 "Admin access required"）。
 
 ### 7.1 ragservicer（:9721，前缀 `/api/v1/`）
 

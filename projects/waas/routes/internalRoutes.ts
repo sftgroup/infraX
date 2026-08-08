@@ -4,6 +4,7 @@ import { authenticate, requireAdmin, requireApiKey } from '../middleware/auth';
 import { pool } from '../models/database';
 import { logger } from '../utils/logger';
 import { createWebhookEvent } from '../services/webhookService';
+import { GatewayProvider } from '../services/gatewayProvider';
 
 const router = Router();
 
@@ -150,8 +151,7 @@ router.post(
       const val = value || amount || "0";
       if (!from || !target) return res.status(400).json(apiResponse(null, "Missing from/to", 1004));
       const { ethers } = require("ethers");
-      const rpcUrl = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new GatewayProvider("sepolia");
       const feeData = await provider.getFeeData();
       const gasPrice = feeData.gasPrice || 2000000000n;
       const gasLimit = await provider.estimateGas({ from, to: target, value: ethers.parseEther(val) });
@@ -180,8 +180,7 @@ router.post(
         return res.status(400).json(apiResponse(null, `Amount exceeds max ${MAX_SEND_TX_ETH} ETH per transaction`, 1001));
       }
       const { ethers } = require("ethers");
-      const rpcUrl = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new GatewayProvider("sepolia");
       const key = process.env.GAS_POOL_PRIVATE_KEY;
       if (!key) return res.status(500).json(apiResponse(null, "Gas pool key not configured", 2001));
       const wallet = new ethers.Wallet(key, provider);
@@ -211,8 +210,7 @@ router.get(
       const { chain, address } = req.query;
       if (!address) return res.status(400).json(apiResponse(null, "Missing address", 1004));
       const { ethers } = require("ethers");
-      const rpcUrl = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-      const provider = new ethers.JsonRpcProvider(rpcUrl as string);
+      const provider = new GatewayProvider((chain as string) || "sepolia");
       const bal = await provider.getBalance(address as string);
       return res.json(apiResponse({ chain: (chain as string) || "sepolia", address: address as string, balances: [{ token: "ETH", symbol: "ETH", balance: ethers.formatEther(bal), usd_value: "0" }] }));
     } catch (err: any) {
@@ -230,19 +228,13 @@ router.get(
   requireApiKey,
   asyncHandler(async (req, res) => {
     const chains = ["eth","sepolia","bsc","base"];
+    // DC-10: 唯一 RPC 入口为 chain-rpc 网关，不再暴露/使用任何上游 RPC URL
+    const gateway = process.env.CHAIN_RPC_URL || "";
     const config: Record<string,{rpc:string;chainId:number;explorer:string}> = {};
     for (const c of chains) {
-      const envKey = "RPC_URL_" + c.toUpperCase();
-      let rpc = process.env[envKey] || "";
-      if (!rpc) {
-        if (c === "sepolia") rpc = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-        else if (c === "base") rpc = "https://sepolia.base.org";
-        else if (c === "bsc") rpc = "https://data-seed-prebsc-1-s1.bnbchain.org:8545";
-        else rpc = "https://ethereum-sepolia-rpc.publicnode.com";
-      }
       const chainIds: Record<string,number> = {eth:11155111,sepolia:11155111,bsc:97,base:84532};
       const explorers: Record<string,string> = {eth:"https://sepolia.etherscan.io",sepolia:"https://sepolia.etherscan.io",bsc:"https://testnet.bscscan.com",base:"https://sepolia.basescan.org"};
-      config[c] = {rpc,chainId:chainIds[c]||0,explorer:explorers[c]||""};
+      config[c] = {rpc: gateway, chainId: chainIds[c]||0, explorer: explorers[c]||""};
     }
     res.json(apiResponse(config, "Success"));
   })
@@ -255,15 +247,12 @@ router.put(
   "/rpc-config",
   requireApiKey,
   asyncHandler(async (req, res) => {
-    const { chain, rpc } = req.body;
-    if (!chain || !rpc) return res.status(400).json(apiResponse(null, "Missing chain or rpc", 1004));
+    const { chain } = req.body;
     const valid = ["eth","sepolia","bsc","base"];
-    if (!valid.includes(chain)) return res.status(400).json(apiResponse(null, "Invalid chain: "+chain, 1004));
-    const envKey = "RPC_URL_" + chain.toUpperCase();
-    process.env[envKey] = rpc;
-    if (chain === "sepolia") process.env.SEPOLIA_RPC_URL = rpc;
-    logger.info("RPC URL updated (runtime)", { chain, rpc });
-    res.json(apiResponse({ chain, rpc }, "RPC URL updated (runtime only, restart resets to .env)"));
+    if (!chain || !valid.includes(chain)) return res.status(400).json(apiResponse(null, "Invalid chain", 1004));
+    // DC-10: 禁止运行时切换上游 RPC——全部链上流量统一经 chain-rpc 网关
+    logger.warn("DC-10: runtime RPC override rejected — all RPC traffic goes through chain-rpc gateway", { chain });
+    res.json(apiResponse(null, "DC-10: RPC 已统一收敛到 chain-rpc 网关，禁止运行时切换上游 RPC"));
   })
 );
 
@@ -289,8 +278,7 @@ router.post(
       }
       
       const { ethers } = require("ethers");
-      const rpcUrl = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new GatewayProvider("sepolia");
       const gasPoolKey = process.env.GAS_POOL_PRIVATE_KEY;
       if (!gasPoolKey) return res.status(500).json(apiResponse(null, "Gas pool key not configured", 2001));
       const gasPool = new ethers.Wallet(gasPoolKey, provider);
