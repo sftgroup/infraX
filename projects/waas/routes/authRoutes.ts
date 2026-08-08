@@ -15,14 +15,18 @@ const router = Router();
 
 /**
  * POST /api/v2/auth/login
- * Admin username/password login (hardcoded credentials)
+ * Admin username/password login (credentials from env ADMIN_USER/ADMIN_PASS;
+ * MQ-10 补充 D: no default password — missing config is fail-closed)
  * Body: { username: string, password: string }
  */
 router.post(
   '/login',
   asyncHandler(async (req, res) => {
     const { username, password } = req.body;
-    if (username !== 'admin' || password !== 'admin123') {
+    const { config } = require('../config');
+    const adminUser = config.admin.username || '';
+    const adminPass = config.admin.password || '';
+    if (!adminUser || !adminPass || username !== adminUser || password !== adminPass) {
       return res.status(401).json(apiResponse(null, 'Invalid credentials', 1002));
     }
     const token = signAdminToken('admin');

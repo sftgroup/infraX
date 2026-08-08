@@ -1,7 +1,7 @@
 # InfraX MCP 使用文档（MCP Usage Guide）
 
-> 面向 AI Agent / MCP 客户端的接入指南。覆盖 **7 个 MCP 服务**：hub-index（统一入口，:3008）、vault-mcp（:9108）、mpc-mcp（:9105）、session-key-mcp（:3011）、dc-mcp（:9103）、wallet-mcp（:9110）、LightRAG STDIO MCP（5 工具）。
-> 数据来源：生产代码盘点 + 生产实测（2026-08-06，`43.163.105.172`）。
+> 面向 AI Agent / MCP 客户端的接入指南。覆盖 **8 个 MCP 服务**：hub-index（统一入口，:3008）、vault-mcp（:9108）、mpc-mcp（:9105）、session-key-mcp（:3011）、dc-mcp（:9103）、wallet-mcp（:9110）、chain-rpc-mcp（:3012）、LightRAG STDIO MCP（5 工具）。
+> 数据来源：生产代码盘点 + 生产实测（2026-08-06 / 2026-08-08，`43.163.105.172`）。
 
 ---
 
@@ -15,6 +15,7 @@
 | session-key-mcp | 3011 | Streamable HTTP | `infrax-session-key-mcp` | 7 | session-key :3500 |
 | dc-mcp | 9103 | Streamable HTTP | `infrax-dc-mcp` | 7 | dc :9102 |
 | wallet-mcp | 9110 | SSE + JSON-RPC over HTTP | `infrax-wallet-mcp` | 10 | waas :9109 |
+| **chain-rpc-mcp** | 3012 | SSE + JSON-RPC over HTTP | `infrax-rpc-mcp` | 4 | chain-rpc :9130 |
 | LightRAG STDIO | — | stdio | — | 5 | ragservicer :9721 |
 
 **对外暴露**：仅 hub-index 经 nginx 以 `/mcp/*` 对外；其余 5 个 HTTP MCP 端口监听 `0.0.0.0` 且未经 nginx 代理（受信方直连）。
@@ -54,7 +55,7 @@ curl -s -X POST http://<host>:3008/mcp/message \
 | MCP 服务 | 入站鉴权 | 说明 |
 |---|---|---|
 | **hub-index** | ✅ | `MCP_API_KEY` 白名单（逗号分隔，常量时间比较）或 data 签发 `mx_` 前缀 key（`scope=mcp`）经 `/api-keys/verify` 实时校验；请求头三选一 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key`；豁免 `/health` `/` |
-| vault / mpc / session-key / dc / wallet | ⚠️ **无入站鉴权** | 未校验入站 key；仅监听内网/受信直连（B-12 待办：统一 MCP 入站鉴权） |
+| wallet-mcp / vault-mcp / chain-rpc-mcp / mpc-mcp / session-key-mcp / dc-mcp | ✅（挂 `inboundAuth`） | 复用 `mcp-auth.ts` 同一入站中间件：`MCP_API_KEY` 白名单或 data `mx_` key 实时校验；三 header 三选一；豁免 `/health` `/`。⚠️ **注意**：生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，2026-08-08 wallet-mcp 曾遇） |
 
 ### 2.3 出站鉴权（MCP → 后端）
 
@@ -207,6 +208,29 @@ WAAS 代理：钱包余额/发送/模拟 + 支付（x402）。
 
 ---
 
+## 8.5 chain-rpc-mcp（:3012，4 工具）
+
+chain-rpc 网关（:9130）的 MCP 封装：通用链上读 + 已签名交易广播，供 AI Agent 直接查询链上状态 / 提交交易。
+
+| 工具 | 参数 | 说明 |
+|---|---|---|
+| `chain_rpc_read` | chain, method*, params | 通用链上读调用（JSON-RPC 读白名单：eth_blockNumber/eth_getBalance/eth_call/eth_getLogs/eth_estimateGas/eth_chainId/eth_feeHistory；Solana getSlot/getBalance/getHealth；经网关 `POST /v1/rpc/:chain`，读 key） |
+| `chain_rpc_broadcast` | chain, rawTransaction*, wait | 广播已签名交易（EVM `eth_sendRawTransaction` / Solana `sendTransaction`；经网关 `POST /v1/broadcast/:chain`，**广播 key**；wait=true 附回执） |
+| `chain_rpc_status` | — | 网关池状态（各链健康 / 活跃端点数，URL 脱敏） |
+| `chain_rpc_health` | — | 网关健康（无需 key） |
+
+> **分级 key（MQ-10 补充 B）**：读工具走 `CHAIN_RPC_READ_KEY`，广播工具走 `CHAIN_RPC_BROADCAST_KEY`（服务端签发、读端点拒绝）；服务端未配置广播 key 时 `chain_rpc_broadcast` 返回明确错误（fail-closed）。
+
+**示例**（入站需 `X-Service-Key: <MCP_KEY>`，与 hub-index 同套 `MCP_API_KEY` 白名单）：
+
+```bash
+curl -s -X POST http://localhost:3012/mcp/message \
+  -H 'Content-Type: application/json' -H 'X-Service-Key: <MCP_KEY>' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chain_rpc_read","arguments":{"chain":"sepolia","method":"eth_blockNumber","params":[]}}}'
+```
+
+---
+
 ## 9. LightRAG STDIO MCP（5 工具）
 
 ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI 框架本地拉起，直连 ragservicer :9721。
@@ -245,16 +269,17 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 | MCP | 入站鉴权 | 出站 key | 状态 |
 |---|---|---|---|
 | hub-index | ✅ MCP_API_KEYS / mx_ scope | DATA/INJECTOR/RAG_API_KEY | 已闭环 |
-| vault-mcp | ⚠️ 无 | VAULT_API_KEY | 需 B-12 统一入站鉴权 |
-| mpc-mcp | ⚠️ 无 | MPC_API_KEY | 同上 |
-| session-key-mcp | ⚠️ 无 | SESSION_KEY_API_KEY | 同上 |
-| dc-mcp | ⚠️ 无 | DC_API_KEY | 同上 |
-| wallet-mcp | ⚠️ 无 | WAAS_API_KEY | 同上 |
+| chain-rpc-mcp | ✅ MCP_API_KEYS / mx_ scope（复用 `mcp-auth.ts` `inboundAuth`） | CHAIN_RPC_READ_KEY / CHAIN_RPC_BROADCAST_KEY | 已闭环（MQ-10 补充 B，生产 :3012） |
+| vault-mcp | ✅（2026-08-08 挂 `inboundAuth`，MQ-10 补充 D） | VAULT_API_KEY | 已闭环（生产需注入 MCP_API_KEY） |
+| mpc-mcp | ✅（复用 `inboundAuth`） | MPC_API_KEY | 已闭环 |
+| session-key-mcp | ✅（复用 `inboundAuth`） | SESSION_KEY_API_KEY | 已闭环 |
+| dc-mcp | ✅（复用 `inboundAuth`） | DC_API_KEY | 已闭环 |
+| wallet-mcp | ✅（复用 `inboundAuth`，生产曾因未注入 MCP_API_KEY 而 fail-closed 误锁，2026-08-08 修复） | WAAS_API_KEY | 已闭环 |
 | LightRAG STDIO | ✅ 本地进程（自带 env key） | RAG_API_KEY | 已闭环 |
 
-### 10.2 已知缺口（B-10 / B-12 待办）
+### 10.2 已知缺口（B-10 待办）
 
-- **MCP 入站鉴权**（B-12）：仅 hub-index 有入站鉴权，其余 5 个 HTTP MCP 服务入站裸奔（依赖网络隔离），需复用 hub-index 的 `MCP_API_KEYS` + data verify 模式
+- **MCP 入站鉴权**（B-12）：2026-08-08 起全部 6 个 HTTP MCP 服务（vault/mpc/session-key/dc/wallet/chain-rpc）均挂 `mcp-auth.ts` `inboundAuth`；⚠️ 各服务生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，wallet-mcp 曾遇，已修）
 - **dc_tokens 必失败**（B-10-3）：dc-mcp `dc_tokens` 调用 dc `/api/v2/data/tokens` 不存在
 - **支付工具 404**（B-10-5）：wallet-mcp `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes，尚未挂载
 - **market-index 未部署**：市场指数 MCP 服务代码存在但生产未运行
@@ -272,6 +297,7 @@ curl -s http://127.0.0.1:9105/health   # mpc-mcp
 curl -s http://127.0.0.1:3011/health   # session-key-mcp
 curl -s http://127.0.0.1:9103/health   # dc-mcp
 curl -s http://127.0.0.1:9110/health   # wallet-mcp
+curl -s http://127.0.0.1:3012/health   # chain-rpc-mcp（返回 tools 数=4）
 
 # 工具清单
 curl -s -X POST http://127.0.0.1:3008/mcp/message \

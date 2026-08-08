@@ -8,7 +8,7 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | 0.4.0 | ✅ 已发布（registry 已验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 |
+| `@0xinfrax/infrax-dk`（npm） | 0.5.1 | ✅ 已发布（registry 已验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** |
 | `lightrag-client`（PyPI） | 2.0.0 | ⏳ 构建+twine check 通过，待 PyPI token 发布 | LightRAG（ragservicer） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
@@ -71,8 +71,40 @@ const infrax = new InfraX({
 | **WAAS 钱包/支付/SaaS** | `wallet.balance()`、`wallet.send()`、`wallet.simulate()`、`wallet.rpc()`；`payment.create()`、`payment.status()`、`x402.pay()`；`saas.createTenant()`、`saas.listTenants()`、`saas.rotateApiKey()` | `/api/v2/*`（9109） |
 | **DC 链上数据** | `dc.events()`、`dc.stats()`、`dc.tokens()`、`dc.chains()`、`dc.price()` | DC :9102 |
 | **OKX ChainOS 市场** | `market.tokenInfo()`、`market.candles()`、`market.balance()`、`market.txHistory()`、`market.smartMoneySignals()`、`market.leaderboard()` 等 | DC :9102 |
+| **chain-rpc 网关** | `chainRpc.call()`（读）、`chainRpc.broadcast()`（广播，需 `chainRpcBroadcastKey`）、`chainRpc.status()`、`chainRpc.health()` | chain-rpc :9130 `/v1/rpc/:chain`、`/v1/broadcast/:chain` |
 
 > `data.*` 对应参数以 SDK 导出类型为准（`DataBarsParams`/`DataTickerParams`/`DataFactorCurrentParams`…，见 `src/index.ts`）。
+>
+> **chain-rpc 广播 key 说明（MQ-10 补充 A）**：网关读/广播为**分级 key**——读端点（`/v1/rpc`）只认读 key（`chainRpcApiKey`/`apiKey`），广播端点（`/v1/broadcast`）只认服务端签发的独立广播 key。SDK 自 0.5.0 支持独立配置：
+>
+> ```ts
+> const infrax = new InfraX({
+>   baseUrl: 'https://43.163.105.172',
+>   apiKey: process.env.INFRAX_API_KEY,           // 读 key（x-api-key）
+>   chainRpcUrl: 'http://<host>:9130',            // 网关（缺省回退 baseUrl）
+>   chainRpcBroadcastKey: process.env.CHAIN_RPC_BROADCAST_KEY, // 独立广播 key
+> });
+> // 读：走读 key
+> const bn = await infrax.chainRpc.call({ chain: 'sepolia', method: 'eth_blockNumber' });
+> // 广播：走广播 key；未配置 chainRpcBroadcastKey 时明确抛错（fail-closed，不会用读 key 打广播端点）
+> const tx = await infrax.chainRpc.broadcast({ chain: 'sepolia', rawTransaction: '0x...', wait: true });
+> ```
+>
+> **WAAS 钱包签名鉴权（0.5.1，MQ-10 补充 D）**：waas 的 `/api/v2/wallet/*`、`/api/v2/tx/*` 端点要求钱包签名（EIP-191，消息 `InfraX auth: <ts>`，头 `x-wallet-address`/`x-wallet-signature`/`x-wallet-timestamp`）。SDK 自 0.5.1 支持 `walletAddress`+`walletSign` 回调自动生成签名头：
+>
+> ```ts
+> import { Wallet } from 'ethers';
+> const signer = new Wallet(process.env.WALLET_PRIVATE_KEY!);
+> const infrax = new InfraX({
+>   baseUrl: 'https://43.163.105.172',
+>   walletAddress: signer.address,                       // 钱包地址（x-wallet-address）
+>   walletSign: (msg) => signer.signMessage(msg),        // EIP-191 签名回调（x-wallet-signature）
+> });
+> // 带签名自动调用（balance/send/simulate/rpc/sweep/txStatus）
+> const bal = await infrax.wallet.balance({ address: signer.address, chain: 'sepolia' });
+> ```
+>
+> 未配置 `walletAddress`/`walletSign` 时 `wallet.*` 方法明确抛错（fail-closed），不会用 `x-api-key` 打需要签名的端点。`health()` 无需签名。
 
 ### 2.4 示例
 

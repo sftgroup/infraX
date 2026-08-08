@@ -22,6 +22,14 @@ export interface InfraXConfig {
   chainRpcUrl?: string;
   /** chain-rpc gateway API key（读；广播需服务端单独签发 CHAIN_RPC_BROADCAST_KEY）; falls back to apiKey */
   chainRpcApiKey?: string;
+  /** chain-rpc gateway 广播 key（服务端签发的独立 key，仅 /v1/broadcast 端点可用；读端点拒绝）。
+   *  未配置时 chainRpc.broadcast() 将明确报错（fail-closed），不会用读 key 打广播端点。 */
+  chainRpcBroadcastKey?: string;
+  /** WAAS wallet/tx 端点（/api/v2/wallet/*、/api/v2/tx/*）钱包签名鉴权头（EIP-191，消息 `InfraX auth: <ts>`）。
+   *  配置后 WalletAPI 每次请求自动生成 x-wallet-address/x-wallet-signature/x-wallet-timestamp。 */
+  walletAddress?: string;
+  /** 签名回调：输入待签消息（`InfraX auth: <ts>`），返回 EIP-191 签名（hex）。未配置时 wallet.* 将明确报错。 */
+  walletSign?: (message: string) => Promise<string>;
   timeout?: number;
 }
 
@@ -176,36 +184,36 @@ class HttpClient {
     if (config.dcApiKey) this.headers['x-dc-api-key'] = config.dcApiKey;
   }
 
-  async get<T>(path: string): Promise<InfraXResponse<T>> {
-    const r = await this.fetch(path, { method: 'GET' });
+  async get<T>(path: string, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'GET', headers });
     return r.json();
   }
 
-  async post<T>(path: string, body?: any): Promise<InfraXResponse<T>> {
-    const r = await this.fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+  async post<T>(path: string, body?: any, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, headers });
     return r.json();
   }
 
-  async patch<T>(path: string, body?: any): Promise<InfraXResponse<T>> {
-    const r = await this.fetch(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined });
+  async patch<T>(path: string, body?: any, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined, headers });
     return r.json();
   }
 
-  async put<T>(path: string, body?: any): Promise<InfraXResponse<T>> {
-    const r = await this.fetch(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
+  async put<T>(path: string, body?: any, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined, headers });
     return r.json();
   }
 
-  async del<T>(path: string): Promise<InfraXResponse<T>> {
-    const r = await this.fetch(path, { method: 'DELETE' });
+  async del<T>(path: string, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'DELETE', headers });
     return r.json();
   }
 
-  private async fetch(path: string, opts: { method: string; body?: string }) {
+  private async fetch(path: string, opts: { method: string; body?: string; headers?: Record<string, string> }) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
     try {
-      return await fetch(this.baseUrl + path, { ...opts, headers: this.headers, signal: controller.signal });
+      return await fetch(this.baseUrl + path, { ...opts, headers: { ...this.headers, ...(opts.headers || {}) }, signal: controller.signal });
     } finally {
       clearTimeout(timer);
     }
@@ -218,15 +226,32 @@ class HttpClient {
 // ═══════════════ Wallet — balances, send, simulate, RPC ═══════════════
 
 class WalletAPI {
-  constructor(private http: HttpClient) {}
-  async balance(params: WalletBalanceParams) { const q = new URLSearchParams(); q.set('address', params.address); if (params.chain) q.set('chain', params.chain); if (params.token) q.set('token', params.token); return this.http.get<WalletBalanceResult>('/api/v2/wallet/balance?' + q.toString()); }
+  private readonly address: string;
+  private readonly sign: ((message: string) => Promise<string>) | undefined;
+
+  constructor(private http: HttpClient, config: InfraXConfig = {}) {
+    this.address = config.walletAddress || '';
+    this.sign = config.walletSign;
+  }
+
+  /** 生成 WAAS 钱包签名鉴权头；未配置 walletAddress/walletSign 时 fail-closed 抛错 */
+  private async authHeaders(): Promise<Record<string, string>> {
+    if (!this.address || !this.sign) {
+      throw new Error('[infrax-sdk] walletAuth not configured: waas /api/v2/wallet|tx 端点要求钱包签名（x-wallet-address/x-wallet-signature/x-wallet-timestamp）。配置 InfraX({ walletAddress, walletSign }) 或改走 admin JWT。');
+    }
+    const ts = String(Date.now());
+    const signature = await this.sign(`InfraX auth: ${ts}`);
+    return { 'x-wallet-address': this.address, 'x-wallet-signature': signature, 'x-wallet-timestamp': ts };
+  }
+
+  async balance(params: WalletBalanceParams) { const q = new URLSearchParams(); q.set('address', params.address); if (params.chain) q.set('chain', params.chain); if (params.token) q.set('token', params.token); return this.http.get<WalletBalanceResult>('/api/v2/wallet/balance?' + q.toString(), await this.authHeaders()); }
   // MQ-2: 契约对齐 waas 真实端点（/api/v2/tx/*）
-  async send(params: WalletSendParams) { return this.http.post<WalletSendResult>('/api/v2/tx/send', params); }
-  async simulate(params: WalletSimulateParams) { return this.http.post<WalletSimulateResult>('/api/v2/tx/estimate-gas', params); }
+  async send(params: WalletSendParams) { return this.http.post<WalletSendResult>('/api/v2/tx/send', params, await this.authHeaders()); }
+  async simulate(params: WalletSimulateParams) { return this.http.post<WalletSimulateResult>('/api/v2/tx/estimate-gas', params, await this.authHeaders()); }
   async health() { return this.http.get<{ status: string }>('/health'); }
-  async rpc(params: WalletRpcParams) { return this.http.post<WalletRpcResult>('/api/v2/wallet/rpc', params); }
-  async sweep(params: WalletSweepParams) { return this.http.post<any>('/api/v2/tx/sweep', params); }
-  async txStatus(params: { txHash: string; chain?: string }) { return this.http.get<any>('/api/v2/tx/status/' + encodeURIComponent(params.txHash)); }
+  async rpc(params: WalletRpcParams) { return this.http.post<WalletRpcResult>('/api/v2/wallet/rpc', params, await this.authHeaders()); }
+  async sweep(params: WalletSweepParams) { return this.http.post<any>('/api/v2/tx/sweep', params, await this.authHeaders()); }
+  async txStatus(params: { txHash: string; chain?: string }) { return this.http.get<any>('/api/v2/tx/status/' + encodeURIComponent(params.txHash), await this.authHeaders()); }
 }
 
 // ═══════════════ Safe — multi-sig on-chain operations ═══════════════
@@ -622,8 +647,8 @@ class MlAPI {
 // ═══════════════ ChainRpc — chain-rpc 网关 (:9130) 链上读 + 广播 ═══════════════
 // MQ-10：全仓唯一链上 RPC 网关（与 WAAS 解耦）。所有中心化服务统一走该网关
 // 读取链上数据 / 广播已签名交易；网关不持有任何私钥。
-// 读端点带 chainRpcApiKey（x-api-key）；广播端点需要服务端签发的广播 key，
-// 无法经 SDK 传入时请直接调 REST（POST /v1/broadcast/:chain + X-Service-Key）。
+// 读端点带 chainRpcApiKey（x-api-key）；广播端点独立携带 chainRpcBroadcastKey
+// （服务端签发、读端点拒绝；未配置时 broadcast() fail-closed 明确报错）。
 
 export interface ChainRpcReadParams { chain: string; method: string; params?: any[]; }
 export interface ChainRpcReadResult { chain: string; method: string; result: any; }
@@ -637,7 +662,10 @@ export interface ChainRpcBroadcastResult {
 }
 
 class ChainRpcAPI {
-  constructor(private http: HttpClient) {}
+  private readonly broadcastKey: string;
+  constructor(private http: HttpClient, private broadcastHttp: HttpClient, broadcastKey: string) {
+    this.broadcastKey = broadcastKey;
+  }
 
   /** 通用链上读调用（方法走白名单：eth_* 读方法 / solana get*） */
   async call(params: ChainRpcReadParams) {
@@ -647,9 +675,16 @@ class ChainRpcAPI {
     });
   }
 
-  /** 交易广播（rawTransaction 为调用方已签名数据；wait=true 时轮询回执） */
+  /** 交易广播（rawTransaction 为调用方已签名数据；wait=true 时轮询回执）。
+   *  需配置 chainRpcBroadcastKey（广播 key）；未配置时明确报错，
+   *  不会用读 key 打广播端点（读 key 无法触达 /v1/broadcast）。 */
   async broadcast(params: ChainRpcBroadcastParams) {
-    return this.http.post<ChainRpcBroadcastResult>(
+    if (!this.broadcastKey) {
+      throw new Error(
+        '[infrax-sdk] chainRpcBroadcastKey not configured: broadcast requires the server-issued broadcast key (read key cannot reach /v1/broadcast). Set chainRpcBroadcastKey or call POST /v1/broadcast/:chain directly with X-Service-Key.'
+      );
+    }
+    return this.broadcastHttp.post<ChainRpcBroadcastResult>(
       `/v1/broadcast/${encodeURIComponent(params.chain)}`,
       { rawTransaction: params.rawTransaction, wait: params.wait, timeoutMs: params.timeoutMs }
     );
@@ -686,7 +721,7 @@ export class InfraX {
 
   constructor(config: InfraXConfig = {}) {
     this.http = new HttpClient(config);
-    this.wallet = new WalletAPI(this.http);
+    this.wallet = new WalletAPI(this.http, config);
     this.safe = new SafeAPI(this.http);
     this.payment = new PaymentAPI(this.http);
     this.saas = new SaaSAPI(this.http);
@@ -708,11 +743,13 @@ export class InfraX {
       apiKey: config.mlApiKey || config.apiKey,
     }));
     // chain-rpc 网关独立 baseUrl（chainRpcUrl 优先，回退 baseUrl）+ 独立 key（chainRpcApiKey 优先，回退 apiKey）
-    this.chainRpc = new ChainRpcAPI(new HttpClient({
-      ...config,
-      baseUrl: config.chainRpcUrl || config.baseUrl,
-      apiKey: config.chainRpcApiKey || config.apiKey,
-    }));
+    // 广播独立 HttpClient（chainRpcBroadcastKey）——读/广播 key 分离，读 key 无法触达广播端点
+    const chainRpcBroadcastKey = config.chainRpcBroadcastKey || '';
+    this.chainRpc = new ChainRpcAPI(
+      new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: config.chainRpcApiKey || config.apiKey }),
+      new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: chainRpcBroadcastKey }),
+      chainRpcBroadcastKey,
+    );
   }
 
   setApiKey(key: string) { this.http.setApiKey(key); }

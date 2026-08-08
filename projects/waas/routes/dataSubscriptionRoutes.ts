@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler, apiResponse } from '../utils/helpers';
+import { authenticate } from '../middleware/auth';
 import { pool } from '../models/database';
 import crypto from 'crypto';
 
@@ -17,17 +18,16 @@ const DATA_PLANS = [
 function generateDcApiKey(): string { return 'infrax_dc_' + crypto.randomBytes(24).toString('hex'); }
 function obscureKey(key: string): string { return key && key.length > 16 ? key.slice(0, 14) + '…' + key.slice(-8) : key; }
 
-// ─── Public ───
+// ─── Public plans catalog (no sensitive data) ───
 router.get('/plans', asyncHandler(async (_req, res) => { res.json(apiResponse(DATA_PLANS)); }));
 
-// ─── Subscribe (wallet address only — no signature needed in dev) ───
-router.post('/subscribe', asyncHandler(async (req, res) => {
+// ─── Subscribe (wallet signature required — MQ-10 补充 D 修复) ───
+router.post('/subscribe', authenticate, asyncHandler(async (req, res) => {
   const { planId } = req.body;
   if (!planId) return res.status(400).json(apiResponse(null, 'Missing planId', 1001));
   const plan = DATA_PLANS.find(p => p.id === planId);
   if (!plan) return res.status(400).json(apiResponse(null, 'Invalid plan', 1001));
-  const walletAddr = ((req.headers['x-wallet-address'] as string) || '').toLowerCase();
-  if (!walletAddr) return res.status(400).json(apiResponse(null, 'Missing x-wallet-address', 1001));
+  const walletAddr = req.user!.walletAddress;
 
   // Upsert user
   let userResult = await pool.query('SELECT id FROM users WHERE wallet_address = $1 LIMIT 1', [walletAddr]);
@@ -55,9 +55,8 @@ router.post('/subscribe', asyncHandler(async (req, res) => {
 }));
 
 // ─── Usage ───
-router.get('/usage', asyncHandler(async (req, res) => {
-  const walletAddr = ((req.headers['x-wallet-address'] as string) || '').toLowerCase();
-  if (!walletAddr) return res.status(400).json(apiResponse(null, 'Missing x-wallet-address', 1001));
+router.get('/usage', authenticate, asyncHandler(async (req, res) => {
+  const walletAddr = req.user!.walletAddress;
   const tenantResult = await pool.query(
     'SELECT t.id, t.data_plan_id, t.dc_api_key FROM tenants t JOIN users u ON u.id = t.owner_user_id WHERE u.wallet_address = $1 ORDER BY t.created_at DESC LIMIT 1',
     [walletAddr]
@@ -77,9 +76,8 @@ router.get('/usage', asyncHandler(async (req, res) => {
 }));
 
 // ─── Key ───
-router.get('/key', asyncHandler(async (req, res) => {
-  const walletAddr = ((req.headers['x-wallet-address'] as string) || '').toLowerCase();
-  if (!walletAddr) return res.status(400).json(apiResponse(null, 'Missing x-wallet-address', 1001));
+router.get('/key', authenticate, asyncHandler(async (req, res) => {
+  const walletAddr = req.user!.walletAddress;
   const tenantResult = await pool.query(
     'SELECT t.id, t.data_plan_id, t.dc_api_key FROM tenants t JOIN users u ON u.id = t.owner_user_id WHERE u.wallet_address = $1 ORDER BY t.created_at DESC LIMIT 1',
     [walletAddr]

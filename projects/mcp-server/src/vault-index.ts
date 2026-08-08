@@ -5,10 +5,12 @@
 import express from 'express';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+import { inboundAuth } from './mcp-auth.js';
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true }));
+app.use(inboundAuth);
 
 const VAULT = process.env.VAULT_URL || process.env.VAULT_API_URL || 'http://localhost:9107';
 const PORT = parseInt(process.env.PORT || '3006', 10);
