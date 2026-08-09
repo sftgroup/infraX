@@ -1,10 +1,12 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.6 | **日期**: 2026-08-09 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.7 | **日期**: 2026-08-10 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
 >
-> **v1.6（2026-08-09）**：MQ-10 补充 E-1 三缺口完成状态——**E-1a Paymaster 客户端 ✅**（`PaymasterClient` 落地 `pimlico_getPaymasterStubData/Data`，直连或 aa-relay `/v1/paymaster` 代理双模式隐藏 apikey；`estimateUserOpGas` 编排 stub→估算→正式 data）；**E-1c aa-relay ✅**（`/v1/userops` 转发+多 bundler 容灾、`/v1/userops/:hash` 收据、`/v1/estimate`、`/v1/paymaster` 代理、`/v1/session` 系列；systemd unit `infrax-aa-relay.service`）；**E-1d MPC 接入 ✅**（`MpcSigner` 落地，`signUserOp`→MPC `POST /api/v2/mpc/sign-digest`（raw 32B 摘要 TSS 签名，免二次哈希）、`signMessage`→`/sign-message`）；**E-1b 多链扩展 🟡**（env 模板就绪，逐链合约部署+链上实测待生产）；链上验收（paymaster 入 mempool / ≥3 新链 UserOp 实测）待生产机执行。
+> **v1.7（2026-08-10）**：**产品方向修正（stevenwang 确认）：不做免 gas / 不替用户付费**——用户自行充值原生代币支付 gas（引导充值流程，余额不足时提示）；Paymaster 保留为可选组件（默认不启用，不用于替用户付费）。同步修正 §1.1 需求表、D5、§5.5、§6.2、§10.2 验收、§11 风控、§13 M3 完成标准。
+>
+> **v1.6（2026-08-09）**：MQ-10 补充 E-1 三缺口完成状态——**E-1a Paymaster 客户端 ✅**（`PaymasterClient` 落地 `pimlico_getPaymasterStubData/Data`，直连或 aa-relay `/v1/paymaster` 代理双模式隐藏 apikey；`estimateUserOpGas` 编排 stub→估算→正式 data）；**E-1c aa-relay ✅**（`/v1/userops` 转发+多 bundler 容灾、`/v1/userops/:hash` 收据、`/v1/estimate`、`/v1/paymaster` 代理、`/v1/session` 系列；systemd unit `infrax-aa-relay.service`）；**E-1d MPC 接入 ✅**（`MpcSigner` 落地，`signUserOp`→MPC `POST /api/v2/mpc/sign-digest`（raw 32B 摘要 TSS 签名，免二次哈希）、`signMessage`→`/sign-message`）；**E-1b 多链扩展 🟡**（env 模板就绪，逐链合约部署+链上实测待生产）；链上验收（用户自充 gas 发起 UserOp / ≥3 新链 UserOp 实测）待生产机执行。
 >
 > **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@infrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
 >
@@ -26,7 +28,7 @@
 
 | 使用方 | 需求 | 关键能力 |
 |--------|------|----------|
-| SDK Hub（角色 A） | 免弹窗交易、Gas 代付、批量操作 | Paymaster + 一次性签名 |
+| SDK Hub（角色 A） | 免弹窗交易、批量操作 | 一次性签名 + 会话授权；gas 由用户自充原生代币支付 |
 | Agent Center（角色 B） | Agent 自主交易无需反复确认 | Session Key 权限系统 |
 
 ### 1.2 范围
@@ -84,7 +86,7 @@
 | D2 | 账户实现 | **Kernel v3**（ERC-7579 模块化） | 见 §2.3 |
 | D3 | 底层库 | **viem + permissionless.js** | 见 §2.4 |
 | D4 | Bundler | **Pimlico Alto（主）+ Stackup/自建（备）** | 多端点容灾 |
-| D5 | Paymaster | **Pimlico Verifying Paymaster（主）** | 托管式，ERC-20 后置 |
+| D5 | Paymaster | **用户自充 gas（默认，引导充值）**；Pimlico Verifying Paymaster（可选，不替用户付费） | 不替用户付费，Paymaster 仅作可选 sponsor 扩展（ERC-20 后置） |
 | D6 | 签名器抽象 | 统一 `Signer` 接口（私钥/MPC/SessionKey） | 对接现有 core |
 | D7 | 测试网首链 | **Base Sepolia** | Pimlico 原生支持、费用低 |
 | D8 | 主网上线首链 | **Base / Arbitrum** | 共享 mempool、AA 生态成熟 |
@@ -355,7 +357,9 @@ const address = getAccountAddress({
 - **懒部署**：首次 UserOp 顺带部署（推荐，零前置成本）
 - 预部署：注册/创建钱包后立刻部署（可提前打开 ENS/收款等场景，MVP 不需要）
 
-### 5.5 Paymaster 交互（Verifying Paymaster）
+### 5.5 Paymaster 交互（Verifying Paymaster，可选）
+
+> **默认路径：用户自充原生代币支付 gas**（entryPoint 直接从账户余额扣费），Paymaster **不默认启用、不替用户付费**。以下为可选 sponsor 场景的对接方案，启用前需单独评审并配套服务端风控。
 
 ```
 [SDK]                          [Pimlico Verifying Paymaster API]
@@ -395,7 +399,7 @@ sendUserOperation(userOp):
 | `AA13` | 签名过期（validUntil） | 提示用户重新授权 |
 | `AA10` | 已入 mempool（重复提交） | 转查询状态，不重发 |
 | `AA20`/`AA21` | account 部署失败 | 检查 factory/owner |
-| `AA31-33` | paymaster 拒绝 | 切换 paymaster 策略或转用户自付 |
+| `AA31-33` | paymaster 拒绝 | 转用户自充 gas 直接支付（默认路径） |
 | 网络超时 | — | 切换备 bundler |
 
 ---
@@ -419,7 +423,7 @@ packages/core/               packages/aa-sdk/
 |------|------|
 | 未激活 AA | 现有 EOA 直发（tx.ts） |
 | 已激活 AA | UserOp 路径（aa-sdk） |
-| 余额 = 0 | Paymaster 赞助 UserOp（零 gas 起步） |
+| 余额 = 0 | 引导用户充值原生代币（不支持免 gas、不替用户付费） |
 | Session Key 生效 | InfraX 自动签名 |
 
 SDK 提供 `isActivated(address)` 查询，钱包 UI 据此切换。
@@ -769,7 +773,8 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 | 场景 | 验证点 |
 |------|--------|
 | 部署 + 转账 | 一笔 UserOp 完成 create2 部署 + ETH 转账，receipt success |
-| Paymaster 赞助 | 余额 0 地址可发起 UserOp（Sponsor 生效） |
+| 用户自充 gas | 用户充值原生代币后成功发起 UserOp（receipt success） |
+| 余额不足 | UserOp 前检查余额，不足时提示充值（不替用户付费） |
 | Session Key 交易 | 创建 session → session 签名发 3 笔 → 第 4 笔超限被拒 |
 | 撤销 Session | 撤销后立即拒绝 |
 | 错误路径 | 错误签名 → AA24；重复提交 → AA10 幂等 |
@@ -787,7 +792,7 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 |------|------|
 | owner 私钥泄露 | MPC 邮箱恢复 + Kernel validator 支持轮换 owner |
 | Session Key 过度授权 | 白名单 + 限额 + 有效期 + 日限额（§7.3） |
-| Paymaster 滥用 | 服务端风控：用户白名单 + 额度 + 频率限制 |
+| 代付滥用（若启用 Paymaster） | 服务端风控：白名单 + 额度 + 频率限制；默认不启用 Paymaster |
 | 恶意 bundler | 多 bundler + 校验 receipt 的 from/to 与 userOp 一致 |
 | 前端密钥暴露 | apikey 走服务端代理，前端零密钥 |
 | 升级风险 | Kernel v3 实现地址固定（非 proxy），升级走迁移流程 |
@@ -799,7 +804,7 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 
 - **EIP-7702**：Pectra 已上线主网（2025-05），但 L2 支持不一；Kernel 等账户 v0.8 支持成熟后再评估，**本期不做**
 - **XLayer 支持**：单独验证其 bundler/paymaster 生态后决定是否加入链矩阵
-- **ERC-20 Paymaster**：P1 后用户可用 USDC 付 gas，扩展 `PaymasterConfig.type='erc20'`
+- **ERC-20 支付 gas**：P1 后用户可用 USDC 付 gas（仍由用户付费，仅替换支付代币），扩展 `PaymasterConfig.type='erc20'`
 - **ERC-7710 适配层**：预留接口，标准稳定后从 Kernel 原生权限迁移
 
 ---
@@ -810,7 +815,7 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 |------|------|----------|
 | M1 | 脚手架 + 依赖 + 链配置加载 | `pnpm build` 通过，配置读环境变量 |
 | M2 | Kernel v3 账户 + UserOp 构建/签名 | 单测通过，Base Sepolia 部署 + 转账成功 |
-| M3 | Bundler 容灾 + Paymaster | 余额 0 地址赞助交易成功 |
+| M3 | Bundler 容灾 | 用户自充 gas 成功发起 UserOp；Paymaster 仅可选、不替用户付费 |
 | M4 | Session Key 权限系统 | 限额/撤销场景测试通过 |
 | M5 | 服务端 aa-relay 路由 | apikey 不出前端 |
 | M6 | WalletBase SmartAccountSetup 向导接线 | 全流程 UI 可操作（UI 属 pocketx-ui，本包提供 API） |
