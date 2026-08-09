@@ -1075,6 +1075,25 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
   - [x] **E-5f 鉴权对齐 + 文档**：出站统一 `X-API-Key`（服务端契约 Bearer/X-API-Key/X-Service-Key 三选一）；README（`projects/mpc-sdk/README.md`，安装/QuickStart/8 方法表/错误语义/与 MCP 对应关系）；SDK_INTEGRATION.md §2A 登记完成
   - **🎁 附带生产缺陷修复（E-5 生产 E2E 发现）**：MPC server 缺统一 JSON 错误处理器 → 错误路径返回 Express HTML 而非信封；`projects/mpc/server.ts` 新增 `app.use` 错误中间件（statusCode→status、code 映射 1007/1001），已 rsync 生产 + 重启 infrax-mpc，错误分支现返回 `{code,message,data}`
 
+**MQ-11 支付引擎交接与发布（2026-08-10 需求登记；payment = 与 WAAS/MPC **平级**的通用微服务：链上 / x402 / 法币）**：
+> 背景：AgentX 通用支付引擎整体移交 infraX——源码迁入 `projects/payments/`，以 `@0xinfrax/payments@0.1.0` 发布 npm（registry）；AgentX 保留定制支付 SDK（`@agentxv2/sdk` 的 `SubscriptionPayments` + 协议客户端 re-export），依赖方向固定 **AgentX → @0xinfrax/payments（无反向）**。AgentX 侧代码切换已提交（Agentx `323d3c9`），R17 发布流程（Agentx `docs/PROGRESS.md`）待执行。方案：Agentx `docs/payments-infrax-migration.md`；交接：infraX `projects/payments/HANDOVER.md`。
+
+**infraX 侧（已完成 ✅）**：
+- [x] **P-1 源码迁入**：`projects/payments/`（package `@0xinfrax/payments@0.1.0`，commit `cc98172`，2026-08-08），依赖仅 `pg`+`viem`、`express` optional peer，零 AgentX 业务 token
+- [x] **P-2 发布与文档**：npm 已发布（latest=0.1.0，39 文件 dist + db/migrations 5 SQL）；解耦验证 19 断言全绿（`scripts/local-payments/run-decouple.sh`）；HANDOVER/MIGRATION/README/DEPLOY 齐备
+- [x] **P-3 一致性核对（2026-08-10）**：与 Agentx `payments/` 源码 diff 仅包名头注释差异（`@agentxv2/payments`→`@0xinfrax/payments`），内容完全一致
+
+**AgentX 侧 R17 发布流程（⏳ 待执行，2026-08-10 起）**：
+- [ ] **R17-A 前置确认**：A1 infraX 集成完成打勾（Agentx PROGRESS.md R17 表）｜A2 本地 main 最新且干净｜A3 `npm view @0xinfrax/payments version` → 0.1.0
+- [ ] **R17-B sdk 验证+发布**：B1 `npm run build && npm run typecheck && npm test` 全绿（Agentx/sdk）｜B2 `dist/` 无 `@agentxv2/payments` 残留｜B3 bump 0.11.0（commit+tag）｜B4 `npm publish --registry=https://registry.npmjs.org/`｜B5 `npm view @agentxv2/sdk@0.11.0 dependencies` 含 `@0xinfrax/payments`
+- [ ] **R17-C gateway 升级**：C1 `npm install @agentxv2/sdk@^0.11.0 --registry=https://registry.npmjs.org/`｜C2 `package-lock.json` 无 `@agentxv2/payments`/`../payments` 残留｜C3 gateway build+typecheck+test 全绿
+- [ ] **R17-D 旧包+文档**：D1 `npm deprecate @agentxv2/payments "已迁移至 @0xinfrax/payments"`｜D2 sdk CHANGELOG 0.11.0 条目（依赖切换 / `PAYMENT_VERSION`→0.1.0 / 升级提示）｜D3 Agentx PROGRESS.md R17 打勾 + 迁移方案文档 §三/§四标记完成｜D4 commit + push
+- [ ] **R17-E 生产升级**：E1 生产机升级 sdk `^0.11.0`（显式官方 registry，不改全局 `~/.npmrc` 腾讯云镜像）｜E2 重启 + 冒烟：`/api/v1/payments/info`、`/access` 正常；x402/fiat 各验一笔
+- [ ] **R17-F 通知收尾**：F1 应用方通知（升级 `@agentxv2/sdk` 至 0.11.x，业务零改动）｜F2 与 infraX 约 `@0xinfrax/payments@0.1.1` 走一遍完整跟随 check-list
+- [ ] **R17-后置（P3，待评估）payment 微服务生产独立部署**：当前形态=嵌入式服务（AgentX 为参考实现，`gateway/src/services/payments.ts`）；infraX 侧是否独立部署 payment 服务实例（与 waas :9109 / mpc :9104 平级，端口待定）待评估——若部署则对齐统一鉴权 / chain-rpc 网关（链上能力） / 观测体系
+
+> 回滚预案：依赖回滚 `npm install @agentxv2/sdk@0.10.3` / `@agentxv2/payments@^0.2.2`（官方 registry）；代码回滚 `git revert 323d3c9`（旧包未删，双保险）。
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。
