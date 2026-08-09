@@ -89,6 +89,6 @@
 - **签名端点**：`sign-message` Node 侧 `hashMessage`、`sign-typed-data` Node 侧 `TypedDataEncoder.hash` → `tssSign` → `ethersSignatureFromRs`（v 逐试 27/28 恢复地址匹配）；`send-transaction`/`contract-write` Node 侧组装 unsigned tx + calldata → `broadcastTxn` → `GatewayProvider` 广播。
 - **网关收敛（DC-3）**：所有链上访问经 chain-rpc 网关；广播端点契约 `{rawTransaction, wait}`，读端点 `{method, params}`；读 key 不可广播。
 - **E2E 修过的问题**：`/v1/init` msg_hash `0x` 前缀剥离；tss_signer 重启丢片2（unlock 幂等重注册）；gateway 广播 body contract mismatch；chain-rpc rpcPool 多端点 round-robin 混入真实 sepolia（本地 E2E 用 `INFRAX_RPC_POOL` 覆盖为仅本地 anvil）；contract-write `staticCall` 缺 `from`（默认零地址模拟余额为 0 回退）。
-- **验收证据**：`/tmp/m3test/e2e-mpc.mjs` 四端点 13/13 断言通过（sign-message / sign-typed-data 经 `ethers.recoverAddress` 复核；send-transaction 链上 receipt status=1 且接收方 +0.01 ETH；contract-write ERC20 transfer 链上余额 -1 TST）。
+- **验收证据**：`projects/mpc-tss/scripts/e2e-mpc.mjs` 四端点 13/13 断言通过（sign-message / sign-typed-data 经 `ethers.recoverAddress` 复核；send-transaction 链上 receipt status=1 且接收方 +0.01 ETH；contract-write ERC20 transfer 链上余额 -1 TST）。
 
 **前置依赖**：无硬依赖；建议在 E-1（aa-sdk 三缺口）与 E-4④ 稳定后启动（本轮 E-4④ 已先行完成）。
