@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import cors from 'cors';
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import nodemailer from 'nodemailer';
 import { createAuthMiddleware } from '../shared/auth-express';
 import { GatewayProvider } from './gatewayProvider';
 
@@ -95,21 +96,137 @@ function decryptShard(encryptedData: string, email: string): string {
   return decrypted;
 }
 
-// ─── In-memory verification codes (same pattern as WAAS) ───
-const mpcCodes = new Map<string, { code: string; expiresAt: number; attempts: number }>();
+// ─── E-2a：Shamir 2-of-2 分片（GF(p)，p=secp256k1 素数域，256 位私钥） ───
+// f(x) = secret + a·x (mod p)，片1=f(1)、片2=f(2)；
+// 合并：secret = 2·片1 − 片2 (mod p)。单片不含 secret 任何信息（信息论安全）。
+const SSS_PRIME = 2n ** 256n - 2n ** 32n - 977n;
 
-function storeCode(email: string, code: string): void {
-  mpcCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + 5 * 60_000, attempts: 0 });
+function sssMod(n: bigint, m: bigint): bigint {
+  const r = n % m;
+  return r < 0n ? r + m : r;
 }
 
-function verifyCode(email: string, code: string): void {
-  const record = mpcCodes.get(email.toLowerCase());
-  if (!record) throw Object.assign(new Error('No verification code for this email'), { statusCode: 400 });
-  if (Date.now() > record.expiresAt) { mpcCodes.delete(email.toLowerCase()); throw Object.assign(new Error('Code expired (5 min)'), { statusCode: 400 }); }
-  if (record.attempts >= 5) { mpcCodes.delete(email.toLowerCase()); throw Object.assign(new Error('Too many attempts'), { statusCode: 429 }); }
-  record.attempts++;
-  if (code !== record.code) throw Object.assign(new Error('Invalid code'), { statusCode: 400 });
-  mpcCodes.delete(email.toLowerCase());
+function sssSplit(secretHex: string): { shard1: string; shard2: string } {
+  const secret = BigInt('0x' + secretHex.replace(/^0x/, ''));
+  const a = BigInt('0x' + crypto.randomBytes(32).toString('hex')) % SSS_PRIME;
+  const shard1 = sssMod(secret + a, SSS_PRIME);
+  const shard2 = sssMod(secret + 2n * a, SSS_PRIME);
+  return {
+    shard1: shard1.toString(16).padStart(64, '0'),
+    shard2: shard2.toString(16).padStart(64, '0'),
+  };
+}
+
+function sssMerge(shard1Hex: string, shard2Hex: string): string {
+  const s1 = BigInt('0x' + shard1Hex.replace(/^0x/, ''));
+  const s2 = BigInt('0x' + shard2Hex.replace(/^0x/, ''));
+  return sssMod(2n * s1 - s2, SSS_PRIME).toString(16).padStart(64, '0');
+}
+
+// ─── E-2b：SMTP 真实发信（未配置则回退 console.log，向后兼容） ───
+function getMailer() {
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+  return nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT || '465', 10),
+    secure: (process.env.SMTP_PORT || '465') === '465',
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  });
+}
+
+async function sendVerificationEmail(email: string, code: string): Promise<boolean> {
+  const mailer = getMailer();
+  if (!mailer) return false; // SMTP 未配置 → 调用方回退 console.log
+  try {
+    await mailer.sendMail({
+      from: `"${process.env.MAIL_FROM_NAME || 'InfraX'}" <${process.env.MAIL_FROM || process.env.SMTP_USER || 'noreply@infrax.ai'}>`,
+      to: email,
+      subject: '【InfraX】MPC 钱包验证码',
+      text: `您的 InfraX MPC 钱包验证码是：${code}，5 分钟内有效。若非本人操作请忽略。`,
+    });
+    return true;
+  } catch (e: any) {
+    console.error('[MPC] SMTP send error:', e.message);
+    return false; // 发信失败回退日志，不阻断 API
+  }
+}
+
+// ─── E-2b：验证码哈希（不存明文） ───
+function hashCode(email: string, code: string): string {
+  return crypto.createHmac('sha256', email.toLowerCase() + (process.env.MPC_ENCRYPTION_SECRET || '')).update(code).digest('hex');
+}
+
+// ─── 片2 加密：RecoveryKey（邮箱 + 服务端密钥 + recovery 上下文分离） ───
+// 片1 key=PBKDF2(email+secret)；片2 key=PBKDF2(email+secret+'mpc-recovery', 加密串自带 salt)——
+// 两片密钥不同（上下文分离），DB 任一单片密文均无法还原私钥。
+function recoveryKey(email: string, salt: string): Buffer {
+  const serverSecret = process.env.MPC_ENCRYPTION_SECRET;
+  if (!serverSecret || serverSecret === 'mpc-dev-secret-change-in-production') {
+    throw new Error('MPC_ENCRYPTION_SECRET is not set. Server refused to start.');
+  }
+  return crypto.pbkdf2Sync(email.toLowerCase() + serverSecret + ':mpc-recovery', salt, 100000, 32, 'sha256');
+}
+
+function encryptRecoveryShard(shard: string, email: string): string {
+  const salt = crypto.randomBytes(PBKDF2_SALT_LENGTH).toString('hex');
+  const key = recoveryKey(email, salt);
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  let encrypted = cipher.update(shard, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+  return salt + ':' + iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted;
+}
+
+function decryptRecoveryShard(encryptedData: string, email: string): string {
+  const parts = encryptedData.split(':');
+  if (parts.length !== 4) throw new Error('Invalid recovery shard format');
+  const key = recoveryKey(email, parts[0]);
+  const iv = Buffer.from(parts[1], 'hex');
+  const authTag = Buffer.from(parts[2], 'hex');
+  const ciphertext = parts[3];
+  const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+// ─── E-2b：验证码 DB 存储（哈希、一次性、5min、5 次尝试） ───
+async function storeCode(email: string, code: string): Promise<void> {
+  const emailLower = email.toLowerCase();
+  await pool.query(
+    `INSERT INTO mpc_verification_codes (email, code_hash, expires_at, attempts, created_at)
+     VALUES ($1, $2, $3, 0, $4)
+     ON CONFLICT (email) DO UPDATE SET code_hash = $2, expires_at = $3, attempts = 0, created_at = $4`,
+    [emailLower, hashCode(emailLower, code), Date.now() + 5 * 60_000, Date.now()]
+  );
+}
+
+async function verifyCode(email: string, code: string): Promise<void> {
+  const emailLower = email.toLowerCase();
+  const result = await pool.query(
+    `SELECT code_hash, expires_at, attempts FROM mpc_verification_codes WHERE email = $1`,
+    [emailLower]
+  );
+  if (result.rows.length === 0) {
+    throw Object.assign(new Error('No verification code for this email. Call /send-code first.'), { statusCode: 400 });
+  }
+  const record = result.rows[0];
+  if (Date.now() > record.expires_at) {
+    await pool.query(`DELETE FROM mpc_verification_codes WHERE email = $1`, [emailLower]);
+    throw Object.assign(new Error('Code expired (5 min)'), { statusCode: 400 });
+  }
+  if (record.attempts >= 5) {
+    await pool.query(`DELETE FROM mpc_verification_codes WHERE email = $1`, [emailLower]);
+    throw Object.assign(new Error('Too many attempts'), { statusCode: 429 });
+  }
+  await pool.query(`UPDATE mpc_verification_codes SET attempts = attempts + 1 WHERE email = $1`, [emailLower]);
+  if (hashCode(emailLower, code) !== record.code_hash) {
+    throw Object.assign(new Error('Invalid code'), { statusCode: 400 });
+  }
+  await pool.query(`DELETE FROM mpc_verification_codes WHERE email = $1`, [emailLower]);
 }
 
 // ─── Chain RPC（DC-3：统一经 chain-rpc 网关汇总分发，禁止直连上游） ───
@@ -132,6 +249,11 @@ function getProvider(chain: string): ethers.JsonRpcProvider {
 }
 
 const AGENT_TX_LIMIT_ETH = parseFloat(process.env.MPC_AGENT_TX_LIMIT_ETH || '0.1');
+// E-2c：Agent 授权补强 —— ERC20 单笔限额 + 高风险操作白名单（配置为空 = 不限制，向后兼容）
+const AGENT_ERC20_LIMIT = process.env.MPC_AGENT_ERC20_LIMIT || '1000';
+const CONTRACT_WHITELIST = (process.env.MPC_CONTRACT_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+const APPROVE_WHITELIST = (process.env.MPC_APPROVE_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+const TRANSFER_WHITELIST = (process.env.MPC_TRANSFER_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
 const SESSION_TTL_MS = 30 * 60_000;
 
 const sessions = new Map<string, {
@@ -142,32 +264,68 @@ const sessions = new Map<string, {
   expiresAt: number;
 }>();
 
-function getSessionSigner(token: string): ethers.Wallet {
-  const session = sessions.get(token);
-  if (!session) {
-    throw Object.assign(new Error('Session not found. Call /session/unlock first to get a token.'), { statusCode: 401 });
-  }
-  if (Date.now() > session.expiresAt) {
-    sessions.delete(token);
-    throw Object.assign(new Error('Session expired. Call /session/unlock again.'), { statusCode: 401 });
-  }
-  return session.wallet;
+function tokenHash(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function getSession(token: string) {
-  const session = sessions.get(token);
-  if (!session) {
+async function getSession(token: string) {
+  // 内存优先；miss/过期 → 查 DB（E-2d：重启后经 token 哈希定位并重建 wallet）
+  const cached = sessions.get(token);
+  if (cached) {
+    if (Date.now() > cached.expiresAt) {
+      sessions.delete(token);
+      await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
+      throw Object.assign(new Error('Session expired. Call /session/unlock again.'), { statusCode: 401 });
+    }
+    return cached;
+  }
+  const rowResult = await pool.query(
+    `SELECT email, wallet_address, expires_at FROM mpc_sessions WHERE token_hash = $1`,
+    [tokenHash(token)]
+  );
+  if (rowResult.rows.length === 0) {
     throw Object.assign(new Error('Session not found. Call /session/unlock first to get a token.'), { statusCode: 401 });
   }
-  if (Date.now() > session.expiresAt) {
-    sessions.delete(token);
+  const srow = rowResult.rows[0];
+  if (Date.now() > srow.expires_at) {
+    await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
     throw Object.assign(new Error('Session expired. Call /session/unlock again.'), { statusCode: 401 });
   }
+  // 由钱包表重建 signer（双片合并），写回内存
+  const walletRow = await pool.query(
+    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
+    [srow.email]
+  );
+  if (walletRow.rows.length === 0) {
+    await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
+    throw Object.assign(new Error('Wallet no longer active. Call /session/unlock again.'), { statusCode: 401 });
+  }
+  const wrow = walletRow.rows[0];
+  const shard1 = decryptShard(wrow.encrypted_shard, srow.email);
+  let privateKey = shard1;
+  if (wrow.recovery_shard) {
+    const shard2 = decryptRecoveryShard(wrow.recovery_shard, srow.email);
+    privateKey = sssMerge(shard1, shard2);
+  }
+  const wallet = new ethers.Wallet(privateKey);
+  const session = {
+    wallet,
+    address: wallet.address,
+    email: srow.email,
+    unlockedAt: srow.unlocked_at,
+    expiresAt: srow.expires_at,
+  };
+  sessions.set(token, session);
   return session;
 }
 
-function getSignerForChain(token: string, chain: string): ethers.Wallet {
-  const wallet = getSessionSigner(token);
+async function getSessionSigner(token: string): Promise<ethers.Wallet> {
+  const session = await getSession(token);
+  return session.wallet;
+}
+
+async function getSignerForChain(token: string, chain: string): Promise<ethers.Wallet> {
+  const wallet = await getSessionSigner(token);
   return wallet.connect(getProvider(chain));
 }
 
@@ -197,6 +355,18 @@ const ERC20_APPROVE_ABI = [
 ];
 
 (async () => {
+  // 迁移：逐列补齐（老钱包无 recovery_shard 列；shard_count/total_shards 可能已存在）
+  const walletCols = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'mpc_wallets'`
+  );
+  const existingCols = new Set(walletCols.rows.map((r: any) => r.column_name));
+  const addCol = async (col: string, ddl: string) => {
+    if (!existingCols.has(col)) await pool.query(`ALTER TABLE mpc_wallets ADD COLUMN ${col} ${ddl}`);
+  };
+  await addCol('recovery_shard', 'TEXT');
+  await addCol('shard_count', 'INTEGER DEFAULT 1');
+  await addCol('total_shards', 'INTEGER DEFAULT 2');
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS mpc_wallets (
       id TEXT PRIMARY KEY,
@@ -204,8 +374,9 @@ const ERC20_APPROVE_ABI = [
       email_verified BOOLEAN DEFAULT false,
       wallet_address TEXT,
       encrypted_shard TEXT NOT NULL,
+      recovery_shard TEXT,
       shard_count INTEGER DEFAULT 1,
-      total_shards INTEGER DEFAULT 3,
+      total_shards INTEGER DEFAULT 2,
       connected_wallet_address TEXT,
       status TEXT DEFAULT 'active',
       recovered_at TIMESTAMPTZ,
@@ -230,6 +401,28 @@ const ERC20_APPROVE_ABI = [
     CREATE INDEX IF NOT EXISTS idx_mpc_agent_logs_email ON mpc_agent_logs(email);
     CREATE INDEX IF NOT EXISTS idx_mpc_agent_logs_created ON mpc_agent_logs(created_at);
   `);
+  // E-2b：验证码落库（哈希存储，重启不丢；一次性、5min 过期、5 次尝试上限）
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mpc_verification_codes (
+      email TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL,
+      expires_at BIGINT NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at BIGINT NOT NULL
+    );
+  `);
+  // E-2d：会话落库（重启不失效；token 哈希存储，DB 泄露不直接可解锁）
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mpc_sessions (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      wallet_address TEXT NOT NULL,
+      unlocked_at BIGINT NOT NULL,
+      expires_at BIGINT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mpc_sessions_email ON mpc_sessions(email);
+  `);
 })().catch(e => console.error('[MPC] Table init error:', e.message));
 
 // ─── Health ───
@@ -240,8 +433,14 @@ app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
   const { email } = req.body;
   if (!email) return res.status(400).json(apiResponse(null, 'email required', 1001));
   const code = String(crypto.randomInt(100000, 1000000)); // 6 位随机码（B-1：移除硬编码 888888 万能码）
-  storeCode(email, code);
-  console.log(`[MPC] Code for ${email}: ${code}`); // 真实发信接入前，验证码经日志/存储下发（勿外泄）
+  await storeCode(email, code);
+  // E-2b：SMTP 配置后真实发信；未配置或发信失败回退日志（向后兼容，不阻断 API）
+  const sent = await sendVerificationEmail(email, code);
+  if (sent) {
+    console.log(`[MPC] Verification code sent via SMTP to ${email}`);
+  } else {
+    console.log(`[MPC] Code for ${email}: ${code}`); // 真实发信接入前，验证码经日志/存储下发（勿外泄）
+  }
   res.json(apiResponse({ message: 'Code sent' }));
 }));
 
@@ -249,7 +448,7 @@ app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
 app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
   const { email, code, walletAddress } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
-  verifyCode(email, code);
+  await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
   const existing = await pool.query('SELECT id FROM mpc_wallets WHERE email = $1', [emailLower]);
@@ -258,13 +457,16 @@ app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
   }
 
   const wallet = ethers.Wallet.createRandom();
-  const encryptedShard = encryptShard(wallet.privateKey, emailLower);
+  // E-2a：Shamir 2-of-2 拆片 —— 片1 服务端 AES（email+secret）、片2 RecoveryKey（email+secret+recovery 上下文）
+  const { shard1, shard2 } = sssSplit(wallet.privateKey);
+  const encryptedShard = encryptShard(shard1, emailLower);
+  const recoveryShard = encryptRecoveryShard(shard2, emailLower);
   const connectedAddr = (req.headers['x-wallet-address'] as string) || walletAddress || null;
 
   const result = await pool.query(
-    `INSERT INTO mpc_wallets (id, email, email_verified, wallet_address, encrypted_shard, shard_count, total_shards, connected_wallet_address)
-     VALUES ($1, $2, true, $3, $4, 1, 1, $5) RETURNING id, email, wallet_address, created_at`,
-    [crypto.randomUUID(), emailLower, wallet.address, encryptedShard, connectedAddr]
+    `INSERT INTO mpc_wallets (id, email, email_verified, wallet_address, encrypted_shard, recovery_shard, shard_count, total_shards, connected_wallet_address)
+     VALUES ($1, $2, true, $3, $4, $5, 2, 2, $6) RETURNING id, email, wallet_address, created_at`,
+    [crypto.randomUUID(), emailLower, wallet.address, encryptedShard, recoveryShard, connectedAddr]
   );
 
   const row = result.rows[0];
@@ -275,11 +477,11 @@ app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
 app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
-  verifyCode(email, code);
+  await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
   const result = await pool.query(
-    `SELECT id, email, wallet_address, encrypted_shard, recovery_count FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
+    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard, recovery_count FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
     [emailLower]
   );
   if (result.rows.length === 0) {
@@ -289,7 +491,14 @@ app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
   const row = result.rows[0];
   let privateKey: string;
   try {
-    privateKey = decryptShard(row.encrypted_shard, emailLower);
+    // E-2a：双片合并（片1 + 片2 → 私钥，内存短暂）；老钱包无 recovery_shard 按单片降级
+    const shard1 = decryptShard(row.encrypted_shard, emailLower);
+    if (row.recovery_shard) {
+      const shard2 = decryptRecoveryShard(row.recovery_shard, emailLower);
+      privateKey = sssMerge(shard1, shard2);
+    } else {
+      privateKey = shard1;
+    }
   } catch {
     return res.status(500).json(apiResponse(null, 'Failed to decrypt shard', 1007));
   }
@@ -343,11 +552,11 @@ app.get('/api/v2/mpc/status', asyncHandler(async (req: any, res: any) => {
 app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) => {
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
-  verifyCode(email, code);
+  await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
   const result = await pool.query(
-    `SELECT id, email, wallet_address, encrypted_shard FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
+    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
     [emailLower]
   );
   if (result.rows.length === 0) {
@@ -357,7 +566,14 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
   const row = result.rows[0];
   let privateKey: string;
   try {
-    privateKey = decryptShard(row.encrypted_shard, emailLower);
+    // E-2a：双片合并（片1 + 片2 → 私钥）；老钱包无 recovery_shard 按单片降级
+    const shard1 = decryptShard(row.encrypted_shard, emailLower);
+    if (row.recovery_shard) {
+      const shard2 = decryptRecoveryShard(row.recovery_shard, emailLower);
+      privateKey = sssMerge(shard1, shard2);
+    } else {
+      privateKey = shard1;
+    }
   } catch {
     return res.status(500).json(apiResponse(null, 'Failed to decrypt shard', 1007));
   }
@@ -369,13 +585,21 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
 
   const now = Date.now();
   const token = 'mpc_' + crypto.randomBytes(32).toString('hex');
+  const expiresAt = now + SESSION_TTL_MS;
   sessions.set(token, {
     wallet,
     address: wallet.address,
     email: emailLower,
     unlockedAt: now,
-    expiresAt: now + SESSION_TTL_MS,
+    expiresAt,
   });
+  // E-2d：会话落库（token 哈希存储，重启不失效；仅存定位信息，私钥每次经钱包表重建）
+  await pool.query(
+    `INSERT INTO mpc_sessions (token_hash, email, wallet_address, unlocked_at, expires_at, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (token_hash) DO UPDATE SET email = $2, wallet_address = $3, unlocked_at = $4, expires_at = $5`,
+    [tokenHash(token), emailLower, wallet.address, now, expiresAt, now]
+  );
 
   await pool.query(`UPDATE mpc_wallets SET recovered_at = NOW(), recovery_count = recovery_count + 1 WHERE id = $1`, [row.id]);
 
@@ -383,7 +607,7 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
     token,
     address: wallet.address,
     unlockedAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
+    expiresAt: new Date(expiresAt).toISOString(),
   }, 'MPC wallet unlocked. Use this token for all subsequent agent operations.'));
 }));
 
@@ -391,8 +615,9 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
 app.post('/api/v2/mpc/session/lock', asyncHandler(async (req: any, res: any) => {
   const { token } = req.body;
   if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
-  const existed = sessions.has(token);
+  const existed = sessions.has(token) || (await pool.query(`SELECT 1 FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)])).rows.length > 0;
   sessions.delete(token);
+  await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
   res.json(apiResponse({ locked: existed }, existed ? 'Session locked' : 'Session not found'));
 }));
 
@@ -400,8 +625,21 @@ app.post('/api/v2/mpc/session/lock', asyncHandler(async (req: any, res: any) => 
 app.get('/api/v2/mpc/session/status', asyncHandler(async (req: any, res: any) => {
   const { token } = req.query;
   if (!token || typeof token !== 'string') return res.status(400).json(apiResponse(null, 'token required', 1001));
-  const session = sessions.get(token);
-  if (!session) return res.json(apiResponse({ unlocked: false }));
+  let session = sessions.get(token);
+  if (!session) {
+    const rowResult = await pool.query(
+      `SELECT email, wallet_address, unlocked_at, expires_at FROM mpc_sessions WHERE token_hash = $1`,
+      [tokenHash(token)]
+    );
+    if (rowResult.rows.length === 0) return res.json(apiResponse({ unlocked: false }));
+    const r = rowResult.rows[0];
+    session = { wallet: null as any, address: r.wallet_address, email: r.email, unlockedAt: r.unlocked_at, expiresAt: r.expires_at };
+  }
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
+    return res.json(apiResponse({ unlocked: false }));
+  }
   const remaining = Math.max(0, session.expiresAt - Date.now());
   res.json(apiResponse({
     unlocked: true,
@@ -417,7 +655,7 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
   const { token, chain: chainParam, tokenAddress } = req.body;
   if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
   const chain = chainParam || 'sepolia';
-  const signer = getSignerForChain(token, chain);
+  const signer = await getSignerForChain(token, chain);
   const provider = getProvider(chain);
 
   const nativeBalance = await provider.getBalance(signer.address);
@@ -454,7 +692,7 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
 app.post('/api/v2/mpc/sign-message', asyncHandler(async (req: any, res: any) => {
   const { token, message } = req.body;
   if (!token || !message) return res.status(400).json(apiResponse(null, 'token + message required', 1001));
-  const signer = getSessionSigner(token);
+  const signer = await getSessionSigner(token);
   const signature = await signer.signMessage(message);
   await auditLog(token, 'sign_message', { message: message.slice(0, 100) });
   res.json(apiResponse({ signature, address: signer.address }, 'Message signed'));
@@ -464,7 +702,7 @@ app.post('/api/v2/mpc/sign-message', asyncHandler(async (req: any, res: any) => 
 app.post('/api/v2/mpc/sign-typed-data', asyncHandler(async (req: any, res: any) => {
   const { token, domain, types, value } = req.body;
   if (!token || !domain || !types || !value) return res.status(400).json(apiResponse(null, 'token + domain + types + value required', 1001));
-  const signer = getSessionSigner(token);
+  const signer = await getSessionSigner(token);
   const signature = await signer.signTypedData(domain, types, value);
   await auditLog(token, 'sign_typed_data', { domain: JSON.stringify(domain).slice(0, 200) });
   res.json(apiResponse({ signature, address: signer.address }, 'Typed data signed'));
@@ -482,13 +720,23 @@ app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any)
     return res.status(400).json(apiResponse(null, `Amount ${amount} exceeds agent limit ${AGENT_TX_LIMIT_ETH} ETH`, 1001));
   }
 
-  const signer = getSignerForChain(token, chain);
+  // E-2c：ERC20 单笔限额 + 收款地址白名单（配置后强制，空 = 不限制）
+  if (TRANSFER_WHITELIST.length > 0 && !TRANSFER_WHITELIST.includes(to.toLowerCase())) {
+    return res.status(400).json(apiResponse(null, `Transfer target ${to} not in whitelist`, 1001));
+  }
+
+  const signer = await getSignerForChain(token, chain);
   let tx: ethers.TransactionResponse;
 
   if (tokenAddress && tokenAddress.startsWith('0x')) {
     const contract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
     const decimals = Number(await contract.decimals());
     const parsedAmount = ethers.parseUnits(amount, decimals);
+    // E-2c：ERC20 限额（token 数量单位，默认 1000）
+    const erc20Limit = ethers.parseUnits(AGENT_ERC20_LIMIT, decimals);
+    if (parsedAmount > erc20Limit) {
+      return res.status(400).json(apiResponse(null, `Amount ${amount} exceeds ERC20 agent limit ${AGENT_ERC20_LIMIT}`, 1001));
+    }
     tx = await contract.transfer(to, parsedAmount);
   } else {
     tx = await signer.sendTransaction({
@@ -533,7 +781,18 @@ app.post('/api/v2/mpc/contract-write', asyncHandler(async (req: any, res: any) =
   if (!token || !contractAddress || !abi || !method) return res.status(400).json(apiResponse(null, 'token + contractAddress + abi + method required', 1001));
   const chain = chainParam || 'sepolia';
 
-  const signer = getSignerForChain(token, chain);
+  // E-2c：合约白名单 + approve 的 spender 白名单（配置后强制，空 = 不限制）
+  if (CONTRACT_WHITELIST.length > 0 && !CONTRACT_WHITELIST.includes(contractAddress.toLowerCase())) {
+    return res.status(400).json(apiResponse(null, `Contract ${contractAddress} not in whitelist`, 1001));
+  }
+  if (method.toLowerCase() === 'approve' && APPROVE_WHITELIST.length > 0 && args && Array.isArray(args) && args[0]) {
+    const spender = String(args[0]).toLowerCase();
+    if (!APPROVE_WHITELIST.includes(spender)) {
+      return res.status(400).json(apiResponse(null, `Approve spender ${args[0]} not in whitelist`, 1001));
+    }
+  }
+
+  const signer = await getSignerForChain(token, chain);
   const contract = new ethers.Contract(contractAddress, abi, signer);
 
   try {
@@ -589,6 +848,19 @@ app.post('/api/v2/mpc/gas-estimate', asyncHandler(async (req: any, res: any) => 
     estimatedCostWei: estimatedCost.toString(),
   }));
 }));
+
+// ─── 统一 JSON 错误处理器 ───
+// asyncHandler 抛出的错误（verifyCode 400/429、session 401、unsupported chain 400 等）
+// 若不加此处理器，Express 默认错误页返回 HTML，破坏信封契约 {code,message,data}。
+app.use((err: any, _req: any, res: any, _next: any) => {
+  const status = typeof err?.statusCode === 'number' ? err.statusCode
+    : typeof err?.status === 'number' ? err.status
+    : 500;
+  const code = typeof err?.code === 'number' ? err.code : status >= 500 ? 1007 : 1001;
+  const message = err?.message || 'Internal server error';
+  if (status >= 500) console.error('[MPC] Error:', err);
+  res.status(status).json(apiResponse(null, message, code));
+});
 
 // ─── Start ───
 const PORT = parseInt(process.env.PORT || '6003', 10);

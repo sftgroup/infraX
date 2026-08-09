@@ -9,6 +9,7 @@
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
 | `@0xinfrax/infrax-dk`（npm） | 0.5.1 | ✅ 已发布（registry 已验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** |
+| `@0xinfrax/mpc-sdk`（npm，独立轻量） | 0.1.0 | ✅ 已发布 + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC 钱包模块（sendCode/register/recover/status/createWallet）+ 会话模块（unlock/lock/status）；链上模块（7 方法）后续版本 |
 | `lightrag-client`（PyPI） | 2.0.0 | ⏳ 构建+twine check 通过，待 PyPI token 发布 | LightRAG（ragservicer） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
@@ -123,6 +124,53 @@ const tx = await infrax.vault.proposeTx({
 // MPC：签名
 const sig = await infrax.mpc.signTypedData({ walletId: '...', typedData });
 ```
+
+---
+
+## 2A. 独立 MPC SDK：`@0xinfrax/mpc-sdk`（MQ-10 补充 E-5）
+
+独立轻量包，**不依赖 infrax-dk**，仅面向 MPC 微服务契约（`/api/v2/mpc/*`）。首期覆盖**钱包模块（5 方法）+ 会话模块（3 方法）**；链上模块（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate）为后续版本。
+
+### 2A.1 安装与初始化
+
+```bash
+npm install @0xinfrax/mpc-sdk     # Node >=18，零运行时依赖
+```
+
+```ts
+import { MpcClient, MpcApiError } from '@0xinfrax/mpc-sdk';
+
+const mpc = new MpcClient({
+  baseUrl: 'http://127.0.0.1:9104',   // 生产 MPC 服务地址（infrax-mpc :9104）
+  apiKey: process.env.MPC_API_KEY,     // 出站统一 X-API-Key（生产 bridge key）
+});
+```
+
+### 2A.2 钱包模块（5 方法）
+
+| 方法 | 端点 | 说明 |
+|---|---|---|
+| `wallet.sendCode({ email })` | `POST /api/v2/mpc/send-code` | 下发 6 位验证码 |
+| `wallet.register({ email, code, walletAddress? })` | `POST /api/v2/mpc/register` | 注册托管钱包（E2E 实测返回真实 EOA） |
+| `wallet.recover({ email, code, expectedAddress? })` | `POST /api/v2/mpc/recover` | 恢复流程封装：验证码→分片重建→地址校验（不一致抛 409/40900） |
+| `wallet.status({ email } \| { walletAddress })` | `GET /api/v2/mpc/status` | 双查询键钱包状态 |
+| `wallet.createWallet({ email })` | `POST /api/v2/mpc/send-code` | 组合入口（发码→register） |
+
+### 2A.3 会话模块（3 方法）
+
+| 方法 | 端点 | 说明 |
+|---|---|---|
+| `session.unlock({ email, code })` | `POST /api/v2/mpc/session/unlock` | 解锁→`mpc_` 令牌 |
+| `session.lock(token)` | `POST /api/v2/mpc/session/lock` | 锁定令牌 |
+| `session.status({ token })` | `GET /api/v2/mpc/session/status` | 状态 + 剩余秒数 |
+
+### 2A.4 错误语义（E-5e）
+
+失败统一抛 `MpcApiError`（`status`/`code`/`kind`）：401 `unauthorized`（缺 key/会话无效）、400 `bad_request`（验证码错误/过期，code 1001）、404 `not_found`（未注册，code 1004）、409 `conflict`（SDK 恢复地址不一致，code 40900）、429 `rate_limited`（验证码尝试超限）、5xx `server_error`（分片解密失败 code 1007）。网络/超时抛 `MpcNetworkError`。
+
+### 2A.5 生产验证（2026-08-08，43.163.105.172）
+
+`projects/mpc-sdk/scripts/mpc-sdk-e2e.mjs` 生产实测 **22/22 全绿**：无 key 401、注册/重复注册、status 双键、unlock→status→lock 全流程、伪造/已锁 token、recover 一致/不一致(409)/未注册(404)。测试中发现并修复生产缺陷：**MPC server 缺统一 JSON 错误处理器**（错误路径曾返回 Express HTML 而非信封）——`projects/mpc/server.ts` 新增 `app.use` 错误中间件后已随 `infrax-mpc` 重启生效，错误分支现返回 `{code,message,data}`。
 
 ---
 

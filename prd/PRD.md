@@ -253,6 +253,24 @@ TEE Enclave (Intel SGX / AWS Nitro)
 | tools 数量 | 15 | **17**（+tee_swap +tee_approve） |
 | 接口兼容 | — | ✅ 17 tools 参数不变，仅前缀改名 |
 
+> ⚠️ **2026-08-08 架构决策更新（MQ-10 补充 E）**：TEE 升级**降级为可选（P3）**——PRD 明示 SGX/Nitro 硬件不支持当前服务器。MPC 钱包的可用性目标改为**「分片加密 + 邮箱恢复」**（替代 TEE 达成"用户无需备份私钥/助记词"），签名授权由 Session Key Engine + aa-sdk Kernel v3 链上 session validator 承担（见 tasklist MQ-10 补充 E-1~E-4）。
+
+### 4.5 MPC 独立 SDK（需求新增，2026-08-08）
+
+**需求背景**：MPC 是独立微服务（场景一：Agent 托管钱包——用户不可直接控制、Agent 全权、邮箱恢复）。调用方（AI Agent / 业务系统）不应依赖整包 `infrax-dk`，需要**独立、轻量的 MPC SDK**。
+
+**需求内容**：
+1. **独立发布**：`@0xinfrax/mpc-sdk`（或 `infrax-dk` 子路径导出 `infrax-dk/mpc`），仅依赖 MPC 服务契约，不引入其余模块；版本与 `infrax-dk` 解耦、独立演进。
+2. **能力覆盖（对齐 MPC MCP 15 tools）**：
+   - 钱包：`sendCode / register / recover / status / createWallet`
+   - 会话：`unlockSession / lockSession / sessionStatus`
+   - 链上：`balance / signMessage / signTypedData / sendTransaction / contractRead / contractWrite / gasEstimate`
+3. **恢复流程一等公民**：`recover` 显式封装「邮箱验证码 → 分片重建 → 地址校验」完整流程（对应 tasklist E-2b）。
+4. **类型安全**：与 `infrax-dk` 一致的 TS 类型导出（`MPCWalletResult / MPCSessionStatus / MPCBalanceResult` 等），错误码对齐 MPC API（401/403/409/429）。
+5. **鉴权对齐**：出站沿用 `x-api-key` / 签名头契约；入站（经 MCP 调用时）沿用 `inboundAuth`（`MCP_API_KEY`）。
+
+**验收**：`npm i @0xinfrax/mpc-sdk` 后仅用该包完成「注册 → 解锁 → 转账」全流程；SDK 测试覆盖恢复失败分支（验证码错误/过期/重复使用）。
+
 ---
 
 ## 5. SkillHub 品牌 Skill（P0）
