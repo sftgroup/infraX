@@ -604,6 +604,38 @@ struct TransferAuthorization {
 
 **落地**：随 P0.12 增强模块一并实现（同一模块、同一部署批次）。
 
+### 7.7 与 OKX 能力对照（E-3c，2026-08-08 完成）
+
+**背景**：OKX 的 Agent 钱包授权 = **TEE 钱包整体授权 + spending limit**（粗粒度、链下、不可验证）；我们对齐为 Kernel v3 **链上 session validator**（细粒度、链上强制、可撤销、可验证），实现反超。
+
+| 维度 | OKX（TEE 钱包） | InfraX（Kernel v3 链上 session） |
+|------|----------------|----------------------------------|
+| 授权粒度 | 钱包整体授权 + spending limit（粗粒度） | `(target, selector, valueLimit, dailyLimit, countLimit, tokenLimits, allowAnyTransfer)` 细粒度（§7.3-§7.6） |
+| 强制执行位置 | 链下（TEE 内执行器，链上不可验证） | **链上 validator**（`validateUserOp` 内强制，任何 bundler/relayer 一致生效） |
+| 可验证性 | 不可验证（黑盒 TEE） | 可验证（`isModuleInstalled` + 链上字节码/事件，`aa-session-e2e.ts` 已链上验证） |
+| 撤销 | 依赖服务端（TEE 控制面） | **用户即时收回**（`uninstallModule` 一条 UserOp，撤销后 agent 交易被链上拒绝） |
+| 有效期 | 服务端管理 | `validUntil` 链上强制过期 |
+| 跨链 | 依赖 TEE 网络 | 每网络独立授权，`AA_{CHAIN}_*` env 注入各链合约（§7.4） |
+| x402 自动支付 | 支持 | **延后**（2026-08-08 用户决策，待 E-1/E-3 主线稳固后评估） |
+
+**验收**：对照表（本节）+ 演示已达成 —— `aa-relay/scripts/aa-session-e2e.ts` 链上 E2E：owner 撤销 session 后 agent 再次调用被 EntryPoint 链上 revert（handleOps eth_call 预演失败），与 OKX"服务端才能收回"形成对比。
+
+### 7.8 两种 Session 的边界（E-3d，2026-08-08 完成）
+
+**决策（stevenwang 确认）**：两种 session **并存互不冲突**，边界以「谁持有控制权」划分：
+
+| 维度 | ① Engine 代签通道（原 :3500 Session Key Engine） | ② Kernel v3 链上 session（aa-sdk） |
+|------|-----------------------------------------------|-----------------------------------|
+| 定位 | **平台服务端代签通道**：平台自主操作 / 内部服务交易（非用户钱包） | **用户钱包授权**：用户自愿共享控制权给 agent（§7.1） |
+| 控制者 | InfraX 服务端（Engine 独立 EOA 持钥） | 用户 EOA（owner，可随时撤销） |
+| 链上可验证 | 不可验证（服务端声明式 `from`） | 可验证（session validator 模块 + 链上强制） |
+| 签名路径 | Engine 代签 UserOp（`SessionKeySigner` 已对接 Kernel `execute`） | session key 本地签 `userOpHash` → bundler |
+| 适用场景 | 平台批量操作、内部服务交易、托管钱包 | 用户钱包授权 agent 执行（白名单/限额内） |
+
+- `SessionKeySigner`（Engine 代签）**可作 Kernel 的替代签名器**：即使用户钱包启用了链上 session，平台自身操作仍走 Engine 通道，两者互不干扰。
+- **边界规则**：凡「用户可控制的资产/操作」走 ②（用户授权、可撤销）；凡「平台自主/内部」走 ①。链上 enable/disable（②）与 Engine 代签（①）的密钥体系完全独立。
+- **验收**：`aa-session-e2e.ts` 链上 E2E 证明 ② 全流程（enable → agent 调用 → disable → 拒绝）可用；① 维持原 Engine 能力不变，两者无共享状态、无冲突。
+
 ---
 
 ## 8. 链配置与环境变量（零硬编码）
@@ -788,3 +820,4 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v1.0 | 2026-07-28 | 初稿：技术选型 + UserOp 生命周期 + 签名器集成 + Session Key 设计 |
+| v1.1 | 2026-08-08 | E-3：新增 §7.7 与 OKX 能力对照（E-3c）、§7.8 两种 Session 的边界（E-3d）；§7.2 生命周期补充 ENABLE-mode 链上实现注记 |

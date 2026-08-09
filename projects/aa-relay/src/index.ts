@@ -1,0 +1,375 @@
+// ============================================================================
+// aa-relay — ERC-4337 UserOp 转发网关（E-1c）
+// 职责：① 入站 apikey 校验（AA_RELAY_API_KEY）；② UserOp 转发 eth_sendUserOperation
+//       （多 bundler 容灾，失败自动切换备端点）；③ 收据查询 eth_getUserOperationReceipt；
+//       ④ gas 估算 eth_estimateUserOperationGas。
+// 链配置复用 aa-sdk（env AA_{CHAIN}_* 零硬编码）；bundler URL 由服务端注入（apikey 代理）。
+// ============================================================================
+import express from 'express';
+import { createClient, http, RpcError, toHex, type Address, type Hex } from 'viem';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { randomBytes } from 'node:crypto';
+import { Pool } from 'pg';
+import {
+  BundlerClient,
+  getChainConfig,
+  getEnabledChains,
+  userOpToRpc,
+  createKernelAccount,
+  ExternalWalletSigner,
+  assertValidPolicy,
+  encodeEnableSessionCall,
+  encodeDisableSessionCall,
+  validateSessionCall,
+  type ChainAAConfig,
+  type UserOperationV7,
+  type SessionPolicy,
+} from '../../aa-sdk/src/index.js';
+import { PostgresSessionStore } from './session-store.js';
+
+const app = express();
+app.use(express.json({ limit: '1mb' }));
+app.use(cors());
+
+function cors() {
+  return (_req: any, res: any, next: any) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Service-Key');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (_req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  };
+}
+
+const RELAY_KEY = process.env.AA_RELAY_API_KEY || '';
+
+// E-3a/b：session 持久化存储（Postgres，多租户 product 维度，重启不失效）
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_mpc',
+});
+const sessionStore = new PostgresSessionStore(pool);
+sessionStore.initTables().catch((e) => console.error('[aa-relay] session table init error:', e.message));
+
+// GET /health 免鉴权（供监控/负载均衡）
+app.get('/health', (_req: any, res: any) => {
+  const chains = getEnabledChains(process.env);
+  const bundlers: Record<string, string[]> = {};
+  for (const c of chains) {
+    try {
+      bundlers[c] = getChainConfig(c, process.env).bundlers.map((b) => b.url);
+    } catch (e: any) {
+      bundlers[c] = [`ERROR: ${e.message}`];
+    }
+  }
+  res.json({ status: 'ok', service: 'aa-relay', chains, bundlers });
+});
+
+// 入站鉴权：Bearer / X-API-Key / X-Service-Key 三选一；未配置 AA_RELAY_API_KEY 时开放（开发模式）
+function authMw(req: any, res: any, next: any) {
+  if (!RELAY_KEY) return next();
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const key = bearer || req.headers['x-api-key'] || req.headers['x-service-key'];
+  if (key && key === RELAY_KEY) return next();
+  res.status(401).json({ code: 401, message: 'unauthorized', data: null });
+}
+app.use(authMw);
+
+function asyncHandler(fn: any) {
+  return (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function apiResponse(data: any = null, message = 'success', code = 0) {
+  return { code, message, data };
+}
+
+function getChain(chain: string): ChainAAConfig {
+  if (!chain || typeof chain !== 'string') {
+    throw Object.assign(new Error('chain required (e.g. oxachain)'), { statusCode: 400 });
+  }
+  try {
+    return getChainConfig(chain, process.env);
+  } catch (e: any) {
+    throw Object.assign(new Error(`unknown or misconfigured chain '${chain}': ${e.message}`), { statusCode: 400 });
+  }
+}
+
+// RPC 格式 UserOp（hex 字段）→ SDK UserOperationV7（bigint 字段）
+function normalizeOp(op: Record<string, any>): UserOperationV7 {
+  const b = (v: any): bigint =>
+    v === undefined || v === null ? 0n : typeof v === 'bigint' ? v : BigInt(v);
+  const o: any = {
+    sender: op.sender,
+    nonce: b(op.nonce),
+    callData: op.callData,
+    callGasLimit: b(op.callGasLimit),
+    verificationGasLimit: b(op.verificationGasLimit),
+    preVerificationGas: b(op.preVerificationGas),
+    maxFeePerGas: b(op.maxFeePerGas),
+    maxPriorityFeePerGas: b(op.maxPriorityFeePerGas),
+    signature: op.signature,
+  };
+  if (op.factory) o.factory = op.factory;
+  if (op.factoryData) o.factoryData = op.factoryData;
+  if (op.paymaster) {
+    o.paymaster = op.paymaster;
+    o.paymasterVerificationGasLimit = b(op.paymasterVerificationGasLimit);
+    o.paymasterPostOpGasLimit = b(op.paymasterPostOpGasLimit);
+    o.paymasterData = op.paymasterData;
+  }
+  return o;
+}
+
+type RpcClient = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
+
+function rpcClient(url: string, timeoutMs = 30_000): RpcClient {
+  return createClient({ transport: http(url, { timeout: timeoutMs }) }) as unknown as RpcClient;
+}
+
+// bundler 业务错误（JSON-RPC 错误码如 -32500/FailedOp/AA20）→ 400 简洁透传；
+// 网络错误（fetch failed / 连接失败，code 为字符串或 undefined）→ 切换备端点。
+// 错误可能包在 cause 链里且 cause 可能是数组（BundlerError.cause = [err]），用队列 BFS 遍历。
+// viem 2.x：RpcError（数字 code）→ RpcRequestError（JSON-RPC 层包装，业务错误）；
+//           HttpRequestError（HTTP/网络层，区分网络故障）。toAAError 保留数字 code 与 cause 链。
+function isBundlerBusinessError(e: any): boolean {
+  const isNet = (msg: string) => /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|socket hang up|other side closed/i.test(msg);
+  const queue: any[] = [e];
+  let guard = 0;
+  while (queue.length && guard++ < 30) {
+    const cur = queue.shift();
+    if (!cur) continue;
+    if (typeof cur.code === 'number') return true; // JSON-RPC 错误码（负数）
+    if (cur.name === 'HttpRequestError') {
+      const msg = rpcErrorMessage(cur);
+      if (isNet(msg)) return false;
+      return true; // HTTP 层已成功响应 JSON-RPC error → 业务错误
+    }
+    if (cur.name === 'RpcRequestError') return true; // JSON-RPC 响应错误 = bundler 业务拒绝
+    if (Array.isArray(cur.cause)) queue.push(...cur.cause);
+    else if (cur.cause && cur.cause !== cur) queue.push(cur.cause); // 防自引用
+  }
+  return false;
+}
+
+// 从错误链中提取最有业务含义的消息（跳过 viem "RPC Request failed" 噪声包装）
+function rpcErrorMessage(e: any): string {
+  const queue: any[] = [e];
+  let best = '';
+  let guard = 0;
+  while (queue.length && guard++ < 30) {
+    const cur = queue.shift();
+    if (!cur) continue;
+    const msg = cur?.shortMessage || cur?.message || '';
+    if (msg && !/^RPC Request failed/.test(msg) && !/^Error: /i.test(msg)) best = msg;
+    if (Array.isArray(cur.cause)) queue.push(...cur.cause);
+    else if (cur.cause && cur.cause !== cur) queue.push(cur.cause);
+  }
+  return best || String(e?.message || e);
+}
+
+// 广播-only（wait=false）：多 bundler 容灾，成功即返回 userOpHash
+async function broadcast(cfg: ChainAAConfig, op: UserOperationV7): Promise<{ userOpHash: Hex; bundlerUrl: string }> {
+  const endpoints = [...cfg.bundlers].sort((a, b) => a.priority - b.priority);
+  const errors: string[] = [];
+  for (const ep of endpoints) {
+    try {
+      const client = rpcClient(ep.url, ep.timeoutMs);
+      const hash = (await client.request({
+        method: 'eth_sendUserOperation',
+        params: [userOpToRpc(op), cfg.entryPoint],
+      })) as Hex;
+      return { userOpHash: hash, bundlerUrl: ep.url };
+    } catch (e: any) {
+      if (isBundlerBusinessError(e)) {
+        throw Object.assign(new Error(`${ep.url}: ${rpcErrorMessage(e)}`), { statusCode: 400 });
+      }
+      errors.push(`${ep.url}: ${rpcErrorMessage(e)}`);
+    }
+  }
+  throw Object.assign(new Error(`all bundlers failed (${errors.join(' | ')})`), { statusCode: 502 });
+}
+
+// POST /v1/userops
+app.post('/v1/userops', asyncHandler(async (req: any, res: any) => {
+  const { chain, op, wait } = req.body || {};
+  if (!op || !op.sender || !op.callData) {
+    return res.status(400).json(apiResponse(null, 'op.sender + op.callData required', 1001));
+  }
+  const cfg = getChain(chain);
+  const userOp = normalizeOp(op);
+
+  if (wait === false) {
+    const { userOpHash, bundlerUrl } = await broadcast(cfg, userOp);
+    return res.json(apiResponse({ userOpHash, bundlerUrl, receipt: null }, 'UserOp broadcast'));
+  }
+
+  const client = new BundlerClient(cfg);
+  try {
+    const result = await client.sendUserOperation(userOp, {
+      waitTimeoutMs: 120_000,
+      onBroadcast: (hash) => console.log(`[aa-relay] ${chain} userOpHash=${hash} accepted`),
+    });
+    res.json(apiResponse({
+      userOpHash: result.userOpHash,
+      bundlerUrl: result.bundlerUrl,
+      receipt: result.receipt ?? null,
+    }, 'UserOp sent'));
+  } catch (e: any) {
+    if (isBundlerBusinessError(e)) {
+      return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
+    }
+    throw e;
+  }
+}));
+
+// GET /v1/userops/:hash（收据查询，单次；主端点失败切备）
+app.get('/v1/userops/:hash', asyncHandler(async (req: any, res: any) => {
+  const { hash } = req.params;
+  const chain = req.query.chain;
+  const cfg = getChain(chain);
+  const endpoints = [...cfg.bundlers].sort((a, b) => a.priority - b.priority);
+  let lastErr: unknown;
+  for (const ep of endpoints) {
+    try {
+      const client = rpcClient(ep.url, ep.timeoutMs);
+      const r = (await client.request({
+        method: 'eth_getUserOperationReceipt',
+        params: [hash],
+      })) as any;
+      return res.json(apiResponse({ receipt: r ?? null }));
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw Object.assign(new Error(`receipt lookup failed: ${rpcErrorMessage(lastErr as any)}`), { statusCode: 502 });
+}));
+
+// POST /v1/estimate（UserOp gas 估算）
+app.post('/v1/estimate', asyncHandler(async (req: any, res: any) => {
+  const { chain, op } = req.body || {};
+  if (!op || !op.sender || !op.callData) {
+    return res.status(400).json(apiResponse(null, 'op.sender + op.callData required', 1001));
+  }
+  const cfg = getChain(chain);
+  const client = new BundlerClient(cfg);
+  try {
+    const gas = await client.estimateUserOperationGas(normalizeOp(op));
+    res.json(apiResponse({
+      callGasLimit: gas.callGasLimit?.toString(),
+      verificationGasLimit: gas.verificationGasLimit?.toString(),
+      preVerificationGas: gas.preVerificationGas?.toString(),
+    }));
+  } catch (e: any) {
+    if (isBundlerBusinessError(e)) {
+      return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
+    }
+    throw e;
+  }
+}));
+
+// ============================================================================
+// E-3a/b 用户钱包 session（owner=用户 EOA，agent=session key，链上 Kernel validator 强制）
+//   POST /v1/session           创建：生成 session key + 策略落库(product) + 返回 enableCallData
+//   GET  /v1/session           查询账户名下 session 列表
+//   POST /v1/session/disable   撤销：本地移除 + 返回 disableCallData（owner 签名上链后即时失效）
+//   POST /v1/session/validate  链下预检（与链上策略一致性，E-3b）
+// enable/disable 的链上生效由 owner EOA 签名 UserOp 后经 /v1/userops 完成（验收：链上验证）。
+// ============================================================================
+
+// POST /v1/session —— 创建
+app.post('/v1/session', asyncHandler(async (req: any, res: any) => {
+  const { chain, product = 'default', owner, permissions, validUntil, validAfter } = req.body || {};
+  if (!owner || !Array.isArray(permissions) || permissions.length === 0 || !validUntil) {
+    return res.status(400).json(apiResponse(null, 'owner + permissions + validUntil required', 1001));
+  }
+  const cfg = getChain(chain);
+  // ① 预测智能账户地址（counterfactual；owner EOA 无需签名，服务端无窗口 provider 不会触发）
+  const ownerSigner = new ExternalWalletSigner(
+    { request: () => { throw new Error('no provider on server'); } } as any,
+    owner as Address,
+  );
+  const account = await createKernelAccount({ owner: ownerSigner, chainConfig: cfg });
+  // ② 生成 session key（本地 secp256k1）+ 策略
+  const privateKey = generatePrivateKey();
+  const signer = privateKeyToAccount(privateKey).address;
+  const policy: SessionPolicy = {
+    network: 'evm',
+    sessionId: toHex(randomBytes(32)),
+    signer,
+    validAfter: BigInt(validAfter ?? 0),
+    validUntil: BigInt(validUntil),
+    permissions,
+  };
+  assertValidPolicy(policy);
+  // ③ 落库（product 维度隔离，E-3b 三维键）
+  await sessionStore.save(product, policy, account.address);
+  // ④ enable 编码（owner 组装 UserOp 签名后发 /v1/userops）
+  const enableCallData = encodeEnableSessionCall({ accountAddress: account.address, policy, chainConfig: cfg });
+  res.json(apiResponse({
+    product,
+    accountAddress: account.address,
+    isDeployed: account.isDeployed,
+    sessionId: policy.sessionId,
+    signer,
+    sessionKey: privateKey,
+    validAfter: policy.validAfter.toString(),
+    validUntil: policy.validUntil.toString(),
+    enableCallData,
+  }, 'session created'));
+}));
+
+// GET /v1/session —— 查询
+app.get('/v1/session', asyncHandler(async (req: any, res: any) => {
+  const account = req.query.account;
+  const product = req.query.product ?? 'default';
+  if (!account) return res.status(400).json(apiResponse(null, 'account required', 1001));
+  getChain(req.query.chain);
+  const policies = await sessionStore.list(product, account as Address, 'evm');
+  // BigInt 无法被 res.json 序列化 → 时间戳转字符串输出
+  res.json(apiResponse(policies.map((p) => ({
+    network: p.network,
+    sessionId: p.sessionId,
+    signer: p.signer,
+    validAfter: p.validAfter.toString(),
+    validUntil: p.validUntil.toString(),
+    permissions: p.permissions,
+  }))));
+}));
+
+// POST /v1/session/disable —— 撤销
+app.post('/v1/session/disable', asyncHandler(async (req: any, res: any) => {
+  const { chain, product = 'default', account, sessionId } = req.body || {};
+  if (!account || !sessionId) return res.status(400).json(apiResponse(null, 'account + sessionId required', 1001));
+  const cfg = getChain(chain);
+  const found = (await sessionStore.list(product, account as Address, 'evm')).some((p) => p.sessionId === sessionId);
+  await sessionStore.remove(product, sessionId, 'evm');
+  const disableCallData = encodeDisableSessionCall({ accountAddress: account as Address, sessionId, chainConfig: cfg });
+  res.json(apiResponse({
+    accountAddress: account,
+    sessionId,
+    found,
+    disableCallData,
+  }, 'session disabled'));
+}));
+
+// POST /v1/session/validate —— 链下预检（E-3b：与链上模块策略一致）
+app.post('/v1/session/validate', asyncHandler(async (req: any, res: any) => {
+  const { policy, call, nowSec } = req.body || {};
+  if (!policy || !call) return res.status(400).json(apiResponse(null, 'policy + call required', 1001));
+  const now = BigInt(nowSec ?? Math.floor(Date.now() / 1000));
+  const result = validateSessionCall(policy, call, now);
+  if (result.ok) return res.json(apiResponse({ ok: true }, 'allowed'));
+  res.json(apiResponse({ ok: false, reason: result.reason }, `denied: ${result.reason}`, 1001));
+}));
+
+// 统一 JSON 错误处理器
+app.use((err: any, _req: any, res: any, _next: any) => {
+  const status = typeof err?.statusCode === 'number' ? err.statusCode
+    : typeof err?.status === 'number' ? err.status
+    : 500;
+  const message = err?.message || 'Internal server error';
+  if (status >= 500) console.error('[aa-relay] Error:', err);
+  res.status(status).json(apiResponse(null, message, status >= 500 ? 1007 : 1001));
+});
+
+const PORT = parseInt(process.env.PORT || '9131', 10);
+app.listen(PORT, () => console.log(`aa-relay running on port ${PORT}`));

@@ -7,6 +7,12 @@ import { BundlerError, toAAError } from './errors.js';
 // 策略：主端点失败 → 依次切换备端点；业务错误（AA 码）直接抛出不重试。
 // 协议：JSON-RPC over HTTP（eth_sendUserOperation / eth_getUserOperationReceipt /
 //       eth_estimateUserOperationGas，ERC-4337 v0.7 非打包字段）。
+// ⚠️ 环境警示：OxaChain 上 Pimlico bundler（43.159.60.46:4338）协议为 v0.6
+//      （schema 要求 callGasLimit/maxFeePerGas 等 v0.6 字段，拒绝 v0.7 packed），
+//      与链上 v0.7 EntryPoint 不匹配：eth_sendUserOperation 一律 FailedOp(-32500)。
+//      该环境请改用 EntryPoint.handleOps 直接上链（见 packUserOpV7 +
+//      scripts/aa-session-e2e.ts）。若更换为 v0.7 bundler，则 userOpToRpc 需
+//      输出 PackedUserOperation（accountGasLimits/gasFees）。
 // 零硬编码：端点/EntryPoint 均来自 ChainAAConfig（env 注入）。
 // ============================================================================
 

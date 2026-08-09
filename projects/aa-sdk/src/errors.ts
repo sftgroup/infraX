@@ -57,7 +57,14 @@ export function extractAAErrorCode(e: unknown): string | null {
 export function toAAError(e: unknown): AAError {
   const code = extractAAErrorCode(e);
   const err = e instanceof Error ? e : new Error(String(e));
-  const aaErr = Object.assign(err, { code: code ?? 'UNKNOWN', cause: e }) as AAError;
+  // 不覆盖原始数字 JSON-RPC code（如 viem RpcError.code=-32500），不把 cause 指向自身
+  // （避免自引用循环丢失底层错误信息，供上层错误分类 BFS 展开）。
+  const raw = e as { code?: unknown; cause?: unknown };
+  const numericCode = typeof raw?.code === 'number' ? raw.code : 'UNKNOWN';
+  const aaErr = Object.assign(err, {
+    code: code ?? numericCode,
+    cause: raw?.cause ?? e,
+  }) as AAError;
   aaErr.isIdempotent = code === AAErrorCode.AlreadyReverted;
   // 无 AA 码 = 网络/RPC 层错误 → 可重试切端点；AA24（重签）、AA21/AA40（过期/超时）→ 可重试
   aaErr.retriable =

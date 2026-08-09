@@ -115,3 +115,41 @@ export async function signUserOp(
   const signature = await signer.signUserOp(hash);
   return { ...op, signature };
 }
+
+// --- v0.7 PackedUserOperation（EntryPoint.handleOps / v0.7 bundler RPC） -------
+
+/**
+ * v0.7 PackedUserOperation（9 字段，全 hex）：
+ *   accountGasLimits = verificationGasLimit(16B) + callGasLimit(16B)
+ *   gasFees          = maxPriorityFeePerGas(16B) + maxFeePerGas(16B)
+ *   initCode         = factory + factoryData（无部署则 '0x'）
+ *   paymasterAndData = paymaster + paymasterData（无 paymaster 则 '0x'）
+ * 用途：EntryPoint.handleOps 直接上链（绕过 bundler）、v0.7 bundler eth_sendUserOperation。
+ */
+export interface PackedUserOperationV7 {
+  sender: Address;
+  nonce: Hex;
+  initCode: Hex;
+  callData: Hex;
+  accountGasLimits: Hex;
+  preVerificationGas: Hex;
+  gasFees: Hex;
+  paymasterAndData: Hex;
+  signature: Hex;
+}
+
+export function packUserOpV7(op: UserOperationV7): PackedUserOperationV7 {
+  const verificationGasLimit = op.verificationGasLimit + (op.paymasterVerificationGasLimit ?? 0n);
+  const callGasLimit = op.callGasLimit + (op.paymasterPostOpGasLimit ?? 0n);
+  return {
+    sender: op.sender,
+    nonce: toHex(op.nonce),
+    initCode: op.factory && op.factoryData ? concatHex([op.factory, op.factoryData]) : '0x',
+    callData: op.callData,
+    accountGasLimits: concatHex([toHex(verificationGasLimit, { size: 16 }), toHex(callGasLimit, { size: 16 })]),
+    preVerificationGas: toHex(op.preVerificationGas),
+    gasFees: concatHex([toHex(op.maxPriorityFeePerGas, { size: 16 }), toHex(op.maxFeePerGas, { size: 16 })]),
+    paymasterAndData: op.paymaster ? concatHex([op.paymaster, op.paymasterData ?? '0x']) : '0x',
+    signature: op.signature,
+  };
+}
