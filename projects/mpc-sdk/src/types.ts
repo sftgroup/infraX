@@ -145,6 +145,145 @@ export interface MPCSessionStatusResult {
   remainingSeconds?: number;
 }
 
+// ─── 链上模块（E-5d，7 tools）───
+// 对齐 `projects/mpc/server.ts` 的 7 个链上端点。所有交易类数量参数均为字符串
+// （服务端契约 parseUnits/parseEther 自理，避免大整数 JSON 序列化问题）。
+
+/** 链上操作公共参数 */
+export interface MPCChainBaseParams {
+  /** 会话令牌（session.unlock 返回，绑定到具体子钱包） */
+  token: string;
+  /** 链名：sepolia / eth / bsc / base / oxa，默认 sepolia */
+  chain?: string;
+}
+
+/** GET /api/v2/mpc/balance */
+export interface MPCBalanceParams extends MPCChainBaseParams {
+  /** 可选：ERC20 合约地址；不传 = 仅查原生币余额 */
+  tokenAddress?: string;
+}
+
+export interface MPCBalanceTokenResult {
+  address: string;
+  symbol: string;
+  balance: string;
+  decimals: number;
+}
+
+export interface MPCBalanceResult {
+  address: string;
+  chain: string;
+  nativeBalance: string;
+  nativeSymbol: string;
+  /** 传入 tokenAddress 时存在；查询失败时为 { address, error } */
+  token?: MPCBalanceTokenResult | { address: string; error: string };
+}
+
+/** POST /api/v2/mpc/sign-message（EIP-191 personal_sign 语义） */
+export interface MPCSignMessageParams {
+  token: string;
+  /** 待签名原始消息文本 */
+  message: string;
+}
+
+/** 签名端点统一返回（sign-message / sign-typed-data） */
+export interface MPCSignResult {
+  /** 65 字节序列化签名（0x + r||s||v，ethers Signature.serialized） */
+  signature: string;
+  /** 签名钱包地址 */
+  address: string;
+}
+
+/** POST /api/v2/mpc/sign-typed-data（EIP-712） */
+export interface MPCSignTypedDataParams {
+  token: string;
+  /** EIP-712 domain（如 { name, version, chainId, verifyingContract }） */
+  domain: Record<string, any>;
+  /** EIP-712 types（如 { Person: [...], Mail: [...] }） */
+  types: Record<string, Array<{ name: string; type: string }>>;
+  /** 待签名消息值 */
+  value: Record<string, any>;
+}
+
+/** POST /api/v2/mpc/send-transaction */
+export interface MPCSendTransactionParams extends MPCChainBaseParams {
+  /** 收款地址 */
+  to: string;
+  /** 数量（字符串）：原生币 = 币种数量（如 '0.01'）；ERC20 = token 数量 */
+  amount: string;
+  /** 可选：ERC20 合约地址；不传 = 原生币转账 */
+  tokenAddress?: string;
+}
+
+export interface MPCSendTransactionResult {
+  txHash: string;
+  from: string;
+  to: string;
+  amount: string;
+  chain: string;
+  /** 'native' 或 ERC20 合约地址 */
+  token: string;
+  blockNumber?: number;
+  gasUsed?: string;
+}
+
+/** POST /api/v2/mpc/contract-read */
+export interface MPCContractReadParams extends MPCChainBaseParams {
+  contractAddress: string;
+  /** 合约 ABI（至少含所调方法；可传全量 ABI） */
+  abi: any[];
+  method: string;
+  /** 方法参数（bigint 需先转字符串，服务端契约透传） */
+  args?: any[];
+}
+
+export interface MPCContractReadResult {
+  contractAddress: string;
+  method: string;
+  /** 只读调用返回值（bigint 由服务端转字符串） */
+  result: any;
+}
+
+/** POST /api/v2/mpc/contract-write */
+export interface MPCContractWriteParams extends MPCChainBaseParams {
+  contractAddress: string;
+  abi: any[];
+  method: string;
+  args?: any[];
+  /** 可选：随交易发送的原生币数量（ETH 单位字符串） */
+  value?: string;
+  /** 可选：自定义 gas limit（字符串） */
+  gasLimit?: string;
+}
+
+export interface MPCContractWriteResult {
+  txHash: string;
+  from: string;
+  contractAddress: string;
+  method: string;
+  chain: string;
+  blockNumber?: number;
+  gasUsed?: string;
+}
+
+/** POST /api/v2/mpc/gas-estimate */
+export interface MPCGasEstimateParams extends MPCChainBaseParams {
+  /** 可选：目标地址（缺省 = 部署/估算场景） */
+  to?: string;
+  /** 可选：随交易发送的原生币数量（字符串） */
+  value?: string;
+  /** 可选：calldata（0x 前缀 hex） */
+  data?: string;
+}
+
+export interface MPCGasEstimateResult {
+  chain: string;
+  gasLimit: string;
+  gasPrice: string;
+  estimatedCost: string;
+  estimatedCostWei: string;
+}
+
 // ─── 客户端配置 ───
 
 export interface MpcClientConfig {

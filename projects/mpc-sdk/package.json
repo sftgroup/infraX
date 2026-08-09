@@ -1,7 +1,7 @@
 {
   "name": "@0xinfrax/mpc-sdk",
-  "version": "0.2.0",
-  "description": "InfraX MPC SDK — lightweight independent client for the MPC wallet microservice (email-based key-shard wallets). Wallet module (sendCode/register/recover/status/listWallets/createWallet) + Session module (unlock/lock/status). E-4④: single email → 1:N sub-wallets with walletId dimension. No dependency on infrax-dk.",
+  "version": "0.3.0",
+  "description": "InfraX MPC SDK — lightweight independent client for the MPC wallet microservice (email-based key-shard wallets). Wallet module (sendCode/register/recover/status/listWallets/createWallet) + Session module (unlock/lock/status) + Chain module (balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate, E-5d). E-4④: single email → 1:N sub-wallets with walletId dimension. No dependency on infrax-dk.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -19,8 +19,10 @@
     "mpc",
     "wallet",
     "session",
+    "chain",
     "key-shard",
-    "email-recovery"
+    "email-recovery",
+    "tss"
   ],
   "license": "MIT",
   "author": "InfraX",

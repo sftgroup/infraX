@@ -3,7 +3,7 @@
 InfraX MPC 独立轻量 SDK —— 面向 MPC 微服务（邮箱分片托管钱包）的零依赖 TypeScript 客户端。
 不依赖整包 `infrax-dk`，版本独立演进（MQ-10 补充 E-5）。
 
-**当前覆盖两个模块（9 方法，E-4④ 起支持单邮箱 1:N 多子钱包）**：
+**当前覆盖三个模块（16 方法，E-4④ 起支持单邮箱 1:N 多子钱包；链上模块 E-5d 接 TSS 分片签名）**：
 
 | 模块 | 方法 | 端点 |
 |---|---|---|
@@ -16,10 +16,17 @@ InfraX MPC 独立轻量 SDK —— 面向 MPC 微服务（邮箱分片托管钱�
 | 会话 | `session.unlock` | `POST /api/v2/mpc/session/unlock`（`walletId` 可指定子钱包） |
 | 会话 | `session.lock` | `POST /api/v2/mpc/session/lock` |
 | 会话 | `session.status` | `GET /api/v2/mpc/session/status` |
+| 链上 | `chain.balance` | `POST /api/v2/mpc/balance`（原生币 + 可选 ERC20） |
+| 链上 | `chain.signMessage` | `POST /api/v2/mpc/sign-message`（EIP-191，TSS 分片签名） |
+| 链上 | `chain.signTypedData` | `POST /api/v2/mpc/sign-typed-data`（EIP-712，TSS 分片签名） |
+| 链上 | `chain.sendTransaction` | `POST /api/v2/mpc/send-transaction`（原生币 / ERC20 transfer） |
+| 链上 | `chain.contractRead` | `POST /api/v2/mpc/contract-read`（只读 eth_call） |
+| 链上 | `chain.contractWrite` | `POST /api/v2/mpc/contract-write`（staticCall 模拟 + TSS 签名广播） |
+| 链上 | `chain.gasEstimate` | `POST /api/v2/mpc/gas-estimate` |
 
 > **E-4④ 单邮箱 1:N**：一个邮箱可派生多个 Agent 子钱包（如 50 子钱包并发模型）。`register` 每次创建新钱包返回 `walletId`；`recover` / `status` / `session.unlock` 带 `walletId` 精确命中子钱包，缺省作用于同邮箱首个（向后兼容）。token 一经解锁即绑定到该子钱包，后续链上操作无需再带 `walletId`。
 
-链上模块（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，7 方法）为 MQ-10 补充 E-5d，后续版本补充。
+> **E-5d 链上模块（TSS 就绪）**：服务端四签名/交易端点已迁移 cggmp24 TSS 2-of-2 分片签名（服务端仅持分片、不再重建完整私钥，见 `docs/TSS_EVALUATION.md`）；SDK 侧为纯 HTTP 封装——签名端点返回 65B 序列化签名（`0x + r||s||v`），交易端点返回 `txHash`；交易类数量参数统一用字符串（服务端 parseUnits/parseEther 自理）。
 
 ## 安装
 
@@ -54,10 +61,22 @@ const token = s.data.token;
 const st = await mpc.session.status({ token });
 console.log(st.data.unlocked, st.data.remainingSeconds);
 
-// 5. 锁定会话
+// 5. 链上操作（E-5d，token 即凭证）
+const bal = await mpc.chain.balance({ token, chain: 'sepolia' });
+console.log(bal.data.nativeBalance, bal.data.nativeSymbol);
+
+const sig = await mpc.chain.signMessage({ token, message: 'hello' });
+console.log(sig.data.signature, sig.data.address);
+
+const tx = await mpc.chain.sendTransaction({
+  token, to: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', amount: '0.01', chain: 'sepolia',
+});
+console.log(tx.data.txHash);
+
+// 6. 锁定会话
 await mpc.session.lock(token);
 
-// 6. 邮箱恢复（封装「验证码 → 分片重建 → 地址校验」完整流程）
+// 7. 邮箱恢复（封装「验证码 → 分片重建 → 地址校验」完整流程）
 const recovered = await mpc.wallet.recover({
   email: 'agent@example.com',
   code: '654321',
