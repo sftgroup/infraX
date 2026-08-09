@@ -861,6 +861,31 @@ app.post('/api/v2/mpc/sign-typed-data', asyncHandler(async (req: any, res: any) 
   res.json(apiResponse({ signature, address: session.address }, 'Typed data signed'));
 }));
 
+// ─── Sign Digest (raw 32B，E-1d：aa-sdk MpcSigner 对 userOpHash/EIP-712 摘要直接签名) ───
+// 与 sign-message 不同：不二次哈希。digest 必须是调用方已算好的 32 字节摘要
+// （如 ERC-4337 userOpHash、EIP-712 摘要），TSS 底层 IdentityDigest 直接作为 z 签名。
+app.post('/api/v2/mpc/sign-digest', asyncHandler(async (req: any, res: any) => {
+  const { token, digest } = req.body;
+  if (!token || !digest) return res.status(400).json(apiResponse(null, 'token + digest required', 1001));
+  const normalized = String(digest).replace(/^0x/, '');
+  if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
+    return res.status(400).json(apiResponse(null, 'digest must be 32-byte hex', 1001));
+  }
+  const session = await getSession(token);
+  let signature: string;
+  if (session.shard1) {
+    // M3 TSS 路径：raw 摘要直接交 TSS 2-of-2 签名
+    const rs = await tssSign(session.shard1, session.address, digest);
+    const sig = await ethersSignatureFromRs(rs, digest, session.address);
+    signature = sig.serialized;
+  } else {
+    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(normalized);
+    signature = ethers.Signature.from(sig).serialized;
+  }
+  await auditLog(token, 'sign_digest', { digest: digest.slice(0, 34) });
+  res.json(apiResponse({ signature, address: session.address }, 'Digest signed'));
+}));
+
 // ─── Send Transaction ───
 app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any) => {
   const { token, to, amount, chain: chainParam, tokenAddress } = req.body;
