@@ -1083,13 +1083,13 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **P-2 发布与文档**：npm 已发布（latest=0.1.0，39 文件 dist + db/migrations 5 SQL）；解耦验证 19 断言全绿（`scripts/local-payments/run-decouple.sh`）；HANDOVER/MIGRATION/README/DEPLOY 齐备
 - [x] **P-3 一致性核对（2026-08-10）**：与 Agentx `payments/` 源码 diff 仅包名头注释差异（`@agentxv2/payments`→`@0xinfrax/payments`），内容完全一致
 
-**AgentX 侧 R17 发布流程（A-E ✅ 完成，F ⏳，2026-08-10）**：
+**AgentX 侧 R17 发布流程（A-E + F1 ✅ 完成，F2 ⏳，2026-08-10）**：
 - [x] **R17-A 前置确认**：A1 infraX 集成完成打勾（Agentx PROGRESS.md R17 表）｜A2 本地 main 最新且干净｜A3 `npm view @0xinfrax/payments version` → 0.1.0
 - [x] **R17-B sdk 验证+发布**：B1 `npm run build && npm run typecheck && npm test` 全绿（Agentx/sdk）｜B2 `dist/` 无 `@agentxv2/payments` 残留｜B3 bump 0.11.0（commit+tag）｜B4 `npm publish --registry=https://registry.npmjs.org/`｜B5 `npm view @agentxv2/sdk@0.11.0 dependencies` 含 `@0xinfrax/payments`——✅ sdk@0.11.0 已发布（commit `3435a01` + tag `v0.11.0`）
 - [x] **R17-C gateway 升级**：C1 `npm install @agentxv2/sdk@^0.11.0 --registry=https://registry.npmjs.org/`｜C2 `package-lock.json` 无 `@agentxv2/payments`/`../payments` 残留｜C3 gateway build+typecheck+test 全绿——✅ lock 残留 0、46/46 全绿
 - [x] **R17-D 旧包+文档**：D1 `npm deprecate @agentxv2/payments "已迁移至 @0xinfrax/payments"`｜D2 sdk CHANGELOG 0.11.0 条目（依赖切换 / `PAYMENT_VERSION`→0.1.0 / 升级提示）｜D3 Agentx PROGRESS.md R17 打勾 + 迁移方案文档 §三/§四标记完成｜D4 commit + push——✅ 4 版本全部 deprecate；commit `47d3d72` + tag `v0.11.0` 已推送 origin/main
 - [x] **R17-E 生产升级（2026-08-10）**：E1 生产机（43.159.60.46）`git pull` 至 `2e2aaa8` + gateway `npm install --registry=https://registry.npmjs.org/`（sdk=0.11.0 / @0xinfrax/payments=0.1.0，旧包移除）｜E2 rebuild + pm2 restart + 冒烟：`/api/v1/payments/info`（统一引擎 payload，fiat/x402 按配置 disabled）、`/access`（active:false）正常；x402/fiat 轨道 disabled 待 R4/R5 凭据，无法各验一笔——✅ 三服务 online，文档已提交推送 `8b3970f`
-- [ ] **R17-F 通知收尾**：F1 应用方通知（升级 `@agentxv2/sdk` 至 0.11.x，业务零改动）｜F2 与 infraX 约 `@0xinfrax/payments@0.1.1` 走一遍完整跟随 check-list
+- [x] **R17-F 通知收尾（F1 ✅，F2 ⏳）**：F1 应用方通知——文案见 Agentx `payments-infrax-migration.md` §五，应用方盘点：aiservicer（^0.9.1，不受影响、升级为推荐项）、autoops/pocketx-wallet（无 sdk 依赖）｜F2 与 infraX 约 `@0xinfrax/payments@0.1.1` 走一遍完整跟随 check-list——⏳ 需 infraX 发布 0.1.1
 - [ ] **R17-后置（P3，待评估）payment 微服务生产独立部署**：当前形态=嵌入式服务（AgentX 为参考实现，`gateway/src/services/payments.ts`）；infraX 侧是否独立部署 payment 服务实例（与 waas :9109 / mpc :9104 平级，端口待定）待评估——若部署则对齐统一鉴权 / chain-rpc 网关（链上能力） / 观测体系
 
 > 回滚预案：依赖回滚 `npm install @agentxv2/sdk@0.10.3` / `@agentxv2/payments@^0.2.2`（官方 registry）；代码回滚 `git revert 323d3c9`（旧包未删，双保险）。
