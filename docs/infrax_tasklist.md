@@ -1050,19 +1050,16 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
   - [ ] **E-1b 多链扩展（智能账户合约：BSC/ETH/BASE/ARBITRUM/OP）**：`projects/aa-sdk/src/config.ts` `CHAIN_ALIASES` 已含别名（L13-24）；**chain-rpc 网关/rawdata 已支持 5 链（OxaChain/ETH/BSC/BASE/SOL + sepolia 测试网，2026-08-08 确认，见 T-2 与 rpc-pool.json）**，但 **aa-sdk 智能账户合约生产仅 OxaChain 部署** → 按 `AA_{CHAIN}_*` env 逐链部署 EntryPoint/Kernel v3.1/KernelFactory/ECDSA Validator/P0.12 Session 模块（含 TokenLimit），验证方法同 `scripts/chain-smoke.mjs`；注意各链 Bundler（Alto 自建或 Pimlico）与 Paymaster 可用性；验收：`activateSmartAccount` + `enableSession` + UserOp 在 ≥3 条新链链上实测通过
   - [ ] **E-1c aa-relay 实现（UserOp 转发/apikey 代理，P0.5）**：当前仅设计引用（INFRAX_HANDOVER L180/L270 ⏳；AA_SDK_TECH_DESIGN L51/L63/L71）→ 实现独立进程：接收 SDK `sendUserOperation` 请求 → 校验调用方 apikey（复用 data `/api-keys/verify`）→ 转发 Bundler（多端点容灾）→ 轮询收据回传；生产 systemd unit（仿 rpc-index，入站 `inboundAuth` 复用 `MCP_API_KEY` 白名单）；验收：无 key 401、有 key UserOp 成功上链并返回 txHash
   - [ ] **E-1d 主线收编与文档**：MPC 接入 `resolveSigner('mpc')`（aa-sdk `signers/mpc.ts` 已定义但工厂抛错，INFRAX_HANDOVER L141）；Session Key 保留为链下服务端代签通道（`SessionKeySigner` 已对接 Engine `execute`）；`AA_SDK_TECH_DESIGN.md` 标注三缺口完成状态；主 README/PROGRESS 收录 aa-sdk；决策依据见 MQ-10 补充 E
-- [ ] **MQ-10 补充 E-2（🔲 2026-08-08 排期）MPC 邮箱恢复 + 分片加密升级（场景一：Agent 托管钱包，P0）**：MPC=用户不能直接控制的托管钱包（agent 全权），核心诉求=**可用性**（用户无法备份私钥/助记词 → 邮箱恢复）。现状单 EOA + AES 加密（PBKDF2(email+secret)）无可恢复语义、`shard_count` 恒 1/1。方案（推荐 B，演进 A）：
-  - [ ] **E-2a 私钥分片加密（SSS 2-of-2）**：私钥 Shamir 拆 2 片——片1 服务端 AES 加密存储（沿用 `MPC_ENCRYPTION_SECRET`），片2 由邮箱验证码派生密钥（RecoveryKey）加密存 DB；恢复=邮箱验证 → 取片2 → 与片1 合并重建私钥（内存短暂）；`shard_count=2/total_shards=2` 落地为真实字段（现恒 1/1）；验证：register 后 DB 仅存两片、任一单片无法还原私钥、recover 邮箱流程重建成功
-  - [ ] **E-2b 邮箱恢复打通（真实发信）**：验证码下发从 `console.log` 升级为**真实 SMTP 发信**（方案已定，2026-08-08 用户选型 SMTP，**凭证待提供后实施**）：
-    - 依赖：`nodemailer`（发信事实标准，仅 server 侧依赖，SDK 不受影响）
-    - 配置：`.env`/unit 注入 `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM`（如 `noreply@infrax.ai`）/ `MAIL_FROM_NAME`
-    - 回退：**SMTP 未配置 → 保持 `console.log` 下发**（向后兼容，生产 E2E 走 journal 取码路径不变；配置后自动切真实发信）
-    - 验证码落库：现 in-memory Map（重启丢失）→ 落 `mpc_verification_codes` 表（email/code_hash/expires_at/attempts，存哈希不存明文），恢复流程跨重启稳健
-    - 恢复端点 `recover` 复用验证码 → 触发片2 重解密 → 私钥合并重建（联动 E-2a）
-    - 验收：端到端恢复流程（真实邮箱收码 → 恢复 → 地址一致）；发信失败回退日志且不阻断 API
-    - 凭证待用户提供：SMTP_HOST/PORT/USER/PASS + MAIL_FROM
-  - [ ] **E-2c Agent 授权控制补强（对齐 OKX risk pre-check）**：额度拆分原生币/ERC20 分设限额（现状仅原生 0.1 ETH、ERC20 不限额）；交易前白名单合约预检 + 高风险操作（transfer/approve 白名单地址校验）；保留 `staticCall` 预检 + `mpc_agent_logs` 审计；验证：ERC20 超额拒绝、非白名单合约拒绝、白名单正常放行
-  - [ ] **E-2d 会话安全增强**：session 由纯内存 Map → 落库（`mpc_sessions` 表，重启不失效）+ `SESSION_TTL_MS` 可配；`contract-read/gas-estimate` 补 session 校验（现状 token 解构未使用）；验证：重启后 session 有效、无 token 的写操作 401
-  - [ ] **E-2e（可选，P3）真 TSS/MPC 分片签名（方案 A）**：引入 MPC/TSS 协议（如 zenroom/mpc-sdk），签名全程无完整私钥重建（服务端片 + 邮箱片共同完成阈值签名）；工作量大、作为 P3 排期；验收：TSS 签名可验证且任一片泄露无法签名
+- [x] **MQ-10 补充 E-2（✅ 2026-08-08 完成，生产回归 25/25 全绿）MPC 邮箱恢复 + 分片加密升级（场景一：Agent 托管钱包，P0）**：MPC=用户不能直接控制的托管钱包（agent 全权），核心诉求=**可用性**（用户无法备份私钥/助记词 → 邮箱恢复）。现状单 EOA + AES 加密（PBKDF2(email+secret)）无可恢复语义、`shard_count` 恒 1/1。方案（推荐 B，演进 A）：
+  - [x] **E-2a 私钥分片加密（SSS 2-of-2）**：私钥 Shamir 拆 2 片——片1 服务端 AES 加密存储（沿用 `MPC_ENCRYPTION_SECRET`），片2 由 RecoveryKey（email+secret+recovery 上下文，加密串自带 salt）加密存 DB；恢复=邮箱验证 → 取片2 → 与片1 合并重建私钥（内存短暂）；`shard_count=2/total_shards=2` 真实字段；✅ 验证（生产 E2E）：register 后 DB 仅存双片 AES-GCM 密文（salt:iv:tag:ct）、recover 邮箱流程地址一致
+  - [x] **E-2b 邮箱恢复打通（真实发信）**：验证码下发 `console.log` → **真实 SMTP 发信**（nodemailer，`SMTP_HOST/PORT/USER/PASS/MAIL_FROM/MAIL_FROM_NAME`）：
+    - ✅ 依赖与实现：`nodemailer`（仅 server 侧依赖）；`getMailer` 未配置 → `console.log` 回退（向后兼容，生产 E2E 走 journal 取码路径不变）；发信失败回退日志不阻断 API
+    - ✅ 验证码落库：`mpc_verification_codes` 表（email/code_hash/expires_at/attempts，**存 HMAC 哈希不存明文**、5min 过期、5 次尝试上限），恢复流程跨重启稳健
+    - ✅ 恢复端点 `recover` 复用验证码 → 片2 重解密 → 私钥合并重建（联动 E-2a），生产 E2E 地址一致
+    - ⚠️ **真实发信待 SMTP 凭证**：凭证（SMTP_HOST/PORT/USER/PASS + MAIL_FROM）用户提供后注入 unit env 即自动切真实发信（实现已就绪，回退日志当前生效）
+  - [x] **E-2c Agent 授权控制补强（对齐 OKX risk pre-check）**：✅ 额度拆分原生币/ERC20 分设限额（`MPC_AGENT_TX_LIMIT_ETH` 默认 0.1 / `MPC_AGENT_ERC20_LIMIT` 默认 1000）；✅ 交易前白名单预检（`MPC_TRANSFER_WHITELIST` 收款地址 / `MPC_CONTRACT_WHITELIST` 合约 / `MPC_APPROVE_WHITELIST` spender，配置为空=不限制向后兼容）；✅ 保留 `staticCall` 预检 + `mpc_agent_logs` 审计；✅ 验证（生产 E2E）：原生币超额拒绝 400、ERC20 超额拒绝 400、限额内放行通过预检
+  - [x] **E-2d 会话安全增强**：✅ session 由纯内存 Map → 落库（`mpc_sessions` 表，token **哈希存储**，重启后经 token_hash 定位 + 双片重建 wallet 写回内存，重启不失效）；✅ `SESSION_TTL_MS` 可配（env `MPC_SESSION_TTL_MS`，默认 30min）；✅ `contract-read/gas-estimate` 补 session 校验（无 token 400、无效/过期 401，生产 E2E 验证）；✅ 验证：lock 后内存+DB 双删、生产 E2E 通过
+  - [ ] **E-2e（可选，P3）真 TSS/MPC 分片签名（方案 A）**：引入 MPC/TSS 协议（如 zenroom/mpc-sdk），签名全程无完整私钥重建（服务端片 + 邮箱片共同完成阈值签名）；工作量大、作为 P3 排期（=E-4①）；验收：TSS 签名可验证且任一片泄露无法签名
 - [x] **MQ-10 补充 E-3（✅ 2026-08-08 完成）Session 切换 Kernel v3 链上共享控制（场景二：用户钱包授权，P2）**：Session=用户可直接控制但自愿共享控制权（授权）。现状 Session Key Engine 为**链下声明式**（`from`=服务端独立 EOA、链上不可验证、单链）不满足语义 → **切换为 Kernel v3 链上 session validator**（aa-sdk 已实现链上强制）：
   - [x] **E-3a 用户钱包 session API 新建**：owner=用户 EOA（MetaMask 等，`ExternalWalletSigner` 已实现 EIP-1193），agent=session key；创建 = 用户签名 `enableSession` UserOp → `installModule(VALIDATOR, sessionModule, enableData)`（aa-sdk `session.ts`，ENABLE-mode 一次 UserOp 完成安装+授权，`buildEnableSessionUserOp`/`signEnableUserOp`）；撤销 = `uninstallModule`（用户即时收回控制权）；✅ 验收（2026-08-08 链上验证）：`aa-relay/scripts/aa-session-e2e.ts` E2E **12/12 全绿**——owner 签名 ENABLE-mode enableSession 上链（handleOps 直接交易，绕过 bundler FailedOp 前置检查）→ agent 用 session key 经 validator nonce 路由调用成功 → owner disable（root-mode uninstallModule）→ agent 再调用被链上 revert
   - [x] **E-3b 权限策略下发**：策略复用 aa-sdk `SessionPolicy`（targets 白名单/selectors/valueLimit/dailyLimit/countLimit/tokenLimits/allowAnyTransfer）+ 链下预检 `validateSessionCall`；✅ 验收：策略在链上模块生效且链下预检一致（E2E 第⑤步 validateSessionCall allowed）；⚠️ 遗留：多租户 `(product, network, sessionId)` 键落到代码（现 `network:sessionId` 两维，SessionStore/InMemorySessionStore），待 E-3 系列后续按需扩展

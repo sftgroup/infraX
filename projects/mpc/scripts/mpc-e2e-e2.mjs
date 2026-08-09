@@ -110,6 +110,14 @@ if (code) {
       const sm = await api('POST', '/api/v2/mpc/sign-message', { token, message: 'E2E-E2-sign' });
       check('sign-message 200', sm.status === 200 && /^0x/.test(sm.json?.data?.signature), JSON.stringify(sm.json));
 
+      // 6a. E-2d：contract-read / gas-estimate 补 session 校验（无 token 拒绝、有效 token 放行）
+      const crNoTok = await api('POST', '/api/v2/mpc/contract-read', { contractAddress: '0x0000000000000000000000000000000000000001', abi: '[]', method: 'x' });
+      check('contract-read 无 token 拒绝 400', crNoTok.status === 400, `status=${crNoTok.status}`);
+      const geNoTok = await api('POST', '/api/v2/mpc/gas-estimate', { to: '0x0000000000000000000000000000000000000001', value: '0.00001', chain: 'sepolia' });
+      check('gas-estimate 无 token 拒绝 400', geNoTok.status === 400, `status=${geNoTok.status}`);
+      const geOk = await api('POST', '/api/v2/mpc/gas-estimate', { token, to: '0x0000000000000000000000000000000000000001', value: '0.00001', chain: 'sepolia' });
+      check('gas-estimate 有效 token 放行 200', geOk.status === 200 && geOk.json?.data?.gasLimit, `status=${geOk.status} ${geOk.json?.message || ''}`);
+
       // 7. E-2c 原生币超额拒绝（0.5 > 0.1 限额，无需 gas）
       const tx1 = await api('POST', '/api/v2/mpc/send-transaction', { token, to: '0x0000000000000000000000000000000000000001', amount: '0.5', chain: 'sepolia' });
       check('原生币超额拒绝 400', tx1.status === 400 && /exceeds agent limit/.test(tx1.json?.message || ''), JSON.stringify(tx1.json));

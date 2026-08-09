@@ -254,7 +254,8 @@ const AGENT_ERC20_LIMIT = process.env.MPC_AGENT_ERC20_LIMIT || '1000';
 const CONTRACT_WHITELIST = (process.env.MPC_CONTRACT_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
 const APPROVE_WHITELIST = (process.env.MPC_APPROVE_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
 const TRANSFER_WHITELIST = (process.env.MPC_TRANSFER_WHITELIST || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-const SESSION_TTL_MS = 30 * 60_000;
+// E-2d：会话有效期可配（默认 30min）
+const SESSION_TTL_MS = parseInt(process.env.MPC_SESSION_TTL_MS || String(30 * 60_000), 10);
 
 const sessions = new Map<string, {
   wallet: ethers.Wallet;
@@ -764,6 +765,8 @@ app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any)
 app.post('/api/v2/mpc/contract-read', asyncHandler(async (req: any, res: any) => {
   const { token, contractAddress, abi, method, args, chain: chainParam } = req.body;
   if (!contractAddress || !abi || !method) return res.status(400).json(apiResponse(null, 'contractAddress + abi + method required', 1001));
+  if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
+  await getSessionSigner(token); // E-2d：补 session 校验（无效/过期 401）
   const chain = chainParam || 'sepolia';
   const provider = getProvider(chain);
   const contract = new ethers.Contract(contractAddress, abi, provider);
@@ -823,7 +826,9 @@ app.post('/api/v2/mpc/contract-write', asyncHandler(async (req: any, res: any) =
 
 // ─── Gas Estimate ───
 app.post('/api/v2/mpc/gas-estimate', asyncHandler(async (req: any, res: any) => {
-  const { to, value, data, chain: chainParam } = req.body;
+  const { token, to, value, data, chain: chainParam } = req.body;
+  if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
+  await getSessionSigner(token); // E-2d：补 session 校验（无效/过期 401）
   const chain = chainParam || 'sepolia';
   const provider = getProvider(chain);
 
