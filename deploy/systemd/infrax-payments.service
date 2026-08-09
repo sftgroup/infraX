@@ -1,0 +1,37 @@
+[Unit]
+Description=InfraX infrax-payments (generic payment gateway, @0xinfrax/payments standalone)
+After=network.target postgresql.service infrax-chain-rpc.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/payments
+Environment="PORT=9132"
+Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_payments"
+# 统一平台鉴权（bridge key；外部 key 走 data 校验）
+Environment="PAYMENTS_API_KEY=CHANGE_ME_PAYMENTS_API_KEY"
+Environment="DATA_URL=http://127.0.0.1:9112"
+Environment="DATA_API_KEY=CHANGE_ME_DATA_API_KEY"
+# 链配置：rpcUrl 可直连或指向 chain-rpc 网关（配 CHAIN_RPC_READ_KEY 则自动带 X-Service-Key）
+Environment="CHAIN_OXACHAIN_RPC_URL=CHANGE_ME_OXACHAIN_RPC_URL"
+Environment="CHAIN_OXACHAIN_CHAIN_ID=19505"
+Environment="CHAIN_OXACHAIN_SUBSCRIPTION_MANAGER=CHANGE_ME_OXACHAIN_SUBSCRIPTION_MANAGER"
+Environment="CHAIN_RPC_READ_KEY=CHANGE_ME_CHAIN_RPC_READ_KEY"
+# 收款轨道（按需启用）
+Environment="STRIPE_SECRET_KEY="
+Environment="STRIPE_WEBHOOK_SECRET="
+Environment="X402_ENABLED=false"
+Environment="X402_PAY_TO="
+Environment="X402_PRICE_WEI="
+Environment="X402_CHAIN=oxachain"
+Environment="MPP_ENABLED=false"
+# 事件出站转发（业务方回调端点，可选）
+Environment="WEBHOOK_FORWARD_URL="
+Environment="WEBHOOK_FORWARD_SECRET="
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/home/ubuntu/infraX-1/projects/payments/node_modules/.bin:$PATH"
+ExecStart=/home/ubuntu/infraX-1/projects/payments/node_modules/.bin/tsx server.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,13 @@ export interface ChainInfo {
   chainId: number
   subscriptionManager: string
   identityRegistry?: string
+  /**
+   * Optional per-request headers for the RPC transport. Standalone deployments
+   * route reads through the chain-rpc gateway (DC-10) and pass the gateway's
+   * service key here, e.g. `{ 'X-Service-Key': CHAIN_RPC_READ_KEY }`.
+   * Direct-RPC hosts (embedded / decouple tests) simply omit it.
+   */
+  rpcHeaders?: Record<string, string>
 }
 
 export type ChainConfig = Record<ChainKey, ChainInfo>
@@ -83,7 +90,10 @@ export class ChainAdapter {
   getPublicClient(chain: ChainKey): PublicClient {
     if (!this.clients[chain]) {
       const info = this.resolve(chain)
-      this.clients[chain] = createPublicClient({ transport: http(info.rpcUrl) }) as unknown as PublicClient
+      const transport = info.rpcHeaders
+        ? http(info.rpcUrl, { fetchOptions: { headers: info.rpcHeaders } })
+        : http(info.rpcUrl)
+      this.clients[chain] = createPublicClient({ transport }) as unknown as PublicClient
     }
     return this.clients[chain]!
   }
