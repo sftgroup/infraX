@@ -68,7 +68,7 @@ function buildChains(): Record<string, { rpcUrl: string; chainId: number; subscr
         rpcUrl,
         chainId,
         subscriptionManager,
-        rpcHeaders: gwKey ? { 'X-Service-Key': gwKey } : undefined,
+        rpcHeaders: gwKey ? { 'X-Service-Key': gwKey, 'X-Json-Rpc': 'raw' } : undefined,
       }
     }
   }

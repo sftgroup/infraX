@@ -6,6 +6,11 @@
  *
  * 读与广播使用**独立 router**：index.ts 将 /v1/rpc 挂读鉴权、/v1/broadcast 挂
  * 广播鉴权，保证读 key 永远无法触达广播端点。
+ *
+ * 响应格式（默认）：统一信封 {code, message, data:{chain, method, result}}，供
+ * 手写客户端（waas/dc/mcp-server/sdk）解包。请求头 `X-Json-Rpc: raw` 时切换为
+ * **标准 JSON-RPC 透传**（{jsonrpc, id, result|error}，batch 同理），使 viem /
+ * ethers 等标准客户端可直连网关消费（P3-7 payments 独立服务即走此模式）。
  */
 import { Router } from 'express';
 import { config } from '../config';
@@ -19,10 +24,16 @@ export function createRpcRouter(pool: RpcPoolManager): Router {
   const router = Router();
 
   router.post('/:chain', async (req, res) => {
+    // X-Json-Rpc: raw → 标准 JSON-RPC 透传（viem/ethers 直连消费）
+    const raw = (req.headers['x-json-rpc'] || '').toString().toLowerCase() === 'raw';
     try {
       const norm = normalizeChain(req.params.chain);
       if (!norm) {
-        res.status(400).json({ detail: `unsupported chain: ${req.params.chain}` });
+        if (raw) {
+          res.status(400).json({ jsonrpc: '2.0', id: (req.body && req.body.id) ?? null, error: { code: -32602, message: `unsupported chain: ${req.params.chain}` } });
+        } else {
+          res.status(400).json({ detail: `unsupported chain: ${req.params.chain}` });
+        }
         return;
       }
       const body = req.body;
@@ -30,11 +41,11 @@ export function createRpcRouter(pool: RpcPoolManager): Router {
       // DC-6: JSON-RPC batch（数组请求）——单次 HTTP 完成多条读，降低高频读的请求数
       if (Array.isArray(body)) {
         if (body.length === 0) {
-          res.status(400).json({ detail: 'empty batch' });
+          res.status(400).json(raw ? { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'empty batch' } } : { detail: 'empty batch' });
           return;
         }
         if (body.length > MAX_BATCH_SIZE) {
-          res.status(400).json({ detail: `batch size exceeds ${MAX_BATCH_SIZE}` });
+          res.status(400).json(raw ? { jsonrpc: '2.0', id: null, error: { code: -32600, message: `batch size exceeds ${MAX_BATCH_SIZE}` } } : { detail: `batch size exceeds ${MAX_BATCH_SIZE}` });
           return;
         }
         const results = [];
@@ -44,23 +55,25 @@ export function createRpcRouter(pool: RpcPoolManager): Router {
           const chunk = body.slice(i, i + BATCH_CONCURRENCY);
           results.push(...(await Promise.all(chunk.map((item) => handleBatchItem(pool, norm, item)))));
         }
-        res.json({ code: 0, message: 'ok', data: { chain: norm, batch: true, count: results.length, results } });
+        res.json(raw
+          ? results.map((r) => ({ jsonrpc: '2.0', ...r }))
+          : { code: 0, message: 'ok', data: { chain: norm, batch: true, count: results.length, results } });
         return;
       }
 
       const { method, params } = body || {};
       if (!method || typeof method !== 'string') {
-        res.status(400).json({ detail: 'method is required' });
+        res.status(400).json(raw ? { jsonrpc: '2.0', id: (body && body.id) ?? null, error: { code: -32600, message: 'method is required' } } : { detail: 'method is required' });
         return;
       }
       if (!isReadMethod(norm, method)) {
-        res.status(403).json({ detail: `method ${method} is not allowed on read endpoint` });
+        res.status(403).json(raw ? { jsonrpc: '2.0', id: body.id ?? null, error: { code: -32601, message: `method ${method} is not allowed on read endpoint` } } : { detail: `method ${method} is not allowed on read endpoint` });
         return;
       }
       const result = await pool.call(norm, method, Array.isArray(params) ? params : []);
-      res.json({ code: 0, message: 'ok', data: { chain: norm, method, result } });
+      res.json(raw ? { jsonrpc: '2.0', id: body.id ?? null, result } : { code: 0, message: 'ok', data: { chain: norm, method, result } });
     } catch (err: any) {
-      handleError(res, err, 'rpc');
+      handleError(res, err, 'rpc', raw, (req.body && req.body.id) ?? null);
     }
   });
 
@@ -104,13 +117,21 @@ export function createBroadcastRouter(pool: RpcPoolManager): Router {
   return router;
 }
 
-function handleError(res: any, err: any, tag: string): void {
+function handleError(res: any, err: any, tag: string, raw = false, id: unknown = null): void {
   if (err instanceof ChainRpcError) {
-    res.status(err.status).json({ detail: err.message, code: err.code });
+    if (raw) {
+      res.status(err.status).json({ jsonrpc: '2.0', id, error: { code: err.code, message: err.message } });
+    } else {
+      res.status(err.status).json({ detail: err.message, code: err.code });
+    }
     return;
   }
   logger.warn(`[chain-rpc] ${tag} error: ${err?.message || err}`);
-  res.status(502).json({ detail: 'upstream rpc error', code: 'upstream_error' });
+  if (raw) {
+    res.status(502).json({ jsonrpc: '2.0', id, error: { code: 'upstream_error', message: 'upstream rpc error' } });
+  } else {
+    res.status(502).json({ detail: 'upstream rpc error', code: 'upstream_error' });
+  }
 }
 
 // ── DC-6: JSON-RPC batch ────────────────────────────────────────────
