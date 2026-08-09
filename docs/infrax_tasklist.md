@@ -1077,6 +1077,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 **MQ-11 支付引擎交接与发布（2026-08-10 需求登记；payment = 与 WAAS/MPC **平级**的通用微服务：链上 / x402 / 法币）**：
 > 背景：AgentX 通用支付引擎整体移交 infraX——源码迁入 `projects/payments/`，以 `@0xinfrax/payments@0.1.0` 发布 npm（registry）；AgentX 保留定制支付 SDK（`@agentxv2/sdk` 的 `SubscriptionPayments` + 协议客户端 re-export），依赖方向固定 **AgentX → @0xinfrax/payments（无反向）**。AgentX 侧代码切换已提交（Agentx `323d3c9`），R17 发布流程（Agentx `docs/PROGRESS.md`）待执行。方案：Agentx `docs/payments-infrax-migration.md`；交接：infraX `projects/payments/HANDOVER.md`。
+>
+> **两个 SDK 定位区分**：`@agentxv2/sdk` = AgentX 平台**业务 SDK**（定制层，对话/任务/发布/订阅/支付全能力，维护方 AgentX）；`@0xinfrax/payments` = InfraX **通用支付通道 SDK**（与 WAAS/MPC 平级的支付微服务客户端，维护方 infraX，零 AgentX 依赖）。升级语义：应用方只升级 `@agentxv2/sdk`（业务零改动）；支付引擎能力升级走 `@0xinfrax/payments` 版本跟随（AgentX 是消费方，F2 演练）。
 
 **infraX 侧（已完成 ✅）**：
 - [x] **P-1 源码迁入**：`projects/payments/`（package `@0xinfrax/payments@0.1.0`，commit `cc98172`，2026-08-08），依赖仅 `pg`+`viem`、`express` optional peer，零 AgentX 业务 token
