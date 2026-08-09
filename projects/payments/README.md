@@ -5,6 +5,8 @@
 > **维护**：由 **InfraX**（GitHub [sftgroup/infraX](https://github.com/sftgroup/infraX)）团队维护；源码位于仓库 [`projects/payments/`](https://github.com/sftgroup/infraX/tree/main/projects/payments) 目录，npm 包 `@0xinfrax/payments` 由 InfraX 账号发布与维护。集成方可作为独立库使用，但问题的修复与演进统一由 InfraX 负责。
 
 > **集成到独立项目**：完整部署步骤（安装 / 数据库 / 合约 / 代码接入 / 验证 / 生产注意）见 [`DEPLOY.md`](./DEPLOY.md)。
+>
+> **调用方自配收款**：想配置「自己的收款」（自部署 SubscriptionManager / 自己 Stripe 账号 / 自配 x402 钱包 / MPP payee / a2a 单笔收款），见 [`CALLER_SETUP.md`](./CALLER_SETUP.md)。
 
 - **嵌入式服务**：作为宿主 Gateway 的内部引擎（AgentX 即此形态的参考实现，见 `gateway/src/services/payments.ts`）
 - **独立库**：可被任意项目依赖，以「调用方自持 store」的形态独立运行
@@ -21,6 +23,7 @@
 - [依赖配置（迁移到其他项目）](#依赖配置迁移到其他项目)
 - [数据库迁移](#数据库迁移)
 - [快速开始（独立库形态）](#快速开始独立库形态)
+- [调用方自配收款模板](#依赖配置迁移到其他项目)（[`CALLER_SETUP.md`](./CALLER_SETUP.md)）
 - [嵌入式形态（宿主自带 store / 回调）](#嵌入式形态宿主自带-store--回调)
 - [业务上下文透传规则](#业务上下文透传规则)
 - [API 参考](#api-参考)
