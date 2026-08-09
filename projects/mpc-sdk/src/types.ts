@@ -33,7 +33,8 @@ export interface MPCRegisterParams {
 }
 
 export interface MPCWalletResult {
-  id: string;
+  /** 钱包 ID（E-4④：同邮箱 1:N，walletId 唯一定位子钱包；recover/unlock/status 按此定位） */
+  walletId: string;
   email: string;
   walletAddress: string;
   createdAt: string;
@@ -43,6 +44,8 @@ export interface MPCRecoverParams {
   email: string;
   /** sendCode 下发到邮箱的 6 位验证码 */
   code: string;
+  /** 可选：指定子钱包（E-4④）；缺省恢复同邮箱首个（向后兼容） */
+  walletId?: string;
   /**
    * 可选：期望恢复出的钱包地址。提供时 SDK 在服务端恢复成功后做客户端地址校验，
    * 不一致则抛 MpcApiError（409, ERR_RECOVER_ADDRESS_MISMATCH）。
@@ -51,6 +54,7 @@ export interface MPCRecoverParams {
 }
 
 export interface MPCRecoverResult {
+  walletId: string;
   email: string;
   walletAddress: string;
   recoveredAt: string;
@@ -62,10 +66,13 @@ export interface MPCStatusParams {
   email?: string;
   /** 双查询键二选一：钱包地址（兼容 connected_wallet_address 与 wallet_address） */
   walletAddress?: string;
+  /** 可选：指定子钱包（E-4④）；缺省 = 同邮箱首个（向后兼容） */
+  walletId?: string;
 }
 
 export interface MPCStatusResult {
   registered: boolean;
+  walletId?: string;
   email?: string;
   walletAddress?: string;
   emailVerified?: boolean;
@@ -77,17 +84,45 @@ export interface MPCStatusResult {
   status?: string;
 }
 
+// ─── 钱包列表（E-4④：单邮箱 1:N 子钱包） ───
+
+export interface MPCWalletsListParams {
+  email: string;
+}
+
+export interface MPCWalletsListItem {
+  walletId: string;
+  walletAddress: string;
+  emailVerified: boolean;
+  shardCount: number;
+  totalShards: number;
+  createdAt: string;
+  lastRecoveredAt: string | null;
+  recoveryCount: number;
+  status: string;
+}
+
+export interface MPCWalletsListResult {
+  email: string;
+  count: number;
+  wallets: MPCWalletsListItem[];
+}
+
 // ─── 会话模块（E-5c，3 tools）───
 
 export interface MPCSessionUnlockParams {
   email: string;
   /** sendCode 下发的 6 位验证码（解锁即再次验证邮箱所有权） */
   code: string;
+  /** 可选：指定子钱包（E-4④）；缺省解锁同邮箱首个（向后兼容） */
+  walletId?: string;
 }
 
 export interface MPCSessionUnlockResult {
   /** 会话令牌，后续会话/链上操作的凭证（mpc_ 前缀） */
   token: string;
+  /** 解锁的子钱包 ID（E-4④） */
+  walletId: string;
   address: string;
   unlockedAt: string;
   expiresAt: string;

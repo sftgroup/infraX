@@ -79,14 +79,24 @@ await expectErr(() => mpc.wallet.register({ email: EMAIL, code: badCode }), 'bad
 reg = await mpc.wallet.register({ email: EMAIL, code: code1 });
 addr = reg.data.walletAddress;
 step('register → 返回钱包地址', /^0x[0-9a-fA-F]{40}$/.test(addr || ''), addr);
-step('register 返回 id/email', !!(reg.data.id && reg.data.email === EMAIL.toLowerCase()));
+step('register 返回 walletId/email', !!(reg.data.walletId && reg.data.email === EMAIL.toLowerCase()));
+const walletId1 = reg.data.walletId;
 
-// 错误分支：重复注册 → 400/1006
-await expectErr(() => mpc.wallet.register({ email: EMAIL, code: code1 }), 'bad_request', '重复 register → 400（邮箱已注册）');
+// E-4④：同邮箱 1:N —— 再次注册派生第二个子钱包（原「重复注册 1006」语义已升级）
+await mpc.wallet.sendCode({ email: EMAIL });
+const code1b = fetchCode(EMAIL);
+const reg2 = await mpc.wallet.register({ email: EMAIL, code: code1b });
+const addr2 = reg2.data.walletAddress;
+step('1:N 二次 register → 201 第二个钱包', reg2.code === 0 && !!reg2.data.walletId, reg2.data.walletId || '');
+step('1:N 两个钱包地址不同', addr2 && addr2.toLowerCase() !== addr.toLowerCase(), `${addr} vs ${addr2}`);
+const wallets = await mpc.wallet.listWallets({ email: EMAIL });
+step('listWallets → 同邮箱 2 个子钱包', wallets.data?.count === 2 && wallets.data?.wallets?.length === 2, JSON.stringify(wallets.data));
+const stSub = await mpc.wallet.status({ email: EMAIL, walletId: reg2.data.walletId });
+step('status(email+walletId) → 命中第二个钱包', stSub.data?.walletAddress?.toLowerCase() === addr2?.toLowerCase(), JSON.stringify(stSub.data));
 
 // status：双查询键
 const stEmail = await mpc.wallet.status({ email: EMAIL });
-step('status(email) → registered:true', stEmail.data.registered === true && stEmail.data.walletAddress?.toLowerCase() === addr.toLowerCase());
+step('status(email) → registered:true（默认首个）', stEmail.data.registered === true && stEmail.data.walletAddress?.toLowerCase() === addr.toLowerCase());
 const stAddr = await mpc.wallet.status({ walletAddress: addr });
 step('status(walletAddress) → registered:true', stAddr.data.registered === true);
 const stUnknown = await mpc.wallet.status({ email: 'nobody-' + EMAIL });
@@ -136,6 +146,18 @@ await expectErr(() => mpc.wallet.recover({ email: EMAIL, code: badCode }), 'bad_
 // 正确恢复 + expectedAddress 校验一致
 const rec = await mpc.wallet.recover({ email: EMAIL, code: code3, expectedAddress: addr });
 step('recover → 地址重建一致（客户端二次校验通过）', rec.data.walletAddress.toLowerCase() === addr.toLowerCase(), rec.data.walletAddress);
+
+// E-4④：recover 按 walletId 定位第二子钱包
+await mpc.wallet.sendCode({ email: EMAIL });
+const code3w = fetchCode(EMAIL);
+const rec2 = await mpc.wallet.recover({ email: EMAIL, code: code3w, walletId: reg2.data.walletId, expectedAddress: addr2 });
+step('recover(walletId) → 命中第二子钱包', rec2.data.walletAddress.toLowerCase() === addr2.toLowerCase(), `${rec2.data.walletAddress}`);
+
+// E-4④：unlock 按 walletId 定位第二子钱包（token 绑定该钱包）
+await mpc.wallet.sendCode({ email: EMAIL });
+const code3u = fetchCode(EMAIL);
+const ses2 = await mpc.session.unlock({ email: EMAIL, code: code3u, walletId: reg2.data.walletId });
+step('unlock(walletId) → 会话绑定第二子钱包', ses2.data.walletId === reg2.data.walletId && ses2.data.address?.toLowerCase() === addr2.toLowerCase(), `${ses2.data.address}`);
 
 // 错误分支：expectedAddress 不一致 → SDK 409 conflict（40900）
 // 注意：需新验证码（上一次 recover 已消耗 code3）

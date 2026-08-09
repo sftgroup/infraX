@@ -21,6 +21,8 @@ import type {
   MPCStatusParams,
   MPCStatusResult,
   MPCWalletResult,
+  MPCWalletsListParams,
+  MPCWalletsListResult,
 } from './types';
 
 export class WalletModule {
@@ -31,7 +33,10 @@ export class WalletModule {
     return this.http.post<MPCSendCodeResult>('/api/v2/mpc/send-code', params);
   }
 
-  /** 注册托管钱包：验证码 + 生成 EOA + 分片加密落库 */
+  /**
+   * 注册托管钱包：验证码 + 生成 EOA + 分片加密落库。
+   * E-4④：同邮箱 1:N —— 每次注册新建一个子钱包，返回 walletId 唯一定位。
+   */
   async register(params: MPCRegisterParams): Promise<MpcApiResponse<MPCWalletResult>> {
     return this.http.post<MPCWalletResult>('/api/v2/mpc/register', params);
   }
@@ -40,6 +45,7 @@ export class WalletModule {
    * 邮箱恢复钱包：完整流程封装（E-5e）。
    * @param params.email 注册邮箱
    * @param params.code  邮箱验证码
+   * @param params.walletId 可选：指定子钱包（E-4④）；缺省恢复同邮箱首个
    * @param params.expectedAddress 可选：期望地址，恢复成功后客户端校验
    * @throws MpcApiError — 验证码错误/过期（400/1001）、尝试超限（429）、
    *         未注册（404/1004）、分片解密失败（500/1007）、地址不一致（409/40900）
@@ -48,6 +54,7 @@ export class WalletModule {
     const res = await this.http.post<MPCRecoverResult>('/api/v2/mpc/recover', {
       email: params.email,
       code: params.code,
+      walletId: params.walletId,
     });
     if (params.expectedAddress) {
       const recovered = res.data.walletAddress;
@@ -62,11 +69,19 @@ export class WalletModule {
     return res;
   }
 
-  /** 查询钱包状态：email 或 walletAddress 双查询键二选一 */
+  /** 查询钱包状态：email 或 walletAddress 双查询键二选一；email 可带 walletId 定位子钱包（E-4④） */
   async status(params: MPCStatusParams): Promise<MpcApiResponse<MPCStatusResult>> {
     return this.http.get<MPCStatusResult>('/api/v2/mpc/status', {
       email: params.email,
       walletAddress: params.walletAddress,
+      walletId: params.walletId,
+    });
+  }
+
+  /** 列出同邮箱全部子钱包（E-4④：单邮箱 1:N） */
+  async listWallets(params: MPCWalletsListParams): Promise<MpcApiResponse<MPCWalletsListResult>> {
+    return this.http.get<MPCWalletsListResult>('/api/v2/mpc/wallets', {
+      email: params.email,
     });
   }
 

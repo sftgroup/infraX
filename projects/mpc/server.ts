@@ -292,10 +292,10 @@ async function getSession(token: string) {
     await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
     throw Object.assign(new Error('Session expired. Call /session/unlock again.'), { statusCode: 401 });
   }
-  // 由钱包表重建 signer（双片合并），写回内存
+  // 由钱包表重建 signer（双片合并），写回内存（E-4④：按 wallet_address 唯一定位，1:N 不歧义）
   const walletRow = await pool.query(
-    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
-    [srow.email]
+    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
+    [srow.wallet_address]
   );
   if (walletRow.rows.length === 0) {
     await pool.query(`DELETE FROM mpc_sessions WHERE token_hash = $1`, [tokenHash(token)]).catch(() => {});
@@ -445,18 +445,13 @@ app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse({ message: 'Code sent' }));
 }));
 
-// ─── Register ───
+// ─── Register（E-4④：1:N —— 同邮箱可派生多个子钱包，每次注册新建一个） ───
 app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
   const { email, code, walletAddress } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
   await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
-  const existing = await pool.query('SELECT id FROM mpc_wallets WHERE email = $1', [emailLower]);
-  if (existing.rows.length > 0) {
-    return res.status(400).json(apiResponse(null, 'Email already registered. Use /recover.', 1006));
-  }
-
   const wallet = ethers.Wallet.createRandom();
   // E-2a：Shamir 2-of-2 拆片 —— 片1 服务端 AES（email+secret）、片2 RecoveryKey（email+secret+recovery 上下文）
   const { shard1, shard2 } = sssSplit(wallet.privateKey);
@@ -471,19 +466,21 @@ app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
   );
 
   const row = result.rows[0];
-  res.status(201).json(apiResponse({ id: row.id, email: row.email, walletAddress: row.wallet_address, createdAt: row.created_at }, 'MPC wallet created'));
+  res.status(201).json(apiResponse({ walletId: row.id, email: row.email, walletAddress: row.wallet_address, createdAt: row.created_at }, 'MPC wallet created'));
 }));
 
-// ─── Recover ───
+// ─── Recover（E-4④：walletId 指定子钱包；缺省 = 首个，向后兼容） ───
 app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
-  const { email, code } = req.body;
+  const { email, code, walletId } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
   await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
   const result = await pool.query(
-    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard, recovery_count FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
-    [emailLower]
+    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard, recovery_count FROM mpc_wallets
+     WHERE email = $1 AND status = 'active' ${walletId ? 'AND id = $2' : ''}
+     ORDER BY created_at ASC ${walletId ? '' : 'LIMIT 1'}`,
+    walletId ? [emailLower, walletId] : [emailLower]
   );
   if (result.rows.length === 0) {
     return res.status(404).json(apiResponse(null, 'No MPC wallet found. Register first.', 1004));
@@ -512,6 +509,7 @@ app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
   await pool.query(`UPDATE mpc_wallets SET recovered_at = NOW(), recovery_count = recovery_count + 1 WHERE id = $1`, [row.id]);
 
   res.json(apiResponse({
+    walletId: row.id,
     email: row.email,
     walletAddress: row.wallet_address,
     recoveredAt: new Date().toISOString(),
@@ -519,9 +517,9 @@ app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
   }, 'MPC wallet recovered'));
 }));
 
-// ─── Status ───
+// ─── Status（E-4④：email 查询可带 walletId 定位子钱包；缺省 = 首个） ───
 app.get('/api/v2/mpc/status', asyncHandler(async (req: any, res: any) => {
-  const { email, walletAddress } = req.query;
+  const { email, walletAddress, walletId } = req.query;
 
   if (walletAddress && typeof walletAddress === 'string') {
     const addr = walletAddress.toLowerCase();
@@ -532,7 +530,7 @@ app.get('/api/v2/mpc/status', asyncHandler(async (req: any, res: any) => {
     );
     if (result.rows.length === 0) return res.json(apiResponse({ registered: false }));
     const r = result.rows[0];
-    return res.json(apiResponse({ registered: true, email: r.email, walletAddress: r.wallet_address, emailVerified: r.email_verified, shardCount: r.shard_count, totalShards: r.total_shards, createdAt: r.created_at, lastRecoveredAt: r.recovered_at, recoveryCount: r.recovery_count, status: r.status }));
+    return res.json(apiResponse({ registered: true, walletId: r.id, email: r.email, walletAddress: r.wallet_address, emailVerified: r.email_verified, shardCount: r.shard_count, totalShards: r.total_shards, createdAt: r.created_at, lastRecoveredAt: r.recovered_at, recoveryCount: r.recovery_count, status: r.status }));
   }
 
   if (!email || typeof email !== 'string') {
@@ -541,24 +539,53 @@ app.get('/api/v2/mpc/status', asyncHandler(async (req: any, res: any) => {
 
   const result = await pool.query(
     `SELECT id, email, wallet_address, email_verified, shard_count, total_shards, created_at, recovered_at, recovery_count, status
-     FROM mpc_wallets WHERE email = $1`,
-    [email.toLowerCase()]
+     FROM mpc_wallets WHERE email = $1 AND status = 'active' ${walletId ? 'AND id = $2' : ''}
+     ORDER BY created_at ASC ${walletId ? '' : 'LIMIT 1'}`,
+    walletId ? [email.toLowerCase(), walletId] : [email.toLowerCase()]
   );
   if (result.rows.length === 0) return res.json(apiResponse({ registered: false }));
   const r = result.rows[0];
-  res.json(apiResponse({ registered: true, email: r.email, walletAddress: r.wallet_address, emailVerified: r.email_verified, shardCount: r.shard_count, totalShards: r.total_shards, createdAt: r.created_at, lastRecoveredAt: r.recovered_at, recoveryCount: r.recovery_count, status: r.status }));
+  res.json(apiResponse({ registered: true, walletId: r.id, email: r.email, walletAddress: r.wallet_address, emailVerified: r.email_verified, shardCount: r.shard_count, totalShards: r.total_shards, createdAt: r.created_at, lastRecoveredAt: r.recovered_at, recoveryCount: r.recovery_count, status: r.status }));
 }));
 
-// ─── Session Unlock ───
+// ─── Wallets 列表（E-4④：同邮箱全部子钱包，walletId 维度） ───
+app.get('/api/v2/mpc/wallets', asyncHandler(async (req: any, res: any) => {
+  const { email } = req.query;
+  if (!email || typeof email !== 'string') return res.status(400).json(apiResponse(null, 'email required', 1001));
+  const result = await pool.query(
+    `SELECT id, wallet_address, email_verified, shard_count, total_shards, created_at, recovered_at, recovery_count, status
+     FROM mpc_wallets WHERE email = $1 AND status = 'active' ORDER BY created_at ASC`,
+    [email.toLowerCase()]
+  );
+  res.json(apiResponse({
+    email,
+    count: result.rows.length,
+    wallets: result.rows.map((r: any) => ({
+      walletId: r.id,
+      walletAddress: r.wallet_address,
+      emailVerified: r.email_verified,
+      shardCount: r.shard_count,
+      totalShards: r.total_shards,
+      createdAt: r.created_at,
+      lastRecoveredAt: r.recovered_at,
+      recoveryCount: r.recovery_count,
+      status: r.status,
+    })),
+  }));
+}));
+
+// ─── Session Unlock（E-4④：walletId 指定子钱包；缺省 = 首个，向后兼容） ───
 app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) => {
-  const { email, code } = req.body;
+  const { email, code, walletId } = req.body;
   if (!email || !code) return res.status(400).json(apiResponse(null, 'email + code required', 1001));
   await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
   const result = await pool.query(
-    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard FROM mpc_wallets WHERE email = $1 AND status = 'active'`,
-    [emailLower]
+    `SELECT id, email, wallet_address, encrypted_shard, recovery_shard FROM mpc_wallets
+     WHERE email = $1 AND status = 'active' ${walletId ? 'AND id = $2' : ''}
+     ORDER BY created_at ASC ${walletId ? '' : 'LIMIT 1'}`,
+    walletId ? [emailLower, walletId] : [emailLower]
   );
   if (result.rows.length === 0) {
     return res.status(404).json(apiResponse(null, 'No MPC wallet found. Register first.', 1004));
@@ -606,6 +633,7 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
 
   res.json(apiResponse({
     token,
+    walletId: row.id,
     address: wallet.address,
     unlockedAt: new Date(now).toISOString(),
     expiresAt: new Date(expiresAt).toISOString(),

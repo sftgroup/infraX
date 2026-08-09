@@ -3,18 +3,21 @@
 InfraX MPC 独立轻量 SDK —— 面向 MPC 微服务（邮箱分片托管钱包）的零依赖 TypeScript 客户端。
 不依赖整包 `infrax-dk`，版本独立演进（MQ-10 补充 E-5）。
 
-**首期覆盖两个模块（8 方法）**：
+**当前覆盖两个模块（9 方法，E-4④ 起支持单邮箱 1:N 多子钱包）**：
 
 | 模块 | 方法 | 端点 |
 |---|---|---|
 | 钱包 | `wallet.sendCode` | `POST /api/v2/mpc/send-code` |
-| 钱包 | `wallet.register` | `POST /api/v2/mpc/register` |
-| 钱包 | `wallet.recover` | `POST /api/v2/mpc/recover` |
-| 钱包 | `wallet.status` | `GET /api/v2/mpc/status` |
+| 钱包 | `wallet.register` | `POST /api/v2/mpc/register`（每次注册新建一个子钱包，返回 `walletId`） |
+| 钱包 | `wallet.recover` | `POST /api/v2/mpc/recover`（`walletId` 可指定子钱包，缺省首个） |
+| 钱包 | `wallet.status` | `GET /api/v2/mpc/status`（email 可带 `walletId` 定位子钱包） |
+| 钱包 | `wallet.listWallets` | `GET /api/v2/mpc/wallets`（同邮箱全部子钱包） |
 | 钱包 | `wallet.createWallet` | `POST /api/v2/mpc/send-code`（组合入口） |
-| 会话 | `session.unlock` | `POST /api/v2/mpc/session/unlock` |
+| 会话 | `session.unlock` | `POST /api/v2/mpc/session/unlock`（`walletId` 可指定子钱包） |
 | 会话 | `session.lock` | `POST /api/v2/mpc/session/lock` |
 | 会话 | `session.status` | `GET /api/v2/mpc/session/status` |
+
+> **E-4④ 单邮箱 1:N**：一个邮箱可派生多个 Agent 子钱包（如 50 子钱包并发模型）。`register` 每次创建新钱包返回 `walletId`；`recover` / `status` / `session.unlock` 带 `walletId` 精确命中子钱包，缺省作用于同邮箱首个（向后兼容）。token 一经解锁即绑定到该子钱包，后续链上操作无需再带 `walletId`。
 
 链上模块（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，7 方法）为 MQ-10 补充 E-5d，后续版本补充。
 
