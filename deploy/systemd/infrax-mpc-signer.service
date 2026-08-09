@@ -1,0 +1,17 @@
+[Unit]
+Description=InfraX MPC TSS party0 signer (holds shard1 proxy, port 9201)
+After=network.target infrax-mpc-tss-signer.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/mpc-tss
+Environment="MPC_SIGNER_PORT=9201"
+Environment="TSS_SIGNER_URL=http://127.0.0.1:9200"
+Environment="PATH=/usr/bin:/usr/local/bin:$PATH"
+ExecStart=/opt/infraX/projects/mpc-tss/target/release/mpc_signer
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+[package]
+name = "mpc-tss"
+version = "0.1.0"
+edition = "2021"
+description = "InfraX MPC TSS signing service (cggmp24, secp256k1, 2-of-2)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# cggmp24 from local checkout (0.7.0-alpha.4, workspace source)
+cggmp24 = { path = "/tmp/cggmp21-src/cggmp24", default-features = false, features = ["std", "backend-num-bigint", "curve-secp256k1", "spof", "state-machine"] }
+
+generic-ec = { version = "0.5", default-features = false, features = ["std", "serde", "curve-secp256k1"] }
+round-based = { version = "0.4.1", default-features = false, features = ["derive", "sim", "state-machine"] }
+
+rand = "0.8"
+sha2 = "0.10"
+sha3 = "0.10"
+digest = "0.10"
+futures = "0.3"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+
+# External verification (standard ECDSA, ethers-compatible)
+k256 = { version = "0.13", features = ["ecdsa"] }
+
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+# 强制解析（fast-paillier 的传递依赖 glass_pumpkin 1.8.0 依赖被 yank 的 core2 ^0.4）
+glass_pumpkin = "=1.9.0"
+
+# core2 在 crates.io 全版本被 yank（glass_pumpkin 的传递依赖），vendor 本地目录
+[patch.crates-io]
+core2 = { path = "vendor/core2" }
+
+# Prime generation can be slow in debug; speed up bigint crates
+[profile.dev.package]
+num-bigint.opt-level = 3
+num-traits.opt-level = 3
+num-integer.opt-level = 3
+glass_pumpkin.opt-level = 3
+
+[profile.release]
+opt-level = 3

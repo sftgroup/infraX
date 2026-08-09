@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX MPC TSS party1 signer (holds shard2, port 9200)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/mpc-tss
+Environment="TSS_SIGNER_PORT=9200"
+Environment="PATH=/usr/bin:/usr/local/bin:$PATH"
+ExecStart=/opt/infraX/projects/mpc-tss/target/release/tss_signer
+Restart=on-failure
+RestartSec=5
+
+# 说明：keystore 为内存态，重启后片2 丢失；mpc server 在 unlock/buildSessionData
+# 时经 /v1/keystore 幂等重注册（tssRegisterShard2），无需持久化。
+
+[Install]
+WantedBy=multi-user.target

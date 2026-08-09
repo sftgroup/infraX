@@ -257,8 +257,14 @@ const TRANSFER_WHITELIST = (process.env.MPC_TRANSFER_WHITELIST || '').split(',')
 // E-2d：会话有效期可配（默认 30min）
 const SESSION_TTL_MS = parseInt(process.env.MPC_SESSION_TTL_MS || String(30 * 60_000), 10);
 
+// ─── M3：TSS 签名器（cggmp24 2-of-2）—— Node mpc server 持片1，tss_signer 进程持片2 ───
+const MPC_SIGNER_URL = (process.env.MPC_SIGNER_URL || 'http://127.0.0.1:9201').replace(/\/+$/, '');
+const TSS_SIGNER_URL = (process.env.TSS_SIGNER_URL || 'http://127.0.0.1:9200').replace(/\/+$/, '');
+
 const sessions = new Map<string, {
-  wallet: ethers.Wallet;
+  shard1?: any;            // M3 TSS 片1（trusted_dealer KeyShare JSON）
+  shard2?: any;            // M3 TSS 片2（RecoveryKey 解密后，注册进 tss_signer）
+  wallet?: ethers.Wallet;  // 遗留 Shamir 钱包回退路径（sessions 不再持有完整私钥）
   address: string;
   email: string;
   unlockedAt: number;
@@ -267,6 +273,139 @@ const sessions = new Map<string, {
 
 function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// ─── M3：TSS 签名器客户端（Node 侧只持分片，完整私钥永不重建） ───
+async function tssImport(privateKey: string): Promise<{ shard1: any; shard2: any; address: string }> {
+  const resp = await fetch(`${MPC_SIGNER_URL}/v1/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ private_key: privateKey }),
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(`TSS import failed (${resp.status}): ${body ? JSON.stringify(body) : ''}`);
+  return body;
+}
+
+async function tssRegisterShard2(walletAddress: string, shard2: any): Promise<void> {
+  const resp = await fetch(`${TSS_SIGNER_URL}/v1/keystore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet_address: walletAddress, share: shard2 }),
+  });
+  if (!resp.ok) throw new Error(`TSS shard2 register failed (${resp.status}): ${await resp.text()}`);
+}
+
+async function tssSign(share1: any, walletAddress: string, msgHash: string): Promise<string> {
+  const resp = await fetch(`${MPC_SIGNER_URL}/v1/sign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ share1, wallet_address: walletAddress, msg_hash: msgHash }),
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(`TSS sign failed (${resp.status}): ${body ? JSON.stringify(body) : ''}`);
+  return body.signature as string; // 64B r||s（128 hex 字符）
+}
+
+async function tssShareAddress(share1: any): Promise<string> {
+  const resp = await fetch(`${MPC_SIGNER_URL}/v1/address`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ share: share1 }),
+  });
+  const body = await resp.json().catch(() => null);
+  if (!resp.ok) throw new Error(`TSS address lookup failed (${resp.status})`);
+  return body.address;
+}
+
+// 64B r||s → ethers Signature（v 逐试 27/28 直到恢复地址匹配）
+async function ethersSignatureFromRs(rs: string, digest: string, expectedAddress: string): Promise<ethers.Signature> {
+  const r = '0x' + rs.slice(0, 64);
+  const s = '0x' + rs.slice(64);
+  for (const v of [27, 28]) {
+    const sig = ethers.Signature.from({ r, s, v });
+    const recovered = ethers.recoverAddress(digest, sig);
+    if (recovered.toLowerCase() === expectedAddress.toLowerCase()) return sig;
+  }
+  throw new Error('TSS signature recovery mismatch');
+}
+
+// 组装未签名交易并计算待签摘要（EIP-1559；不支持 1559 的链回退 type-0）
+async function buildUnsignedTx(
+  provider: ethers.JsonRpcProvider,
+  from: string,
+  params: { to: string; value?: bigint; data?: string },
+): Promise<{ txReq: any; digest: string }> {
+  const network = await provider.getNetwork();
+  const feeData = await provider.getFeeData();
+  const nonce = await provider.getTransactionCount(from);
+  const txReq: any = {
+    type: feeData.maxFeePerGas ? 2 : 0,
+    chainId: network.chainId,
+    nonce,
+    to: params.to,
+    value: params.value || 0n,
+  };
+  if (params.data) txReq.data = params.data;
+  if (txReq.type === 2) {
+    txReq.maxFeePerGas = feeData.maxFeePerGas;
+    txReq.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || (feeData.maxFeePerGas / 2n);
+  } else {
+    txReq.gasPrice = feeData.gasPrice;
+  }
+  let gasLimit = 21000n;
+  try {
+    gasLimit = await provider.estimateGas({ from, to: params.to, value: txReq.value, ...(params.data ? { data: params.data } : {}) });
+  } catch { /* 估算失败用默认 gas */ }
+  txReq.gasLimit = gasLimit;
+  return { txReq, digest: ethers.Transaction.from(txReq).unsignedHash };
+}
+
+// 统一发交易：TSS 路径（摘要 → TSS 签名 → 广播）或遗留 Wallet 路径
+async function broadcastTxn(
+  session: any,
+  provider: ethers.JsonRpcProvider,
+  params: { to: string; value?: bigint; data?: string },
+): Promise<ethers.TransactionResponse> {
+  const { txReq, digest } = await buildUnsignedTx(provider, session.address, params);
+  if (session.shard1) {
+    const rs = await tssSign(session.shard1, session.address, digest);
+    const sig = await ethersSignatureFromRs(rs, digest, session.address);
+    const signed = ethers.Transaction.from({ ...txReq, signature: sig });
+    return await provider.broadcastTransaction(signed.serialized);
+  }
+  return await session.wallet!.connect(provider).sendTransaction(txReq);
+}
+
+// 解密钱包行 → 会话数据（TSS 持分片；遗留 Shamir 钱包回退重建 Wallet）
+// TSS 钱包存储的是 KeyShare JSON（以 '{' 开头），遗留是 64 hex 私钥分片。
+async function buildSessionData(
+  email: string,
+  wrow: { wallet_address: string; encrypted_shard: string; recovery_shard: string | null },
+): Promise<{ address: string; shard1?: any; shard2?: any; wallet?: ethers.Wallet }> {
+  const shard1Str = decryptShard(wrow.encrypted_shard, email);
+  if (shard1Str.trim().startsWith('{')) {
+    // M3 TSS 钱包：只持分片句柄，不重建完整私钥
+    const shard1 = JSON.parse(shard1Str);
+    const shard2Str = wrow.recovery_shard ? decryptRecoveryShard(wrow.recovery_shard, email) : null;
+    if (!shard2Str) throw Object.assign(new Error('TSS wallet missing recovery shard'), { statusCode: 500 });
+    const shard2 = JSON.parse(shard2Str);
+    const address = await tssShareAddress(shard1);
+    if (address.toLowerCase() !== wrow.wallet_address.toLowerCase()) {
+      throw Object.assign(new Error('Recovered key mismatch'), { statusCode: 500 });
+    }
+    await tssRegisterShard2(wrow.wallet_address, shard2); // 片2 注册进 tss_signer（幂等）
+    return { address, shard1, shard2 };
+  }
+  // 遗留 Shamir 钱包：保持原双片合并回退路径
+  const privateKey = wrow.recovery_shard
+    ? sssMerge(shard1Str, decryptRecoveryShard(wrow.recovery_shard, email))
+    : shard1Str;
+  const wallet = new ethers.Wallet(privateKey);
+  if (wallet.address.toLowerCase() !== wrow.wallet_address.toLowerCase()) {
+    throw Object.assign(new Error('Recovered key mismatch'), { statusCode: 500 });
+  }
+  return { address: wallet.address, wallet };
 }
 
 async function getSession(token: string) {
@@ -302,32 +441,15 @@ async function getSession(token: string) {
     throw Object.assign(new Error('Wallet no longer active. Call /session/unlock again.'), { statusCode: 401 });
   }
   const wrow = walletRow.rows[0];
-  const shard1 = decryptShard(wrow.encrypted_shard, srow.email);
-  let privateKey = shard1;
-  if (wrow.recovery_shard) {
-    const shard2 = decryptRecoveryShard(wrow.recovery_shard, srow.email);
-    privateKey = sssMerge(shard1, shard2);
-  }
-  const wallet = new ethers.Wallet(privateKey);
+  // M3：TSS 钱包持分片句柄；遗留 Shamir 钱包回退重建 Wallet（不再全量 sssMerge）
   const session = {
-    wallet,
-    address: wallet.address,
+    ...(await buildSessionData(srow.email, wrow)),
     email: srow.email,
     unlockedAt: srow.unlocked_at,
     expiresAt: srow.expires_at,
   };
   sessions.set(token, session);
   return session;
-}
-
-async function getSessionSigner(token: string): Promise<ethers.Wallet> {
-  const session = await getSession(token);
-  return session.wallet;
-}
-
-async function getSignerForChain(token: string, chain: string): Promise<ethers.Wallet> {
-  const wallet = await getSessionSigner(token);
-  return wallet.connect(getProvider(chain));
 }
 
 async function auditLog(token: string, action: string, detail: any, txHash?: string, chain?: string) {
@@ -452,17 +574,23 @@ app.post('/api/v2/mpc/register', asyncHandler(async (req: any, res: any) => {
   await verifyCode(email, code);
 
   const emailLower = email.toLowerCase();
-  const wallet = ethers.Wallet.createRandom();
-  // E-2a：Shamir 2-of-2 拆片 —— 片1 服务端 AES（email+secret）、片2 RecoveryKey（email+secret+recovery 上下文）
-  const { shard1, shard2 } = sssSplit(wallet.privateKey);
-  const encryptedShard = encryptShard(shard1, emailLower);
-  const recoveryShard = encryptRecoveryShard(shard2, emailLower);
+  // M3：TSS 2-of-2 分片（trusted_dealer 按随机私钥拆分）—— 仅存分片，完整私钥不落库、不持久化
+  const privateKey = ethers.Wallet.createRandom().privateKey;
+  let imported: { shard1: any; shard2: any; address: string };
+  try {
+    imported = await tssImport(privateKey);
+  } catch (e: any) {
+    return res.status(500).json(apiResponse(null, `TSS key split failed: ${e.message}`, 1007));
+  }
+  // 片1 服务端 AES（email+secret）；片2 RecoveryKey（email+secret+recovery 上下文）
+  const encryptedShard = encryptShard(JSON.stringify(imported.shard1), emailLower);
+  const recoveryShard = encryptRecoveryShard(JSON.stringify(imported.shard2), emailLower);
   const connectedAddr = (req.headers['x-wallet-address'] as string) || walletAddress || null;
 
   const result = await pool.query(
     `INSERT INTO mpc_wallets (id, email, email_verified, wallet_address, encrypted_shard, recovery_shard, shard_count, total_shards, connected_wallet_address)
      VALUES ($1, $2, true, $3, $4, $5, 2, 2, $6) RETURNING id, email, wallet_address, created_at`,
-    [crypto.randomUUID(), emailLower, wallet.address, encryptedShard, recoveryShard, connectedAddr]
+    [crypto.randomUUID(), emailLower, imported.address, encryptedShard, recoveryShard, connectedAddr]
   );
 
   const row = result.rows[0];
@@ -487,31 +615,20 @@ app.post('/api/v2/mpc/recover', asyncHandler(async (req: any, res: any) => {
   }
 
   const row = result.rows[0];
-  let privateKey: string;
+  let recoveredAddress: string;
   try {
-    // E-2a：双片合并（片1 + 片2 → 私钥，内存短暂）；老钱包无 recovery_shard 按单片降级
-    const shard1 = decryptShard(row.encrypted_shard, emailLower);
-    if (row.recovery_shard) {
-      const shard2 = decryptRecoveryShard(row.recovery_shard, emailLower);
-      privateKey = sssMerge(shard1, shard2);
-    } else {
-      privateKey = shard1;
-    }
-  } catch {
-    return res.status(500).json(apiResponse(null, 'Failed to decrypt shard', 1007));
-  }
-
-  const recoveredWallet = new ethers.Wallet(privateKey);
-  if (recoveredWallet.address.toLowerCase() !== row.wallet_address.toLowerCase()) {
-    return res.status(500).json(apiResponse(null, 'Recovered key mismatch', 1008));
+    // M3：TSS 钱包验证分片并重注册片2；遗留钱包保持原合并路径（地址校验兜底）
+    const data = await buildSessionData(emailLower, row);
+    recoveredAddress = data.address;
+  } catch (e: any) {
+    return res.status(500).json(apiResponse(null, e?.message || 'Failed to decrypt shard', 1007));
   }
 
   await pool.query(`UPDATE mpc_wallets SET recovered_at = NOW(), recovery_count = recovery_count + 1 WHERE id = $1`, [row.id]);
-
   res.json(apiResponse({
     walletId: row.id,
     email: row.email,
-    walletAddress: row.wallet_address,
+    walletAddress: recoveredAddress,
     recoveredAt: new Date().toISOString(),
     recoveryCount: row.recovery_count + 1,
   }, 'MPC wallet recovered'));
@@ -592,31 +709,19 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
   }
 
   const row = result.rows[0];
-  let privateKey: string;
+  let sessionData: { address: string; shard1?: any; shard2?: any; wallet?: ethers.Wallet };
   try {
-    // E-2a：双片合并（片1 + 片2 → 私钥）；老钱包无 recovery_shard 按单片降级
-    const shard1 = decryptShard(row.encrypted_shard, emailLower);
-    if (row.recovery_shard) {
-      const shard2 = decryptRecoveryShard(row.recovery_shard, emailLower);
-      privateKey = sssMerge(shard1, shard2);
-    } else {
-      privateKey = shard1;
-    }
-  } catch {
-    return res.status(500).json(apiResponse(null, 'Failed to decrypt shard', 1007));
-  }
-
-  const wallet = new ethers.Wallet(privateKey);
-  if (wallet.address.toLowerCase() !== row.wallet_address.toLowerCase()) {
-    return res.status(500).json(apiResponse(null, 'Recovered key mismatch', 1008));
+    // M3：TSS 钱包只解密分片（不重建完整私钥）；遗留钱包回退合并路径
+    sessionData = await buildSessionData(emailLower, row);
+  } catch (e: any) {
+    return res.status(500).json(apiResponse(null, e?.message || 'Failed to decrypt shard', 1007));
   }
 
   const now = Date.now();
   const token = 'mpc_' + crypto.randomBytes(32).toString('hex');
   const expiresAt = now + SESSION_TTL_MS;
   sessions.set(token, {
-    wallet,
-    address: wallet.address,
+    ...sessionData,
     email: emailLower,
     unlockedAt: now,
     expiresAt,
@@ -626,7 +731,7 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
     `INSERT INTO mpc_sessions (token_hash, email, wallet_address, unlocked_at, expires_at, created_at)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (token_hash) DO UPDATE SET email = $2, wallet_address = $3, unlocked_at = $4, expires_at = $5`,
-    [tokenHash(token), emailLower, wallet.address, now, expiresAt, now]
+    [tokenHash(token), emailLower, sessionData.address, now, expiresAt, now]
   );
 
   await pool.query(`UPDATE mpc_wallets SET recovered_at = NOW(), recovery_count = recovery_count + 1 WHERE id = $1`, [row.id]);
@@ -634,7 +739,7 @@ app.post('/api/v2/mpc/session/unlock', asyncHandler(async (req: any, res: any) =
   res.json(apiResponse({
     token,
     walletId: row.id,
-    address: wallet.address,
+    address: sessionData.address,
     unlockedAt: new Date(now).toISOString(),
     expiresAt: new Date(expiresAt).toISOString(),
   }, 'MPC wallet unlocked. Use this token for all subsequent agent operations.'));
@@ -684,12 +789,13 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
   const { token, chain: chainParam, tokenAddress } = req.body;
   if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
   const chain = chainParam || 'sepolia';
-  const signer = await getSignerForChain(token, chain);
+  const session = await getSession(token);
+  const address = session.address;
   const provider = getProvider(chain);
 
-  const nativeBalance = await provider.getBalance(signer.address);
+  const nativeBalance = await provider.getBalance(address);
   const result: any = {
-    address: signer.address,
+    address,
     chain,
     nativeBalance: ethers.formatEther(nativeBalance),
     nativeSymbol: chain === 'bsc' ? 'BNB' : 'ETH',
@@ -699,7 +805,7 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
     try {
       const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       const [balance, decimals, symbol] = await Promise.all([
-        contract.balanceOf(signer.address),
+        contract.balanceOf(address),
         contract.decimals(),
         contract.symbol(),
       ]);
@@ -721,20 +827,38 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
 app.post('/api/v2/mpc/sign-message', asyncHandler(async (req: any, res: any) => {
   const { token, message } = req.body;
   if (!token || !message) return res.status(400).json(apiResponse(null, 'token + message required', 1001));
-  const signer = await getSessionSigner(token);
-  const signature = await signer.signMessage(message);
+  const session = await getSession(token);
+  let signature: string;
+  if (session.shard1) {
+    // M3 TSS 路径：Node 侧算 EIP-191 摘要 → TSS 2-of-2 签名
+    const digest = ethers.hashMessage(message);
+    const rs = await tssSign(session.shard1, session.address, digest);
+    const sig = await ethersSignatureFromRs(rs, digest, session.address);
+    signature = sig.serialized;
+  } else {
+    signature = await session.wallet!.signMessage(message);
+  }
   await auditLog(token, 'sign_message', { message: message.slice(0, 100) });
-  res.json(apiResponse({ signature, address: signer.address }, 'Message signed'));
+  res.json(apiResponse({ signature, address: session.address }, 'Message signed'));
 }));
 
 // ─── Sign Typed Data (EIP-712) ───
 app.post('/api/v2/mpc/sign-typed-data', asyncHandler(async (req: any, res: any) => {
   const { token, domain, types, value } = req.body;
   if (!token || !domain || !types || !value) return res.status(400).json(apiResponse(null, 'token + domain + types + value required', 1001));
-  const signer = await getSessionSigner(token);
-  const signature = await signer.signTypedData(domain, types, value);
+  const session = await getSession(token);
+  let signature: string;
+  if (session.shard1) {
+    // M3 TSS 路径：Node 侧算 EIP-712 摘要 → TSS 2-of-2 签名
+    const digest = ethers.TypedDataEncoder.hash(domain, types, value);
+    const rs = await tssSign(session.shard1, session.address, digest);
+    const sig = await ethersSignatureFromRs(rs, digest, session.address);
+    signature = sig.serialized;
+  } else {
+    signature = await session.wallet!.signTypedData(domain, types, value);
+  }
   await auditLog(token, 'sign_typed_data', { domain: JSON.stringify(domain).slice(0, 200) });
-  res.json(apiResponse({ signature, address: signer.address }, 'Typed data signed'));
+  res.json(apiResponse({ signature, address: session.address }, 'Typed data signed'));
 }));
 
 // ─── Send Transaction ───
@@ -754,11 +878,12 @@ app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any)
     return res.status(400).json(apiResponse(null, `Transfer target ${to} not in whitelist`, 1001));
   }
 
-  const signer = await getSignerForChain(token, chain);
+  const session = await getSession(token);
+  const provider = getProvider(chain);
   let tx: ethers.TransactionResponse;
 
   if (tokenAddress && tokenAddress.startsWith('0x')) {
-    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
     const decimals = Number(await contract.decimals());
     const parsedAmount = ethers.parseUnits(amount, decimals);
     // E-2c：ERC20 限额（token 数量单位，默认 1000）
@@ -766,12 +891,11 @@ app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any)
     if (parsedAmount > erc20Limit) {
       return res.status(400).json(apiResponse(null, `Amount ${amount} exceeds ERC20 agent limit ${AGENT_ERC20_LIMIT}`, 1001));
     }
-    tx = await contract.transfer(to, parsedAmount);
+    // M3：calldata 由 Node 侧组装，签名统一走 TSS/遗留广播路径
+    const data = new ethers.Interface(ERC20_ABI).encodeFunctionData('transfer', [to, parsedAmount]);
+    tx = await broadcastTxn(session, provider, { to: tokenAddress, value: 0n, data });
   } else {
-    tx = await signer.sendTransaction({
-      to,
-      value: ethers.parseEther(amount),
-    });
+    tx = await broadcastTxn(session, provider, { to, value: ethers.parseEther(amount) });
   }
 
   await auditLog(token, 'send_transaction', { to, amount, tokenAddress: tokenAddress || 'native' }, tx.hash, chain);
@@ -779,7 +903,7 @@ app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any)
   const receipt = await tx.wait();
   res.json(apiResponse({
     txHash: tx.hash,
-    from: signer.address,
+    from: session.address,
     to,
     amount,
     chain,
@@ -794,7 +918,7 @@ app.post('/api/v2/mpc/contract-read', asyncHandler(async (req: any, res: any) =>
   const { token, contractAddress, abi, method, args, chain: chainParam } = req.body;
   if (!contractAddress || !abi || !method) return res.status(400).json(apiResponse(null, 'contractAddress + abi + method required', 1001));
   if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
-  await getSessionSigner(token); // E-2d：补 session 校验（无效/过期 401）
+  await getSession(token); // E-2d：补 session 校验（无效/过期 401）
   const chain = chainParam || 'sepolia';
   const provider = getProvider(chain);
   const contract = new ethers.Contract(contractAddress, abi, provider);
@@ -823,27 +947,30 @@ app.post('/api/v2/mpc/contract-write', asyncHandler(async (req: any, res: any) =
     }
   }
 
-  const signer = await getSignerForChain(token, chain);
-  const contract = new ethers.Contract(contractAddress, abi, signer);
+  const session = await getSession(token);
+  const provider = getProvider(chain);
 
   try {
-    const staticContract = new ethers.Contract(contractAddress, abi, getProvider(chain));
-    await staticContract[method].staticCall(...(args || []), value ? { value: ethers.parseEther(value) } : {});
+    const staticContract = new ethers.Contract(contractAddress, abi, provider);
+    // M3：模拟必须带 from=session.address（无 signer 时默认零地址，transfer/balanceOf 会因余额 0 回退）
+    await staticContract[method].staticCall(...(args || []), {
+      from: session.address,
+      ...(value ? { value: ethers.parseEther(value) } : {}),
+    });
   } catch (e: any) {
     return res.status(400).json(apiResponse(null, `Simulation failed: ${e.message}`, 1001));
   }
 
-  const txOpts: any = {};
-  if (value) txOpts.value = ethers.parseEther(value);
-  if (gasLimit) txOpts.gasLimit = gasLimit;
-
-  const tx = await contract[method](...(args || []), txOpts);
+  // M3：calldata 由 Node 侧组装，签名统一走 TSS/遗留广播路径
+  const data = new ethers.Interface(abi).encodeFunctionData(method, args || []);
+  const valueBig = value ? ethers.parseEther(value) : 0n;
+  const tx = await broadcastTxn(session, provider, { to: contractAddress, value: valueBig, data });
   await auditLog(token, 'contract_write', { contractAddress, method, args }, tx.hash, chain);
 
   const receipt = await tx.wait();
   res.json(apiResponse({
     txHash: tx.hash,
-    from: signer.address,
+    from: session.address,
     contractAddress,
     method,
     chain,
@@ -856,7 +983,7 @@ app.post('/api/v2/mpc/contract-write', asyncHandler(async (req: any, res: any) =
 app.post('/api/v2/mpc/gas-estimate', asyncHandler(async (req: any, res: any) => {
   const { token, to, value, data, chain: chainParam } = req.body;
   if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
-  await getSessionSigner(token); // E-2d：补 session 校验（无效/过期 401）
+  await getSession(token); // E-2d：补 session 校验（无效/过期 401）
   const chain = chainParam || 'sepolia';
   const provider = getProvider(chain);
 

@@ -1,6 +1,6 @@
 [Unit]
 Description=InfraX infrax-mpc
-After=network.target postgresql.service
+After=network.target postgresql.service infrax-mpc-tss-signer.service infrax-mpc-signer.service infrax-chain-rpc.service
 
 [Service]
 Type=simple
@@ -9,11 +9,13 @@ WorkingDirectory=/opt/infraX/projects/mpc
 Environment="MPC_ENCRYPTION_SECRET=2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a2443e30a3bf8097b352a4"
 Environment="ADMIN_PASS=a87cefd6e1ce487334a67b0c"
 Environment="ADMIN_USER=admin"
-Environment="SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com"
-Environment="ETH_RPC_URL=https://ethereum-rpc.publicnode.com"
-Environment="BSC_RPC_URL=https://bsc-dataseed.bnbchain.org"
-Environment="BASE_RPC_URL=https://mainnet.base.org"
-Environment="OXA_RPC_URL=https://rpc.l1.oxachain.io"
+# M3：TSS 签名器（片2 在 tss_signer 进程，服务端仅持片1）
+Environment="MPC_SIGNER_URL=http://127.0.0.1:9201"
+Environment="TSS_SIGNER_URL=http://127.0.0.1:9200"
+# DC-3：链上访问统一经 chain-rpc 网关（key 需与 infrax-chain-rpc.service 一致，勿提交真实密钥）
+Environment="CHAIN_RPC_URL=http://127.0.0.1:9130"
+Environment="CHAIN_RPC_READ_KEY=CHANGE_ME_READ_KEY"
+Environment="CHAIN_RPC_BROADCAST_KEY=CHANGE_ME_BROADCAST_KEY"
 Environment="PORT=9104"
 Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_mpc"
 Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/mpc/node_modules/.bin:$PATH"

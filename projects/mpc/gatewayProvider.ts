@@ -38,13 +38,18 @@ export class GatewayProvider extends ethers.JsonRpcProvider {
   override async send(method: string, params: Array<any>): Promise<any> {
     const isBroadcast = method === 'eth_sendRawTransaction';
     const url = `${this.gateway}${isBroadcast ? '/v1/broadcast' : '/v1/rpc'}/${this.rpcChain}`;
+    // 广播端点契约：{ rawTransaction, wait }（chain-rpc 广播路由 destructure rawTransaction）；
+    // 读端点契约：{ method, params }。
+    const body = isBroadcast
+      ? { rawTransaction: params[0], wait: true }
+      : { method, params };
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Service-Key': isBroadcast ? this.broadcastKey : this.readKey,
       },
-      body: JSON.stringify({ method, params }),
+      body: JSON.stringify(body),
     });
     let json: any;
     try {

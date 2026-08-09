@@ -72,9 +72,23 @@
 
 | 里程碑 | 内容 | 验收 |
 |---|---|---|
-| M1 集成验证 | cggmp21 wasm 本地 demo：2-of-2 keygen → presign → sign → 标准 verify | demo 脚本签名可被 ethers `verifyMessage` 验证 |
-| M2 存量迁移 | 用 Key Import（SPOF code）把 E-2 现有钱包完整私钥转为 TSS 分片，地址不变 | 存量钱包迁移后地址不变、可用原分片签名 |
-| M3 服务端替换 | mpc server 引入 TSS 签名器，替换 sign-message/sign-typed-data/send-transaction/contract-write 四端点签名路径；`getSession` 改持分片 | 生产 E2E 四端点签名可用、签名可验证 |
-| M4 生产部署 | 分片进程/侧车部署（systemd）+ 现有 mpc-sdk/合约调用方零改动回归 | 生产 E2E 全绿 + 回归 |
+| M1 集成验证 | cggmp21 wasm 本地 demo：2-of-2 keygen → presign → sign → 标准 verify | ✅ 完成：本地 demo 签名可被 ethers `verifyMessage` 验证 |
+| M2 存量迁移 | 用 Key Import（SPOF code）把 E-2 现有钱包完整私钥转为 TSS 分片，地址不变 | ✅ 完成：`mpc_signer /v1/import` 按现有私钥 trusted_dealer 分片，地址不变 |
+| M3 服务端替换 | mpc server 引入 TSS 签名器，替换 sign-message/sign-typed-data/send-transaction/contract-write 四端点签名路径；`getSession` 改持分片 | ✅ 完成：本地四端点 E2E 13/13 通过（签名可被 ethers 复核，链上广播 + 余额变动确认）；见 §6 实现记录 |
+| M4 生产部署 | 分片进程/侧车部署（systemd）+ 现有 mpc-sdk/合约调用方零改动回归 | ⏳ 待执行 |
+
+---
+
+## 6. M3 实现记录（2026-08-09）
+
+**架构落地（跨进程 2-of-2）**：Node `mpc server` 持片1，Rust `mpc_signer`（party0，9201）与 `tss_signer`（party1，9200，持片2）同步交替完成 CGGMP24 presign+sign，最终本地 combine 出 64B `r||s`。
+
+- **身份摘要（core_api 模式）**：`CoreWrapper<IdentityCore>` 将 Node/ethers 已算好的 32B 摘要（EIP-191 hashMessage / EIP-712 TypedDataEncoder.hash / `Transaction.from(tx).unsignedHash`）作为 z，免二次哈希。
+- **存量导入**：`mpc_signer /v1/import {private_key}` → `builder::<Secp256k1,_>(2).set_threshold(Some(2)).set_shared_secret_key(...)` 按现有私钥分片（trusted_dealer）；素数生成 ≈2.5min（`set_pregenerated_primes` 可加速）。
+- **分片契约**：注册/恢复均把片1 存 `encrypted_shard`、片2 存 `recovery_shard`（JSON 分片，以 `{` 开头与遗留 64-hex Shamir 分片区分）；`server.ts` 由 `shard1Str.trim().startsWith('{')` 走 TSS 路径，遗留路径保留 `sssSplit/sssMerge` 向后兼容。
+- **签名端点**：`sign-message` Node 侧 `hashMessage`、`sign-typed-data` Node 侧 `TypedDataEncoder.hash` → `tssSign` → `ethersSignatureFromRs`（v 逐试 27/28 恢复地址匹配）；`send-transaction`/`contract-write` Node 侧组装 unsigned tx + calldata → `broadcastTxn` → `GatewayProvider` 广播。
+- **网关收敛（DC-3）**：所有链上访问经 chain-rpc 网关；广播端点契约 `{rawTransaction, wait}`，读端点 `{method, params}`；读 key 不可广播。
+- **E2E 修过的问题**：`/v1/init` msg_hash `0x` 前缀剥离；tss_signer 重启丢片2（unlock 幂等重注册）；gateway 广播 body contract mismatch；chain-rpc rpcPool 多端点 round-robin 混入真实 sepolia（本地 E2E 用 `INFRAX_RPC_POOL` 覆盖为仅本地 anvil）；contract-write `staticCall` 缺 `from`（默认零地址模拟余额为 0 回退）。
+- **验收证据**：`/tmp/m3test/e2e-mpc.mjs` 四端点 13/13 断言通过（sign-message / sign-typed-data 经 `ethers.recoverAddress` 复核；send-transaction 链上 receipt status=1 且接收方 +0.01 ETH；contract-write ERC20 transfer 链上余额 -1 TST）。
 
 **前置依赖**：无硬依赖；建议在 E-1（aa-sdk 三缺口）与 E-4④ 稳定后启动（本轮 E-4④ 已先行完成）。
