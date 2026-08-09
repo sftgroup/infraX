@@ -35,7 +35,7 @@
 ```jsonc
 {
   "dependencies": {
-    "@0xinfrax/payments": "file:../payments" // 或 git / 私有 registry，见下
+    "@0xinfrax/payments": "^0.1.0" // 公开 npm registry 安装（推荐）；或 file:/git/私有 registry，见下
     // pg / viem 是模块的传递依赖，npm install 会自动安装，宿主无需显式声明
   }
 }
@@ -43,10 +43,11 @@
 
 > 若宿主自身也要用 `viem` 发交易（链上/ x402 付款），可另行声明自己版本的 `viem`——模块会从自身 `node_modules` 解析，互不冲突。
 
-### 2. 三种安装来源
+### 2. 四种安装来源
 
 | 场景 | package.json 写法 |
 | --- | --- |
+| **公开 npm registry（推荐，已发布）** | `"@0xinfrax/payments": "^0.1.0"`（`npm view @0xinfrax/payments version` → 当前 latest） |
 | Monorepo / 本地开发 | `"@0xinfrax/payments": "file:../payments"` |
 | Git 仓库（打 tag 固定版本） | `"@0xinfrax/payments": "git+https://github.com/<org>/payments.git#v0.2.0"` |
 | 私有 npm registry | `"@0xinfrax/payments": "^0.2.0"`（配合 `.npmrc` 指向 registry） |
