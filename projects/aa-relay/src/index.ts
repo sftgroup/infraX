@@ -266,6 +266,30 @@ app.post('/v1/estimate', asyncHandler(async (req: any, res: any) => {
   }
 }));
 
+// POST /v1/paymaster —— paymaster RPC 代理（E-1a：隐藏 Pimlico apikey，服务端持有）
+// 契约：{ chain, method, params }（method ∈ pimlico_getPaymasterData/StubData 等）
+// → 转发到该链 AA_{CHAIN}_PAYMASTER_URL；未配置 paymaster 的链返回 400。
+app.post('/v1/paymaster', asyncHandler(async (req: any, res: any) => {
+  const { chain, method, params } = req.body || {};
+  if (!chain || !method || !Array.isArray(params)) {
+    return res.status(400).json(apiResponse(null, 'chain + method + params required', 1001));
+  }
+  const cfg = getChain(chain);
+  if (!cfg.paymaster?.url) {
+    return res.status(400).json(apiResponse(null, `chain '${chain}' has no paymaster configured`, 1001));
+  }
+  const client = rpcClient(cfg.paymaster.url);
+  try {
+    const result = (await client.request({ method, params })) as unknown;
+    res.json(apiResponse(result));
+  } catch (e: any) {
+    if (isBundlerBusinessError(e)) {
+      return res.status(400).json(apiResponse(null, `paymaster: ${rpcErrorMessage(e)}`, 1001));
+    }
+    throw e;
+  }
+}));
+
 // ============================================================================
 // E-3a/b 用户钱包 session（owner=用户 EOA，agent=session key，链上 Kernel validator 强制）
 //   POST /v1/session           创建：生成 session key + 策略落库(product) + 返回 enableCallData

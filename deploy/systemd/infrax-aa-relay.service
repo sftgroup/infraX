@@ -1,0 +1,26 @@
+[Unit]
+Description=InfraX aa-relay (ERC-4337 UserOp relay gateway, E-1c)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/infraX/projects/aa-relay
+# ── 部署前必填：替换 CHANGE_ME_* 为真实密钥（勿提交真实密钥到 git） ──
+Environment="AA_RELAY_API_KEY=CHANGE_ME_AA_RELAY_API_KEY"
+Environment="PORT=9131"
+# E-3：session 持久化（与 infrax-mpc 同库）
+Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_mpc"
+# 启用链（多链逗号分隔）+ 每链 RPC/bundler/paymaster（示例仅 base-sepolia；其余链逐链追加）
+Environment="AA_ENABLED_CHAINS=base-sepolia"
+Environment="AA_BASE_SEPOLIA_RPC_URL=https://sepolia.base.org"
+Environment="AA_BASE_SEPOLIA_BUNDLERS=[{\"url\":\"https://api.pimlico.io/v2/84532/rpc?apikey=CHANGE_ME_PIMLICO\",\"priority\":0,\"timeoutMs\":30000}]"
+# E-1a：paymaster 代理（隐藏 apikey；URL 含 apikey 仅服务端持有，勿下发客户端）
+#Environment="AA_BASE_SEPOLIA_PAYMASTER_URL=https://api.pimlico.io/v2/84532/rpc?apikey=CHANGE_ME_PIMLICO"
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/aa-relay/node_modules/.bin:$PATH"
+ExecStart=/opt/infraX/projects/aa-relay/node_modules/.bin/tsx src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,8 +1,10 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.5 | **日期**: 2026-08-08 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.6 | **日期**: 2026-08-09 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
+>
+> **v1.6（2026-08-09）**：MQ-10 补充 E-1 三缺口完成状态——**E-1a Paymaster 客户端 ✅**（`PaymasterClient` 落地 `pimlico_getPaymasterStubData/Data`，直连或 aa-relay `/v1/paymaster` 代理双模式隐藏 apikey；`estimateUserOpGas` 编排 stub→估算→正式 data）；**E-1c aa-relay ✅**（`/v1/userops` 转发+多 bundler 容灾、`/v1/userops/:hash` 收据、`/v1/estimate`、`/v1/paymaster` 代理、`/v1/session` 系列；systemd unit `infrax-aa-relay.service`）；**E-1d MPC 接入 ✅**（`MpcSigner` 落地，`signUserOp`→MPC `POST /api/v2/mpc/sign-digest`（raw 32B 摘要 TSS 签名，免二次哈希）、`signMessage`→`/sign-message`）；**E-1b 多链扩展 🟡**（env 模板就绪，逐链合约部署+链上实测待生产）；链上验收（paymaster 入 mempool / ≥3 新链 UserOp 实测）待生产机执行。
 >
 > **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@infrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
 >
