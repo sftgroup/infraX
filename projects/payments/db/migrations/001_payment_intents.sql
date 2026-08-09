@@ -1,11 +1,11 @@
 -- @0xinfrax/payments — unified payment intents (generic schema)
--- One row per payment intent across all rails (chain / fiat / x402 / mpp / a2a).
+-- One row per payment intent across all rails (chain / fiat / x402 / mpp).
 -- Business context is stored opaquely in `metadata` and never interpreted here.
 
 CREATE TABLE IF NOT EXISTS payment_intents (
   id         BIGSERIAL PRIMARY KEY,
   intent_id  TEXT NOT NULL UNIQUE,          -- public id (paymentId)
-  method     TEXT NOT NULL,                 -- chain | fiat | x402 | mpp | a2a
+  method     TEXT NOT NULL,                 -- chain | fiat | x402 | mpp
   subscriber TEXT,                          -- payer wallet
   asset      TEXT NOT NULL DEFAULT '0x0000000000000000000000000000000000000000',
   amount_wei TEXT,                          -- atomic units (decimal string)

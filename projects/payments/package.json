@@ -1,7 +1,7 @@
 {
   "name": "@0xinfrax/payments",
   "version": "0.1.1",
-  "description": "0xinfrax Payments — zero-business-coupling payment engine (chain / Stripe / x402 / MPP / a2a). Embedded service or standalone library.",
+  "description": "0xinfrax Payments — zero-business-coupling payment engine (chain / Stripe / x402 / MPP / stablecoin). Embedded service or standalone library.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -43,7 +43,6 @@
     "x402",
     "payment-channel",
     "mpp",
-    "a2a",
     "stablecoin",
     "stripe",
     "web3"

@@ -5,7 +5,7 @@
 //   - embedded in a host gateway (AgentX version B)
 //   - standalone library behind a caller-owned router (generic version A)
 // All persistence goes through the injected PaymentStore (+ optional
-// MPPSessionStore / AuthorizationStore seams); all host business (e.g.
+// MPPSessionStore seam); all host business (e.g.
 // subscription registration) goes through the onWebhookEvent / onCredit
 // callbacks — nothing AgentX-specific lives here.
 // ---------------------------------------------------------------------------
@@ -17,7 +17,7 @@ import type { MPPConfig, MPPVoucherInput } from './adapters/mpp'
 import { StripeAdapter } from './adapters/stripe'
 import { X402Adapter } from './adapters/x402'
 import { PaymentError } from './errors'
-import type { AuthorizationStore, MPPSessionRow, MPPSessionStore, PaymentStore } from './store'
+import type { MPPSessionRow, MPPSessionStore, PaymentStore } from './store'
 import { PAYMENT_INTENT_STATUSES } from './store'
 import type { PaymentIntentStatus } from './store'
 import { NATIVE_ASSET } from './types'
@@ -59,8 +59,6 @@ export interface X402Options {
     permit2?: string
     chain?: ChainKey
   }
-  /** `period` scheme (P4). */
-  period?: { enabled: boolean; periodPriceWei: string; maxPeriods: number }
 }
 
 export interface MPPOptions extends MPPConfig {}
@@ -69,8 +67,6 @@ export interface PaymentsServiceOptions {
   store: PaymentStore
   /** MPP sessions seam (payment channels). */
   mppStore?: MPPSessionStore
-  /** Period authorizations seam (payment_authorizations). */
-  authorizations?: AuthorizationStore
   chains: ChainConfigInput
   stripe?: StripeOptions
   x402?: X402Options
@@ -110,11 +106,9 @@ export class PaymentsService {
             stablecoin: opts.x402.stablecoin
               ? { ...opts.x402.stablecoin, chain: opts.x402.stablecoin.chain ?? opts.x402.chain }
               : undefined,
-            period: opts.x402.period,
           },
           {
             store: opts.store,
-            authorizations: opts.authorizations,
             getClient: (c) => this.chain.getPublicClient(c),
             chainIdOf: (c) => this.chain.chainIdOf(c),
           }
@@ -170,8 +164,6 @@ export class PaymentsService {
       }
       case 'mpp':
         return this._mppOpen(input)
-      case 'a2a':
-        return this._a2aCreate(input)
       default:
         throw new PaymentError('UNSUPPORTED_METHOD', `createPayment(method="${input.method}") is not implemented yet — use verifyPayment for on-chain rails`, 400)
     }
@@ -334,93 +326,6 @@ export class PaymentsService {
   async mppSession(channelId: string): Promise<MPPSessionRow | null> {
     if (!this.mpp) throw new PaymentError('NOT_CONFIGURED', 'MPP is not configured', 503)
     return this.mpp.session(channelId)
-  }
-
-  // ── a2a rail (paymentId two-phase) ─────────────────────────────────────
-
-  /** Phase 1: create a payment intent → return paymentId + amount + payee. */
-  private async _a2aCreate(input: CreatePaymentInput): Promise<CreatePaymentResult> {
-    const subscriber = input.subscriber
-    const payee = input.payee ?? this.x402?.payTo() ?? ''
-    const amountWei = input.valueWei
-    if (!subscriber || !payee || !amountWei) {
-      throw new PaymentError('INVALID_INPUT', 'a2a: subscriber, payee (or x402 payTo) and valueWei are required', 400)
-    }
-    const paymentId = `a2a_${randomUUID()}`
-    await this.opts.store.recordIntent?.({
-      paymentId,
-      method: 'a2a',
-      subscriber,
-      amountWei,
-      asset: input.asset ?? NATIVE_ASSET,
-      chain: input.chain,
-      status: 'created',
-      metadata: input.metadata,
-    })
-    await this.emit('a2a.created', paymentId, {
-      paymentId,
-      payer: subscriber,
-      payee,
-      amountWei,
-      asset: input.asset ?? NATIVE_ASSET,
-      metadata: input.metadata,
-    })
-    return { method: 'a2a', paymentId, amountWei, payee }
-  }
-
-  /**
-   * Phase 2: verify the payer's on-chain payment tx for an a2a intent and
-   * credit it. The tx must match the recorded intent (to == payee,
-   * value ≥ amount, from == payer). Idempotent per tx hash.
-   */
-  async a2aSettle(input: { paymentId: string; txHash: string; chain?: ChainKey }): Promise<VerifiedPayment | null> {
-    if (!this.x402) throw new PaymentError('NOT_CONFIGURED', 'x402 is not configured', 503)
-    // Reconstruct intent state from the audit row when the store records intents.
-    const verified = await this.x402.verifyAndCredit(input.txHash, input.chain)
-    if (!verified) return null
-    await this.opts.store.updateIntentStatus?.(input.paymentId, 'paid')
-    await this.emit('a2a.settled', input.paymentId, {
-      paymentId: input.paymentId,
-      reference: verified.reference,
-      payer: verified.payer,
-      creditedWei: verified.creditedWei,
-    })
-    await this.emit('payment.credited', verified.reference, {
-      reference: verified.reference,
-      payer: verified.payer,
-      amountWei: verified.creditedWei,
-      asset: verified.asset,
-      chain: verified.chain,
-      chainId: this.chain.chainIdOf(verified.chain),
-    })
-    await this.opts.onCredit?.({
-      reference: verified.reference,
-      payer: verified.payer,
-      amountWei: verified.creditedWei,
-      asset: verified.asset,
-      chainId: this.chain.chainIdOf(verified.chain),
-    })
-    return verified
-  }
-
-  // ── Period authorizations (P4) ─────────────────────────────────────────
-
-  /**
-   * Charge one period of an authorization (period rail). Idempotent guard:
-   * a host renews subscriptions on each period boundary by calling this; the
-   * authorization drains without any new signature.
-   */
-  async chargePeriod(authorizationId: string): Promise<{ renewed: boolean; remainingWei: string }> {
-    if (!this.opts.authorizations) throw new PaymentError('NOT_CONFIGURED', 'Period rail is not configured', 503)
-    const result = await this.opts.authorizations.chargePeriod(authorizationId)
-    await this.emit('authorization.charged', authorizationId, { authorizationId, ...result })
-    return result
-  }
-
-  /** Read a period authorization. */
-  async getAuthorization(authorizationId: string): Promise<import('./store').PaymentAuthorization | null> {
-    if (!this.opts.authorizations) throw new PaymentError('NOT_CONFIGURED', 'Period rail is not configured', 503)
-    return this.opts.authorizations.getAuthorization(authorizationId)
   }
 
   // ── Verify payment (x402 rail) ─────────────────────────────────────────

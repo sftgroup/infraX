@@ -13,18 +13,20 @@
 
 **零业务耦合的通用支付引擎**。模块只负责「钱」：支付方式（method）、资产、金额、链上凭证验证与幂等入账；**业务上下文（agentId、订单号、套餐 ID 等）一律经 `metadata` 透传，模块不解释、不校验、不消费**。持久化走注入的 `PaymentStore` 接缝，宿主业务只通过 `onWebhookEvent` / `onCredit` 回调接入。
 
-## 2. 功能矩阵（v0.1.0 = 原 0.2.2 能力）
+> **范围说明（2026-08-10）**：模块只保留**通用通道能力**（chain / fiat / x402 / MPP / 稳定币）。a2a-pay、period 授权制等**业务场景定义**已从模块剥离（见 §2），相应 client / router / store / 迁移已删除。
+
+## 2. 功能矩阵
 
 | 能力 | 说明 | 验证 |
 | --- | --- | --- |
 | **chain** | 链上订阅（SubscriptionManager escrow），只读：`getPlan` / `hasActiveSubscription` / `platformFeeBps` | 单测 + harness F1-3 |
-| **fiat (Stripe)** | Checkout Session 创建（支持按链上套餐价自动定价）、webhook 验签、事件归一化、intent 生命周期 | 单测 + harness F1-3 |
+| **fiat (Stripe)** | Checkout Session 创建（支持按链上套餐价自动定价、计费周期 `period`）、webhook 验签、事件归一化、intent 生命周期 | 单测 + harness F1-3 |
 | **x402 v1** | 原生代币周期支付：`verifyAndCredit`（幂等验 tx）、余额、扣减、订阅访问 | harness F1-3 |
-| **x402 v2** | `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE` 三个 base64 header；scheme 全量 `exact` / `upto` / `period`；EIP-712 Payment 分片方案（domain 含 chainId + verifyingContract） | 单测 + harness F4 |
+| **x402 v2** | `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE` 三个 base64 header；scheme `exact` / `upto`；EIP-712 Payment 分片方案（domain 含 chainId + verifyingContract） | 单测 + harness F4 |
 | **MPP 支付通道 (P2)** | 三阶段 open → (voucher)\* → close + topUp；EIP-712 `Voucher(channelId, cumulativeAmount)` 签名复用幂等（`mode: 'reuse'`）；auto-settle 阈值触发批量扣减；`channelId = keccak256(encodePacked(payer, payee, asset, salt, chainId))` | 单测 + harness F5 |
 | **稳定币 (P3)** | EIP-3009 `transferWithAuthorization` + Permit2 `permitTransferFrom` 双机制；`Transfer(from→payTo, value≥price)` 事件作为入账凭证；6 位精度原子单位；`x402.verifyAndCredit` 原生验证失败自动回退 stablecoin | 单测 + harness F6 |
-| **period 授权制 (P4)** | 一次性预授权 n 期 → 每期到期自动扣费，**无重签**；`payment_authorizations` 表（reference UNIQUE）；`chargePeriod` 原子扣减并标记 exhausted | 单测 + harness F7 |
-| **a2a-pay (P4)** | paymentId 两阶段（create → settle）；settle 幂等（同 tx 不重复入账） | 单测 + harness F8 |
+
+> 计费周期（`PaymentPeriod`：`day/week/month/year`）是**通用能力**，保留在 checkout、stripe recurring、on-chain `plan.period` 中；它不是授权场景。
 
 ## 3. 架构与设计原则
 
@@ -35,8 +37,8 @@
 PaymentsService（本模块）
    ├── adapters：chain / stripe / x402 / mpp / stablecoin
    ├── protocol：x402-v2 / mpp-voucher / stablecoin（EIP-712 构造 + 验签）
-   ├── store 接缝：PaymentStore + MPPSessionStore + AuthorizationStore
-   │     ├── PgPaymentStore / PgMPPSessionStore / PgAuthorizationStore（通用实现，可选）
+   ├── store 接缝：PaymentStore + MPPSessionStore
+   │     ├── PgPaymentStore / PgMPPSessionStore（通用实现，可选）
    │     └── 宿主自定义 store（AgentX 用 AgentxPaymentStore 覆盖业务表）
    └── 回调接缝：onWebhookEvent / onCredit（宿主在这里落业务状态）
 ```
@@ -57,14 +59,14 @@ projects/payments/
 ├── README.md               # 使用文档（独立库 + 嵌入式两种形态）
 ├── DEPLOY.md               # 部署手册
 ├── HANDOVER.md             # 本文档
-├── db/migrations/          # 001-005（模块自有 payment_* 表）
+├── db/migrations/          # 001-004（模块自有 payment_* 表）
 ├── src/
 │   ├── index.ts            # 公共入口
 │   ├── types.ts            # 通用类型（metadata 透传约定）
 │   ├── errors.ts           # PaymentError{code,status} + isPaymentError
 │   ├── service.ts          # PaymentsService（引擎 + 回调接缝 + intent 生命周期）
-│   ├── store.ts            # PaymentStore 接口 + Pg 三实现 + SqlExecutor 解耦
-│   ├── client.ts           # X402Client / PaymentsClient / MPPClient / A2AClient / PeriodClient
+│   ├── store.ts            # PaymentStore 接口 + Pg 两实现 + SqlExecutor 解耦
+│   ├── client.ts           # X402Client / PaymentsClient / MPPClient
 │   ├── router.ts           # createPaymentsRouter（express optional peer）
 │   ├── protocol/
 │   │   ├── x402-v2.ts      # PaymentRequired / PaymentPayload / PaymentResponse（EIP-712 分片）
@@ -76,7 +78,7 @@ projects/payments/
 │       ├── x402.ts         # 原生验证入账 + stablecoin fallback
 │       ├── mpp.ts          # 通道 open/voucher/topUp/settle/close/session
 │       └── stablecoin.ts   # EIP-3009 Transfer 事件入账验证
-└── tests/                  # 9 个文件 87 断言
+└── tests/                  # 10 个文件 89 断言
 ```
 
 ## 5. 存储接缝
@@ -95,10 +97,9 @@ interface PaymentStore {
 }
 ```
 
-### 5.2 MPPSessionStore / AuthorizationStore（P2/P4 可选注入）
+### 5.2 MPPSessionStore（P2 可选注入）
 
-- `MPPSessionStore`：`getSession / saveSession / updateSession`（open/voucher/settle/close 落库）
-- `AuthorizationStore`：`get / create / chargePeriod`（period 授权制）
+- `MPPSessionStore`：`getSession / createSession / applyVoucher / recordVoucher / applySettle / topUp / closeSession`（open/voucher/settle/close 落库）
 
 ### 5.3 迁移（随包发布在 `db/migrations/`，幂等）
 
@@ -106,9 +107,8 @@ interface PaymentStore {
 | --- | --- |
 | 001 | `payment_intents` |
 | 002 | `payment_credits` / `payment_balances` / `payment_access` |
-| 003 | `payment_sessions` / `payment_vouchers`（MPP） |
+| 003 | `payment_sessions` / `payment_vouchers`（MPP，含 auto-settle 策略列） |
 | 004 | `payment_events`（归一化 webhook 回放） |
-| 005 | `payment_authorizations`（period） |
 
 > 宿主若自带业务表，可实现自定义 store 注入，此时无需执行模块迁移（AgentX 即此形态）。
 
@@ -135,7 +135,7 @@ AgentX 以「嵌入式服务」形态集成（`gateway/src/services/payments.ts`
 
 - `AgentxPaymentStore` 实现 `PaymentStore`，覆盖 AgentX 自有表（`fiat_subscriptions` / `x402_*`），**不执行模块迁移**
 - `PaymentsBridge` 消费模块 webhook 事件 → 落业务订阅表
-- 统一端点 `/api/v1/payments/*`（含 `/mpp/*` `/a2a/*` `/period/*`）由宿主路由暴露
+- 统一端点 `/api/v1/payments/*`（含 `/mpp/*`）由宿主路由暴露
 - 部署：`payments build`（tsc）→ 宿主 `npm install`（registry 安装）→ 宿主 build → 重启
 
 > AgentX 侧保留定制支付 SDK（`@agentxv2/sdk` 的 `SubscriptionPayments` 与协议客户端 re-export），迁移后改为依赖 `@0xinfrax/payments`。
@@ -144,14 +144,14 @@ AgentX 以「嵌入式服务」形态集成（`gateway/src/services/payments.ts`
 
 | 层 | 内容 | 状态 |
 | --- | --- | --- |
-| 单测 | `npm test`：9 文件 87 断言（协议/适配器/service/router/错误码） | 全绿 |
-| 嵌入式 harness | `scripts/local-payments/run.sh`：postgres+anvil+gateway，`FLOWS="f1 f4 f5 f6 f7 f8"`（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币 / F7 period / F8 a2a） | 全绿（生产机验证） |
+| 单测 | `npm test`：10 文件 89 断言（协议/适配器/service/router/错误码） | 全绿 |
+| 嵌入式 harness | `scripts/local-payments/run.sh`：postgres+anvil+gateway，`FLOWS="f1 f4 f5 f6"`（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币） | 全绿（生产机验证） |
 | 解耦验证 | `scripts/local-payments/run-decouple.sh`：独立库形态，19 断言（加载路径/依赖仅 pg+viem/无 AgentX token/DB 仅 payment_* 表） | 全绿 |
 
 ## 9. 客户端与 Router
 
-- HTTP 客户端（指向任意部署点）：`X402Client`（quote/pay/replay/verify/balance）、`PaymentsClient`（create/verify/access/info）、`MPPClient`（open/voucher/topUp/settle/close/session）、`A2AClient`（create/settle）、`PeriodClient`（charge/authorization）
-- `createPaymentsRouter(payments)`：现成 Express router（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access`）；`express` 为 optional peer，不 import router 则无此依赖
+- HTTP 客户端（指向任意部署点）：`X402Client`（quote/pay/replay/verify/balance）、`PaymentsClient`（create/verify/access/info）、`MPPClient`（open/voucher/topUp/settle/close/session）
+- `createPaymentsRouter(payments)`：现成 Express router（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/mpp/*`）；`express` 为 optional peer，不 import router 则无此依赖
 
 ## 10. 已知注意点（踩坑记录）
 
@@ -164,6 +164,7 @@ AgentX 以「嵌入式服务」形态集成（`gateway/src/services/payments.ts`
 7. **宿主 ledger 混资产**（AgentX 侧行为，非模块缺陷）：`AgentxPaymentStore.credit` 把不同资产信用累加进单行原生余额。模块自身按 asset 记账。
 8. **gateway 对 `.env` 的 `source`**：带空格的字符串值必须加引号（`STABLECOIN_DOMAIN_NAME="Mock USD Coin"`）。
 9. **forge script 部署**：`usdc.mint(msg.sender, …)` 在 forge script 里 mint 给的是**脚本合约地址**而非广播者 EOA，须用 `vm.addr(deployerPrivateKey)`。
+10. **场景剥离（2026-08-10）**：a2a / period 授权 rail 已从模块删除（含 `payment_authorizations` 表与 005 迁移）。已在生产库执行过 005 的部署，表数据不受影响（模块不再读写）；新部署不再执行该迁移。
 
 ## 11. 发版与维护指南
 
@@ -199,6 +200,7 @@ npm view @0xinfrax/payments dist-tags   # latest 指向新版本
 
 ## 12. 与 AgentX SDK 的依赖关系（迁移后）
 
-- AgentX 侧保留定制支付 SDK：`@agentxv2/sdk`（`SubscriptionPayments` 业务封装 + `MPPClient` / `A2AClient` / `PeriodClient` / `X402Client` / `PaymentsClient` 协议客户端 re-export）
+- AgentX 侧保留定制支付 SDK：`@agentxv2/sdk`（`SubscriptionPayments` 业务封装 + `MPPClient` / `X402Client` / `PaymentsClient` 协议客户端 re-export）
 - **依赖方向**：AgentX 定制层 → `@0xinfrax/payments`（registry）→（无反向）；`@agentxv2/payments` 旧包已 deprecate
 - 通用层零业务依赖；双方版本通过 semver `^` 范围对接
+- **注意**：模块 0.1.2+ 不再导出 `A2AClient` / `PeriodClient` 与 a2a/period 端点；AgentX 定制层若引用这些场景能力，需在业务侧自行实现或移除（见 AgentX 侧通知）

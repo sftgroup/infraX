@@ -19,7 +19,6 @@ import {
   PaymentsService,
   PgPaymentStore,
   PgMPPSessionStore,
-  PgAuthorizationStore,
   createWebhookForwarder,
 } from './src/index'
 
@@ -99,7 +98,6 @@ if (process.env.X402_ENABLED === 'true' && (!process.env.X402_PAY_TO || !process
 const payments = new PaymentsService({
   store: new PgPaymentStore(pool),
   mppStore: new PgMPPSessionStore(pool),
-  authorizations: new PgAuthorizationStore(pool),
   chains,
   stripe: process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET
     ? { secretKey: process.env.STRIPE_SECRET_KEY, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET }
@@ -130,7 +128,7 @@ const payments = new PaymentsService({
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-payments', uptime: process.uptime() }))
 app.use('/payments', createPaymentsRouter(payments))
 
-// ── Apply the module migrations (001-005) on boot (idempotent) ──
+// ── Apply the module migrations (001-004) on boot (idempotent) ──
 async function runMigrations(): Promise<void> {
   const dir = join(__dirname, 'db', 'migrations')
   const files = readdirSync(dir).filter((f) => /^\d{3}_.+\.sql$/.test(f)).sort()

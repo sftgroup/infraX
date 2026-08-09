@@ -24,10 +24,10 @@ import type { Address } from 'viem'
 // ── Wire structures ──────────────────────────────────────────────────────────
 
 export interface X402Accept {
-  scheme: 'exact' | 'upto' | 'period'
+  scheme: 'exact' | 'upto'
   /** CAIP-2 network id, e.g. `eip155:11155111`. */
   network: string
-  /** Amount in atomic units (decimal string). exact → fixed; upto → cap; period → full authorization. */
+  /** Amount in atomic units (decimal string). exact → fixed; upto → cap. */
   amount: string
   /** Token contract; `0x0…0` = native. */
   asset: string

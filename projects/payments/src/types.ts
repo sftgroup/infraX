@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 /** Payment rails supported by the module. */
-export type PaymentMethod = 'chain' | 'fiat' | 'x402' | 'mpp' | 'a2a'
+export type PaymentMethod = 'chain' | 'fiat' | 'x402' | 'mpp'
 
 export type PaymentPeriod = 'day' | 'week' | 'month' | 'year'
 
@@ -29,13 +29,13 @@ export interface CreatePaymentInput {
   chain?: ChainKey
   /** Chain / MPP rail: native value override (defaults to the plan price / deposit). */
   valueWei?: string
-  /** Asset for valueWei (NATIVE_ASSET default; token address for a2a/stablecoin). */
+  /** Asset for valueWei (NATIVE_ASSET default; token address for stablecoin). */
   asset?: string
   /** MPP rail: receiving wallet for the deposit (defaults to the deployment payee). */
   payee?: string
   /** MPP rail: channel salt (binds the channel to a fresh context). */
   salt?: string
-  /** MPP / a2a rail: the funding/credential tx to verify on open/settle. */
+  /** MPP rail: the funding/credential tx to verify on open. */
   txHash?: string
   /** Item used for auto-pricing (e.g. an on-chain plan id). */
   pricing?: { planId: number }
@@ -63,7 +63,6 @@ export type CreatePaymentResult =
   | { method: 'chain'; paymentId: string; reference: string }
   | { method: 'x402'; reference: string }
   | { method: 'mpp'; channelId: string; depositWei: string; payee: string }
-  | { method: 'a2a'; paymentId: string; amountWei: string; payee: string }
 
 /** A verified incoming payment credited to the payer's balance (idempotent). */
 export interface PaymentCredit {
@@ -135,9 +134,6 @@ export type PaymentEventType =
   | 'mpp.session.opened'
   | 'mpp.settled'
   | 'mpp.closed'
-  | 'a2a.created'
-  | 'a2a.settled'
-  | 'authorization.charged'
 
 /** An outbound payment event (module writes; host consumes). */
 export interface PaymentEvent {

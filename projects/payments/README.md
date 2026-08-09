@@ -1,18 +1,18 @@
 # @0xinfrax/payments
 
-零业务耦合的通用支付引擎（chain / Stripe / x402 / MPP 支付通道 / 稳定币 / period 授权制 / a2a-pay）。
+零业务耦合的通用支付引擎（chain / Stripe / x402 / MPP 支付通道 / 稳定币）。
 
 > **维护**：由 **InfraX**（GitHub [sftgroup/infraX](https://github.com/sftgroup/infraX)）团队维护；源码位于仓库 [`projects/payments/`](https://github.com/sftgroup/infraX/tree/main/projects/payments) 目录，npm 包 `@0xinfrax/payments` 由 InfraX 账号发布与维护。集成方可作为独立库使用，但问题的修复与演进统一由 InfraX 负责。
 
 > **集成到独立项目**：完整部署步骤（安装 / 数据库 / 合约 / 代码接入 / 验证 / 生产注意）见 [`DEPLOY.md`](./DEPLOY.md)。
 >
-> **调用方自配收款**：想配置「自己的收款」（自部署 SubscriptionManager / 自己 Stripe 账号 / 自配 x402 钱包 / MPP payee / a2a 单笔收款），见 [`CALLER_SETUP.md`](./CALLER_SETUP.md)。
+> **调用方自配收款**：想配置「自己的收款」（自部署 SubscriptionManager / 自己 Stripe 账号 / 自配 x402 钱包 / MPP payee），见 [`CALLER_SETUP.md`](./CALLER_SETUP.md)。
 
 - **嵌入式服务**：作为宿主 Gateway 的内部引擎（AgentX 即此形态的参考实现，见 `gateway/src/services/payments.ts`）
 - **独立库**：可被任意项目依赖，以「调用方自持 store」的形态独立运行
-- **独立服务（微服务形态）**：仓库内置部署入口 [`server.ts`](server.ts)（tsx 直跑）——Express + 统一鉴权（auth-express，Bearer/X-API-Key/X-Service-Key）+ `PgPaymentStore`（`pocketx_payments` 独立库，启动自动跑 5 迁移）+ `/health` + `createPaymentsRouter`（挂 `/payments`）；链上读可配 `CHAIN_RPC_READ_KEY` 走 chain-rpc 网关（DC-10）；`WEBHOOK_FORWARD_URL` 时事件出站转发（`createWebhookForwarder`）。systemd 模板见 `deploy/systemd/infrax-payments.service`（:9132）
+- **独立服务（微服务形态）**：仓库内置部署入口 [`server.ts`](server.ts)（tsx 直跑）——Express + 统一鉴权（auth-express，Bearer/X-API-Key/X-Service-Key）+ `PgPaymentStore`（`pocketx_payments` 独立库，启动自动跑 4 迁移）+ `/health` + `createPaymentsRouter`（挂 `/payments`）；链上读可配 `CHAIN_RPC_READ_KEY` 走 chain-rpc 网关（DC-10）；`WEBHOOK_FORWARD_URL` 时事件出站转发（`createWebhookForwarder`）。systemd 模板见 `deploy/systemd/infrax-payments.service`（:9132）
 
-核心设计：**模块只懂钱**（方法 / 资产 / 金额 / 凭证）。业务上下文（如 `agentId`、订单号）一律经 `metadata` 透传；持久化走注入的 `PaymentStore` 接缝；宿主业务（订阅注册、发货、授权）只通过 `onWebhookEvent` / `onCredit` 回调接入。模块不解释、不校验、不消费任何业务参数。
+核心设计：**模块只懂钱**（方法 / 资产 / 金额 / 凭证）。业务上下文（如 `agentId`、订单号）一律经 `metadata` 透传；持久化走注入的 `PaymentStore` 接缝；宿主业务（订阅注册、发货）只通过 `onWebhookEvent` / `onCredit` 回调接入。模块不解释、不校验、不消费任何业务参数。
 
 依赖仅有 `pg`（账本/凭证）与 `viem`（链上读写）。
 
@@ -45,7 +45,7 @@
 }
 ```
 
-> 若宿主自身也要用 `viem` 发交易（链上/ x402 付款），可另行声明自己版本的 `viem`——模块会从自身 `node_modules` 解析，互不冲突。
+> 若宿主自身也要用 `viem` 发交易（链上 / x402 付款），可另行声明自己版本的 `viem`——模块会从自身 `node_modules` 解析，互不冲突。
 
 ### 2. 四种安装来源
 
@@ -68,15 +68,14 @@ cd payments && npm install && npm run build
 
 ## 数据库迁移
 
-模块拥有自己的 `payment_*` 表（5 个迁移文件，随包发布在 `db/migrations/`）：
+模块拥有自己的 `payment_*` 表（4 个迁移文件，随包发布在 `db/migrations/`）：
 
 | 迁移 | 表 | 用途 |
 | --- | --- | --- |
-| `001_payment_intents.sql` | `payment_intents` | 统一支付意图（chain / fiat / x402 / mpp / a2a） |
+| `001_payment_intents.sql` | `payment_intents` | 统一支付意图（chain / fiat / x402 / mpp） |
 | `002_payment_credits.sql` | `payment_credits` / `payment_balances` / `payment_access` | 入账台账、余额、通用访问登记表 |
 | `003_payment_sessions.sql` | `payment_sessions` / `payment_vouchers` | MPP 通道会话 / 凭证 |
 | `004_payment_events.sql` | `payment_events` | 归一化 webhook 事件回放 |
-| `005_payment_authorizations.sql` | `payment_authorizations` | period 授权制订阅（一次性预授权 n 期，无重签） |
 
 在**新项目自己的数据库**中执行（不要复用其他项目的表）：
 
@@ -122,7 +121,7 @@ const payments = new PaymentsService({
   x402: {
     enabled: true,
     payTo: process.env.X402_PAY_TO,          // 平台收款钱包
-    priceWei: process.env.X402_PRICE_WEI,    // 单次价格（周期支付最低门槛）
+    priceWei: process.env.X402_PRICE_WEI,    // 单次价格
     chain: 'sepolia',
   },
 
@@ -141,15 +140,15 @@ const payments = new PaymentsService({
 })
 ```
 
-### 三个轨的典型用法
+### 通道的典型用法
 
 ```ts
 // ① 链上：用户先在链上调用 SubscriptionManager.subscribe(planId)，然后：
 const active = await payments.chain.hasActiveSubscription('sepolia', subscriber, agentId)
-const plan = await payments.chain.getPlan('sepolia', planId) // 定价、套餐详情
+const plan = await payments.chain.getPlan('sepolia', planId) // 定价、套餐详情（含计费周期）
 const feeBps = await payments.chain.platformFeeBps('sepolia')
 
-// ② 法币：创建 Stripe Checkout Session（可自动定价）
+// ② 法币：创建 Stripe Checkout Session（可自动定价，period 为计费周期）
 const checkout = await payments.createPayment({
   method: 'fiat',
   subscriber,
@@ -190,7 +189,7 @@ const access = await payments.resolveAccess(subscriber, { agentId }, { chain: 's
 
 ### 可选：现成 Express router（版本 A 推荐）
 
-`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access`）的现成 router，挂载即用：
+`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/mpp/*`）的现成 router，挂载即用：
 
 ```ts
 import { createPaymentsRouter } from '@0xinfrax/payments/router'
@@ -241,7 +240,7 @@ AgentX 自身即此形态的参考实现：
 
 | 成员 | 说明 |
 | --- | --- |
-| `PaymentsService.createPayment(input)` | 创建支付意图（fiat checkout / x402 订阅 / MPP open / a2a create） |
+| `PaymentsService.createPayment(input)` | 创建支付意图（fiat checkout / MPP open） |
 | `PaymentsService.verifyPayment(txHash, chain?)` | 验证链上付款并幂等入账（原生优先，失败回退 stablecoin EIP-3009） |
 | `PaymentsService.handleWebhook(payload, signature)` | 校验 Stripe 签名 → 归一化事件 → 调 `onWebhookEvent` |
 | `PaymentsService.resolveAccess(subscriber, resource, opts?)` | 委托 store 的访问检查 |
@@ -251,18 +250,16 @@ AgentX 自身即此形态的参考实现：
 | `PaymentsService.x402` | `X402Adapter`：`verifyAndCredit` / `balanceOf` / `deduct` / `paymentRequiredHeaders` |
 | `PaymentsService.mpp` | `MPPAdapter`：`open` / `voucher` / `topUp` / `settle` / `close` / `session`（支付通道） |
 | `PaymentsService.mppVoucher / mppTopUp / mppSettle / mppClose / mppSession` | MPP 通道操作（服务层薄封装） |
-| `PaymentsService.chargePeriod(authorizationId)` | period 授权制：原子扣一期（幂等，耗尽标记 exhausted） |
-| `PaymentsService.getAuthorization(authorizationId)` | 查询授权（owner / 剩余 / 期数 / 状态） |
 | `PgPaymentStore` | 通用 Postgres store（`payment_*` 表） |
-| `PgMPPSessionStore` / `PgAuthorizationStore` | MPP 通道 / period 授权的 Pg 实现（可选，注入到 Options） |
+| `PgMPPSessionStore` | MPP 通道 Pg 实现（可选，注入到 Options） |
 | `updateIntentStatus(paymentId, status)` | 推进 intent 生命周期（`created→paid/failed/closed`）；x402 由 verifyPayment 自动置 `paid`，fiat 由宿主在回调里驱动 |
 | `PaymentError` / `isPaymentError` | 带 `code` + 建议 `status` 的类型化错误（宿主按码映射 HTTP） |
 | `createPaymentsRouter` | 现成 Express router（`@0xinfrax/payments/router`） |
-| `X402Client` / `PaymentsClient` / `MPPClient` / `A2AClient` / `PeriodClient` | 面向任意部署点的 HTTP 客户端 |
+| `X402Client` / `PaymentsClient` / `MPPClient` | 面向任意部署点的 HTTP 客户端 |
 | `buildVoucherMessage` / `recoverEIP3009Signer` / `recoverPermit2Signer` | EIP-712 协议 helper（MPP voucher / 稳定币双机制） |
 | `buildPaymentMessage` / `encodeHeader` / `decodeHeader` | x402 v2 协议 helper（PaymentRequired / PaymentPayload / PaymentResponse） |
 
-类型集中在 `types.ts`：`PaymentMethod`、`CreatePaymentInput / CreatePaymentResult`、`PaymentCredit`、`VerifiedPayment`、`WebhookEvent`、`PlanInfo`、`X402Info`、`MPPSessionRow`、`PaymentAuthorization` 等。
+类型集中在 `types.ts`：`PaymentMethod`、`CreatePaymentInput / CreatePaymentResult`、`PaymentCredit`、`VerifiedPayment`、`WebhookEvent`、`PlanInfo`、`X402Info`、`MPPSessionRow` 等。
 
 ---
 
@@ -272,9 +269,9 @@ AgentX 自身即此形态的参考实现：
 
 | 脚本 | 验证对象 | 说明 |
 | --- | --- | --- |
-| `scripts/local-payments/run.sh` | 嵌入式形态（B） | 起 postgres+anvil → 部署合约（含 MockUSDC）→ 起 gateway → `FLOWS="f1 f4 f5 f6 f7 f8"` 全绿（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币 EIP-3009 / F7 period 授权制 / F8 a2a-pay） |
+| `scripts/local-payments/run.sh` | 嵌入式形态（B） | 起 postgres+anvil → 部署合约（含 MockUSDC）→ 起 gateway → `FLOWS="f1 f4 f5 f6"` 全绿（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币 EIP-3009） |
 | `scripts/local-payments/run-decouple.sh` | 独立库形态（A） | 只 import 模块自身 + 独立 `agentx_payments` 库，证明零 AgentX 耦合，19 项断言 |
-| `npm test` | 单测 | 9 个文件 87 项断言（协议 / 适配器 / service / router / 错误码） |
+| `npm test` | 单测 | 10 个文件 89 项断言（协议 / 适配器 / service / router / 错误码） |
 
 解耦验证断言示例：模块入口必须从自身 `dist/` 解析、依赖仅 `pg,viem`、src/dist 无 `fiat_subscriptions` / `x402_*` / `@agentxv2/sdk` 等业务 token、DB 仅 `payment_*` 表。
 
@@ -286,14 +283,14 @@ AgentX 自身即此形态的参考实现：
 payments/
 ├── package.json            # @0xinfrax/payments, deps: pg + viem
 ├── tsconfig.json
-├── db/migrations/          # 001-005（模块自有 payment_* 表）
+├── db/migrations/          # 001-004（模块自有 payment_* 表）
 ├── src/
 │   ├── index.ts            # 公共入口
 │   ├── types.ts            # 通用类型（metadata 透传约定）
 │   ├── errors.ts           # PaymentError{code,status}
 │   ├── service.ts          # PaymentsService（引擎 + 回调接缝）
-│   ├── store.ts            # PaymentStore 接口 + PgPaymentStore + PgMPPSessionStore + PgAuthorizationStore
-│   ├── client.ts           # X402Client / PaymentsClient / MPPClient / A2AClient / PeriodClient
+│   ├── store.ts            # PaymentStore 接口 + PgPaymentStore + PgMPPSessionStore
+│   ├── client.ts           # X402Client / PaymentsClient / MPPClient
 │   ├── router.ts           # createPaymentsRouter（express 为 optional peer）
 │   ├── protocol/
 │   │   ├── x402-v2.ts      # PaymentRequired / PaymentPayload / PaymentResponse（EIP-712）

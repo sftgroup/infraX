@@ -63,7 +63,6 @@ export function createPaymentsRouter(payments: PaymentsService): Router {
       rails: {
         x402: x.available(),
         stablecoin: x.stablecoinAvailable(),
-        period: Boolean(x.periodAsset()),
       },
       stablecoin: x.stablecoinAvailable()
         ? { enabled: true, asset: x.stablecoinAsset(), chain: x.chain() }
@@ -310,94 +309,6 @@ export function createPaymentsRouter(payments: PaymentsService): Router {
           return
         }
         res.json({ channelId: session.channelId, status: session.status, currentCum: session.currentCum, spentWei: session.spentWei, depositWei: session.depositWei })
-      }
-    )
-  })
-
-  // ── a2a-pay (paymentId two-phase) ─────────────────────────────────────────
-
-  // POST /a2a — phase 1: create a payment intent
-  // body: { payer, amountWei, payee?, chain?, metadata? }
-  router.post('/a2a', (req: Request, res: Response, next: NextFunction) => {
-    const { payer, amountWei, payee, chain, metadata } = req.body ?? {}
-    if (!payer || !amountWei) {
-      res.status(400).json({ error: 'payer and amountWei are required' })
-      return
-    }
-    handle(
-      () =>
-        payments.createPayment({
-          method: 'a2a',
-          subscriber: String(payer),
-          valueWei: String(amountWei),
-          payee: payee ? String(payee) : undefined,
-          chain,
-          metadata,
-        }),
-      res,
-      next,
-      (result) => res.json({ method: 'a2a', paymentId: result.paymentId, amountWei: result.amountWei, payee: result.payee })
-    )
-  })
-
-  // POST /a2a/settle — phase 2: verify the payer's on-chain payment tx
-  // body: { paymentId, txHash, chain? }
-  router.post('/a2a/settle', (req: Request, res: Response, next: NextFunction) => {
-    const { paymentId, txHash, chain } = req.body ?? {}
-    if (!paymentId || !txHash) {
-      res.status(400).json({ error: 'paymentId and txHash are required' })
-      return
-    }
-    handle(
-      () => payments.a2aSettle({ paymentId: String(paymentId), txHash: String(txHash), chain }),
-      res,
-      next,
-      async (verified) => {
-        if (!verified) {
-          res.status(422).json({ error: 'Transaction is not a valid payment to the platform wallet' })
-          return
-        }
-        const balance = await payments.balanceOf(verified.payer)
-        res.json({ verified: true, paymentId: String(paymentId), payer: verified.payer, creditedWei: verified.creditedWei, balanceWei: balance.toString() })
-      }
-    )
-  })
-
-  // ── Period authorizations (P4) ────────────────────────────────────────────
-
-  // POST /period/charge — charge one period of an authorization
-  // body: { authorizationId }
-  router.post('/period/charge', (req: Request, res: Response, next: NextFunction) => {
-    const authorizationId = String(req.body?.authorizationId ?? '')
-    if (!authorizationId) {
-      res.status(400).json({ error: 'authorizationId is required' })
-      return
-    }
-    handle(
-      () => payments.chargePeriod(authorizationId),
-      res,
-      next,
-      (result) => res.json({ authorizationId, ...result })
-    )
-  })
-
-  // GET /period/authorization?authorizationId= — authorization state
-  router.get('/period/authorization', (req: Request, res: Response, next: NextFunction) => {
-    const authorizationId = String(req.query.authorizationId ?? '')
-    if (!authorizationId) {
-      res.status(400).json({ error: 'authorizationId is required' })
-      return
-    }
-    handle(
-      () => payments.getAuthorization(authorizationId),
-      res,
-      next,
-      (auth) => {
-        if (!auth) {
-          res.status(404).json({ error: 'Authorization not found' })
-          return
-        }
-        res.json({ id: auth.id, owner: auth.owner, amountWei: auth.amountWei, remainingWei: auth.remainingWei, periods: auth.periods, status: auth.status })
       }
     )
   })

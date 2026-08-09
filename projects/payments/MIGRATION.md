@@ -11,21 +11,22 @@
 
 ## 1. 迁移概要
 
-通用支付引擎（chain / Stripe / x402 v1+v2 / MPP 支付通道 / 稳定币 / period 授权制 / a2a-pay）在 AgentX 侧已沉淀为**零业务耦合**的独立模块，经双方确认整体移交 InfraX 统一维护。
+通用支付引擎（chain / Stripe / x402 v1+v2 / MPP 支付通道 / 稳定币）在 AgentX 侧已沉淀为**零业务耦合**的独立模块，经双方确认整体移交 InfraX 统一维护。
 
 迁移决策：
 1. **代码迁入** infraX 仓库 `projects/payments/`，不再由 AgentX 仓库维护通用包源码。
 2. **包名归属** `@0xinfrax/payments`，由 InfraX 账号发布；`@agentxv2/payments` 旧包 deprecate，提示迁移。
 3. **AgentX 保留定制层**：`@agentxv2/sdk` 的 `SubscriptionPayments` 业务封装 + 协议客户端 re-export 留在 AgentX，依赖方向改为 **AgentX → @0xinfrax/payments（registry）**，无反向依赖。
 4. **能力对齐**：`@0xinfrax/payments@0.1.0` 与原 `@agentxv2/payments@0.2.2` 功能完全一致（仅包名与归属变化）。
+5. **场景剥离（2026-08-10）**：模块定位收敛为**通用支付通道**，a2a-pay、period 授权制等**业务场景定义**已从模块剥离（`A2AClient` / `PeriodClient` / `payment_authorizations` 表 / 005 迁移等一并删除）；只保留通用通道能力（chain / fiat / x402 / MPP / 稳定币）。见 [HANDOVER.md §10](./HANDOVER.md#10-已知注意点踩坑记录)。
 
 ## 2. 迁入内容清单
 
 | 资产 | 说明 | 状态 |
 | --- | --- | --- |
 | `src/`（engine 全部源码） | 服务 / store 接缝 / adapters / protocol / client / router | ✅ |
-| `db/migrations/`（001-005） | 模块自有 `payment_*` 表，随包发布 | ✅ |
-| `tests/` | 9 文件 87 断言 | ✅ 全绿 |
+| `db/migrations/`（001-004） | 模块自有 `payment_*` 表，随包发布 | ✅ |
+| `tests/` | 10 文件 89 断言 | ✅ 全绿 |
 | `scripts/` | 解耦验证 harness（`run-decouple.sh` / `decouple-test.mjs` / `mock-stripe.mjs` / `docker-compose.yml`） | ✅ |
 | 文档 | `README.md` / `DEPLOY.md` / `HANDOVER.md` / 本文件 | ✅ |
 | 合约（IdentityRegistry / SubscriptionManager） | 体积约 22M，**未迁入**；验证时经 `CONTRACTS_DIR` 环境变量注入（默认指向 AgentX 合约目录） | ⚠️ 外部依赖 |
@@ -35,7 +36,7 @@
 - **发布**：npm 包 `@0xinfrax/payments`，scope `@0xinfrax`（发布账号 stevenwang000x，read-write）。
 - **质量门槛**（每次发版必须全绿）：
   ```bash
-  npm run build && npm run typecheck && npm test     # 87 断言
+  npm run build && npm run typecheck && npm test     # 89 断言
   bash scripts/run-decouple.sh                        # 解耦验证 19 断言（需 docker + CONTRACTS_DIR）
   ```
 - **兼容承诺**：`PaymentsService` 既有方法签名不变；`PaymentStore` 新接口成员一律可选（`?`）；新能力以「可选 store 注入 + 新增方法」添加；intent 生命周期扩展走 `updateIntentStatus`（宿主未实现则 no-op）。
@@ -96,6 +97,8 @@ InfraX 发布 @0xinfrax/payments 新版
 - [x] 构建 / typecheck / 单测全绿（87 断言）
 - [x] 解耦验证全绿（19 断言）
 - [x] `@0xinfrax/payments@0.1.0` 发布至 npm
-- [ ] AgentX 侧：发布 `@agentxv2/sdk@0.11.0`（依赖切到新包）+ gateway 升级
-- [ ] 旧包 `@agentxv2/payments` deprecate 提示（npm 侧执行）
-- [ ] 首次「跟随升级」演练（InfraX 发 0.1.1 触发一次完整 check-list）
+- [x] `@0xinfrax/payments@0.1.1` 发布（新增 `createWebhookForwarder` + ChainAdapter `rpcHeaders`）
+- [x] 首次「跟随升级」演练（0.1.1 触发一次完整 check-list，解耦回归 19 断言 + gateway 回归全绿）
+- [x] 旧包 `@agentxv2/payments` deprecate 提示（npm 侧执行）
+- [x] 场景剥离（2026-08-10）：a2a / period 授权制从模块删除，定位收敛为通用支付通道
+- [ ] AgentX 侧：若定制层仍引用 `A2AClient` / `PeriodClient` 等场景能力，需自行实现或移除（见 AgentX 侧通知）

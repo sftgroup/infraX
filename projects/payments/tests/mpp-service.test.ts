@@ -1,11 +1,9 @@
-// P2–P4 service-level tests: MPP rail, a2a-pay, period authorizations.
+// Service-level tests for the MPP rail (payment channels).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { privateKeyToAccount } from 'viem/accounts'
 import { PaymentsService } from '../src/service'
-import type { AuthorizationStore, MPPSessionRow, MPPSessionStore } from '../src/store'
-import type { X402PaymentPayload } from '../src/protocol/x402-v2'
-import { buildPaymentMessage, encodeHeader } from '../src/protocol/x402-v2'
-import { makeService, makeStore } from './helpers'
+import type { MPPSessionRow, MPPSessionStore } from '../src/store'
+import { makeStore } from './helpers'
 
 const ACCOUNT = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80')
 const SUB = ACCOUNT.address
@@ -47,24 +45,6 @@ function makeSessions(): MPPSessionStore & { rows: Map<string, MPPSessionRow> } 
   } as unknown as MPPSessionStore & { rows: Map<string, MPPSessionRow> }
 }
 
-function makeAuths(): AuthorizationStore & { byId: Map<string, any> } {
-  const byId = new Map<string, any>()
-  return {
-    byId,
-    createAuthorization: vi.fn(async (a: any) => {
-      byId.set(a.id, { ...a })
-    }),
-    getAuthorization: vi.fn(async (id: string) => byId.get(id) ?? null),
-    chargePeriod: vi.fn(async (id: string) => {
-      const a = byId.get(id)
-      if (!a || a.status !== 'active') throw new Error('not chargeable')
-      a.remainingWei = (BigInt(a.remainingWei) - BigInt(a.periodPriceWei)).toString()
-      a.status = BigInt(a.remainingWei) >= BigInt(a.periodPriceWei) ? 'active' : 'exhausted'
-      return { renewed: a.status === 'active', remainingWei: a.remainingWei }
-    }),
-  } as unknown as AuthorizationStore & { byId: Map<string, any> }
-}
-
 /** A public-client stub returning one deposit tx (payer → payee). */
 function makePublicClient(value: bigint = 10n ** 19n) {
   return {
@@ -73,10 +53,9 @@ function makePublicClient(value: bigint = 10n ** 19n) {
   } as never
 }
 
-function makeServiceWithP2p4() {
+function makeServiceWithMpp() {
   const store = makeStore()
   const sessions = makeSessions()
-  const authorizations = makeAuths()
   const payments = new PaymentsService({
     store,
     chains: { sepolia: { rpcUrl: 'http://127.0.0.1:8545', chainId: CHAIN_ID, subscriptionManager: '0x' + '11'.repeat(20) } },
@@ -85,7 +64,6 @@ function makeServiceWithP2p4() {
       payTo: PAY_TO,
       priceWei: '1000000000000000',
       chain: CHAIN,
-      period: { enabled: true, periodPriceWei: '2000000000000000', maxPeriods: 10 },
     },
     mpp: {
       enabled: true,
@@ -95,10 +73,9 @@ function makeServiceWithP2p4() {
       settleThresholdWei: '9000000000000000000',
     },
     mppStore: sessions,
-    authorizations,
     logger: { info: () => {}, warn: () => {}, error: () => {} },
   })
-  return { store, sessions, authorizations, payments }
+  return { store, sessions, payments }
 }
 
 const TX = '0x' + 'ab'.repeat(32)
@@ -106,7 +83,7 @@ const SALT = '0x' + '01'.repeat(32)
 
 describe('PaymentsService — MPP rail', () => {
   it('createPayment(method=mpp) verifies the deposit and opens a channel', async () => {
-    const { payments, sessions } = makeServiceWithP2p4()
+    const { payments, sessions } = makeServiceWithMpp()
     vi.spyOn(payments.chain, 'getPublicClient').mockReturnValue(makePublicClient())
     const res = await payments.createPayment({
       method: 'mpp',
@@ -125,7 +102,7 @@ describe('PaymentsService — MPP rail', () => {
   })
 
   it('mppVoucher → mppSettle → mppClose round-trips through the service', async () => {
-    const { payments, store, sessions } = makeServiceWithP2p4()
+    const { payments, store, sessions } = makeServiceWithMpp()
     vi.spyOn(payments.chain, 'getPublicClient').mockReturnValue(makePublicClient())
     const opened = await payments.createPayment({
       method: 'mpp',
@@ -155,7 +132,7 @@ describe('PaymentsService — MPP rail', () => {
   })
 
   it('mppVoucher rejects a bad signature with INVALID_SIGNATURE', async () => {
-    const { payments } = makeServiceWithP2p4()
+    const { payments } = makeServiceWithMpp()
     vi.spyOn(payments.chain, 'getPublicClient').mockReturnValue(makePublicClient())
     const opened = await payments.createPayment({
       method: 'mpp', subscriber: SUB, valueWei: (10n ** 18n).toString(), salt: SALT, txHash: TX, chain: CHAIN,
@@ -173,94 +150,3 @@ async function signForChannel(channelId: string, cumulativeAmount: string) {
   )
   return ACCOUNT.signTypedData({ domain, types, primaryType, message })
 }
-
-describe('PaymentsService — a2a-pay', () => {
-  it('createPayment(method=a2a) → a2aSettle credits the payer and marks the intent paid', async () => {
-    const { payments, store } = makeServiceWithP2p4()
-    const created = await payments.createPayment({
-      method: 'a2a',
-      subscriber: SUB,
-      valueWei: (10n ** 19n).toString(),
-      payee: PAY_TO,
-      chain: CHAIN,
-      metadata: { agentId: 1 },
-    })
-    expect(created.method).toBe('a2a')
-    if (created.method !== 'a2a') return
-    expect(created.paymentId.startsWith('a2a_')).toBe(true)
-    expect(created.amountWei).toBe((10n ** 19n).toString())
-    expect(store.recordIntent).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentId: created.paymentId, method: 'a2a', subscriber: SUB, status: 'created' })
-    )
-
-    vi.spyOn(payments.x402!, 'verifyAndCredit').mockResolvedValue({
-      reference: TX.toLowerCase(),
-      payer: SUB.toLowerCase(),
-      creditedWei: (10n ** 19n).toString(),
-      asset: '0x0000000000000000000000000000000000000000',
-      chain: CHAIN,
-    })
-    const settled = await payments.a2aSettle({ paymentId: created.paymentId, txHash: TX, chain: CHAIN })
-    expect(settled?.payer).toBe(SUB.toLowerCase())
-    expect(store.updateIntentStatus).toHaveBeenCalledWith(created.paymentId, 'paid')
-  })
-})
-
-describe('PaymentsService — period authorizations', () => {
-  it('creates an authorization through the x402 period scheme and charges it', async () => {
-    const { payments, authorizations } = makeServiceWithP2p4()
-    // Build a valid period-scheme payment payload signed by the payer.
-    const periodPrice = 2n * 10n ** 15n
-    const periods = 4
-    const payload: X402PaymentPayload = {
-      x402Version: 2,
-      accepted: {
-        scheme: 'period',
-        network: `eip155:${CHAIN_ID}`,
-        amount: (periodPrice * BigInt(periods)).toString(),
-        asset: '0x0000000000000000000000000000000000000000',
-        payTo: PAY_TO,
-        maxTimeoutSeconds: 600,
-        extra: { periodPriceWei: periodPrice.toString(), periods, maxPeriods: 10 },
-      },
-      payload: { method: 'GET', url: 'https://agent.local/resource', salt: '0x' + '11'.repeat(32), txHash: TX },
-      signature: '',
-    }
-    const { domain, types, primaryType, message } = buildPaymentMessage(payload)
-    payload.signature = await ACCOUNT.signTypedData({ domain, types, primaryType, message })
-
-    // Funding tx verification (native path) must return the signer as payer.
-    vi.spyOn(payments.x402!, 'verifyAndCredit').mockResolvedValue({
-      reference: TX.toLowerCase(),
-      payer: ACCOUNT.address.toLowerCase(),
-      creditedWei: (periodPrice * BigInt(periods)).toString(),
-      asset: '0x0000000000000000000000000000000000000000',
-      chain: CHAIN,
-    })
-
-    const result = await payments.x402!.verifyPaymentSignature(encodeHeader(payload))
-    expect(result).not.toBeNull()
-    expect(result?.authorizationId).toBe(`auth:${TX.toLowerCase()}`)
-    expect(result?.settledAmount).toBe(0n)
-
-    const auth = await payments.getAuthorization(result!.authorizationId!)
-    expect(auth?.owner).toBe(ACCOUNT.address.toLowerCase())
-    expect(auth?.remainingWei).toBe((periodPrice * BigInt(periods)).toString())
-    expect(auth?.periods).toBe(periods)
-
-    // Draining: 4 periods → exhausted on the last one.
-    const charges = []
-    for (let i = 0; i < periods; i++) {
-      charges.push(await payments.chargePeriod(result!.authorizationId!))
-    }
-    expect(charges[0].renewed).toBe(true)
-    expect(charges[charges.length - 1].renewed).toBe(false) // exhausted
-    expect(charges[charges.length - 1].remainingWei).toBe('0')
-  })
-
-  it('getAuthorization / chargePeriod fail cleanly without the authorizations seam', async () => {
-    const { payments } = makeService()
-    await expect(payments.chargePeriod('auth:nope')).rejects.toMatchObject({ code: 'NOT_CONFIGURED', status: 503 })
-    await expect(payments.getAuthorization('auth:nope')).rejects.toMatchObject({ code: 'NOT_CONFIGURED' })
-  })
-})

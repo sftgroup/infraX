@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS payment_sessions (
   last_signature TEXT,
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed
   salt           TEXT,
+  auto_settle    BOOLEAN NOT NULL DEFAULT TRUE,     -- MPP auto-settle policy
+  settle_interval_sec INTEGER NOT NULL DEFAULT 86400,
+  last_settle_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   closed_at      TIMESTAMPTZ

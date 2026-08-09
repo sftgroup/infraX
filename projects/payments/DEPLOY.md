@@ -1,10 +1,11 @@
 # @0xinfrax/payments — 独立项目集成部署指南
 
-本文档说明如何把通用支付模块 `@0xinfrax/payments` 集成到一个**全新的、与 AgentX 无关的项目**中，让该项目获得三种支付能力：
+本文档说明如何把通用支付模块 `@0xinfrax/payments` 集成到一个**全新的、与 AgentX 无关的项目**中，让该项目获得通用支付通道能力：
 
 - **chain**：链上订阅（用户钱包直接调用链上 `SubscriptionManager.subscribe`，服务端读取链上状态做访问控制）
 - **fiat**：Stripe 信用卡订阅（Checkout Session + 签名校验的 Webhook，无需自己对接 Stripe 协议）
-- **x402**：原生代币按量/周期支付（用户向平台钱包转账，服务端验 tx、幂等入账、扣费访问）
+- **x402 / 稳定币**：原生代币或稳定币按量支付（用户向平台钱包转账，服务端验 tx、幂等入账、扣费访问）
+- **MPP**：三阶段支付通道（open → voucher* → close + topUp），EIP-712 voucher 签名复用幂等
 
 核心特点：**模块不感知你的业务**。你的业务上下文（订单号、用户 ID、套餐 ID…）通过 `metadata` 透传，持久化走可注入的 `PaymentStore`，业务动作（发货、授权、通知）只写在回调里。
 
@@ -61,7 +62,7 @@ npm install
 
 ## 3. 数据库初始化
 
-模块自带 3 个迁移文件（随包发布在 `db/migrations/`），在**你项目自己的数据库**中执行：
+模块自带 4 个迁移文件（随包发布在 `db/migrations/`），在**你项目自己的数据库**中执行：
 
 ```bash
 export DATABASE_URL='postgresql://user:pass@host:5432/your_db'
@@ -77,13 +78,14 @@ done
 | --- | --- | --- |
 | `001_payment_intents.sql` | `payment_intents` | 统一支付意图审计（全轨） |
 | `002_payment_credits.sql` | `payment_credits` / `payment_balances` / `payment_access` | 入账台账、余额、通用访问登记 |
-| `003_payment_sessions.sql` | `payment_sessions` / `payment_vouchers` | 支付会话 / 凭证（MPP 预留） |
+| `003_payment_sessions.sql` | `payment_sessions` / `payment_vouchers` | 支付会话 / 凭证（MPP，含 auto-settle 策略列） |
+| `004_payment_events.sql` | `payment_events` | 归一化 webhook 事件回放 |
 
 验证：
 
 ```sql
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'payment_%';
--- 应列出 6 张表
+-- 应列出 7 张表
 ```
 
 > 如果你已经有自己的余额/订阅表，可以不执行迁移，改为实现 `PaymentStore` 接口注入（§6.3）。此时 `recordIntent` 为可选方法，跳过即可。
@@ -200,6 +202,7 @@ app.listen(3000)
 | POST | `/payments/webhook` | Stripe Webhook（签名在模块内校验） |
 | GET | `/payments/balance?address=` | 模块账本余额 |
 | POST | `/payments/access` | 统一访问检查 |
+| GET/POST | `/payments/mpp/*` | MPP 支付通道（open / voucher / topup / settle / close / session） |
 
 ---
 
@@ -330,13 +333,14 @@ onWebhookEvent: async (event) => {
 
 合法转换：`created → paid | failed | closed`、`paid → closed`。非法状态值会抛 `PaymentError(INVALID_INPUT)`；未实现 `updateIntentStatus` 的自定义 store 自动跳过（no-op）。
 
-### 8.2 三轨的业务闭环
+### 8.2 各通道的业务闭环
 
-| 轨 | 用户侧动作 | 服务端动作 | 访问判定 |
+| 通道 | 用户侧动作 | 服务端动作 | 访问判定 |
 | --- | --- | --- | --- |
 | chain | 钱包调用 `subscribe(planId)`（付套餐价） | 读链上 `hasActiveSubscription` | 链上状态 |
 | fiat | 跳转 Stripe Checkout 页付款 | Webhook 验签 → `onWebhookEvent` 开订阅 | 你的 store |
-| x402 | 向 `payTo` 转 native（`/verify` 校验） | 验 tx → 幂等入账 → `onCredit` | 你的 store |
+| x402 | 向 `payTo` 转 native / 稳定币（`/verify` 校验） | 验 tx → 幂等入账 → `onCredit` | 你的 store |
+| MPP | 预存押金开通道 → 凭 voucher 消费 | 验 voucher 签名 → 会话余额扣减 | 通道余额 ≥ 消费额 |
 
 ---
 
@@ -348,10 +352,10 @@ onWebhookEvent: async (event) => {
 
 ```bash
 cd node_modules/@0xinfrax/payments && npm test
-# 30/30 全绿（Stripe 签名、错误码、自动定价、幂等、router 端点）
+# 10 文件 89 断言全绿（Stripe 签名、错误码、自动定价、幂等、router 端点、MPP 服务层）
 ```
 
-### 9.2 三轨 E2E（复刻 AgentX 的解耦验证环境）
+### 9.2 通道 E2E（复刻 AgentX 的解耦验证环境）
 
 ```bash
 # 依赖：docker（postgres + anvil）+ foundry + mock Stripe
