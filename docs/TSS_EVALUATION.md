@@ -75,7 +75,7 @@
 | M1 集成验证 | cggmp21 wasm 本地 demo：2-of-2 keygen → presign → sign → 标准 verify | ✅ 完成：本地 demo 签名可被 ethers `verifyMessage` 验证 |
 | M2 存量迁移 | 用 Key Import（SPOF code）把 E-2 现有钱包完整私钥转为 TSS 分片，地址不变 | ✅ 完成：`mpc_signer /v1/import` 按现有私钥 trusted_dealer 分片，地址不变 |
 | M3 服务端替换 | mpc server 引入 TSS 签名器，替换 sign-message/sign-typed-data/send-transaction/contract-write 四端点签名路径；`getSession` 改持分片 | ✅ 完成：本地四端点 E2E 13/13 通过（签名可被 ethers 复核，链上广播 + 余额变动确认）；见 §6 实现记录 |
-| M4 生产部署 | 分片进程/侧车部署（systemd）+ 现有 mpc-sdk/合约调用方零改动回归 | 🟡 部署产物就绪：`deploy/systemd/infrax-mpc-tss-signer.service` / `infrax-mpc-signer.service` + `infrax-mpc.service` 已加 `MPC_SIGNER_URL`/`TSS_SIGNER_URL`/`CHAIN_RPC_*` env 与依赖；🔲 生产机安装 + mpc-sdk 生产回归（SDK E2E 用户约束仅生产执行） |
+| M4 生产部署 | 分片进程/侧车部署（systemd）+ 现有 mpc-sdk/合约调用方零改动回归 | ✅ **2026-08-09 完成（43.163.105.172 主栈）**：`infrax-mpc-tss-signer.service`（tss_signer :9200）+ `infrax-mpc-signer.service`（mpc_signer :9201）安装并 active；`infrax-mpc.service` 增 `MPC_SIGNER_URL`/`TSS_SIGNER_URL` env + 依赖；mpc server 升级（sign-digest 端点 + undici 超时修复）重启；**验证全绿**：生产 TSS 钱包注册（`0xb84161…`）、sign-message/sign-digest ethers 恢复地址 MATCH、旧 Shamir 钱包（agent@infrax.io）兼容解锁签名、链上 balance 走 chain-rpc 网关（DC-3）、mpc-sdk 0.3.0 生产回归 **27/27 ALL PASS**（钱包 1:N/会话/恢复/错误分支） |
 
 ---
 

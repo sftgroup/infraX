@@ -9,6 +9,12 @@ import nodemailer from 'nodemailer';
 import { createAuthMiddleware } from '../shared/auth-express';
 import { GatewayProvider } from './gatewayProvider';
 
+// M4 生产修复：undici 默认 headersTimeout(300s) < CGGMP trusted_dealer prime 生成
+// （慢机实测可达 5min+，Node 20 单核）→ 全局 dispatcher 放大超时，否则 tssImport
+// (fetch 9201 /v1/import) 长请求会被 undici 掐断报 "TSS key split failed: fetch failed"。
+import { Agent, setGlobalDispatcher } from 'undici';
+setGlobalDispatcher(new Agent({ headersTimeout: 1_800_000, bodyTimeout: 1_800_000 }));
+
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
