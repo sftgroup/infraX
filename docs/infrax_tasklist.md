@@ -696,6 +696,12 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > 品牌化 MCP & Skill（hub-index 统一入口 + TEE 钱包 + DC 事件分类 + 多市场发布）。**PRD 待审阅，任务未排期实施。**
 
+**需求补录（2026-08-11 商业对齐评审，对标 OKX OnchainOS）**
+
+| # | 需求 | 说明 | 状态 |
+|:---:|------|------|:---:|
+| 6.0 | **AI 生态 Skills 插件（对齐 onchainos-skills）** | 现有 wallet/dc/vault/mpc 四个 MCP 服务器为底座（✅ 已具备），补齐生态发布层：为 Claude Code（`.claude-plugin`）/ Cursor（`.cursor-plugin`）/ OpenCode（`.opencode`）/ Codex（`.codex-plugin`）/ OpenClaw（`.openclaw`）提供官方 Skills 插件，覆盖 wallet/dc/vault/mpc/data/payment/session-key 全能力（含 session-key 签名代理与零签名模式）；发布物对齐 OKX onchainos-skills（GitHub 3449 commits、多 IDE 插件市场 + SKILL.md） | 🔲 新需求待排期 |
+
 **Phase 1: DC 数据强化（1 周）**
 
 | # | 任务 | 估计 | 状态 |
