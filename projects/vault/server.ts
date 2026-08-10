@@ -87,6 +87,22 @@ app.post('/api/vault/safe/confirm', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse(result, msg));
 }));
 
+// POST /api/vault/safe/confirm-mpc — A-8 (W-4.1): MPC 会话代签 confirm
+// 用户携带 MPC session token（邮箱验证码解锁，session/unlock 返回）→ vault 调 MPC
+// sign-message（EIP-191 personal_sign）→ 恢复地址须为 Safe owner（MPC 派生地址）→ 落库 + 达标自动执行。
+// 体验对齐 CEX/OKX「验证码授权」：30min 会话内免钱包 EIP-712 签名。
+app.post('/api/vault/safe/confirm-mpc', asyncHandler(async (req: any, res: any) => {
+  const { userId, safeAddress, safeTxHash, mpcToken } = req.body;
+  if (!safeAddress || !safeTxHash || !mpcToken) {
+    return res.status(400).json(apiResponse(null, 'Missing required fields: safeAddress, safeTxHash, mpcToken', 1001));
+  }
+  const result = await multiSigService.confirmWithMpc({ userId: userId || 'vault', safeAddress, safeTxHash, mpcToken });
+  const msg = result.sigCount >= result.threshold
+    ? `Threshold met! ${result.sigCount}/${result.threshold} - ready to execute`
+    : `Signed via MPC (${result.sigCount}/${result.threshold})`;
+  res.json(apiResponse(result, msg));
+}));
+
 // POST /api/vault/safe/execute
 app.post('/api/vault/safe/execute', asyncHandler(async (req: any, res: any) => {
   const { userId, safeTxHash } = req.body;

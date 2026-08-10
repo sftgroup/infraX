@@ -362,6 +362,8 @@ class SafeAPI {
   async sync(safeAddress: string) { return this.http.post<any>('/api/vault/safe/sync', { safeAddress }); }
   async executeReady(safeAddress: string) { return this.http.post<any>('/api/vault/safe/execute-ready', { safeAddress }); }
   async status(walletAddress?: string) { return this.http.get<any>('/api/vault/safe/status' + (walletAddress ? '?walletAddress=' + walletAddress : '')); }
+  /** A-8: MPC 会话代签 confirm——以 MPC 邮箱会话 token 代替 EOA 签名确认多签交易 */
+  async confirmMpc(params: { userId?: string; safeAddress: string; safeTxHash: string; mpcToken: string }) { return this.http.post<SafeConfirmResult & { signerAddress: string }>('/api/vault/safe/confirm-mpc', params); }
 }
 
 // ═══════════════ Payment — @0xinfrax/payments 通用支付引擎（MQ-15 T-8 迁移） ═══════════════

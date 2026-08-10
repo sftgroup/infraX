@@ -1294,7 +1294,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
-| A-8 | vault 增强实施（待排期） | 按 W-4.1：vault 支持 MPC session confirm（`wallets` 表登记 / executeTransaction 加固）+ SDK 透传 + 文档样例 | 🔲 | P2 |
+| A-8 | vault 增强实施（2026-08-11 完成） | 按 W-4.1：vault 支持 MPC session confirm（`POST /api/vault/safe/confirm-mpc` → MPC `sign-message` EIP-191 代签 → `safe_signatures` 记 `owner_address`+`signature_type='mpc'` → `wallets` 表登记 → threshold 达标自动 execute）；`executeTransaction` 加固（owner_address 直接关联，老数据回退 wallets 表）；SDK `SafeAPI.confirmMpc` 透传；未配 MPC_URL fail-fast 503 | ✅（2026-08-11 代码完成，待生产部署） | P2 |
 | A-9 | Paymaster/relay 配额前端展示 | 集成方控制台**统一租户视图**（以租户/API Key 维度聚合展示全部产品线状态）——但**每个产品线独立套餐额度卡片**（各自套餐名/配额/已用/剩余/重置时间），**未购买套餐显示「未购买」**（可跳转购买）；数据源 = 各产品线 usage 端点聚合（dc `/usage`、market `/usage`、rpc `/usage`、mpc `plans`+`ledger-balance`、session/vault 线待接入后并入）；Paymaster/relay 配额作为其中一条展示（aa-relay 配额统计接口 period/quota/used/remaining/resetAt）；对齐 market `/usage` 交互（planName/monthlyQuota/currentUsage）。**计费仍 per-product 分离（A-10），仅展示层统一租户聚合** | 🔲 | P2 |
 | A-10 | per-product 计费设计（2026-08-11 登记） | **机制统一、账户分离**：payments 引擎 ledger 机制复用（subscriber 维度通用字符串、transfers 原子扣费、capabilities 守卫、webhook 多目标、px_ key 校验——**引擎已完成 ✅，无引擎侧开发**）；各产品线独立订阅/配额/定价（用户群不同，不收敛统一租户账本）——dc/market/chain-rpc/mpc 已接入 ✅（MQ-16 T-1~T-4）；**待接入 🔲**：vault 线（gas 用户自付，仿 mpc：用户钱包 subscriber → 充值 → createSafe/execute 按实际 gas 扣费，GAS_POOL 仅广播，不垫付）、session/AA 线（session 订阅：UserOp 次数 + paymaster gas 代付，subscriber 扣费） | 🔲 | P1 |
 

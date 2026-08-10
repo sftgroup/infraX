@@ -315,9 +315,31 @@ export async function initDatabase(): Promise<void> {
         safe_tx_hash VARCHAR(66) NOT NULL,
         signer_id UUID NOT NULL REFERENCES users(id),
         signature TEXT NOT NULL,
-        signature_type VARCHAR(20) DEFAULT 'eoa' CHECK (signature_type IN ('eoa', 'eip1271', 'approved_hash')),
+        signature_type VARCHAR(20) DEFAULT 'eoa' CHECK (signature_type IN ('eoa', 'eip1271', 'approved_hash', 'mpc')),
+        owner_address VARCHAR(42),
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(safe_tx_hash, signer_id)
+      );
+    `);
+    // A-8: 老库补列（owner_address 由 confirm 时记录签名者 owner 地址，
+    // executeTransaction 不再依赖 wallets 表映射——W-4.1 集成点加固）
+    await client.query(`ALTER TABLE safe_signatures ADD COLUMN IF NOT EXISTS owner_address VARCHAR(42);`);
+    // 扩 signature_type 约束支持 'mpc'（老库约束不含该值 → drop 重建）
+    await client.query(`ALTER TABLE safe_signatures DROP CONSTRAINT IF EXISTS safe_signatures_signature_type_check;`);
+    await client.query(`
+      ALTER TABLE safe_signatures ADD CONSTRAINT safe_signatures_signature_type_check
+      CHECK (signature_type IN ('eoa', 'eip1271', 'approved_hash', 'mpc'));
+    `);
+
+    // A-8: wallets 表（签名者 user_id → owner 地址登记；MPC confirm 自动登记）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS wallets (
+        id UUID PRIMARY KEY,
+        user_id VARCHAR(100) NOT NULL,
+        address VARCHAR(42) NOT NULL,
+        chain VARCHAR(20) DEFAULT 'evm',
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, address)
       );
     `);
 

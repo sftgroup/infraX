@@ -593,8 +593,9 @@ export async function confirmTransaction(params: {
 
   // Verify signature is a valid EOA signature (recover signer from EIP-712 or eth_sign)
   // The signature should be a hex-encoded 65-byte (r,s,v) ECDSA signature
+  let signerAddress = '';
   try {
-    const signerAddress = ethers.verifyMessage(
+    signerAddress = ethers.verifyMessage(
       ethers.toUtf8Bytes(safeTxHash), // Use safeTxHash as the signed message
       signature
     );
@@ -613,11 +614,11 @@ export async function confirmTransaction(params: {
     throw Errors.paramError(`Invalid signature: ${sigErr.message}`);
   }
 
-  // Store signature
+  // Store signature (A-8: 记录签名者 owner 地址，executeTransaction 直接据此打包，不再依赖 wallets 表)
   await pool.query(
-    `INSERT INTO safe_signatures (id, safe_tx_hash, signer_id, signature, signature_type)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [uuidv4(), safeTxHash, userId, signature, 'eoa']
+    `INSERT INTO safe_signatures (id, safe_tx_hash, signer_id, signature, signature_type, owner_address)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [uuidv4(), safeTxHash, userId, signature, 'eoa', signerAddress.toLowerCase()]
   );
 
   // Check if threshold met
@@ -648,6 +649,115 @@ export async function confirmTransaction(params: {
   return { confirmed: true, sigCount, threshold: safe.threshold };
 }
 
+/**
+ * A-8 (W-4.1): MPC 会话代签 confirm——用户以 MPC 邮箱会话 token 代替 EOA 签名。
+ *
+ * 流程：vault 调 MPC `POST /api/v2/mpc/sign-message`（EIP-191 personal_sign，message = safeTxHash 十六进制串）
+ *  → 返回 { signature, address }；恢复地址须是 Safe owner（MPC 派生地址在 createSafe 时登记为 owner）；
+ *  → 签名落库 signature_type='mpc' + owner_address；MPC 地址登记进 wallets 表；
+ *  → threshold 达标自动 execute（与 EOA confirm 同路径）。
+ * 契约（MPC server.ts L856-871）：sign-message 内部 ethers.hashMessage(message) → 与 vault
+ *  verifyMessage(toUtf8Bytes(safeTxHash)) 一致（message 传 safeTxHash 原文即可）。
+ */
+export async function confirmWithMpc(params: {
+  userId: string;
+  safeAddress: string;
+  safeTxHash: string;
+  mpcToken: string;
+}): Promise<{ confirmed: boolean; sigCount: number; threshold: number; signerAddress: string }> {
+  const { userId, safeAddress, safeTxHash, mpcToken } = params;
+
+  if (!config.mpc.baseUrl) {
+    throw Errors.internal('MPC_URL is not configured — MPC confirm unavailable');
+  }
+  if (!mpcToken) throw Errors.paramError('mpcToken (MPC session token) required');
+
+  const tx = await pool.query(
+    "SELECT * FROM safe_transactions WHERE safe_tx_hash = $1 AND status = 'pending'",
+    [safeTxHash]
+  );
+  if (tx.rows.length === 0) throw Errors.notFound('Transaction');
+
+  // 调用 MPC sign-message（EIP-191 personal_sign，message = safeTxHash 原文）
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.mpc.apiKey) headers['X-API-Key'] = config.mpc.apiKey;
+  let mpcResp: Response;
+  try {
+    mpcResp = await fetch(`${config.mpc.baseUrl.replace(/\/+$/, '')}/api/v2/mpc/sign-message`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ token: mpcToken, message: safeTxHash }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err: any) {
+    throw Errors.internal(`MPC sign-message call failed: ${err.message}`);
+  }
+  if (!mpcResp.ok) {
+    let detail = `MPC sign-message failed (${mpcResp.status})`;
+    try {
+      const body = (await mpcResp.json()) as { message?: string };
+      if (body.message) detail = body.message;
+    } catch { /* non-JSON */ }
+    throw Errors.internal(detail);
+  }
+  const mpcBody = (await mpcResp.json()) as { data?: { signature?: string; address?: string } };
+  const signature = mpcBody?.data?.signature;
+  const signerAddress = mpcBody?.data?.address;
+  if (!signature || !signerAddress) throw Errors.internal('MPC sign-message returned no signature');
+
+  // 恢复地址必须是 Safe owner（MPC 派生地址作为 owner 的登记路径：createSafe owners 传入）
+  const ownerResult = await pool.query(
+    'SELECT owner_address FROM safe_owners WHERE safe_address = $1 AND owner_address = $2',
+    [safeAddress.toLowerCase(), signerAddress.toLowerCase()]
+  );
+  if (ownerResult.rows.length === 0) {
+    throw Errors.forbidden(`MPC address ${signerAddress} is not an owner of safe ${safeAddress}`);
+  }
+
+  // 重复签名幂等
+  const existingSig = await pool.query(
+    'SELECT id FROM safe_signatures WHERE safe_tx_hash = $1 AND signer_id = $2',
+    [safeTxHash, userId]
+  );
+  if (existingSig.rows.length === 0) {
+    await pool.query(
+      `INSERT INTO safe_signatures (id, safe_tx_hash, signer_id, signature, signature_type, owner_address)
+       VALUES ($1, $2, $3, $4, 'mpc', $5)`,
+      [uuidv4(), safeTxHash, userId, signature, signerAddress.toLowerCase()]
+    );
+    // A-8: MPC 地址登记进 wallets 表（供既有工具/查询使用；execute 已不依赖该表）
+    await pool.query(
+      `INSERT INTO wallets (id, user_id, address, chain)
+       VALUES ($1, $2, LOWER($3), 'evm') ON CONFLICT (user_id, address) DO NOTHING`,
+      [uuidv4(), userId, signerAddress]
+    ).catch(() => {});
+  }
+
+  // threshold 达标 → ready + 自动执行（与 EOA confirm 同路径）
+  const count = await pool.query(
+    'SELECT COUNT(*)::int as cnt FROM safe_signatures WHERE safe_tx_hash = $1',
+    [safeTxHash]
+  );
+  const safe = await getSafe(safeAddress);
+  const sigCount = count.rows[0].cnt;
+  if (sigCount >= safe.threshold) {
+    await pool.query(
+      "UPDATE safe_transactions SET status = 'ready' WHERE safe_tx_hash = $1",
+      [safeTxHash]
+    );
+    logger.info('Safe tx ready (MPC confirm) — auto-executing', { safeTxHash, sigCount, threshold: safe.threshold });
+    try {
+      await executeTransaction({ userId, safeTxHash });
+    } catch (execErr: any) {
+      logger.warn('Auto-execute after MPC confirm failed (will retry on manual execute)', {
+        safeTxHash, error: execErr.message,
+      });
+    }
+  }
+
+  return { confirmed: true, sigCount, threshold: safe.threshold, signerAddress };
+}
+
 export async function executeTransaction(params: {
   userId: string;
   safeTxHash: string;
@@ -668,28 +778,38 @@ export async function executeTransaction(params: {
     [safeTxHash]
   );
 
-  // Build packed signatures (sorted by owner address order in safe)
   // Build packed signatures matching signer_id (userId) to owner addresses.
-  // We need to map userIds from safe_signatures to wallet addresses.
-// pool already imported at module scope
   const userIds = sigs.rows.map((s: any) => s.signer_id);
   const walletMap: Record<string, string> = {};
   if (userIds.length > 0) {
-    const walletResult = await pool.query(
-      'SELECT user_id, address FROM wallets WHERE user_id = ANY($1)',
-      [userIds]
-    );
-    for (const w of walletResult.rows) {
-      walletMap[w.user_id] = w.address.toLowerCase();
+    try {
+      const walletResult = await pool.query(
+        'SELECT user_id, address FROM wallets WHERE user_id = ANY($1)',
+        [userIds]
+      );
+      for (const w of walletResult.rows) {
+        walletMap[w.user_id] = w.address.toLowerCase();
+      }
+    } catch (err: any) {
+      // 老库可能无 wallets 表或类型不匹配——owner_address 主路径不受影响，仅回退链路失效
+      logger.warn('wallets table lookup skipped (fallback unavailable)', { error: err.message });
     }
   }
 
+  // A-8 加固：优先按 safe_signatures.owner_address（confirm 时记录）关联 owner；
+  // 老数据（无 owner_address）回退 wallets 表 user_id→address 映射。
+  const sigsWithOwner = sigs.rows.map((s: any) => {
+    let ownerAddr = (s.owner_address || '').toLowerCase();
+    if (!ownerAddr) {
+      const walletRow = walletMap[s.signer_id];
+      if (walletRow) ownerAddr = walletRow.toLowerCase();
+    }
+    return { ...s, ownerAddress: ownerAddr };
+  });
+
   const ownerSigs = safe.owners.map((owner: string) => {
-    // Find signature by matching owner address against wallet addresses of signers
-    const sig = sigs.rows.find((s: any) => {
-      const signerWallet = walletMap[s.signer_id];
-      return signerWallet && signerWallet === owner.toLowerCase();
-    });
+    // Find signature by matching owner address against signer owner addresses
+    const sig = sigsWithOwner.find((s: any) => s.ownerAddress && s.ownerAddress === owner.toLowerCase());
     return sig ? sig.signature : '0x';
   }).filter((s: string) => s !== '0x');
 

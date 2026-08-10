@@ -39,6 +39,13 @@ export const config = {
     address: process.env.GAS_POOL_ADDRESS || '',
   },
 
+  // A-8: MPC 签名通道（平台签名通道——MPC 钱包作为 Safe owner 时 confirm 代签）
+  // 未配置 MPC_URL 时 confirm-mpc 端点返回 503（fail-fast，不静默）
+  mpc: {
+    baseUrl: process.env.MPC_URL || '',
+    apiKey: process.env.MPC_API_KEY || '',
+  },
+
   // Supported chains
   supportedChains: (process.env.SUPPORTED_CHAINS || 'eth,bsc,base').split(','),
 
