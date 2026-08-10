@@ -1,9 +1,9 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-08-06 | 版本 `v0.6.0-20260806`
+> 最后更新: 2026-08-10 | 版本 `v0.6.1-20260810`
 
-> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721/3002）+ session-key（3500）+ MCP（3008/3011）+ admin/web + nginx 公网入口（80/443）全部同机部署（18 个 systemd 服务托管）。
-> **本文档覆盖区块链服务栈（9100-9111）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
+> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**25 个 systemd 服务 + 1 个清理 timer**）。
+> **本文档覆盖区块链服务栈（9100-9111）与平台服务（9130-9132）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
 > 旧服务器 ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 均已弃用。
 
 ## 生产服务器
@@ -14,7 +14,7 @@
 | User | ubuntu |
 | SSH | 直连 |
 | 代码路径 | `/home/ubuntu/infraX-1` |
-| 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721/3002；session-key 3500；MCP 3008/3011；nginx 80/443 |
+| 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721；平台服务 9130-9132/9200-9201/3500；MCP 3008/3011/3012/9103/9105/9108/9110；nginx 80/443 |
 | 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [infrax_tasklist §2.1](./docs/infrax_tasklist.md)） |
 | ml-service | 独立服务器 **43.156.25.197**:9120（不在本机） |
 
@@ -23,57 +23,101 @@
 ssh ubuntu@43.163.105.172
 ```
 
-## 当前运行服务（12 个 systemd）
+## 当前运行服务（25 个 systemd + 1 timer）
+
+### 区块链栈（9100-9111）
 
 | 服务 | 端口 | DB | 启动 | 状态 |
 |------|------|-----|------|------|
 | Admin | 9100 | 跨 7 DB | `systemctl start infrax-admin` | 🟢 |
+| Admin Legacy | 3002 | — | `systemctl start infrax-admin-legacy` | 🟢 |
 | Collector | 9101 | pocketx_collector | `systemctl start infrax-collector` | 🟢 |
 | DC | 9102 | pocketx_dc + pocketx_collector | `systemctl start infrax-dc` | 🟢 |
-| DC MCP | 9103 | — | `systemctl start infrax-dc-mcp` | 🟢 |
 | MPC | 9104 | pocketx_mpc | `systemctl start infrax-mpc` | 🟢 |
-| MPC MCP | 9105 | — | `systemctl start infrax-mpc-mcp` | 🟢 |
-| Payment | 9106 | pocketx_payment | `systemctl start infrax-payment` | 🟢 |
+| Payment（旧支付，历史残留） | 9106 | pocketx_payment | `systemctl start infrax-payment` | 🟢 |
 | Vault | 9107 | pocketx_vault | `systemctl start infrax-vault` | 🟢 |
-| Vault MCP | 9108 | — | `systemctl start infrax-vault-mcp` | 🟢 |
 | WAAS | 9109 | pocketx_waas | `systemctl start infrax-waas` | 🟢 |
-| Wallet MCP | 9110 | — | `systemctl start infrax-wallet-mcp` | 🟢 |
 | Web | 9111 | — | `systemctl start infrax-web` | 🟢 |
-| Cleanup | — | pocketx_collector | `systemctl start infrax-cleanup` | 🟢 (timer) |
+
+### 平台服务（9130-9132 / 9200-9201 / 3500）
+
+| 服务 | 端口 | DB | 启动 | 状态 |
+|------|------|-----|------|------|
+| Chain RPC（链 RPC 网关） | 9130 | — | `systemctl start infrax-chain-rpc` | 🟢 |
+| AA Relay | 9131 | — | `systemctl start infrax-aa-relay` | 🟢 |
+| **Payments（通用支付引擎）** | 9132 | pocketx_payments | `systemctl start infrax-payments` | 🟢 |
+| MPC TSS Signer | 9200 | — | `systemctl start infrax-mpc-tss-signer` | 🟢 |
+| MPC Signer | 9201 | — | `systemctl start infrax-mpc-signer` | 🟢 |
+| Session Key | 3500 | — | `systemctl start infrax-session-key` | 🟢 |
+
+### 数据栈（9112/9113/9721）
+
+| 服务 | 端口 | DB | 启动 | 状态 |
+|------|------|-----|------|------|
+| Data（数据中心） | 9112 | — | `systemctl start infrax-data` | 🟢 |
+| Knowledge Injector | 9113 | — | `systemctl start infrax-knowledge-injector` | 🟢 |
+| RAGservicer | 9721 | — | `systemctl start infrax-ragservicer` | 🟢 |
+
+### MCP Server（3008/3011/3012 + 区块链栈内 9103/9105/9108/9110）
+
+| 服务 | 端口 | 说明 | 启动 | 状态 |
+|------|------|------|------|------|
+| Hub Index MCP | 3008 | mcp-server 入口（hub-index.ts） | `systemctl start infrax-hub-index` | 🟢 |
+| Session-Key MCP | 3011 | mcp-server 入口 | `systemctl start infrax-session-key-mcp` | 🟢 |
+| RPC MCP | 3012 | mcp-server 入口 | `systemctl start infrax-rpc-mcp` | 🟢 |
+| DC MCP | 9103 | — | `systemctl start infrax-dc-mcp` | 🟢 |
+| MPC MCP | 9105 | — | `systemctl start infrax-mpc-mcp` | 🟢 |
+| Vault MCP | 9108 | — | `systemctl start infrax-vault-mcp` | 🟢 |
+| Wallet MCP | 9110 | — | `systemctl start infrax-wallet-mcp` | 🟢 |
+
+### 定时任务
+
+| 服务 | 端口 | 说明 | 启动 | 状态 |
+|------|------|------|------|------|
+| Cleanup | — | 每日清理 5 天前数据 | `systemctl start infrax-cleanup` | 🟢 (timer) |
+
+> 对照：`sudo systemctl --no-pager list-units 'infrax-*' --all`（25 服务 + timer）；`sudo ss -tlnp` 应看到 3002/3008/3011/3012/3500/9100-9113/9130-9132/9200-9201/9721 共 25 个监听端口。
 
 ## 目录结构
 
 ```
 /home/ubuntu/infraX-1/projects/
-├── admin/         → Admin :9100  (Express 5 SPA + REST API)
-├── collector/     → Collector :9101  (5 链区块扫描)
-├── dc/            → DC :9102  (数据中心 API)
-├── mcp-server/    → 4 个 MCP Server (dc/mpc/vault/wallet)
-├── mpc/           → MPC :9104  (多方计算钱包)
-├── payment/       → Payment :9106
-├── sdk/           → infrax-dk npm 包 (TypeScript SDK，非运行时服务)
-├── vault/         → Vault :9107  (Safe 多签)
-├── waas/          → WAAS :9109  (钱包即服务)
-└── web/           → Web :9111  (SPA + Landing Page)
-    ├── server.js          ← Node proxy (路由到后端 API)
-    ├── index.html         ← 主应用
-    ├── landing.html       ← 产品落地页
-    ├── connect.html       ← 钱包连接页
-    ├── admin.html         ← Admin 面板入口
-    ├── img/               ← 链 Logo SVG (chain-*.svg × 6)
-    └── modules/
-        ├── core.js        ← 核心库 (afetch, user, setupNav, showToast)
-        ├── nc-wallet.js   ← Dashboard 仪表盘
-        ├── datacenter.js  ← Data Center 模块
-        ├── mpc.js         ← MPC 模块
-        ├── waas.js        ← WaaS 模块
-        ├── waas-extras.js ← WaaS 工具函数
-        ├── safe.js        ← Safe/Vault 模块
-        ├── exports.js     ← 导出模块
-        └── infrax.css     ← 统一样式
+├── admin/              → Admin :9100 + Admin Legacy :3002  (Express 5 SPA + REST API)
+├── collector/          → Collector :9101  (5 链区块扫描)
+├── dc/                 → DC :9102  (数据中心 API)
+├── mcp-server/         → 7 个 MCP 入口 (dc/mpc/vault/wallet/rpc/session-key/hub-index)
+├── mpc/                → MPC :9104  (多方计算钱包)
+├── payment/            → Payment :9106 (旧支付，历史残留)
+├── sdk/                → infrax-dk npm 包 (TypeScript SDK，非运行时服务)
+├── vault/              → Vault :9107  (Safe 多签)
+├── waas/               → WAAS :9109  (钱包即服务)
+├── web/                → Web :9111  (SPA + Landing Page)
+│   ├── server.js          ← Node proxy (路由到后端 API)
+│   ├── index.html         ← 主应用
+│   ├── landing.html       ← 产品落地页
+│   ├── connect.html       ← 钱包连接页
+│   ├── admin.html         ← Admin 面板入口
+│   ├── img/               ← 链 Logo SVG (chain-*.svg × 6)
+│   └── modules/
+│       ├── core.js        ← 核心库 (afetch, user, setupNav, showToast)
+│       ├── nc-wallet.js   ← Dashboard 仪表盘
+│       ├── datacenter.js  ← Data Center 模块
+│       ├── mpc.js         ← MPC 模块
+│       ├── waas.js        ← WaaS 模块
+│       ├── waas-extras.js ← WaaS 工具函数
+│       ├── safe.js        ← Safe/Vault 模块
+│       ├── exports.js     ← 导出模块
+│       └── infrax.css     ← 统一样式
+├── payments/           → Payments :9132  (通用支付引擎 @0xinfrax/payments)
+├── chain-rpc/          → Chain RPC :9130  (链 RPC 网关)
+├── aa-relay/           → AA Relay :9131
+├── session-key/        → Session Key :3500
+├── data/               → Data :9112  (数据中心，Python FastAPI)
+├── knowledge-injector/ → Knowledge Injector :9113 (Flask)
+└── ragservicer/        → RAGservicer :9721
 ```
 
-> 数据栈项目（data/knowledge-injector/ragservicer/ml-service/admin）同位于 `/home/ubuntu/infraX-1/projects/`，详见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
+> ml-service 位于独立服务器 **43.156.25.197**:9120（不在本机）。
 
 ## Web Proxy 路由 (`server.js`)
 
@@ -149,7 +193,11 @@ sudo journalctl -u infrax-collector --since '5 min ago'
 
 ### 全部重启
 ```bash
-for s in infrax-collector infrax-admin infrax-dc infrax-dc-mcp infrax-mpc infrax-mpc-mcp infrax-payment infrax-vault infrax-vault-mcp infrax-waas infrax-wallet-mcp infrax-web; do
+for s in \
+  infrax-admin infrax-admin-legacy infrax-collector infrax-dc infrax-mpc infrax-payment infrax-vault infrax-waas infrax-web \
+  infrax-chain-rpc infrax-aa-relay infrax-payments infrax-session-key infrax-mpc-signer infrax-mpc-tss-signer \
+  infrax-data infrax-knowledge-injector infrax-ragservicer \
+  infrax-dc-mcp infrax-mpc-mcp infrax-vault-mcp infrax-wallet-mcp infrax-hub-index infrax-session-key-mcp infrax-rpc-mcp; do
   sudo systemctl restart $s
 done
 ```
@@ -396,7 +444,7 @@ sudo systemctl restart infrax-admin
 
 ```bash
 # 全部服务
-for port in 9100 9101 9102 9103 9104 9105 9106 9107 9108 9109 9110 9111; do
+for port in 3002 3008 3011 3012 3500 9100 9101 9102 9103 9104 9105 9106 9107 9108 9109 9110 9111 9112 9113 9130 9131 9132 9200 9201 9721; do
   curl -s --max-time 2 http://localhost:$port/health 2>/dev/null \
     && echo ":$port OK" || echo ":$port DOWN"
 done

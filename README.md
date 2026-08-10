@@ -1,6 +1,6 @@
 # InfraX — Web3 基础设施平台
 
-> Monorepo | 14 模块 | Version `v0.6.0-20260806` | 生产（单机）`43.163.105.172`
+> Monorepo | 17 模块 | Version `v0.6.1-20260810` | 生产（单机）`43.163.105.172`
 
 ## 项目介绍
 
@@ -14,7 +14,11 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **Vault** | Safe 多签：部署/提案/确认/执行、Owner 管理、风控 | 9107 |
 | **DC** | 链上事件查询（5 链）、订阅计划、API Key 管理 | 9102 |
 | **MPC** | 邮件验证码、密钥分片注册/恢复、Agent Wallet（会话/签名/合约/转账） | 9104 |
-| **Payment** | x402 支付引擎、订单管理 | 9106 |
+| **Payment（旧）** | 旧支付服务（历史残留，订阅已迁移至 WAAS + Payments） | 9106 |
+| **Payments** | 通用支付引擎 @0xinfrax/payments：chain/fiat/x402/MPP + period/invite/transfer/batch 能力 | 9132 |
+| **Chain RPC** | 链 RPC 网关（统一路由 + 读/广播鉴权分级） | 9130 |
+| **AA Relay** | Account Abstraction 交易中继 | 9131 |
+| **Session Key** | 会话密钥授权服务（Bundler + Paymaster） | 3500 |
 | **Collector** | 全链事件扫描（全量日志→本地分类）+ OKX ChainOS v6 行情（40+端点/K线/Meme/信号）+ Binance 期货 | 9101 |
 | **Market API** | 代币搜索/K线/热门排行/Meme扫链/聪明钱信号/持仓集群/地址分析/余额(免费)/交易历史(免费) | 9101 |
 | **Admin** | 跨模块聚合管理后台（12 服务状态/租户/交易/收益） | 9100 |
@@ -22,7 +26,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **Data** | 统一行情/K 线/因子/快照数据服务（AItrader data-service 迁入） | 9112 |
 | **Knowledge Injector** | 知识图谱注入：拉取快照 → 解析 → 注入 RAGservicer 构建图谱 | 9113 |
 | **RAGservicer** | LightRAG 知识库微服务（文档管理 + 图谱检索 + MCP） | 9721 |
-| **MCP × 5** | AI Agent 接入：DC/Market/MPC/Vault/Wallet 共 58+ tools | 9103/3007/9105/9108/9110 |
+| **MCP × 7** | AI Agent 接入：DC/MPC/Vault/Wallet/RPC/Session-Key/Hub-Index 共 58+ tools | 9103/9105/9108/9110/3012/3011/3008 |
 
 ### 三种接入方式
 
@@ -318,7 +322,7 @@ infraX/
 
 | 环境 | 服务器 | 规格 | 方式 |
 |------|--------|------|------|
-| **生产（单机全栈）** | **43.163.105.172** | 2C/3.6G/59G | systemd（数据栈 9112/9113/9721/3002 + 区块链栈 9100-9111 + session-key 3500 + MCP 3008/3011 + nginx 80/443，18 units） |
+| **生产（单机全栈）** | **43.163.105.172** | 2C/3.6G/59G | systemd（数据栈 9112/9113/9721 + 区块链栈 9100-9111 + 平台服务 9130-9132/9200-9201/3500 + MCP 3008/3011/3012/9103/9105/9108/9110 + nginx 80/443，25 units + timer） |
 | ml-service | 43.156.25.197 | 2C/4G | systemd（:9120，独立服务器） |
 | 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ | — | 已弃用 |
 
