@@ -4,7 +4,7 @@
 
 ## 项目介绍
 
-InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多签保险库（Vault）、链上数据中心（DC）、MPC 密钥分片等模块。面向 B 端 SaaS 租户，支持 REST API / MCP / JS SDK 三种接入方式。
+InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多签保险库（Vault）、链上数据中心（DC）、MPC 密钥分片等模块。面向 B 端 SaaS 租户，支持 REST API / MCP / JS SDK / Python SDK 四种接入方式。
 
 ### 核心能力
 
@@ -28,20 +28,21 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **RAGservicer** | LightRAG 知识库微服务（文档管理 + 图谱检索 + MCP） | 9721 |
 | **MCP × 8** | AI Agent 接入：DC/MPC/Vault/Wallet/RPC/Session-Key/Market/Hub-Index 共 **123 tools**（MQ-16 新增 32 个套餐工具） | 9103/9105/9108/9110/3012/3011/3013/3008 |
 
-### 三种接入方式
+### 四种接入方式
 
-| | REST API | MCP | JS SDK |
-|------|----------|-----|--------|
-| WAAS/Wallet | ✅ | ✅ | ✅ |
-| Safe/Vault | ✅ | ✅ | ✅ |
-| Payments（支付引擎） | ✅ | ✅（wallet-mcp payment_* 代理） | ✅（v0.6.0：基础 10 + batch/invite/transfer 15） |
-| Data Center | ✅ | ✅ (11 tools，含 MQ-16 订阅 4) | ✅（v0.6.0：数据 6 + 订阅 4） |
-| Market (行情+分析) | ✅ (39 endpoints) | ✅ (18 tools，含 MQ-16 订阅 5) | ✅ (21 methods，含订阅 5) |
-| MPC | ✅ | ✅ (17 tools，含计费 2) | ✅（v0.6.0：16 methods） |
-| Chain RPC | ✅ | ✅ (10 tools，含订阅 6) | ✅（v0.6.0：10 methods，含订阅 6） |
-| Admin | ✅ | — | — |
+| | REST API | MCP | JS SDK | Python SDK |
+|------|----------|-----|--------|------------|
+| WAAS/Wallet | ✅ | ✅ | ✅ | — |
+| Safe/Vault | ✅ | ✅ | ✅ | — |
+| Payments（支付引擎） | ✅ | ✅（wallet-mcp payment_* 代理） | ✅（v0.6.0：基础 10 + batch/invite/transfer 15） | — |
+| Data Center | ✅ | ✅ (11 tools，含 MQ-16 订阅 4) | ✅（v0.6.0：数据 6 + 订阅 4） | ✅（infra-data-client 0.2.0，PyPI） |
+| Market (行情+分析) | ✅ (39 endpoints) | ✅ (18 tools，含 MQ-16 订阅 5) | ✅ (21 methods，含订阅 5) | — |
+| MPC | ✅ | ✅ (17 tools，含计费 2) | ✅（v0.6.0：16 methods） | — |
+| Chain RPC | ✅ | ✅ (10 tools，含订阅 6) | ✅（v0.6.0：10 methods，含订阅 6） | — |
+| RAGservicer/LightRAG | ✅ | ✅ (MCP + LightRAG STDIO) | ✅（ragservicer-sdk TS 类型） | ✅（lightrag-client 2.0.0，PyPI） |
+| Admin | ✅ | — | — | — |
 
-> 三种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
+> 四种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。Python SDK 于 2026-08-11 发布 PyPI（`lightrag-client` 2.0.0 / `infra-data-client` 0.2.0）。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
 
 ---
 
@@ -227,6 +228,8 @@ infraX/
 │   │       └── infrax.css   ← 统一样式
 │   └── sdk/           # JS SDK v0.6.0 (TypeScript，@0xinfrax/infrax-dk)
 │       └── src/             ← ix.mpc / ix.wallet / ix.vault / ix.dc / ix.payment / ix.market / ix.chainRpc
+│   ├── data/sdk/python/     # Python SDK infra-data-client 0.2.0（已发布 PyPI，2026-08-11）
+│   ├── ragservicer/sdk/python/  # Python SDK lightrag-client 2.0.0（已发布 PyPI，2026-08-11）
 ├── docs/
 │   ├── API_ACCESS.md     # 三合一接入文档（REST/MCP/SDK）
 │   └── MCP_REQUIREMENTS.md
@@ -239,7 +242,7 @@ infraX/
 
 - **独立进程**: 每模块独立 Express 进程 + 独立 PostgreSQL DB
 - **不跨 import**: 模块间通过 HTTP API 通信，不 import 源码
-- **三种接入**: REST API → MCP → JS SDK，层层封装
+- **四种接入**: REST API → MCP → JS SDK / Python SDK，层层封装
 - **前端数据流**: `Dashboard → getMe() (localStorage) + afetch (API) → 渲染`
 - **afetch 契约**: 自动解包 `{code, data}` → 调用方直接拿到 `data` 内容
 - **Web Proxy 统一入口**: 静态文件 + API 代理 + 安全头（HSTS / X-Frame-Options / X-Content-Type-Options）
@@ -345,7 +348,7 @@ infraX/
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| **v0.7.0** | 2026-08-11 | **MQ-16 套餐消费面全量补齐**：infrax-dk v0.6.0（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments batch/invite/transfer 15 = 27 方法）；MCP +32 tools（dc 11 / market 18 / rpc 10 / mpc 17 / wallet 34 = 123 total）；market-mcp 生产部署（:3013）；web 代理补 `/api/v2/market` → collector :9101；文档全量更新（SDK_INTEGRATION / SERVICE_API_REFERENCE / MCP_USAGE / API_ACCESS） |
+| **v0.7.0** | 2026-08-11 | **MQ-16 套餐消费面全量补齐**：infrax-dk v0.6.0（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments batch/invite/transfer 15 = 27 方法）；MCP +32 tools（dc 11 / market 18 / rpc 10 / mpc 17 / wallet 34 = 123 total）；market-mcp 生产部署（:3013）；web 代理补 `/api/v2/market` → collector :9101；**Python SDK 发布 PyPI**（lightrag-client 2.0.0 + infra-data-client 0.2.0）；文档全量更新（SDK_INTEGRATION / SERVICE_API_REFERENCE / MCP_USAGE / API_ACCESS） |
 | v0.5.1 | 2026-08-04 | AItrader 合并：data-service → projects/data (:9112)、knowledge-injector (:9113)、可配置解析层（YAML 规则驱动）、DC/Collector raw 注入 RAGservicer 构建图谱 |
 | v0.3.2 | 2026-07-18 | 生产 E2E 测试：端口 9100-9111、Web Proxy /health+安全头、Admin API 修复、MPC 前端验证码流程、DB 建表补全、MCP 环境变量+端口修复、浏览器钱包注入 19/19 通过、MCP 45 tools 可用 |
 | v0.3.1 | 2026-07-17 | 新服务器部署、Express 5 迁移、BSC RPC 池三层合并、依赖补全 |
