@@ -55,3 +55,23 @@
 ---
 
 > 以上物料齐备后，我方预计即可完成接入并联调。如有疑问随时沟通。
+
+---
+
+## 七、多调用者通用化设计（接入时一并确定）
+
+> Paymaster 为**平台统一服务**（非 PocketX 定制）：链上 Paymaster 对所有 UserOp 开放，平台 aa-relay 为统一入口，SDK（session-key-core 0.2.0 `Aa.PaymasterClient`）统一。PocketX 是首个调用者，其他集成方接入路径一致。接入时须一并确定以下通用化设计：
+
+1. **成本归属**：Paymaster 代付 gas 成本归属——
+   - 方案 A：平台统一 sponsor（默认关闭），按集成方 API Key 对账，从其余额扣费
+   - 方案 B：仅白名单集成方启用 sponsor，非白名单回退"用户自充"
+   - 需在 aa-relay 落地"按调用者记账/扣费"（复用 payments 引擎 ledger）
+2. **策略隔离**：按集成方/场景区分代付策略——Pimlico sponsorship `policyId`（`PaymasterRequestContext.policyId` 已支持）：
+   - 每调用者独立 policy（可代付 sender 白名单 / 单笔与日限额）
+   - 无 policyId 的调用走统一默认策略 + relay 层风控
+3. **多服务商容灾**：当前只对接一个第三方——故障影响所有调用者：
+   - 支持多 Paymaster URL 列表（按链 + 优先级，参考 Bundler 多端点容灾）
+   - 保底降级：Paymaster 不可用时回退"用户自充"（现有 v1.7 决策，已具备）
+4. **配额与限流**：aa-relay `/v1/paymaster` 按调用者 API Key 做配额/限流，防止单一调用者挤占其他（对齐现有 1 分钟滑动窗口限流模式）
+
+> 上述 1-4 均落在平台侧（aa-relay / payments），SDK 与调用方接口不变。
