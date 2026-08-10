@@ -1151,6 +1151,28 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **T-8 部署生产 + 验证（✅ 2026-08-10）**：迁移 007/008 上生产（migrations applied 8）→ drop-in 开启 INVITE/TRANSFER_ENABLED → 探测 /capabilities（chain, period, invite, transfer）→ `scripts/mq14_verify.sh` 11 步全通过：邀请创建/双角色查询/余额支付（payer 1000000→900000、payee 100000）/transfer 充足执行（300000 划转）/余额不足 422/重复 confirm 幂等不双扣/过期状态/测试数据清理；过程中修复 listInvites+expireDue SQL 占位符错位（commit 34e2e4e）
 - [x] **T-9 文档更新（✅ 2026-08-10，commit f637263）**：README（能力清单+迁移 001-008+invite/transfer 端点与能力说明）/HANDOVER（§1 能力范围、§2 矩阵新增 invite/transfer 行、迁移表 005-008、§8 生产实测、§10 修正 MQ-13 推翻说明+占位符踩坑、§12 开关）/CALLER_SETUP（账本内结算模型、嵌入式注入+事务 runner 示例、env 开关、自检清单 6-7 项）
 
+**MQ-15 旧 payment 服务下线迁移（2026-08-10 需求登记；方案：前端切至 waas 订阅 → admin 收口 → 停服归档）**：
+> 背景：盘点确认旧 payment（:9106，projects/payment）为**僵尸服务**——唯一调用方是 web proxy `/api/v2/payment → :9106`，而前端请求的端点一半不存在（`/x402/request`、`/methods` 404，其余靠 afetchMock 兜底成空数据）；生产 `pocketx_payment.payment_orders` 仅 3 行全部 pending、最新 2026-07-21，近 3 周零新增、0 活跃连接；内部服务（mcp-server `PAYMENTS_URL→:9132`、waas MQ-12）早已迁移新引擎。方案分两阶段：**阶段一**前端路由切换（Payment 模块并入 waas 订阅流程、移除 proxy 路由与页面、admin 统计收口到 `pocketx_payments` 库）；**阶段二**观察 1 周无回归后停服归档（pg_dump → stop/disable unit → 代码保留 git 历史）。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 MQ-12 / MQ-14。
+
+- [ ] **T-1 前端 payment 模块并入 waas 订阅（🔲 待办）**：[payment.js](projects/web/modules/payment.js) 四个端点（`/x402/request`、`/create-order`、`/orders`、`/methods`）改为复用 [waas.js](projects/web/modules/waas.js) 订阅购买流程（plans/subscribe/check，已走 :9132）；Payment 导航点击 → 跳转 WaaS 订阅 Tab
+- [ ] **T-2 web proxy 移除路由（🔲 待办）**：[server.js](projects/web/server.js#L32) 删除 `/api/v2/payment` → `PAYMENT_HOST:PAYMENT_PORT(:9106)` 代理（同时清理 PAYMENT_HOST/PAYMENT_PORT 常量）
+- [ ] **T-3 页面清理（🔲 待办）**：[index.html](projects/web/index.html) 移除 Payment 导航项、`page-payment` 区块、`payment.js` 引用（L50/770/1005）；[landing.html](projects/web/landing.html#L150) 静态文案 `:9106 · Web3-native billing` 更新为新引擎 :9132
+- [ ] **T-4 admin 统计收口（🔲 待办）**：[admin/server/index.ts](projects/admin/server/index.ts#L88-L99) dashboard `payment_orders` 统计 → 改查新引擎 `pocketx_payments`（`payment_intents`/`payment_transfers`/`payment_balances`）；健康检查端口 :9106 → :9132（L146）
+- [ ] **T-5 联调验证（🔲 待办）**：浏览器验证 waas 订阅购买全流程（plans→subscribe→check）无回归；web/admin 日志无 :9106 请求残留
+- [ ] **T-6 生产部署 + 观察（🔲 待办）**：git pull → 重启 infrax-web/infrax-admin → 观察 1 周：确认无 :9106 请求、无 Payment 页报错
+- [ ] **T-7 停服归档（🔲 待办）**：`pg_dump pocketx_payment` 备份归档（3 行历史订单）→ `sudo systemctl stop --now infrax-payment` → 删除 unit 文件 + `daemon-reload` → README/DEPLOYMENT 标注已下线；`projects/payment` 代码保留 git 历史
+
+**MQ-16 对外套餐服务矩阵（2026-08-10 需求登记；方案：以 waas 订阅为模板 + 引擎统一账本/period 能力）**：
+> 背景：盘点对外服务套餐能力——waas 已有完整闭环（`subscriptions` 表 + pending→active + 三 rail 支付，MQ-12，作为模板）；dc 有套餐模型但**配额无真实扣减**（usage 硬编码 0、全仓无 api_usage 写入方）；market（39 端点免费）、chain-rpc（对外读）、mpc（Agent Wallet）无套餐；agent 专属能力（invite/transfer/batch）未对外开放。方案：统一入口复制 waas 订阅模式——业务服务管"权益激活"、支付引擎管"钱"（chain/fiat/x402 收钱 + 账本 balance/credit/deduct 记钱 + period 周期授权扣费 + invite/transfer/batch 满足 agent 场景）。优先级：DC 配额真实扣减（P0）→ Market/Chain RPC 按量套餐（P1）→ MPC/Agent 专属开放（P2）。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1（T-1 P0）；关联 MQ-12 / MQ-14 / MQ-15。
+
+- [ ] **T-1 DC 套餐配额真实扣减（🔲 待办，P0）**：[dc/index.ts](projects/dc/index.ts#L73-L80) DATA_PLANS 配额从"展示"落地为真实执行——新增 `api_usage`/`api_usage_daily` 写入方（请求级计数）+ 扣减/限流中间件（对齐 waas dataSubscriptionRoutes 已读表结构）；订阅购买走引擎（payments checkoute/账本）
+- [ ] **T-2 Market/行情 API 按量套餐（🔲 待办，P1）**：39 端点接引擎计费（batch 批量收款 / period 周期授权），配额用尽 → 503 + 升级提示
+- [ ] **T-3 Chain RPC 对外读套餐（🔲 待办，P1）**：按次/按带宽套餐 → period 授权扣费，key 与订阅绑定
+- [ ] **T-4 MPC Agent Wallet 按量套餐（🔲 待办，P2）**：签名/转账按量 → 引擎统一账本余额扣费
+- [ ] **T-5 Agent 专属能力开放（🔲 待办，P2）**：invite/transfer/batch 端点对外开放 + CALLER_SETUP 调用文档（自动收费邀请、账本内转账、批量收款）
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。
