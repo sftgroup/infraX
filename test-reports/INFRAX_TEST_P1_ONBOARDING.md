@@ -1,6 +1,6 @@
 # InfraX 端到端全场景测试文档 — P1: 入驻 + Dashboard
 
-> v0.3.3-20260720 | 生产 `43.156.99.215:9111` | 文档版本 v1.0
+> v0.3.3-20260720 | 生产 `43.163.105.172:9111` | 文档版本 v1.0
 
 ## 概述
 
@@ -14,7 +14,7 @@ Landing Page → 钱包连接 → MPC 注册/恢复 → Dashboard 仪表盘 (4 �
 
 | 项目 | 值 |
 |------|-----|
-| 生产服务器 | `43.156.99.215` |
+| 生产服务器 | `43.163.105.172` |
 | Web 入口 | `:9111` (Web Proxy) |
 | 管理后台入口 | `:9111/admin.html` |
 | 浏览器钱包地址 | `0x2bA20a76af1297D4Ef9BD242866F690aceaAb9f1` |
@@ -40,7 +40,7 @@ Landing Page → 钱包连接 → MPC 注册/恢复 → Dashboard 仪表盘 (4 �
 
 | 步骤 | 操作 | 预期结果 |
 |------|------|---------|
-| 1.1 | 浏览器打开 `http://43.156.99.215:9111/landing.html` | 加载成功，显示 InfraX 品牌和产品介绍 |
+| 1.1 | 浏览器打开 `http://43.163.105.172:9111/landing.html` | 加载成功，显示 InfraX 品牌和产品介绍 |
 | 1.2 | 检查页面布局 | 包含 Header (Logo + Connect Wallet 按钮)、Hero 区域、功能模块卡片 (WAAS/Vault/DC/MPC) |
 | 1.3 | 检查"Connect Wallet"按钮可见 | 按钮存在且可点击 |
 | 1.4 | 检查链 Logo 图片加载 | chain-sepolia.svg / chain-ethereum.svg 等 6 个 Logo 正常渲染 |

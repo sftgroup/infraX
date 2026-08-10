@@ -660,7 +660,7 @@ AA_BASE_SEPOLIA_BUNDLERS=[{"url":"https://api.pimlico.io/v2/84532/rpc","priority
 AA_BASE_SEPOLIA_PAYMASTER_URL=https://api.pimlico.io/v2/84532/rpc?apikey=__SERVER__
 
 # --- 目标主网 OxaChain（chainId 19505，原生代币 OXA）---
-# RPC: https://rpc-oxa.0xainet.top（✅ 2026-08-07 确认可达，DNS → 43.156.99.215，chainId 0x4c31=19505）
+# RPC: https://rpc-oxa.0xainet.top（✅ 2026-08-07 确认可达，DNS → 43.163.105.172，chainId 0x4c31=19505）
 # Explorer: https://explorer.l1.oxachain.io
 AA_OXACHAIN_RPC_URL=https://rpc-oxa.0xainet.top
 AA_OXACHAIN_FACTORY=0x...            # KernelFactory（OxaChain 待部署登记）
@@ -691,7 +691,7 @@ AA_RELAY_API_KEY=xxx                 # Pimlico apikey，仅服务端可见
 | XLayer | 待验证 | bundler.xlayer.tech | 待验证 | ⚠️ 需求文档提及，Pimlico 不支持，需单独调研（§12） |
 
 > **OxaChain 联调前提**（P0.2 链上实测目标链，2026-08-07 stevenwang 指定）：
-> 1. ✅ RPC 可达：`rpc-oxa.0xainet.top`（DNS → 43.156.99.215），chainId 19505 确认，区块活跃（85240+）
+> 1. ✅ RPC 可达：`rpc-oxa.0xainet.top`（DNS → 43.163.105.172），chainId 19505 确认，区块活跃（85240+）
 > 2. ✅ **EntryPoint v0.7 已部署**：`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（0.8.23 + runs 1e6 编译，runtime 17,690 bytes；非标准 create2 地址，须 `AA_OXACHAIN_ENTRYPOINT_V07` 覆盖）
 > 3. ✅ **Kernel v3.1 implementation + KernelFactory + ECDSA validator 已部署**（2026-08-07 全栈部署成功）：implementation `0x5131d75af2126eba05edbb6bc24902c42d1b52b4`（runtime 20,427 bytes = 主网官方字节码一致）/ factory `0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1` / ECDSA validator `0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c`
 > 4. ✅ **Bundler 已部署（自建 Alto）**：`http://43.159.60.46:4338`（2026-08-07，生产 43.159.60.46 pm2 `pocketx-alto`，指向 `rpc-oxa.0xainet.top`，chainId 19505，block time ~31s）。Pimlico 不支持 19505，故自建 Alto；simulations 合约已手动部署（见 §8.3 第 6-9 行），`--deploy-simulations-contract false` + 显式传地址启动。✅ 安全组已放行 4338（外部可直达）。

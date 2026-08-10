@@ -1,6 +1,6 @@
 # InfraX 端到端全场景测试文档 — P3: MCP 接入测试
 
-> v0.3.3-20260720 | 生产 `43.156.99.215` | 文档版本 v1.0
+> v0.3.3-20260720 | 生产 `43.163.105.172` | 文档版本 v1.0
 
 ## 概述
 
@@ -31,7 +31,7 @@ MCP 配置 → SSE 连接 → Tool 调用 → 结果返回 → 多轮对话 → 
 
 | 步骤 | 操作 | 预期 |
 |------|------|------|
-| 1.1a | GET `http://43.156.99.215:9110/mcp/sse` | SSE stream 建立，返回 `endpoint` 事件 |
+| 1.1a | GET `http://43.163.105.172:9110/mcp/sse` | SSE stream 建立，返回 `endpoint` 事件 |
 | 1.1b | POST JSON-RPC `initialize` | 返回 `{ serverInfo: { name: "pocketx-wallet", version: "0.3.2" } }` |
 | 1.1c | POST `tools/list` | 返回 10 个 tool 定义 |
 
@@ -39,7 +39,7 @@ MCP 配置 → SSE 连接 → Tool 调用 → 结果返回 → 多轮对话 → 
 
 | 步骤 | 操作 | 预期 |
 |------|------|------|
-| 1.2a | GET `http://43.156.99.215:9103/mcp/message` | SSE 连接成功 |
+| 1.2a | GET `http://43.163.105.172:9103/mcp/message` | SSE 连接成功 |
 | 1.2b | `initialize` | `{ name: "pocketx-dc", version: "0.3.2" }` |
 | 1.2c | `tools/list` | 返回 7 个 tool 定义 |
 
@@ -47,7 +47,7 @@ MCP 配置 → SSE 连接 → Tool 调用 → 结果返回 → 多轮对话 → 
 
 | 步骤 | 操作 | 预期 |
 |------|------|------|
-| 1.3a | GET `http://43.156.99.215:9108/mcp/sse` | SSE 连接成功 |
+| 1.3a | GET `http://43.163.105.172:9108/mcp/sse` | SSE 连接成功 |
 | 1.3b | `initialize` | `{ name: "pocketx-vault", version: "0.3.2" }` |
 | 1.3c | `tools/list` | 返回 14 个 tool 定义 |
 
@@ -55,7 +55,7 @@ MCP 配置 → SSE 连接 → Tool 调用 → 结果返回 → 多轮对话 → 
 
 | 步骤 | 操作 | 预期 |
 |------|------|------|
-| 1.4a | GET `http://43.156.99.215:9105/mcp/sse` | SSE 连接成功 |
+| 1.4a | GET `http://43.163.105.172:9105/mcp/sse` | SSE 连接成功 |
 | 1.4b | `initialize` | `{ name: "pocketx-mpc", version: "0.3.2" }` |
 | 1.4c | `tools/list` | 返回 15 个 tool 定义 |
 
@@ -251,10 +251,10 @@ MCP 配置 → SSE 连接 → Tool 调用 → 结果返回 → 多轮对话 → 
 ```json
 {
   "mcpServers": {
-    "pocketx-wallet": { "url": "http://43.156.99.215:9110/mcp/sse" },
-    "pocketx-dc": { "url": "http://43.156.99.215:9103/mcp/message" },
-    "pocketx-vault": { "url": "http://43.156.99.215:9108/mcp/sse" },
-    "pocketx-mpc": { "url": "http://43.156.99.215:9105/mcp/sse" }
+    "pocketx-wallet": { "url": "http://43.163.105.172:9110/mcp/sse" },
+    "pocketx-dc": { "url": "http://43.163.105.172:9103/mcp/message" },
+    "pocketx-vault": { "url": "http://43.163.105.172:9108/mcp/sse" },
+    "pocketx-mpc": { "url": "http://43.163.105.172:9105/mcp/sse" }
   }
 }
 ```

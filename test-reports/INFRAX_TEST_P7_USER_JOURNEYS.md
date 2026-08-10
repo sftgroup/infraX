@@ -1,6 +1,6 @@
 # InfraX 端到端全场景测试文档 — P7: 用户操作端到端（Browser E2E）
 
-> v0.3.3-20260720 | 生产 `43.156.99.215:9111` | 文档版本 v1.0
+> v0.3.3-20260720 | 生产 `43.163.105.172:9111` | 文档版本 v1.0
 
 ## 概述
 
@@ -21,7 +21,7 @@
 
 ```
 步骤 1: 打开 Landing Page
-  操作: navigate to http://43.156.99.215:9111/landing.html
+  操作: navigate to http://43.163.105.172:9111/landing.html
   等待: 页面完整加载 (< 5s)
   验证:
     ✅ 标题包含 "InfraX"
@@ -97,9 +97,9 @@
 ### user_flow JSON
 ```json
 {
-  "url": "http://43.156.99.215:9111/landing.html",
+  "url": "http://43.163.105.172:9111/landing.html",
   "steps": [
-    {"action": "navigate", "url": "http://43.156.99.215:9111/landing.html"},
+    {"action": "navigate", "url": "http://43.163.105.172:9111/landing.html"},
     {"action": "wait", "ms": 3000},
     {"action": "check", "text": "InfraX"},
     {"action": "check", "text": "Connect Wallet"},
@@ -130,7 +130,7 @@
     {"action": "check", "text": "Active"},
     {"action": "screenshot", "name": "05-mpc-registered"},
 
-    {"action": "navigate", "url": "http://43.156.99.215:9111/index.html"},
+    {"action": "navigate", "url": "http://43.163.105.172:9111/index.html"},
     {"action": "wait", "ms": 3000},
     {"action": "check", "text": "Active"},
     {"action": "screenshot", "name": "06-after-reload"}
@@ -208,9 +208,9 @@
 ### user_flow JSON
 ```json
 {
-  "url": "http://43.156.99.215:9111/index.html",
+  "url": "http://43.163.105.172:9111/index.html",
   "steps": [
-    {"action": "navigate", "url": "http://43.156.99.215:9111/index.html"},
+    {"action": "navigate", "url": "http://43.163.105.172:9111/index.html"},
     {"action": "wait", "ms": 3000},
     {"action": "click", "selector": "[data-card='waas'], .card:has-text('WaaS')"},
     {"action": "wait", "ms": 1000},
@@ -347,9 +347,9 @@
 ### user_flow JSON (Owner A 部分)
 ```json
 {
-  "url": "http://43.156.99.215:9111/index.html",
+  "url": "http://43.163.105.172:9111/index.html",
   "steps": [
-    {"action": "navigate", "url": "http://43.156.99.215:9111/index.html"},
+    {"action": "navigate", "url": "http://43.163.105.172:9111/index.html"},
     {"action": "wait", "ms": 3000},
     {"action": "click", "selector": "[data-card='vault'], .card:has-text('Vault')"},
     {"action": "wait", "ms": 1000},
@@ -398,7 +398,7 @@
 
 ```
 步骤 1: Admin 登录
-  操作: navigate to http://43.156.99.215:9111/admin.html
+  操作: navigate to http://43.163.105.172:9111/admin.html
   验证: 显示登录表单 → username + password 输入框
   操作: type username "admin" → type password "admin123" → click "Login"
   等待: 登录成功
@@ -447,9 +447,9 @@
 ### user_flow JSON
 ```json
 {
-  "url": "http://43.156.99.215:9111/admin.html",
+  "url": "http://43.163.105.172:9111/admin.html",
   "steps": [
-    {"action": "navigate", "url": "http://43.156.99.215:9111/admin.html"},
+    {"action": "navigate", "url": "http://43.163.105.172:9111/admin.html"},
     {"action": "wait", "ms": 2000},
     {"action": "check", "text": "Login"},
     {"action": "type", "selector": "input[name='username']", "text": "admin"},

@@ -336,7 +336,7 @@ infraX/
 |------|------|------|
 | v0.5.1 | 2026-08-04 | AItrader 合并：data-service → projects/data (:9112)、knowledge-injector (:9113)、可配置解析层（YAML 规则驱动）、DC/Collector raw 注入 RAGservicer 构建图谱 |
 | v0.3.2 | 2026-07-18 | 生产 E2E 测试：端口 9100-9111、Web Proxy /health+安全头、Admin API 修复、MPC 前端验证码流程、DB 建表补全、MCP 环境变量+端口修复、浏览器钱包注入 19/19 通过、MCP 45 tools 可用 |
-| v0.3.1 | 2026-07-17 | 新服务器 43.156.99.215、Express 5 迁移、BSC RPC 池三层合并、依赖补全 |
+| v0.3.1 | 2026-07-17 | 新服务器部署、Express 5 迁移、BSC RPC 池三层合并、依赖补全 |
 | v0.3.0 | 2026-07-17 | MPC Agent Wallet（Session Token、EIP-191/712 签名、合约调用、5 链转账）、安全加固 × 3、Bug 修复 × 8、MCP 15 tools |
 | v0.2.3 | 2026-07-15 | OxaChain L1 集成、全量 GitHub 同步、三合一接入文档 |
 | v0.2.2 | 2026-07-15 | 字体放大、链 Logo SVG、WaaS Quick Start |
@@ -348,8 +348,8 @@ infraX/
 
 | 项目 | 生产 | GitHub |
 |------|------|--------|
-| Agentx | 43.156.99.215:3100 | `sftgroup/Agentx` |
-| OxaChain | 43.156.99.215:18545 | `sftgroup/oxachain` |
+| Agentx | 43.163.105.172:3100 | `sftgroup/Agentx` |
+| OxaChain | 43.163.105.172:18545 | `sftgroup/oxachain` |
 | aihunter-saas | 129.226.202.72:3001 | `sftgroup/aihunter-saas` |
 | AItrader | 129.226.202.72 (源码) | `sftgroup/AItrader` |
 | aiservicer | — | `sftgroup/aiservicer` |

@@ -1,6 +1,6 @@
 # InfraX 端到端全场景测试文档 — P2: REST API 全链路
 
-> v0.3.3-20260720 | 生产 `43.156.99.215:9111` | 文档版本 v1.0
+> v0.3.3-20260720 | 生产 `43.163.105.172:9111` | 文档版本 v1.0
 
 ## 概述
 
@@ -21,7 +21,7 @@
 
 ### 1.1 Web Proxy 统一健康检查
 ```
-GET http://43.156.99.215:9111/api/health
+GET http://43.163.105.172:9111/api/health
 ```
 **预期**: `200 { "status": "ok", "uptime": <seconds>, "services": { "mpc": "ok", "waas": "ok", ... } }` 
 
@@ -397,7 +397,7 @@ DC Subscribe Transfer Events → Collector Push Events via Webhook
 ### 负载测试命令
 ```bash
 autocannon -c 10 -d 30 -H "Authorization: Bearer $TOKEN" \
-  http://43.156.99.215:9111/api/v2/mpc/status?address=0xcaCDbE995F5AbFf92968D7C45F622E3976a9547A
+  http://43.163.105.172:9111/api/v2/mpc/status?address=0xcaCDbE995F5AbFf92968D7C45F622E3976a9547A
 ```
 
 ---
