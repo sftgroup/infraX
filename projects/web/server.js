@@ -17,10 +17,13 @@ const VAULT_HOST    = process.env.VAULT_HOST|| 'localhost';
 const VAULT_PORT    = parseInt(process.env.VAULT_PORT|| '9107', 10);
 const ADMIN_HOST    = process.env.ADMIN_HOST || 'localhost';
 const ADMIN_PORT    = parseInt(process.env.ADMIN_PORT || '9100', 10);
+const COLLECTOR_HOST = process.env.COLLECTOR_HOST || 'localhost';
+const COLLECTOR_PORT = parseInt(process.env.COLLECTOR_PORT || '9101', 10);
 
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
+  '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },
   '/api/v2/wallet':  { host: WAAS_HOST,    port: WAAS_PORT },
   '/api/v2/waas':    { host: WAAS_HOST,    port: WAAS_PORT },

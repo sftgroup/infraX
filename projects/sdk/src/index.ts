@@ -101,6 +101,28 @@ export interface PaymentCreateParams {
   metadata?: Record<string, unknown>;
 }
 export interface PaymentCreateResult { method: 'fiat' | 'a2a'; paymentId: string; amount: string; status: string; sessionUrl?: string; sessionId?: string; }
+// Payment — MQ-16：invites / transfers / batch（引擎裸 JSON，非信封）
+export interface BatchItem { payee: string; amountWei: string; asset?: string; metadata?: Record<string, unknown>; }
+export interface BatchCreateParams { subscriber: string; items: BatchItem[]; chain?: string; metadata?: Record<string, unknown>; }
+export interface BatchCreateResult { method: 'batch'; batchId: string; items: Array<{ itemId: string; payee: string; amountWei: string; status: string; }>; }
+export interface BatchSettleParams { batchId: string; itemId: string; txHash: string; chain?: string; }
+export interface BatchSettleResult { settled: boolean; batchId: string; itemId: string; reference: string; payer: string; creditedWei: string; }
+export interface BatchGetResult { batchId: string; payer: string; chain: string; status: string; items: any[]; }
+export interface BatchCancelResult { cancelled: boolean; batchId: string; }
+export interface InviteCreateParams { payer: string; payee: string; valueWei: string; asset?: string; chain?: string; dueAt?: string; memo?: string; metadata?: Record<string, unknown>; }
+export interface InviteCreateResult { inviteId: string; paymentId: string; amountWei: string; payee: string; dueAt?: string; }
+export interface InviteListParams { address: string; role: 'payer' | 'payee'; status?: string; }
+export interface InviteListResult { invites: any[]; }
+export interface InviteGetResult { inviteId: string; paymentId: string; payer: string; payee: string; amountWei: string; memo?: string; dueAt?: string; status: string; settledMethod?: string; settledRef?: string; }
+export interface InviteSettleParams { inviteId: string; txHash: string; chain?: string; }
+export interface InviteActionResult { inviteId: string; cancelled?: boolean; settled?: boolean; reference?: string; transferId?: string; }
+export interface TransferCreateParams { from: string; to: string; valueWei: string; asset?: string; reference?: string; metadata?: Record<string, unknown>; }
+export interface TransferCreateResult { transferId: string; status: string; }
+export interface TransferListParams { address: string; role: 'from' | 'to'; }
+export interface TransferListResult { transfers: any[]; }
+export interface TransferGetResult { transferId: string; from: string; to: string; asset?: string; amountWei: string; status: string; reference?: string; executedAt?: string; }
+export interface TransferConfirmResult { transferId: string; executed: boolean; status?: string; error?: string; }
+export interface TransferCancelResult { cancelled: boolean; transferId: string; }
 
 // SaaS
 export interface TenantCreateParams { name: string; planId?: string; metadata?: Record<string, any>; }
@@ -114,6 +136,13 @@ export interface DCEvent { chain: string; block: number; txHash: string; from: s
 export interface DCStatsResult { chains: Array<{ chain: string; events: number; latestBlock: string; uniqueTx?: number; }>; }
 export interface DCToken { symbol: string; name: string; address: string; chain: string; decimals: number; }
 export interface DCChain { name: string; chainId: string; nativeSymbol: string; }
+// DC — MQ-16 套餐订阅面（/api/v2/data/*；均需 x-wallet-address header，信封响应）
+export interface DCSubscribeParams { planId: string; rail?: string; }
+export interface DCSubscribeResult { tenantId: string; plan: { id: string; name: string; price: number }; dcSubStatus: string; payment?: any; dcApiKey?: string; }
+export interface DCPaymentCheckResult { status: string; }
+export interface DCVerifyParams { txHash: string; }
+export interface DCVerifyResult { verified: boolean; activated?: boolean; }
+export interface DCUsageResult { planId: string; planName: string; dcApiKey?: string; dcApiKeyObscured?: string; monthlyQuota: number; currentUsage: number; dailyBreakdown: any[]; dcSubStatus: string; }
 
 // Vault
 export interface VaultSafeParams { chain?: string; status?: 'active' | 'pending' | 'closed'; }
@@ -141,6 +170,11 @@ export interface MPCSignResult { signature: string; address: string; }
 export interface MPCSignTypedDataParams { token: string; domain: Record<string, any>; types: Record<string, any>; value: Record<string, any>; }
 export interface MPCSendTransactionParams { token: string; to: string; amount: string; chain?: string; tokenAddress?: string; }
 export interface MPCSendTransactionResult { txHash: string; from: string; to: string; amount: string; chain: string; token: string; blockNumber?: number; gasUsed?: string; }
+// MPC — MQ-16 计费面（/api/v2/mpc/*）
+export interface MpcPlanFee { operation: string; label: string; feeWei: string; fee: string; }
+export interface MpcPlansResult { mode: string; billing: string; configured: boolean; platformAddress: string; fees: MpcPlanFee[]; topup: { method: string; steps?: string[]; note?: string; }; }
+export interface MpcLedgerBalanceParams { token: string; }
+export interface MpcLedgerBalanceResult { address: string; balanceWei: string; balance: string; fees: MpcPlanFee[]; topupHint: any; }
 export interface MPCContractReadParams { contractAddress: string; abi: any; method: string; args?: any[]; chain?: string; }
 export interface MPCContractReadResult { contractAddress: string; method: string; result: any; }
 export interface MPCContractWriteParams { token: string; contractAddress: string; abi: any; method: string; args?: any[]; chain?: string; value?: string; gasLimit?: string; }
@@ -156,6 +190,14 @@ export interface MarketTx { txHash: string; chain: string; blockHeight: number; 
 export interface MarketMemeToken { chain: string; tokenAddress: string; symbol: string; name: string; liquidity: number; volume24h: number; holderCount: number; devAddress: string; isHoneypot: boolean; bundledPercent: number; }
 export interface MarketSignal { signalId: string; chain: string; tokenAddress: string; symbol: string; signalType: string; address: string; amount: number; valueUsd: number; }
 export interface MarketLeaderboardEntry { rank: number; address: string; pnl: number; pnlPercent: number; winRate: number; tradeCount: number; }
+// Market — MQ-16 订阅面（/api/v2/market/*；X-API-Key 鉴权，信封响应）
+export interface MarketPlan { id: string; name: string; price: number; features?: Record<string, any>; }
+export interface MarketCheckoutParams { plan_id: string; rail?: string; subscriber?: string; }
+export interface MarketCheckoutResult { keyId: number; plan: { id: string; name: string; price: number }; marketSubStatus: string; payment?: any; free?: boolean; }
+export interface MarketPaymentCheckResult { status: string; }
+export interface MarketVerifyParams { txHash: string; }
+export interface MarketVerifyResult { verified: boolean; activated?: boolean; }
+export interface MarketUsageResult { planId: string; planName: string; monthlyQuota: number; currentUsage: number; dailyBreakdown: any[]; marketSubStatus: string; }
 
 // Data — InfraX data service (:9112) market data plane
 export interface DataBarsParams {
@@ -388,6 +430,91 @@ class PaymentAPI {
   async x402Info(planId: number | string, chain?: string): Promise<PaymentPriceResult> {
     return this.price(planId, chain);
   }
+
+  // ── MQ-16：batch（一次性多 payee 批量收款）──
+
+  /** 创建批量收款意图 */
+  async batchCreate(params: BatchCreateParams): Promise<BatchCreateResult> {
+    return this.http.postRaw<BatchCreateResult>('/payments/batch', params);
+  }
+
+  /** 结算 batch 中单个 item（提交该笔链上 txHash，x402 校验入账） */
+  async batchSettle(params: BatchSettleParams): Promise<BatchSettleResult> {
+    return this.http.postRaw<BatchSettleResult>('/payments/batch/settle', params);
+  }
+
+  /** 查询 batch 状态 */
+  async batchGet(batchId: string): Promise<BatchGetResult> {
+    return this.http.getRaw<BatchGetResult>('/payments/batch?batchId=' + encodeURIComponent(batchId));
+  }
+
+  /** 取消 batch（仅未支付 items） */
+  async batchCancel(batchId: string): Promise<BatchCancelResult> {
+    return this.http.postRaw<BatchCancelResult>('/payments/batch/cancel', { batchId });
+  }
+
+  // ── MQ-16：invites（账单邀请）──
+
+  /** 创建账单邀请（payer → payee；payee 可链上结算或账本支付） */
+  async inviteCreate(params: InviteCreateParams): Promise<InviteCreateResult> {
+    return this.http.postRaw<InviteCreateResult>('/payments/invites', params);
+  }
+
+  /** 列出邀请（按 address + role=payer|payee，可选 status） */
+  async inviteList(params: InviteListParams): Promise<InviteListResult> {
+    return this.http.getRaw<InviteListResult>(
+      '/payments/invites?address=' + encodeURIComponent(params.address) + '&role=' + params.role + (params.status ? '&status=' + encodeURIComponent(params.status) : '')
+    );
+  }
+
+  /** 单个邀请详情 */
+  async inviteGet(inviteId: string): Promise<InviteGetResult> {
+    return this.http.getRaw<InviteGetResult>('/payments/invites/' + encodeURIComponent(inviteId));
+  }
+
+  /** 取消未结算邀请 */
+  async inviteCancel(inviteId: string): Promise<InviteActionResult> {
+    return this.http.postRaw<InviteActionResult>('/payments/invites/' + encodeURIComponent(inviteId) + '/cancel');
+  }
+
+  /** 链上结算邀请（提交 payer 的 txHash） */
+  async inviteSettle(inviteId: string, txHash: string, chain?: string): Promise<InviteActionResult> {
+    return this.http.postRaw<InviteActionResult>('/payments/invites/' + encodeURIComponent(inviteId) + '/settle', { txHash, chain });
+  }
+
+  /** 账本支付邀请（从 payer ledger 余额扣款结算） */
+  async invitePay(inviteId: string): Promise<InviteActionResult> {
+    return this.http.postRaw<InviteActionResult>('/payments/invites/' + encodeURIComponent(inviteId) + '/pay');
+  }
+
+  // ── MQ-16：transfers（账本内部转账）──
+
+  /** 发起账本转账（需余额充足；confirm 后原子执行） */
+  async transferCreate(params: TransferCreateParams): Promise<TransferCreateResult> {
+    return this.http.postRaw<TransferCreateResult>('/payments/transfers', params);
+  }
+
+  /** 列出转账（按 address + role=from|to） */
+  async transferList(params: TransferListParams): Promise<TransferListResult> {
+    return this.http.getRaw<TransferListResult>(
+      '/payments/transfers?address=' + encodeURIComponent(params.address) + '&role=' + params.role
+    );
+  }
+
+  /** 单个转账详情 */
+  async transferGet(transferId: string): Promise<TransferGetResult> {
+    return this.http.getRaw<TransferGetResult>('/payments/transfers/' + encodeURIComponent(transferId));
+  }
+
+  /** 确认并执行转账（原子入账） */
+  async transferConfirm(transferId: string): Promise<TransferConfirmResult> {
+    return this.http.postRaw<TransferConfirmResult>('/payments/transfers/' + encodeURIComponent(transferId) + '/confirm');
+  }
+
+  /** 取消未执行转账 */
+  async transferCancel(transferId: string): Promise<TransferCancelResult> {
+    return this.http.postRaw<TransferCancelResult>('/payments/transfers/' + encodeURIComponent(transferId) + '/cancel');
+  }
 }
 
 // ═══════════════ SaaS — tenant management, billing, apikeys ═══════════════
@@ -429,6 +556,15 @@ class DCAPI {
   async plans() { return this.http.get<any>('/api/v2/data/plans'); }
   async tokens(params: { symbol?: string; chain?: string } = {}) { const q = new URLSearchParams(); if (params.symbol) q.set('symbol', params.symbol); if (params.chain) q.set('chain', params.chain); return this.http.get<DCToken[]>('/api/v2/data/tokens?' + q.toString()); }
   async chains() { return this.http.get<DCChain[]>('/api/v2/data/chains'); }
+  // ── MQ-16 套餐订阅面（/api/v2/data/*；均需 x-wallet-address header，信封响应）──
+  /** 订阅数据套餐（付费套餐返回 pending + payment 意图；免费套餐直接激活并返回 dcApiKey） */
+  async subscribe(params: DCSubscribeParams, walletAddress: string) { return this.http.post<DCSubscribeResult>('/api/v2/data/subscribe', { planId: params.planId, rail: params.rail }, { 'x-wallet-address': walletAddress }); }
+  /** 轮询支付状态（chain rail 链上确认） */
+  async paymentCheck(walletAddress: string) { return this.http.post<DCPaymentCheckResult>('/api/v2/data/payment-check', {}, { 'x-wallet-address': walletAddress }); }
+  /** x402 支付确认——提交 txHash，payer 匹配当前钱包后激活订阅 */
+  async verify(txHash: string, walletAddress: string) { return this.http.post<DCVerifyResult>('/api/v2/data/verify', { txHash }, { 'x-wallet-address': walletAddress }); }
+  /** 订阅用量（含 dcApiKey / 月度配额 / 日聚合） */
+  async usage(walletAddress: string) { return this.http.get<DCUsageResult>('/api/v2/data/usage', { 'x-wallet-address': walletAddress }); }
 }
 
 // ═══════════════ Vault — multisig safe creation + risk ═══════════════
@@ -471,6 +607,11 @@ class MPCAPI {
   async contractRead(params: MPCContractReadParams) { return this.http.post<MPCContractReadResult>('/api/v2/mpc/contract-read', params); }
   async contractWrite(params: MPCContractWriteParams) { return this.http.post<MPCContractWriteResult>('/api/v2/mpc/contract-write', params); }
   async gasEstimate(params: MPCGasEstimateParams = {}) { return this.http.post<MPCGasEstimateResult>('/api/v2/mpc/gas-estimate', params); }
+  // ── MQ-16 计费面（T-4）──
+  /** 套餐价目（公开；pay-per-use 模式 + 平台钱包 + 按次费率表） */
+  async plans() { return this.http.get<MpcPlansResult>('/api/v2/mpc/plans'); }
+  /** ledger 余额查询（引擎统一账本；区别于链上 /balance） */
+  async ledgerBalance(token: string) { return this.http.post<MpcLedgerBalanceResult>('/api/v2/mpc/ledger-balance', { token }); }
 }
 
 // ═══════════════ Market — OKX ChainOS v6 DEX Market ═══════════════
@@ -583,6 +724,23 @@ class MarketAPI {
   async removeEventSig(chain: string, topicHash: string) {
     return this.http.del<any>(`/api/v2/data/market/custom-sigs?chain=${chain}&topicHash=${encodeURIComponent(topicHash)}`);
   }
+
+  // ── MQ-16 订阅面（/api/v2/market/*；X-API-Key 鉴权，信封响应）──
+
+  /** 套餐目录（公开） */
+  async plans() { return this.http.get<MarketPlan[]>('/api/v2/market/plans'); }
+
+  /** 发起订阅支付（plan_id + rail + 可选 subscriber；X-API-Key 识别 keyId） */
+  async checkout(params: MarketCheckoutParams) { return this.http.post<MarketCheckoutResult>('/api/v2/market/checkout', params); }
+
+  /** 轮询支付状态（chain rail 链上确认） */
+  async paymentCheck(body?: { subscriber?: string }) { return this.http.post<MarketPaymentCheckResult>('/api/v2/market/payment-check', body ?? {}); }
+
+  /** x402 支付确认——提交 txHash 激活 pending x402 订阅 */
+  async verify(txHash: string) { return this.http.post<MarketVerifyResult>('/api/v2/market/verify', { txHash }); }
+
+  /** 订阅用量（月度配额 / 实际用量 / 日聚合） */
+  async usage() { return this.http.get<MarketUsageResult>('/api/v2/market/usage'); }
 }
 
 // ═══════════════ Data — InfraX data service (:9112) market data plane ═══════════════
@@ -764,6 +922,15 @@ export interface ChainRpcBroadcastResult {
   receipt: any | null;
   reason?: string;
 }
+// ChainRpc — MQ-16 订阅面（/v1/subscription/*；rx_ key 经 x-api-key/x-rpc-key 鉴权，信封 {code,message,data}）
+export interface RpcPlan { id: string; name: string; price: number; features?: Record<string, any>; }
+export interface RpcIssueKeyResult { keyId: number; rpcKey: string; planId: string; status: string; note: string; }
+export interface RpcCheckoutParams { plan_id: string; rail?: string; subscriber?: string; }
+export interface RpcCheckoutResult { keyId: number; plan: { id: string; name: string; price: number }; rpcSubStatus: string; payment?: any; free?: boolean; }
+export interface RpcPaymentCheckResult { status: string; }
+export interface RpcVerifyParams { txHash: string; }
+export interface RpcVerifyResult { verified: boolean; activated?: boolean; }
+export interface RpcUsageResult { planId: string; planName: string; monthlyQuota: number; currentUsage: number; dailyBreakdown: any[]; rpcSubStatus: string; }
 
 class ChainRpcAPI {
   private readonly broadcastKey: string;
@@ -802,6 +969,38 @@ class ChainRpcAPI {
   /** 服务健康 */
   async health() {
     return this.http.get<any>('/health');
+  }
+
+  // ── MQ-16 订阅面（/v1/subscription/*；rx_ key 经 x-api-key / x-rpc-key 鉴权，信封 {code,message,data}）──
+
+  /** 套餐目录（公开） */
+  async subscriptionPlans() {
+    return this.http.get<RpcPlan[]>('/v1/subscription/plans');
+  }
+
+  /** 签发 rx_ 读 key（管理操作；x-api-key 需为服务端 X-Service-Key/bridge key） */
+  async issueRpcKey(label?: string) {
+    return this.http.post<RpcIssueKeyResult>('/v1/subscription/issue-key', { label });
+  }
+
+  /** 发起订阅支付（plan_id + rail + 可选 subscriber；rx_ key 鉴权） */
+  async subscriptionCheckout(params: RpcCheckoutParams) {
+    return this.http.post<RpcCheckoutResult>('/v1/subscription/checkout', params);
+  }
+
+  /** 轮询支付状态（chain rail 链上确认） */
+  async subscriptionPaymentCheck(body?: { subscriber?: string }) {
+    return this.http.post<RpcPaymentCheckResult>('/v1/subscription/payment-check', body ?? {});
+  }
+
+  /** x402 支付确认——提交 txHash 激活 pending x402 订阅 */
+  async subscriptionVerify(txHash: string) {
+    return this.http.post<RpcVerifyResult>('/v1/subscription/verify', { txHash });
+  }
+
+  /** 订阅用量（月度配额 / 实际用量 / 日聚合） */
+  async subscriptionUsage() {
+    return this.http.get<RpcUsageResult>('/v1/subscription/usage');
   }
 }
 

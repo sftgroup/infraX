@@ -212,6 +212,155 @@ reg({
   }, required: ['subscriber', 'resource'] },
 }, async (args: any) => pay('/payments/access', { method: 'POST', body: args }));
 
+// ─── MQ-16: batch / invites / transfers（引擎裸 JSON 响应）───
+
+reg({
+  name: 'payment_batch_create',
+  description: 'Create a batch collection intent: one subscriber collects from multiple payees at once. Returns batchId + items.',
+  inputSchema: { type: 'object', properties: {
+    subscriber: { type: 'string', description: 'Payer identifier (wallet address or user id)' },
+    items: { type: 'array', description: 'Collection items: [{payee, amountWei, asset?, metadata?}]', items: { type: 'object' } },
+    chain: { type: 'string', description: 'Chain slot (default oxachain)' },
+    metadata: { type: 'object', description: 'Business context' },
+  }, required: ['subscriber', 'items'] },
+}, async (args: any) => pay('/payments/batch', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_batch_settle',
+  description: 'Settle one item of a batch by submitting its on-chain txHash (x402 verify + credit).',
+  inputSchema: { type: 'object', properties: {
+    batchId: { type: 'string', description: 'Batch id' },
+    itemId: { type: 'string', description: 'Item id' },
+    txHash: { type: 'string', description: 'On-chain transaction hash (0x...)' },
+    chain: { type: 'string', description: 'Chain slot (optional)' },
+  }, required: ['batchId', 'itemId', 'txHash'] },
+}, async (args: any) => pay('/payments/batch/settle', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_batch_get',
+  description: 'Read a batch state (payer, chain, status, items).',
+  inputSchema: { type: 'object', properties: {
+    batchId: { type: 'string', description: 'Batch id' },
+  }, required: ['batchId'] },
+}, async (args: any) => pay('/payments/batch?batchId=' + encodeURIComponent(args.batchId)));
+
+reg({
+  name: 'payment_batch_cancel',
+  description: 'Cancel a batch (items that were never paid).',
+  inputSchema: { type: 'object', properties: {
+    batchId: { type: 'string', description: 'Batch id' },
+  }, required: ['batchId'] },
+}, async (args: any) => pay('/payments/batch/cancel', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_invite_create',
+  description: 'Create a billing invitation (payer → payee). Payee can settle on-chain (invite_settle) or pay from ledger balance (invite_pay).',
+  inputSchema: { type: 'object', properties: {
+    payer: { type: 'string', description: 'Payer address (0x...)' },
+    payee: { type: 'string', description: 'Payee address (0x...)' },
+    valueWei: { type: 'string', description: 'Amount in wei' },
+    asset: { type: 'string', description: 'Asset identifier (optional)' },
+    chain: { type: 'string', description: 'Chain slot (optional)' },
+    dueAt: { type: 'string', description: 'Due date (ISO, optional)' },
+    memo: { type: 'string', description: 'Memo (optional)' },
+    metadata: { type: 'object', description: 'Business context' },
+  }, required: ['payer', 'payee', 'valueWei'] },
+}, async (args: any) => pay('/payments/invites', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_invite_list',
+  description: 'List invitations by address + role (payer|payee), optionally filtered by status.',
+  inputSchema: { type: 'object', properties: {
+    address: { type: 'string', description: 'Wallet address (0x...)' },
+    role: { type: 'string', description: 'payer | payee' },
+    status: { type: 'string', description: 'Optional status filter' },
+  }, required: ['address', 'role'] },
+}, async (args: any) => {
+  let q = `/payments/invites?address=${encodeURIComponent(args.address)}&role=${encodeURIComponent(args.role)}`;
+  if (args.status) q += '&status=' + encodeURIComponent(args.status);
+  return pay(q);
+});
+
+reg({
+  name: 'payment_invite_get',
+  description: 'Read one invitation in detail (status, settled method/ref).',
+  inputSchema: { type: 'object', properties: {
+    inviteId: { type: 'string', description: 'Invite id' },
+  }, required: ['inviteId'] },
+}, async (args: any) => pay('/payments/invites/' + encodeURIComponent(args.inviteId)));
+
+reg({
+  name: 'payment_invite_cancel',
+  description: 'Cancel an open (unsettled) invitation.',
+  inputSchema: { type: 'object', properties: {
+    inviteId: { type: 'string', description: 'Invite id' },
+  }, required: ['inviteId'] },
+}, async (args: any) => pay('/payments/invites/' + encodeURIComponent(args.inviteId) + '/cancel', { method: 'POST' }));
+
+reg({
+  name: 'payment_invite_settle',
+  description: 'Settle an invitation on-chain: submit the payer txHash (x402 verify + credit).',
+  inputSchema: { type: 'object', properties: {
+    inviteId: { type: 'string', description: 'Invite id' },
+    txHash: { type: 'string', description: 'On-chain transaction hash (0x...)' },
+    chain: { type: 'string', description: 'Chain slot (optional)' },
+  }, required: ['inviteId', 'txHash'] },
+}, async (args: any) => pay('/payments/invites/' + encodeURIComponent(args.inviteId) + '/settle', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_invite_pay',
+  description: 'Pay an invitation from the payer ledger balance (no on-chain tx).',
+  inputSchema: { type: 'object', properties: {
+    inviteId: { type: 'string', description: 'Invite id' },
+  }, required: ['inviteId'] },
+}, async (args: any) => pay('/payments/invites/' + encodeURIComponent(args.inviteId) + '/pay', { method: 'POST' }));
+
+reg({
+  name: 'payment_transfer_create',
+  description: 'Request a ledger-internal transfer (from → to). Requires sufficient balance; atomic execution on confirm.',
+  inputSchema: { type: 'object', properties: {
+    from: { type: 'string', description: 'Source address (0x...)' },
+    to: { type: 'string', description: 'Destination address (0x...)' },
+    valueWei: { type: 'string', description: 'Amount in wei' },
+    asset: { type: 'string', description: 'Asset identifier (optional)' },
+    reference: { type: 'string', description: 'Business reference (optional)' },
+    metadata: { type: 'object', description: 'Business context' },
+  }, required: ['from', 'to', 'valueWei'] },
+}, async (args: any) => pay('/payments/transfers', { method: 'POST', body: args }));
+
+reg({
+  name: 'payment_transfer_list',
+  description: 'List transfers by address + role (from|to).',
+  inputSchema: { type: 'object', properties: {
+    address: { type: 'string', description: 'Wallet address (0x...)' },
+    role: { type: 'string', description: 'from | to' },
+  }, required: ['address', 'role'] },
+}, async (args: any) => pay('/payments/transfers?address=' + encodeURIComponent(args.address) + '&role=' + encodeURIComponent(args.role)));
+
+reg({
+  name: 'payment_transfer_get',
+  description: 'Read one transfer in detail (status, reference, executedAt).',
+  inputSchema: { type: 'object', properties: {
+    transferId: { type: 'string', description: 'Transfer id' },
+  }, required: ['transferId'] },
+}, async (args: any) => pay('/payments/transfers/' + encodeURIComponent(args.transferId)));
+
+reg({
+  name: 'payment_transfer_confirm',
+  description: 'Confirm and atomically execute a transfer (debits source, credits destination).',
+  inputSchema: { type: 'object', properties: {
+    transferId: { type: 'string', description: 'Transfer id' },
+  }, required: ['transferId'] },
+}, async (args: any) => pay('/payments/transfers/' + encodeURIComponent(args.transferId) + '/confirm', { method: 'POST' }));
+
+reg({
+  name: 'payment_transfer_cancel',
+  description: 'Cancel an un-executed transfer.',
+  inputSchema: { type: 'object', properties: {
+    transferId: { type: 'string', description: 'Transfer id' },
+  }, required: ['transferId'] },
+}, async (args: any) => pay('/payments/transfers/' + encodeURIComponent(args.transferId) + '/cancel', { method: 'POST' }));
+
 // ─── MPP payment channel ops ───
 
 reg({

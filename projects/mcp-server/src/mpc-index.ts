@@ -180,6 +180,22 @@ reg({
   }, required: [] },
 }, async (args: any) => mpc('/api/v2/mpc/gas-estimate', { method: 'POST', body: args }));
 
+// ── MQ-16 T-4: MPC 计费面（pay-per-use）──
+
+reg({
+  name: 'mpc_plans',
+  description: 'MPC 套餐价目（公开）：pay-per-use 模式、平台钱包、按次费率表、充值说明。',
+  inputSchema: { type: 'object', properties: {}, required: [] },
+}, async () => mpc('/api/v2/mpc/plans'));
+
+reg({
+  name: 'mpc_ledger_balance',
+  description: 'MPC ledger 余额查询（引擎统一账本，区别于链上 /balance）。需 session token。',
+  inputSchema: { type: 'object', properties: {
+    token: { type: 'string', description: 'MPC session token（来自 mpc_session_unlock）' },
+  }, required: ['token'] },
+}, async (args: any) => mpc('/api/v2/mpc/ledger-balance', { method: 'POST', body: args }));
+
 async function handle(req: any) {
   const { id, method, params } = req;
   try {

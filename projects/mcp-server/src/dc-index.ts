@@ -32,9 +32,24 @@ async function dc(path: string, options: RequestInit = {}) {
   return r.json();
 }
 
+// MQ-16 T-1: DC 套餐订阅端点走 x-wallet-address 鉴权（非 dc_api_key）
+async function dcSub(path: string, walletAddress: string, options: RequestInit = {}) {
+  if (!walletAddress) throw new Error("walletAddress is required for DC subscription endpoints (x-wallet-address header)");
+  const r = await fetch(`${DC_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "x-wallet-address": walletAddress,
+      ...options.headers,
+    },
+  });
+  const body = await r.json().catch(() => null);
+  return { status: r.status, body };
+}
+
 const server = new McpServer({
   name: "infrax-dc-mcp",
-  version: "1.1.0",
+  version: "1.2.0",
 });
 
 // dc_events
@@ -116,6 +131,58 @@ server.tool(
   async () => {
     const data = await dc("/api/v2/data/chains");
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── MQ-16 T-1: DC 套餐订阅面（x-wallet-address 鉴权，信封响应）──
+
+server.tool(
+  "dc_subscription_subscribe",
+  "Subscribe to a Data Center plan (MQ-16). Free plans activate immediately and return a dcApiKey; paid plans return a pending payment intent to complete on the chosen rail.",
+  {
+    planId: z.string().describe("Plan id, e.g. data_free / data_pro / data_enterprise"),
+    rail: z.string().optional().describe("Payment rail: chain | fiat | x402 (default chain)"),
+    walletAddress: z.string().describe("Wallet address (0x...) — identifies the DC tenant"),
+  },
+  async ({ planId, rail, walletAddress }) => {
+    const { status, body } = await dcSub("/api/v2/data/subscribe", walletAddress, {
+      method: "POST",
+      body: JSON.stringify({ planId, rail }),
+    });
+    return { content: [{ type: "text" as const, text: JSON.stringify({ status, ...(body || {}) }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "dc_subscription_payment_check",
+  "Poll DC subscription payment status (chain rail confirms on-chain payment; fiat/x402 rely on callback or verify).",
+  { walletAddress: z.string().describe("Wallet address (0x...)") },
+  async ({ walletAddress }) => {
+    const { status, body } = await dcSub("/api/v2/data/payment-check", walletAddress, { method: "POST", body: JSON.stringify({}) });
+    return { content: [{ type: "text" as const, text: JSON.stringify({ status, ...(body || {}) }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "dc_subscription_verify",
+  "Confirm an x402 payment for a DC subscription: submit the on-chain txHash; the paying wallet must match.",
+  {
+    txHash: z.string().describe("On-chain transaction hash (0x...)"),
+    walletAddress: z.string().describe("Wallet address (0x...) that paid"),
+  },
+  async ({ txHash, walletAddress }) => {
+    const { status, body } = await dcSub("/api/v2/data/verify", walletAddress, { method: "POST", body: JSON.stringify({ txHash }) });
+    return { content: [{ type: "text" as const, text: JSON.stringify({ status, ...(body || {}) }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "dc_subscription_usage",
+  "Read DC subscription usage: plan, dcApiKey, monthly quota, current usage and daily breakdown.",
+  { walletAddress: z.string().describe("Wallet address (0x...)") },
+  async ({ walletAddress }) => {
+    const { status, body } = await dcSub("/api/v2/data/usage", walletAddress);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ status, ...(body || {}) }, null, 2) }] };
   }
 );
 

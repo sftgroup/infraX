@@ -1,7 +1,12 @@
 {
   "name": "@0xinfrax/infrax-cp-server",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:dc": "tsx src/dc-index.ts",

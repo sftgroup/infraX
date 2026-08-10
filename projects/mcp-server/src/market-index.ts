@@ -31,7 +31,7 @@ async function market(path: string, options: RequestInit = {}) {
 
 const server = new McpServer({
   name: "infrax-market-mcp",
-  version: "1.0.0",
+  version: "1.1.0",
 });
 
 // ── market_search ──────────────────────────────────────────────────
@@ -267,6 +267,62 @@ server.tool(
       method: "POST",
       body: JSON.stringify({ chain, topicHash, eventType, eventName, abi: parsedAbi }),
     });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── MQ-16 T-2: Market 订阅面（/api/v2/market/*，X-API-Key 鉴权，信封响应）──
+
+server.tool(
+  "market_subscription_plans",
+  "List Market API subscription plans (public catalog).",
+  {},
+  async () => {
+    const data = await market("/api/v2/market/plans");
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "market_subscription_checkout",
+  "Start a Market API subscription payment (X-API-Key identifies the key). Free plans activate immediately; paid plans return a pending payment intent for the chosen rail.",
+  {
+    plan_id: z.string().describe("Plan id, e.g. market_pro / market_enterprise"),
+    rail: z.string().optional().describe("Payment rail: chain | fiat | x402 (default chain)"),
+    subscriber: z.string().optional().describe("Custom subscriber reference (defaults to mktsub:<keyId>)"),
+  },
+  async (params) => {
+    const data = await market("/api/v2/market/checkout", { method: "POST", body: JSON.stringify(params) });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "market_subscription_payment_check",
+  "Poll Market subscription payment status (chain rail confirms on-chain payment).",
+  { subscriber: z.string().optional().describe("Subscriber reference used at checkout") },
+  async ({ subscriber }) => {
+    const data = await market("/api/v2/market/payment-check", { method: "POST", body: JSON.stringify({ subscriber }) });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "market_subscription_verify",
+  "Confirm an x402 payment for a Market subscription: submit the on-chain txHash to activate the pending subscription.",
+  { txHash: z.string().describe("On-chain transaction hash (0x...)") },
+  async ({ txHash }) => {
+    const data = await market("/api/v2/market/verify", { method: "POST", body: JSON.stringify({ txHash }) });
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  "market_subscription_usage",
+  "Read Market subscription usage: plan, monthly quota, current usage and daily breakdown.",
+  {},
+  async () => {
+    const data = await market("/api/v2/market/usage");
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
   }
 );
