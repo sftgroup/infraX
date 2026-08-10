@@ -1,0 +1,25 @@
+# dc-mcp / market-mcp 的 DC API Key 注入模板（B-10-3 修复）
+#
+# dc_* / market_* MCP 工具直连 DC 服务（:9102）的 /api/v2/data/* 端点，
+# 鉴权头 x-dc-api-key / x-api-key 必须为真实租户 key（tenants.dc_api_key）。
+# 未配置时 dc-index.ts / market-index.ts 会 fail-fast（不再回退 test-key 导致必 401）。
+#
+# 落地方式：
+#   sudo mkdir -p /etc/systemd/system/infrax-dc-mcp.service.d
+#   sudo tee /etc/systemd/system/infrax-dc-mcp.service.d/dc-api-key.conf <<'EOF'
+#   [Service]
+#   Environment="DC_API_KEY=<此处填真实租户 key>"
+#   EOF
+#   sudo systemctl daemon-reload && sudo systemctl restart infrax-dc-mcp
+#
+#   # market-mcp（如部署）同理落到 infrax-market-mcp.service.d/
+#
+# 获取真实租户 key（任一 active 租户，建议专用数据租户）：
+#   psql pocketx_dc -c "SELECT name, dc_api_key FROM tenants WHERE status='active';"
+#
+# 验证：
+#   curl -s http://127.0.0.1:9102/api/v2/data/tokens \
+#     -H "x-dc-api-key: <key>" | head -c 300
+#   （返回 code:0 + token 列表即成功；401 Invalid API key 说明 key 不匹配）
+[Service]
+Environment="DC_API_KEY=infrax_dc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

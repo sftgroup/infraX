@@ -3,14 +3,22 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { z } from "zod";
 
+// B-10-3 修复：同 dc-index，DC_API_KEY 缺失时 fail-fast，禁止静默发送占位 key（test-key）→ 必然 401。
 const DC_URL = process.env.DC_URL || process.env.DC_API_URL || "http://localhost:9102";
+const DC_API_KEY = process.env.DC_API_KEY || "";
 
 async function market(path: string, options: RequestInit = {}) {
+  if (!DC_API_KEY) {
+    throw new Error(
+      "DC_API_KEY is not configured for market-mcp. Set it in the systemd drop-in " +
+      "(see deploy/overrides/templates/dc-mcp-key.conf.template) — value: tenants.dc_api_key of the target tenant."
+    );
+  }
   const r = await fetch(`${DC_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.DC_API_KEY || "test-key",
+      "x-api-key": DC_API_KEY,
       ...options.headers,
     },
   });

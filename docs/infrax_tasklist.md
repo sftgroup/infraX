@@ -922,7 +922,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 |---|---|---|:---:|
 | B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | ✅ `148cc42`（共享中间件 + `px_` scope，E2E 直连 200/非法 401/跨 scope 401） | P0 |
 | B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | 🔲（⚠️ 伪实现） | P1 |
-| B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens`（dc 无此端点）→ dc 补端点或工具改接 `/plans` `/chains` | 🔲（⚠️ 必失败） | P1 |
+| B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens` → 必失败 | ✅ 双修：① MQ-3 dc 已补 `GET /api/v2/data/tokens`（okx_token_snapshots 最新快照，见 §9.8 MQ-3）；② 根因 `DC_API_KEY` 未配置时静默回退 `test-key` → DC 按 `requireDcApiKey` 必 401——dc-index/market-index 改 fail-fast 明确报错，生产 `infrax-dc-mcp.service.d/dc-api-key.conf` 注入真实租户 key，模板 `deploy/overrides/templates/dc-mcp-key.conf.template`；本地 E2E：无 key → 明确 isError，有 key → 正常请求 | P1 |
 | B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | 🔲（⚠️ 缺失） | P1 |
 | B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | 🔲 | P1 |
 | B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | 🔲 | P2 |
