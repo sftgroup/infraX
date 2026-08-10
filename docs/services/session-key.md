@@ -54,7 +54,9 @@ curl -s "http://127.0.0.1:3500/api/v1/nonce?user=0x00000000000000000000000000000
 
 ## 1. 服务定位
 
-**session-key**（Session Key Engine，v0.1.0）是 InfraX 的**会话密钥授权服务**：用户主钱包一次性 EIP-712 签名授权后，服务端为其生成会话密钥对（Session Key），在有效期内自动代签交易——实现 **Agent 免签名交易**（Bundler/Paymaster 执行路径）。
+**session-key**（Session Key Engine，v0.1.0）是 InfraX 的**会话密钥授权服务**：用户主钱包一次性 EIP-712 签名授权后，服务端为其生成会话密钥对（Session Key），在有效期内自动代签交易——实现 **Agent 免签名交易（服务端受限代执行）**。
+
+> **能力边界（重要）**：本服务**不是 ERC-4337 智能账户方案**——无 UserOp / Bundler / Paymaster / EntryPoint。会话私钥由平台生成并 **AES 加密托管**（`sessionKeyEnc`），`/api/v1/execute` 由服务端解密后经 viem 直接签名广播；授权模型为「用户对会话元数据做 EIP-712 签名 + 服务端白名单/限额执行」。若集成方需要**去信任的链上验证器（ERC-4337）**，属另一条产品线，可与 InfraX 托管钱包 / MPC 能力组合实现。
 
 核心流程：
 
