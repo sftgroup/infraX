@@ -29,6 +29,7 @@
 - [API 参考](#api-参考)
 - [本地验证](#本地验证)
 - [目录结构](#目录结构)
+- [参考实现：套餐支付（waas）](#参考实现套餐支付waas)
 
 ---
 
@@ -215,6 +216,120 @@ app.use('/payments', createPaymentsRouter(payments))
 - 未启用能力的端点仍存在但返回 **503**（显式 "not enabled" 而非 404），便于调用方识别配置缺失。
 - 新增能力不破坏旧调用：`createPayment(method)` 增加 `a2a`（两阶段意图）与 `batch`（一次向 N 个 payee 收款）；`chargePeriod` / `getAuthorization` 走 period 授权；`createInvite` / `payInviteByBalance` 走 invite（agent 自动发收费邀请）；`createTransfer` / `confirmTransfer` 走 transfer（账本内原子划转）。
 - 独立开关：`a2a` 默认随 `x402` 开启（可 `A2A_ENABLED=false` 关闭）；`period` / `batch` / `invite` / `transfer` 需注入对应 store seam 才启用（微服务形态另需 `PERIOD_ENABLED` / `BATCH_ENABLED` / `INVITE_ENABLED` / `TRANSFER_ENABLED=true`）。
+
+---
+
+## 参考实现：套餐支付（waas）
+
+> 仓库内**最早跑通独立服务形态的调用方**：waas 用户套餐支付（MQ-12，代码见 [`projects/waas/routes/subscriptionRoutes.ts`](../../waas/routes/subscriptionRoutes.ts) + [`projects/waas/services/paymentsClient.ts`](../../waas/services/paymentsClient.ts)）。以下以其真实用法为准的端到端样例。
+
+### ① 轻量 HTTP 客户端
+
+独立服务 router 挂载在 `/payments`（区别于 SDK 自带 `PaymentsClient` 的 gateway 前缀 `/api/v1/payments`），鉴权用统一契约 `X-Service-Key`。waas 即采用此轻量封装：
+
+```ts
+import { config } from '../config' // PAYMENTS_URL / PAYMENTS_API_KEY
+
+async function call<T = any>(path: string, init?: RequestInit): Promise<T> {
+  const base = config.payments.baseUrl.replace(/\/$/, '')
+  const resp = await fetch(`${base}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Service-Key': config.payments.apiKey,   // 统一服务间鉴权
+      ...(init?.headers ?? {}),
+    },
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null)
+    throw new Error(body?.error ?? `payments ${path} failed (${resp.status})`)
+  }
+  return resp.json()
+}
+
+export const paymentsApi = {
+  /** 链上套餐定价（GET /price?planId=&chain=） */
+  price: (planId: number, chain: string) => call(`/payments/price?planId=${planId}&chain=${chain}`),
+  /** 链槽信息：chainId + SubscriptionManager（GET /chain-info/:chain） */
+  chainInfo: (chain: string) => call(`/payments/chain-info/${chain}`),
+  /** 链上 escrow 订阅状态（GET /subscription/:chain/:subscriber/:resourceId） */
+  hasActiveSubscription: (chain: string, subscriber: string, resourceId: number) =>
+    call(`/payments/subscription/${chain}/${subscriber.toLowerCase()}/${resourceId}`),
+  /** fiat checkout（POST /checkout），metadata 透传业务上下文 */
+  checkout: (body: {
+    subscriber: string; planId: number; period: string;
+    metadata: Record<string, unknown>; clientReference: string;
+    successUrl?: string; cancelUrl?: string;
+  }) => call('/payments/checkout', { method: 'POST', body: JSON.stringify(body) }),
+  /** 验证链上支付 tx 并入账（POST /verify，幂等） */
+  verify: (txHash: string, chain?: string) =>
+    call('/payments/verify', { method: 'POST', body: JSON.stringify({ txHash, chain }) }),
+  /** x402 rail 探测（GET /info）：payTo / priceWei / network */
+  info: () => call('/payments/info'),
+}
+```
+
+### ② 订阅创建（pending）——按 rail 取支付信息
+
+```ts
+if (plan.price === 0) { /* free 直通 active，无支付意图 */ return }
+const inserted = await pool.query(
+  `INSERT INTO subscriptions (user_id, plan_id, plan_name, price, billing_cycle, status, payment_method, payment_status)
+   VALUES ($1,$2,$3,$4,'monthly','pending',$5,'pending') RETURNING *`,
+  [userId, planId, plan.name, plan.price, rail]      // rail: chain | fiat | x402
+)
+const subscriptionId = inserted.rows[0].id
+const payment: any = { rail, chain }
+
+if (rail === 'chain') {
+  const [planInfo, info] = await Promise.all([
+    paymentsApi.price(resourceId, chain),
+    paymentsApi.chainInfo(chain),
+  ])
+  payment.price = planInfo.price          // 链上套餐价（wei）
+  payment.period = planInfo.period
+  payment.payToken = planInfo.payToken
+  payment.subscriptionManager = info.subscriptionManager  // 前端链上 subscribe 用
+  payment.chainId = info.chainId
+} else if (rail === 'fiat') {
+  const checkout = await paymentsApi.checkout({
+    subscriber: walletAddress || subscriptionId,
+    planId: resourceId,
+    period: 'month',
+    metadata: { product: 'subscription', planId, userId, subscriptionId },  // 业务上下文透传
+    clientReference: `sub:${subscriptionId}`,      // 回调里按此引用激活
+    successUrl: `${origin}/#/waas?sub=success`,
+    cancelUrl: `${origin}/#/waas?sub=cancelled`,
+  })
+  payment.sessionUrl = checkout.sessionUrl
+  payment.paymentId = checkout.paymentId
+} else if (rail === 'x402') {
+  const info = await paymentsApi.info()
+  payment.payTo = info.x402.payTo          // 前端向此地址转账
+  payment.priceWei = info.x402.priceWei
+  payment.network = info.x402.network
+}
+// → 前端：chain 引导用户链上 subscribe；fiat 跳 sessionUrl；x402 向 payTo 转账后提交 txHash
+```
+
+### ③ 支付确认——三种 rail 统一落到 `pending → active`（幂等）
+
+```ts
+// chain：轮询链上 escrow（SubscriptionManager.hasActiveSubscription）→ active 则激活
+const { active } = await paymentsApi.hasActiveSubscription(chain, wallet, resourceId)
+if (active) await activateSubscription(subscriptionId)  // cancel 旧 active + pending→active
+
+// fiat：infrax-payments WEBHOOK_FORWARD_URL 出站事件 → 本服务 POST /payment-callback
+//   验签：x-payments-signature = HMAC-SHA256(JSON.stringify(body), PAYMENTS_WEBHOOK_SECRET)
+//   激活：event.object.client_reference_id = `sub:<id>` → activateSubscription(id)
+
+// x402：前端提交 txHash → POST /payments/verify（幂等入账）→ payer 匹配当前钱包 → 激活
+const { verified, payer } = await paymentsApi.verify(txHash)
+if (verified && payer.toLowerCase() === wallet.toLowerCase()) await activateSubscription(subscriptionId)
+```
+
+> 状态机约定：`pending`（支付意图，模块已记 `payment_intents`）→ `active`（任一 rail 确认支付）→ `cancelled / failed`。业务激活逻辑（`activateSubscription`：cancel 旧订阅 → 置 active + 续期）完全在调用方，支付引擎只负责「钱」与出站事件。
 
 ---
 
