@@ -188,9 +188,11 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 function setupNav() {
   document.querySelectorAll('.nav-item[data-page]').forEach(function (el) {
     el.addEventListener('click', function () {
+      var p = el.dataset.page;
+      // MQ-15 T-1: Payment 已并入 WaaS 订阅，点击直接跳转 WaaS 订阅页（替代 page-payment）
+      if (p === 'payment') { switchToWaasSubscription(); return; }
       document.querySelectorAll('.nav-item').forEach(function (x) { x.classList.remove('active'); });
       el.classList.add('active');
-      var p = el.dataset.page;
       document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('active'); });
       var target = document.getElementById('page-' + p);
       if (!target) return;
