@@ -21,8 +21,11 @@ import { logger } from './logger';
 import { RpcPoolManager } from './services/rpcPool';
 import { buildRpcPoolConfig } from './services/rpcPoolConfig';
 import { createReadAuth, createBroadcastAuth } from './middleware/auth';
+import { rpcQuotaEnforce } from './middleware/rpcQuotaEnforce';
 import { createRpcRouter, createBroadcastRouter } from './routes/rpcRoutes';
 import { attachWs } from './routes/ws';
+import subscriptionRouter from './routes/rpcSubscriptionRoutes';
+import { initRpcTables } from './services/rpcSubscription';
 
 const app = express();
 
@@ -88,8 +91,10 @@ app.get('/health', (_req, res) => {
 });
 
 // ── 路由（鉴权分级：读 / 广播独立挂载，读 key 无法触达广播） ──
-app.use('/v1/rpc', createReadAuth(), createRpcRouter(pool));
+app.use('/v1/rpc', createReadAuth(), rpcQuotaEnforce(), createRpcRouter(pool));
 app.use('/v1/broadcast', createBroadcastAuth(), createBroadcastRouter(pool));
+// MQ-16 T-3: RPC 读套餐订阅（plans/issue-key 内部鉴权，checkout/payment-check/verify/usage 用 rx_ key 鉴权）
+app.use('/v1/subscription', subscriptionRouter);
 app.get('/v1/status', createReadAuth(), (_req, res) => {
   res.json({ code: 0, message: 'ok', data: { chains: pool.status(config.statusUrlMode as 'none' | 'host' | 'full') } });
 });
@@ -107,6 +112,9 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 const server = http.createServer(app);
 attachWs(server, pool);
+
+// MQ-16 T-3: 订阅计费表自举（rpc_keys / rpc_usage / rpc_usage_daily），失败仅告警不阻断启动
+initRpcTables().catch((e) => logger.error(`[chain-rpc] rpc tables init failed: ${e.message}`));
 
 server.listen(config.port, () => {
   logger.info(`[chain-rpc] listening on :${config.port} (env=${config.nodeEnv})`);

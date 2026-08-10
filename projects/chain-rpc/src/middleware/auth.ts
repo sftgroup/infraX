@@ -15,6 +15,7 @@
  */
 import crypto from 'crypto';
 import { config } from '../config';
+import { findRpcKeyByRaw } from '../services/rpcSubscription';
 
 export function extractApiKey(req: any): string {
   const auth = (req.headers['authorization'] || '').trim();
@@ -70,8 +71,21 @@ export function createReadAuth() {
     if (isExempt(p)) return next();
     const key = extractApiKey(req);
     if (!key) return unauthorized(res);
-    // 广播 key 可读；读 key 可读
-    if (matchLocal(key, [config.readKey, config.broadcastKey])) return next();
+    // 广播 key 可读；读 key 可读（本地 bridge key：平台内部调用，豁免配额）
+    if (matchLocal(key, [config.readKey, config.broadcastKey])) {
+      req.isLocal = true;
+      return next();
+    }
+    // MQ-16 T-3: rx_ 订阅 key（rpc_keys 表 SHA-256 哈希校验），配额由 rpcQuotaEnforce 记账
+    if (key.startsWith('rx_')) {
+      const rpcKey = await findRpcKeyByRaw(key);
+      if (rpcKey && rpcKey.enabled !== false) {
+        req.rpcKey = rpcKey;
+        return next();
+      }
+      return unauthorized(res);
+    }
+    // 外部 data 服务签发 key（dx_/mx_ 等，scope=rpc；已按 data 订阅计费，此处豁免配额）
     if (config.enableExternalVerify && (await matchExternal(key, 'rpc'))) return next();
     return unauthorized(res);
   };
