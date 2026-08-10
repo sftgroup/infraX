@@ -731,7 +731,7 @@ app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
       { method: 'GET', path: '/key', description: 'Get API key' },
       { method: 'GET', path: '/events', description: 'Query on-chain events (auth, 含 topic_hash/amount_raw/event_data raw 字段)' },
       { method: 'GET', path: '/raw-receipt', description: '导出 tx 完整原始 receipt logs（topics+data，实时 RPC，auth）' },
-      { method: 'GET', path: '/stats', description: 'Chain statistics (auth)' },
+      { method: 'GET', path: '/stats', description: 'Chain statistics (auth；event_count 来自 collector 增量计数，O(1)，uniqueTx 已停用)' },
       { method: 'GET', path: '/tokens', description: 'DEX token catalog (auth, MQ-3)' },
       { method: 'GET', path: '/health', description: 'DC service health (auth)' },
       { method: 'GET', path: '/checkpoints', description: 'Scan checkpoints (auth)' },

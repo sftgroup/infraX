@@ -111,7 +111,7 @@ export interface SaaSStats { totalTenants: number; totalUsers: number; revenue: 
 // DC
 export interface DCEventsParams { chain?: string; address?: string; contract?: string; eventType?: string; fromBlock?: string; limit?: number; }
 export interface DCEvent { chain: string; block: number; txHash: string; from: string; to: string; type: string; token?: string; amount?: string; }
-export interface DCStatsResult { chains: Array<{ chain: string; events: number; latestBlock: string; uniqueTx: number; }>; }
+export interface DCStatsResult { chains: Array<{ chain: string; events: number; latestBlock: string; uniqueTx?: number; }>; }
 export interface DCToken { symbol: string; name: string; address: string; chain: string; decimals: number; }
 export interface DCChain { name: string; chainId: string; nativeSymbol: string; }
 

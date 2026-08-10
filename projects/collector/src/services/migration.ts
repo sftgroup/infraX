@@ -53,6 +53,9 @@ export async function migrateEventCollectorTables(): Promise<void> {
     // Core indexes (high-frequency query paths)
     // ============================================================
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_block ON events (chain, block_number DESC);`);
+    // 无过滤 ORDER BY block_number DESC LIMIT n（dc /events 默认路径）：单列 block_number 索引，
+    // 否则 150GB+/1 亿+ 行全表排序（曾卡死 dc 服务，见 B-10-3）
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_block_number ON events (block_number DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_from_address ON events (from_address);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_to_address ON events (to_address);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_contract ON events (contract_address);`);
