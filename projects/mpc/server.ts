@@ -8,6 +8,7 @@ import { ethers } from 'ethers';
 import nodemailer from 'nodemailer';
 import { createAuthMiddleware } from '../shared/auth-express';
 import { GatewayProvider } from './gatewayProvider';
+import { chargeMpcCall, mpcLedgerBalance, mpcFees, topupHint, mpcChargeConfigured, MpcChargeError } from './src/mpcPlans';
 
 // M4 生产修复：undici 默认 headersTimeout(300s) < CGGMP trusted_dealer prime 生成
 // （慢机实测可达 5min+，Node 20 单核）→ 全局 dispatcher 放大超时，否则 tssImport
@@ -27,6 +28,7 @@ const authMw = createAuthMiddleware({
   scope: 'mpc',
   verifyUrl: process.env.DATA_URL,
   verifyKey: process.env.DATA_API_KEY,
+  exempt: ['/api/v2/mpc/plans'], // MQ-16 T-4：套餐价目公开
 });
 app.use(authMw);
 
@@ -472,6 +474,27 @@ async function auditLog(token: string, action: string, detail: any, txHash?: str
   }
 }
 
+// ─── MQ-16 T-4：按量计费中间件（签名/转账按次从引擎 ledger 余额扣费） ───
+// 挂载到收费端点；未配置引擎/零单价 → 免费放行（开发环境向后兼容）；
+// 余额不足 → 402 + 充值提示；引擎故障 → 503（付费服务不可在无法记账时放行）。
+function mpcMeter(operation: string) {
+  return async function meter(req: any, res: any, next: any): Promise<void> {
+    try {
+      const token = req.body?.token || req.query?.token;
+      if (!token) return next(); // 缺 token 由 handler 报 400
+      const session = await getSession(token);
+      await chargeMpcCall(session.address, operation, `mpc:${operation}:${crypto.randomUUID()}`);
+      next();
+    } catch (err: any) {
+      if (err instanceof MpcChargeError) {
+        res.status(err.status).json(apiResponse(null, err.message.replace(/^\[402\]\s*/, ''), err.status === 402 ? 1001 : 1007));
+        return;
+      }
+      next(err);
+    }
+  };
+}
+
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -830,7 +853,7 @@ app.post('/api/v2/mpc/balance', asyncHandler(async (req: any, res: any) => {
 }));
 
 // ─── Sign Message (EIP-191) ───
-app.post('/api/v2/mpc/sign-message', asyncHandler(async (req: any, res: any) => {
+app.post('/api/v2/mpc/sign-message', mpcMeter('sign_message'), asyncHandler(async (req: any, res: any) => {
   const { token, message } = req.body;
   if (!token || !message) return res.status(400).json(apiResponse(null, 'token + message required', 1001));
   const session = await getSession(token);
@@ -849,7 +872,7 @@ app.post('/api/v2/mpc/sign-message', asyncHandler(async (req: any, res: any) => 
 }));
 
 // ─── Sign Typed Data (EIP-712) ───
-app.post('/api/v2/mpc/sign-typed-data', asyncHandler(async (req: any, res: any) => {
+app.post('/api/v2/mpc/sign-typed-data', mpcMeter('sign_typed_data'), asyncHandler(async (req: any, res: any) => {
   const { token, domain, types, value } = req.body;
   if (!token || !domain || !types || !value) return res.status(400).json(apiResponse(null, 'token + domain + types + value required', 1001));
   const session = await getSession(token);
@@ -870,7 +893,7 @@ app.post('/api/v2/mpc/sign-typed-data', asyncHandler(async (req: any, res: any) 
 // ─── Sign Digest (raw 32B，E-1d：aa-sdk MpcSigner 对 userOpHash/EIP-712 摘要直接签名) ───
 // 与 sign-message 不同：不二次哈希。digest 必须是调用方已算好的 32 字节摘要
 // （如 ERC-4337 userOpHash、EIP-712 摘要），TSS 底层 IdentityDigest 直接作为 z 签名。
-app.post('/api/v2/mpc/sign-digest', asyncHandler(async (req: any, res: any) => {
+app.post('/api/v2/mpc/sign-digest', mpcMeter('sign_digest'), asyncHandler(async (req: any, res: any) => {
   const { token, digest } = req.body;
   if (!token || !digest) return res.status(400).json(apiResponse(null, 'token + digest required', 1001));
   const normalized = String(digest).replace(/^0x/, '');
@@ -893,7 +916,7 @@ app.post('/api/v2/mpc/sign-digest', asyncHandler(async (req: any, res: any) => {
 }));
 
 // ─── Send Transaction ───
-app.post('/api/v2/mpc/send-transaction', asyncHandler(async (req: any, res: any) => {
+app.post('/api/v2/mpc/send-transaction', mpcMeter('send_transaction'), asyncHandler(async (req: any, res: any) => {
   const { token, to, amount, chain: chainParam, tokenAddress } = req.body;
   if (!token || !to || !amount) return res.status(400).json(apiResponse(null, 'token + to + amount required', 1001));
   const chain = chainParam || 'sepolia';
@@ -962,7 +985,7 @@ app.post('/api/v2/mpc/contract-read', asyncHandler(async (req: any, res: any) =>
 }));
 
 // ─── Contract Write ───
-app.post('/api/v2/mpc/contract-write', asyncHandler(async (req: any, res: any) => {
+app.post('/api/v2/mpc/contract-write', mpcMeter('contract_write'), asyncHandler(async (req: any, res: any) => {
   const { token, contractAddress, abi, method, args, chain: chainParam, value, gasLimit } = req.body;
   if (!token || !contractAddress || !abi || !method) return res.status(400).json(apiResponse(null, 'token + contractAddress + abi + method required', 1001));
   const chain = chainParam || 'sepolia';
@@ -1038,6 +1061,46 @@ app.post('/api/v2/mpc/gas-estimate', asyncHandler(async (req: any, res: any) => 
     estimatedCost: ethers.formatEther(estimatedCost) + ' ETH',
     estimatedCostWei: estimatedCost.toString(),
   }));
+}));
+
+// ─── MQ-16 T-4：按量套餐信息（公开，费用表 + 充值路径） ───
+app.get('/api/v2/mpc/plans', (_req, res) => {
+  const fees = Object.values(mpcFees()).map((f) => ({
+    operation: f.operation,
+    label: f.label,
+    feeWei: f.feeWei,
+    fee: ethers.formatEther(BigInt(f.feeWei)),
+  }));
+  res.json(apiResponse({
+    mode: 'pay_per_use',
+    billing: 'ledger balance deduction（预付费：x402 链上充值入账，按次扣费）',
+    configured: mpcChargeConfigured(),
+    platformAddress: (process.env.MPC_PLATFORM_ADDRESS || '').toLowerCase(),
+    fees,
+    topup: mpcChargeConfigured()
+      ? { method: 'x402 deposit', steps: [`向平台钱包 ${(process.env.MPC_PLATFORM_ADDRESS || '').toLowerCase()} 转入原生资产`, `调用引擎 POST ${(process.env.MPC_PAYMENTS_URL || '').replace(/\/+$/, '')}/payments/verify {txHash} 入账`, '余额自动计入钱包地址对应的 ledger 账户'] }
+      : { method: 'n/a', note: 'metered billing 未配置（开发环境免费）' },
+  }, 'MPC pay-per-use plans'));
+});
+
+// ─── MQ-16 T-4：ledger 余额查询（引擎统一账本；区别于链上余额 /balance） ───
+app.post('/api/v2/mpc/ledger-balance', asyncHandler(async (req: any, res: any) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json(apiResponse(null, 'token required', 1001));
+  const session = await getSession(token);
+  let ledger;
+  try {
+    ledger = await mpcLedgerBalance(session.address);
+  } catch (e: any) {
+    return res.status(503).json(apiResponse(null, e?.message || 'ledger balance unavailable', 1007));
+  }
+  res.json(apiResponse({
+    address: ledger.address,
+    balanceWei: ledger.balanceWei,
+    balance: ledger.balance,
+    fees: Object.values(mpcFees()).map((f) => ({ operation: f.operation, feeWei: f.feeWei, fee: ethers.formatEther(BigInt(f.feeWei)) })),
+    topupHint: topupHint(),
+  }, 'Ledger balance'));
 }));
 
 // ─── 统一 JSON 错误处理器 ───
