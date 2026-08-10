@@ -13,13 +13,14 @@ export const config = {
 
   // CWallet Internal API (legacy, used by database.ts migration seed)
   cwallet: {
-    apiKey: process.env.CWALLET_API_KEY || 'dev-cwallet-key',
+    // No default — production must set CWALLET_API_KEY explicitly.
+    apiKey: process.env.CWALLET_API_KEY || '',
   },
 
   // Admin panel credentials
   admin: {
     username: process.env.ADMIN_USERNAME || 'admin',
-    password: process.env.ADMIN_PASSWORD || 'infrax123',
+    password: process.env.ADMIN_PASSWORD || '',
   },
 
   // Logging
@@ -80,11 +81,17 @@ export const config = {
   },
 };
 
-// Startup safety checks
+// Startup safety checks — fail-closed in production
 function validateConfig(): void {
   if (config.nodeEnv === 'production') {
-    if (!config.admin.password || config.admin.password === 'infrax123') {
-      console.warn('[config] WARNING: Admin panel using default password — change ADMIN_PASSWORD in production');
+    if (!config.admin.password) {
+      throw new Error('[config] ADMIN_PASSWORD is required in production — refusing to start with empty admin password');
+    }
+    if (config.admin.password === 'infrax123') {
+      throw new Error('[config] ADMIN_PASSWORD is set to the known default "infrax123" — change it in production');
+    }
+    if (!config.cwallet.apiKey) {
+      throw new Error('[config] CWALLET_API_KEY is required in production — refusing to start with empty CWallet key');
     }
   }
 }

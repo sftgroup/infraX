@@ -808,7 +808,7 @@ async function getChainBalance(address: string, chain: string) {
   }
 }
 
-app.get("/api/v2/data/balance", asyncHandler(async (req: any, res: any) => {
+app.get("/api/v2/data/balance", requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
   const addr = (req.query.address || req.headers["x-wallet-address"] || "").toString().toLowerCase();
   if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)) {
     return res.json(apiResponse(null, "Invalid address", 1001));

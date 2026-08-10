@@ -557,66 +557,32 @@ router.delete(
 
 
 // ═══════════════════════════════════════════════
-// API Key Management
+// API Key Management (tenant x-api-key required)
 // ═══════════════════════════════════════════════
 
-router.post('/tenants/:tenantId/apikey', asyncHandler(async (req, res) => {
+router.post('/tenants/:tenantId/apikey', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const tenant = await tenantService.regenerateApiKey(tenantId);
   res.json(apiResponse({ apiKey: tenant.apiKey }));
 }) );
 
-router.post('/tenants/:tenantId/apikey/rotate', asyncHandler(async (req, res) => {
+router.post('/tenants/:tenantId/apikey/rotate', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const tenant = await tenantService.regenerateApiKey(tenantId);
   res.json(apiResponse({ apiKey: tenant.apiKey }));
 }) );
 
-router.delete('/tenants/:tenantId/apikey', asyncHandler(async (req, res) => {
+router.delete('/tenants/:tenantId/apikey', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   await tenantService.deleteApiKey(tenantId);
   res.json(apiResponse(null, 'API key deleted'));
 }) );
 
 // ═══════════════════════════════════════════════
-// Hot Wallet
+// Hot Wallet (tenant x-api-key required)
 // ═══════════════════════════════════════════════
 
-router.post('/tenants/:tenantId/hot-wallet', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  const { chainId } = req.body || {};
-  const wallet = await tenantService.generateHotWallet(tenantId, chainId || 11155111);
-  res.json(apiResponse(wallet, 'Hot wallet generated'));
-}) );
-
-
-// ═══════════════════════════════════════════════
-// API Key Management
-// ═══════════════════════════════════════════════
-
-router.post('/tenants/:tenantId/apikey', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  const tenant = await tenantService.regenerateApiKey(tenantId);
-  res.json(apiResponse({ apiKey: tenant.apiKey }));
-}) );
-
-router.post('/tenants/:tenantId/apikey/rotate', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  const tenant = await tenantService.regenerateApiKey(tenantId);
-  res.json(apiResponse({ apiKey: tenant.apiKey }));
-}) );
-
-router.delete('/tenants/:tenantId/apikey', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  await tenantService.deleteApiKey(tenantId);
-  res.json(apiResponse(null, 'API key deleted'));
-}) );
-
-// ═══════════════════════════════════════════════
-// Hot Wallet
-// ═══════════════════════════════════════════════
-
-router.post('/tenants/:tenantId/hot-wallet', asyncHandler(async (req, res) => {
+router.post('/tenants/:tenantId/hot-wallet', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const { chainId } = req.body || {};
   const wallet = await tenantService.generateHotWallet(tenantId, chainId || 11155111);
@@ -624,10 +590,10 @@ router.post('/tenants/:tenantId/hot-wallet', asyncHandler(async (req, res) => {
 }) );
 
 // ═══════════════════════════════════════════════
-// Tenant Tokens
+// Tenant Tokens (tenant x-api-key required)
 // ═══════════════════════════════════════════════
 
-router.get('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+router.get('/tenants/:tenantId/tokens', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const result = await pool.query(
     'SELECT id, symbol, name, decimals, contract_address, chain_id, token_type, min_sweep_amount FROM tokens WHERE tenant_id = $1 ORDER BY created_at DESC',
@@ -636,37 +602,7 @@ router.get('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
   res.json(apiResponse({ items: result.rows }));
 }));
 
-router.post('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  const { chainId, tokenSymbol, contractAddress, decimals, minSweepAmount } = req.body || {};
-  if (!tokenSymbol || !contractAddress) {
-    return res.status(400).json(apiResponse(null, 'tokenSymbol and contractAddress required', 1001));
-  }
-  const id = uuidv4();
-  const chainIdStr = String(chainId || 11155111);
-  await pool.query(
-    `INSERT INTO tokens (id, symbol, name, decimals, contract_address, chain_id, token_type, tenant_id, min_sweep_amount)
-     VALUES ($1, $2, $3, $4, $5, $6, 'erc20', $7, $8)`,
-    [id, tokenSymbol, tokenSymbol, decimals || 18, contractAddress, chainIdStr, tenantId, String(minSweepAmount || '0')]
-  );
-  res.json(apiResponse({ id, symbol: tokenSymbol, contractAddress, chainId: chainIdStr }));
-}));
-
-
-// ═══════════════════════════════════════════════
-// Tenant Tokens
-// ═══════════════════════════════════════════════
-
-router.get('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
-  const { tenantId } = req.params;
-  const result = await pool.query(
-    'SELECT id, symbol, name, decimals, contract_address, chain_id, token_type, min_sweep_amount FROM tokens WHERE tenant_id = $1 ORDER BY created_at DESC',
-    [tenantId]
-  );
-  res.json(apiResponse({ items: result.rows }));
-}));
-
-router.post('/tenants/:tenantId/tokens', asyncHandler(async (req, res) => {
+router.post('/tenants/:tenantId/tokens', requireTenantApiKey, asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const { chainId, tokenSymbol, contractAddress, decimals, minSweepAmount } = req.body || {};
   if (!tokenSymbol || !contractAddress) {

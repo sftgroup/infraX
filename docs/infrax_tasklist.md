@@ -1352,11 +1352,19 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| C-1 | waas 裸路由补鉴权 | `/api/v2/saas/tenants/:tenantId/*`（apikey 生成/rotate/删除、hot-wallet、tokens 增删查）全部挂 authenticate；并加全局兜底中间件 | 🔲 | P0 |
-| C-2 | waas `requireAdmin` 修复 | [auth.ts](projects/waas/middleware/auth.ts) L104-115：校验失败时 `next(Errors.unauthorized(...))` 而非静默 `next()` | 🔲 | P0 |
-| C-3 | dc balance 补鉴权 | `GET /api/v2/data/balance` 挂 `requireDcApiKey` + `dcQuotaEnforce`（对齐 checkpoints） | 🔲 | P0 |
-| C-4 | collector 弱密码/明文 key | 无 `ADMIN_PASSWORD` 时 fail-closed 拒绝启动；移除 `dev-cwallet-key` 默认值 | 🔲 | P1 |
-| C-5 | 条件性开放服务收口 | chain-rpc / aa-relay / data / injector 未配置 key 时 fail-closed（或文档显式声明仅内网开放边界） | 🔲 | P1 |
+| C-1 | waas 裸路由补鉴权 | `/api/v2/saas/tenants/:tenantId/*`（apikey 生成/rotate/删除、hot-wallet、tokens 增删查）全部挂 `requireTenantApiKey`（前端 waasFetch 已带 `x-api-key`）；合并 L563-682 两组完全重复路由定义 | ✅（2026-08-11 完成，见 C 段收口说明） | P0 |
+| C-2 | waas `requireAdmin` 修复 | [auth.ts](projects/waas/middleware/auth.ts)：fail-closed——仅 `req.adminUser`（authenticate 校验 admin JWT 后注入）放行，否则 `next(Errors.unauthorized(...))` | ✅（2026-08-11 完成） | P0 |
+| C-3 | dc balance 补鉴权 | `GET /api/v2/data/balance` 挂 `requireDcApiKey` + `dcQuotaEnforce`（对齐 checkpoints） | ✅（2026-08-11 完成） | P0 |
+| C-4 | collector 弱密码/明文 key | 移除 `infrax123`/`dev-cwallet-key` 默认值；生产 fail-closed 启动校验（缺 `ADMIN_PASSWORD`/`CWALLET_API_KEY` 或仍用已知默认 `infrax123` 即拒绝启动） | ✅（2026-08-11 完成） | P1 |
+| C-5 | 条件性开放服务收口 | chain-rpc / aa-relay / data / injector 未配置 key 时 fail-closed（或文档显式声明仅内网开放边界） | ✅（2026-08-11 收口，见下方 C-5 收口说明） | P1 |
+
+**C-1~C-5 收口说明（2026-08-11）**
+
+- **C-1/C-2/C-3/C-4**：代码修复完成并已验证——collector `npm run build` 通过；waas/dc 为 tsx 直跑（无 tsconfig），改动为中间件挂载与去重，已逐段核读。**生产部署待执行**：三服务代码同步 + 重启 + 回归（无 key 401 / 带 key 200 / admin JWT 200），部署步骤见 [DEPLOYMENT.md](./DEPLOYMENT.md) §3.3。
+- **C-5 决策**：`projects/shared/app_auth.py` 与 chain-rpc/aa-relay 的"未配置 key 即开放"为**有意向后兼容设计**（SDK 文档声明"无鉴权环境可留空"，四服务生产均未配置过 key 时开放以支持本地开发），**不改共享文件**（影响 4 服务 + 测试环境）。收口方式 = **文档声明内网边界**：
+  - 生产全部服务均已配置 key → 生产实际为强制鉴权（2026-08-08 生产鉴权矩阵实测闭环）；
+  - 未配置 key 的环境按"仅内网/本机开放，严禁公网暴露"边界声明（§4.6 服务间鉴权章节已含此约定，本行登记结论）；
+  - 若未来出现公网直连未配置 key 的需求，再评估 fail-closed 改造。
 
 ---
 

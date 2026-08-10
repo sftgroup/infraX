@@ -102,16 +102,11 @@ async function resolveUser(walletAddress: string, req: Request, next: NextFuncti
 }
 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
-  // Also accept admin JWT (via Authorization header) for /api/v2/dashboard and /api/v2/saas
-  const token = (req.headers['authorization'] as string || '').replace('Bearer ', '');
-  if (token) {
-    try {
-      const payload = verifyAdminToken(token);
-      (req as any).adminUser = payload;
-      return next();
-    } catch {}
-  }
-  next();
+  // Fail-closed: only a valid admin JWT (verified in authenticate) may proceed.
+  // The previous implementation called next() unconditionally, which made the
+  // middleware a no-op — any unauthenticated caller could reach admin routes.
+  if ((req as any).adminUser) return next();
+  return next(Errors.unauthorized('Admin authentication required'));
 }
 
 export function signAdminToken(username: string): string {
