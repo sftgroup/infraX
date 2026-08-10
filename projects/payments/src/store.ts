@@ -20,6 +20,13 @@ import type { ChainKey, PaymentCredit, PaymentEvent } from './types'
  */
 export interface SqlExecutor {
   query<R = any>(text: string, values?: unknown[]): Promise<{ rows: R[]; rowCount: number | null }>
+  /**
+   * Optional multi-statement transaction runner. Needed by stores whose
+   * operations must be atomic across rows (e.g. transfers: debit + credit).
+   * `fn` receives a bound executor sharing the same connection; a throw rolls
+   * back. Hosts without this capability get transfers that reject at confirm.
+   */
+  transaction?<T>(fn: (tx: SqlExecutor) => Promise<T>): Promise<T>
 }
 
 /** What the caller wants access to (opaque — the store knows how to read it). */
@@ -314,5 +321,537 @@ export class PgMPPSessionStore implements MPPSessionStore {
        WHERE channel_id = $1`,
       [channelId.toLowerCase()]
     )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Period authorization store — the `period` capability (permit2-style / native):
+// one authorization funds n periods; each period boundary charges one unit
+// without re-signing (deducted from remaining until exhausted).
+// ---------------------------------------------------------------------------
+
+export interface PaymentAuthorization {
+  id: string
+  owner: string
+  asset: string
+  chain: string
+  amountWei: string
+  remainingWei: string
+  periodPriceWei: string
+  periods: number
+  nonce: string
+  /** Idempotency key (funding tx hash / salt). */
+  reference: string
+  status: 'active' | 'exhausted' | 'revoked'
+  createdAt: Date
+}
+
+export interface AuthorizationStore {
+  createAuthorization(auth: PaymentAuthorization): Promise<void>
+  getAuthorization(id: string): Promise<PaymentAuthorization | null>
+  /**
+   * Atomically charge one period: remaining -= periodPrice. Returns the new
+   * remaining; marks `exhausted` when the remaining can no longer cover a
+   * full period. Throws when not active / insufficient.
+   */
+  chargePeriod(id: string): Promise<{ renewed: boolean; remainingWei: string }>
+}
+
+export class PgAuthorizationStore implements AuthorizationStore {
+  constructor(private pool: SqlExecutor) {}
+
+  async createAuthorization(auth: PaymentAuthorization): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO payment_authorizations
+        (id, owner, asset, chain, amount_wei, remaining_wei, period_price_wei, periods, nonce, reference, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        auth.id,
+        auth.owner.toLowerCase(),
+        auth.asset.toLowerCase(),
+        auth.chain,
+        auth.amountWei,
+        auth.remainingWei,
+        auth.periodPriceWei,
+        auth.periods,
+        auth.nonce,
+        auth.reference,
+        auth.status,
+      ]
+    )
+  }
+
+  async getAuthorization(id: string): Promise<PaymentAuthorization | null> {
+    const { rows } = await this.pool.query('SELECT * FROM payment_authorizations WHERE id = $1', [id])
+    if (!rows.length) return null
+    const r = rows[0]
+    return {
+      id: r.id,
+      owner: r.owner,
+      asset: r.asset,
+      chain: r.chain,
+      amountWei: r.amount_wei,
+      remainingWei: r.remaining_wei,
+      periodPriceWei: r.period_price_wei,
+      periods: r.periods,
+      nonce: r.nonce,
+      reference: r.reference,
+      status: r.status,
+      createdAt: r.created_at,
+    }
+  }
+
+  async chargePeriod(id: string): Promise<{ renewed: boolean; remainingWei: string }> {
+    const res = await this.pool.query(
+      `UPDATE payment_authorizations
+       SET remaining_wei = (remaining_wei::numeric - period_price_wei::numeric)::text,
+           status = CASE
+             WHEN (remaining_wei::numeric - period_price_wei::numeric) < period_price_wei::numeric THEN 'exhausted'
+             ELSE 'active'
+           END
+       WHERE id = $1 AND status = 'active' AND remaining_wei::numeric >= period_price_wei::numeric
+       RETURNING remaining_wei, status`,
+      [id]
+    )
+    if (!res.rows.length) {
+      const existing = await this.getAuthorization(id)
+      if (!existing) throw new Error(`Authorization ${id} not found`)
+      throw new Error(`Authorization ${id} cannot be charged (status=${existing.status}, remaining=${existing.remainingWei})`)
+    }
+    const row = res.rows[0]
+    return { renewed: row.status === 'active', remainingWei: row.remaining_wei }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Batch store — one-shot multi-payee collection (the `batch` capability).
+// A batch groups several a2a intents so an agent can collect from N peers in
+// one request; each item settles through its own tx (POST /a2a/settle).
+// ---------------------------------------------------------------------------
+
+export interface BatchStoreItem {
+  itemId: string
+  paymentId: string
+  payee: string
+  amountWei: string
+  asset: string
+  status: 'pending' | 'paid' | 'failed'
+  reference?: string | null
+  metadata?: Record<string, unknown> | null
+}
+
+export interface PaymentBatch {
+  batchId: string
+  payer: string
+  chain: string | null
+  status: 'open' | 'completed' | 'cancelled'
+  items: BatchStoreItem[]
+  metadata?: Record<string, unknown> | null
+  createdAt: Date
+}
+
+/** What callers pass when creating a batch (createdAt is DB-owned). */
+export type PaymentBatchInput = Omit<PaymentBatch, 'createdAt'>
+
+export interface BatchStore {
+  createBatch(batch: PaymentBatchInput): Promise<void>
+  getBatch(batchId: string): Promise<PaymentBatch | null>
+  /**
+   * Atomically mark one item paid (by reference) and flip the batch to
+   * `completed` when every item is paid.
+   */
+  settleItem(batchId: string, itemId: string, reference: string): Promise<void>
+  /** Mark the whole batch `cancelled` (items that were never paid). */
+  cancelBatch(batchId: string): Promise<void>
+}
+
+export class PgBatchStore implements BatchStore {
+  constructor(private pool: SqlExecutor) {}
+
+  async createBatch(batch: PaymentBatch): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO payment_batches (batch_id, payer, chain, status, items, metadata)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+       ON CONFLICT (batch_id) DO NOTHING`,
+      [
+        batch.batchId.toLowerCase(),
+        batch.payer.toLowerCase(),
+        batch.chain,
+        batch.status,
+        JSON.stringify(batch.items),
+        batch.metadata ? JSON.stringify(batch.metadata) : null,
+      ]
+    )
+  }
+
+  async getBatch(batchId: string): Promise<PaymentBatch | null> {
+    const { rows } = await this.pool.query('SELECT * FROM payment_batches WHERE batch_id = $1', [batchId.toLowerCase()])
+    if (!rows.length) return null
+    const r = rows[0]
+    return {
+      batchId: r.batch_id,
+      payer: r.payer,
+      chain: r.chain,
+      status: r.status,
+      items: r.items as BatchStoreItem[],
+      metadata: r.metadata,
+      createdAt: r.created_at,
+    }
+  }
+
+  async settleItem(batchId: string, itemId: string, reference: string): Promise<void> {
+    await this.pool.query(
+      `WITH updated AS (
+         UPDATE payment_batches
+         SET items = (
+           SELECT jsonb_agg(
+             CASE WHEN item->>'itemId' = $3
+               THEN item || jsonb_build_object('status', 'paid', 'reference', $4)
+               ELSE item END
+           )
+           FROM jsonb_array_elements(items) item
+         ),
+         updated_at = NOW()
+         WHERE batch_id = $1 AND status = 'open'
+         RETURNING batch_id, items
+       )
+       UPDATE payment_batches pb
+       SET status = 'completed', updated_at = NOW()
+       FROM updated u
+       WHERE pb.batch_id = u.batch_id
+         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(u.items) it WHERE it->>'status' <> 'paid')`,
+      [batchId.toLowerCase(), batchId.toLowerCase(), itemId, reference]
+    )
+  }
+
+  async cancelBatch(batchId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE payment_batches SET status = 'cancelled', updated_at = NOW()
+       WHERE batch_id = $1 AND status = 'open'`,
+      [batchId.toLowerCase()]
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Invite store — business-level billing invitations (the `invite` capability).
+// One invite wraps an a2a payment intent and tracks its lifecycle:
+//   created → sent → settled | expired | cancelled
+// The payer can settle by on-chain tx (POST /invites/:id/settle) or by
+// authorizing a ledger transfer from their balance (POST /invites/:id/pay).
+// ---------------------------------------------------------------------------
+
+export type InviteStatus = 'created' | 'sent' | 'settled' | 'expired' | 'cancelled'
+
+export interface PaymentInvite {
+  inviteId: string
+  /** Underlying a2a payment intent (paymentId of phase-1 a2a). */
+  paymentId: string
+  /** The paying agent. */
+  payer: string
+  /** The collecting agent. */
+  payee: string
+  asset: string
+  chain: string
+  amountWei: string
+  memo?: string | null
+  /** Optional deadline; past-due invites expire lazily. */
+  dueAt?: Date | null
+  status: InviteStatus
+  /** How the invite was finally settled. */
+  settledMethod?: 'chain' | 'balance' | null
+  /** tx hash (chain) or transfer id (balance). */
+  settledRef?: string | null
+  metadata?: Record<string, unknown> | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type InviteInput = Omit<PaymentInvite, 'createdAt' | 'updatedAt'>
+
+export interface InviteListQuery {
+  role: 'payer' | 'payee'
+  status?: InviteStatus | 'open'
+  limit?: number
+}
+
+export interface InviteStore {
+  createInvite(invite: InviteInput): Promise<void>
+  getInvite(inviteId: string): Promise<PaymentInvite | null>
+  listInvites(address: string, query: InviteListQuery): Promise<PaymentInvite[]>
+  /**
+   * Mark an invite settled (only from created/sent). Returns false when the
+   * invite is not settleable (already settled / expired / cancelled / missing).
+   */
+  markSettled(inviteId: string, method: 'chain' | 'balance', reference: string): Promise<boolean>
+  /** Cancel an open invite (only from created/sent). Returns false otherwise. */
+  markCancelled(inviteId: string): Promise<boolean>
+  /**
+   * Lazily expire invites whose due_at passed while still created/sent.
+   * Scoped to one invite when `inviteId` given; otherwise global. Returns the
+   * number of invites expired.
+   */
+  expireDue(inviteId?: string): Promise<number>
+}
+
+export class PgInviteStore implements InviteStore {
+  constructor(private pool: SqlExecutor) {}
+
+  async createInvite(invite: InviteInput): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO payment_invites
+        (invite_id, payment_id, payer, payee, asset, chain, amount_wei, memo, due_at, status, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (invite_id) DO NOTHING`,
+      [
+        invite.inviteId.toLowerCase(),
+        invite.paymentId.toLowerCase(),
+        invite.payer.toLowerCase(),
+        invite.payee.toLowerCase(),
+        invite.asset.toLowerCase(),
+        invite.chain,
+        invite.amountWei,
+        invite.memo ?? null,
+        invite.dueAt ?? null,
+        invite.status,
+        invite.metadata ? JSON.stringify(invite.metadata) : null,
+      ]
+    )
+  }
+
+  async getInvite(inviteId: string): Promise<PaymentInvite | null> {
+    const { rows } = await this.pool.query('SELECT * FROM payment_invites WHERE invite_id = $1', [inviteId.toLowerCase()])
+    return rows.length ? mapInvite(rows[0]) : null
+  }
+
+  async listInvites(address: string, query: InviteListQuery): Promise<PaymentInvite[]> {
+    const col = query.role === 'payee' ? 'payee' : 'payer'
+    const statusClause = !query.status || query.status === 'open'
+      ? "AND status IN ('created','sent')"
+      : 'AND status = $3'
+    const values: unknown[] = [address.toLowerCase(), col]
+    if (statusClause.includes('$3')) values.push(query.status)
+    const { rows } = await this.pool.query(
+      `SELECT * FROM payment_invites
+       WHERE ${col} = $1 ${statusClause}
+       ORDER BY created_at DESC
+       LIMIT $${values.length + 1}`,
+      [...values, query.limit ?? 50]
+    )
+    return rows.map(mapInvite)
+  }
+
+  async markSettled(inviteId: string, method: 'chain' | 'balance', reference: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE payment_invites
+       SET status = 'settled', settled_method = $2, settled_ref = $3, updated_at = NOW()
+       WHERE invite_id = $1 AND status IN ('created','sent')`,
+      [inviteId.toLowerCase(), method, reference]
+    )
+    return (res.rowCount ?? 0) > 0
+  }
+
+  async markCancelled(inviteId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE payment_invites
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE invite_id = $1 AND status IN ('created','sent')`,
+      [inviteId.toLowerCase()]
+    )
+    return (res.rowCount ?? 0) > 0
+  }
+
+  async expireDue(inviteId?: string): Promise<number> {
+    const scope = inviteId ? 'AND invite_id = $2' : ''
+    const values: unknown[] = inviteId ? [inviteId.toLowerCase()] : []
+    const res = await this.pool.query(
+      `UPDATE payment_invites
+       SET status = 'expired', updated_at = NOW()
+       WHERE status IN ('created','sent')
+         AND due_at IS NOT NULL AND due_at < NOW()
+         ${scope}`,
+      values.length ? [values[0]] : []
+    )
+    return res.rowCount ?? 0
+  }
+}
+
+function mapInvite(r: any): PaymentInvite {
+  return {
+    inviteId: r.invite_id,
+    paymentId: r.payment_id,
+    payer: r.payer,
+    payee: r.payee,
+    asset: r.asset,
+    chain: r.chain,
+    amountWei: r.amount_wei,
+    memo: r.memo,
+    dueAt: r.due_at,
+    status: r.status,
+    settledMethod: r.settled_method,
+    settledRef: r.settled_ref,
+    metadata: r.metadata,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transfer store — ledger-internal transfers (the `transfer` capability).
+// Unlike a2a (on-chain proof), a transfer moves funds between platform
+// balances with no new signature: the payer's host confirms once, then the
+// store debits the payer and credits the payee atomically (single tx).
+//   requested → executed | rejected
+// ---------------------------------------------------------------------------
+
+export type TransferStatus = 'requested' | 'executed' | 'rejected' | 'cancelled'
+
+export interface PaymentTransfer {
+  transferId: string
+  fromAddr: string
+  toAddr: string
+  asset: string
+  amountWei: string
+  status: TransferStatus
+  confirmMethod: 'callback'
+  /** Idempotency key — a reference is executed at most once. */
+  reference: string
+  executedAt?: Date | null
+  metadata?: Record<string, unknown> | null
+  createdAt: Date
+}
+
+export type TransferInput = Omit<PaymentTransfer, 'createdAt'>
+
+export interface TransferStore {
+  createTransfer(t: TransferInput): Promise<void>
+  getTransfer(transferId: string): Promise<PaymentTransfer | null>
+  getTransferByReference(reference: string): Promise<PaymentTransfer | null>
+  listTransfers(address: string, role: 'from' | 'to'): Promise<PaymentTransfer[]>
+  /**
+   * Atomically execute a requested transfer: debit `from`, credit `to` within
+   * one transaction. Returns the outcome:
+   *   - { ok: true }  — funds moved, transfer → executed
+   *   - { ok: false, reason } — insufficient balance / not found / not requestable
+   */
+  executeTransfer(transferId: string): Promise<{ ok: boolean; reason?: string }>
+  /** Cancel an open transfer (requested only). */
+  cancelTransfer(transferId: string): Promise<void>
+}
+
+/** Pg helper for hosts whose pool supports BEGIN/COMMIT through a tx runner. */
+export class PgTransferStore implements TransferStore {
+  constructor(private pool: SqlExecutor) {}
+
+  async createTransfer(t: TransferInput): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO payment_transfers
+        (transfer_id, from_addr, to_addr, asset, amount_wei, status, confirm_method, reference, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (transfer_id) DO NOTHING`,
+      [
+        t.transferId.toLowerCase(),
+        t.fromAddr.toLowerCase(),
+        t.toAddr.toLowerCase(),
+        t.asset.toLowerCase(),
+        t.amountWei,
+        t.status,
+        t.confirmMethod,
+        t.reference.toLowerCase(),
+        t.metadata ? JSON.stringify(t.metadata) : null,
+      ]
+    )
+  }
+
+  async getTransfer(transferId: string): Promise<PaymentTransfer | null> {
+    const { rows } = await this.pool.query('SELECT * FROM payment_transfers WHERE transfer_id = $1', [transferId.toLowerCase()])
+    return rows.length ? mapTransfer(rows[0]) : null
+  }
+
+  async getTransferByReference(reference: string): Promise<PaymentTransfer | null> {
+    const { rows } = await this.pool.query('SELECT * FROM payment_transfers WHERE reference = $1', [reference.toLowerCase()])
+    return rows.length ? mapTransfer(rows[0]) : null
+  }
+
+  async listTransfers(address: string, role: 'from' | 'to'): Promise<PaymentTransfer[]> {
+    const col = role === 'to' ? 'to_addr' : 'from_addr'
+    const { rows } = await this.pool.query(
+      `SELECT * FROM payment_transfers WHERE ${col} = $1 ORDER BY created_at DESC LIMIT 100`,
+      [address.toLowerCase()]
+    )
+    return rows.map(mapTransfer)
+  }
+
+  async executeTransfer(transferId: string): Promise<{ ok: boolean; reason?: string }> {
+    if (!this.pool.transaction) {
+      return { ok: false, reason: 'host executor does not support transactions' }
+    }
+    try {
+      return await this.pool.transaction(async (tx) => {
+        // 1) claim the transfer (requested → in-flight) — prevents double-run
+        const claim = await tx.query(
+          `UPDATE payment_transfers SET status = 'executed', executed_at = NOW()
+           WHERE transfer_id = $1 AND status = 'requested'
+           RETURNING from_addr, to_addr, asset, amount_wei, reference`,
+          [transferId.toLowerCase()]
+        )
+        if (!claim.rows.length) {
+          const existing = await this.getTransfer(transferId)
+          if (!existing) return { ok: false, reason: 'transfer not found' }
+          return { ok: false, reason: `transfer already ${existing.status}` }
+        }
+        const t = claim.rows[0]
+        // 2) atomic debit (insufficient → roll back via throw)
+        const debit = await tx.query(
+          `UPDATE payment_balances
+           SET balance_wei = (balance_wei::numeric - $2::numeric)::text, updated_at = NOW()
+           WHERE address = $1 AND asset = $3 AND balance_wei::numeric >= $2::numeric`,
+          [t.from_addr.toLowerCase(), t.amount_wei, t.asset.toLowerCase()]
+        )
+        if (!debit.rowCount) throw new Error('insufficient balance')
+        // 3) credit the payee (upsert)
+        await tx.query(
+          `INSERT INTO payment_balances (address, asset, balance_wei) VALUES ($1, $2, $3)
+           ON CONFLICT (address, asset) DO UPDATE SET
+             balance_wei = (payment_balances.balance_wei::numeric + $3::numeric)::text,
+             updated_at = NOW()`,
+          [t.to_addr.toLowerCase(), t.asset.toLowerCase(), t.amount_wei]
+        )
+        return { ok: true }
+      })
+    } catch (err) {
+      // roll back: return the transfer to requested on failure
+      await this.pool.query(
+        `UPDATE payment_transfers SET status = 'requested', executed_at = NULL
+         WHERE transfer_id = $1 AND status = 'executed'`,
+        [transferId.toLowerCase()]
+      ).catch(() => undefined)
+      return { ok: false, reason: (err as Error).message }
+    }
+  }
+
+  async cancelTransfer(transferId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE payment_transfers SET status = 'cancelled'
+       WHERE transfer_id = $1 AND status = 'requested'`,
+      [transferId.toLowerCase()]
+    )
+  }
+}
+
+function mapTransfer(r: any): PaymentTransfer {
+  return {
+    transferId: r.transfer_id,
+    fromAddr: r.from_addr,
+    toAddr: r.to_addr,
+    asset: r.asset,
+    amountWei: r.amount_wei,
+    status: r.status,
+    confirmMethod: r.confirm_method,
+    reference: r.reference,
+    executedAt: r.executed_at,
+    metadata: r.metadata,
+    createdAt: r.created_at,
   }
 }

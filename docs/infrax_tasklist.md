@@ -1122,6 +1122,35 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [ ] **T-9 验收（E2E，⚠️ 部分完成 2026-08-10）**：✅ 已通过——钱包签名 E2E（生产实测）：subscribe pro→201 pending+chain 支付信息（price 0.01ETH/period/trialDays/subscriptionManager/chainId 19505，真实调 payments）、/check 链上兜底（active:false→stays pending）、payment-callback 正向（HMAC 签名→pending→active+expires_at=now+30d）与负向（伪造/缺失签名→401）、subscribe free→active 直通、/subscription/me 状态切换、DB 落库（payment_method/status/ref 正确）、web :9111 代理链路、payments 新端点（chain-info/subscription/price）+ 无 key 401、**测试数据已清理**。🔲 未覆盖——链上真实 escrow 支付（无钱包/无链上订阅，依赖 SubscriptionManager 实际订阅）、前端浏览器钱包流程（waas.js 已部署）、x402/Stripe（D-2 key 到位后）
 - [ ] **T-10 文档与回滚预案（⚠️ 部分完成：tasklist 状态已更新）**：`SERVICE_API_REFERENCE.md` waas 订阅章节（pending/active 状态机 + 回调契约 + rail 路由表）与 `SDK_INTEGRATION.md` payments 客户端（`PaymentsClient`/`X402Client`）消费示例待补；回滚预案——waas 恢复直接订阅逻辑 + payments rails 停用即回退（业务零耦合，互不影响）
 
+**MQ-13 通用支付通道能力层重构（2026-08-10 需求登记；方案：方案 B 全量配置化，已批准）**：
+> 背景：用户提出通用支付通道"不应只是包装原有支付通道"——作为可编程、针对 agent 支付特殊优化的通道，应有更多可配置端点；此前被删除的 **a2a**（两阶段意图支付）与 **period**（订阅周期授权）应恢复为可配置项；并新增 **batch**（agent 一次性向多个 agent 收款）场景。
+> 方案 B 核心：rails 全部重构为**可插拔能力**——构造参数配置 + 端点动态挂载 + `GET /payments/capabilities` 探测；未启用能力端点返回 503（显式而非 404）；ENV 开关：`X402_ENABLED`/`MPP_ENABLED`/`STRIPE_*`/`A2A_ENABLED`（默认随 x402）/`PERIOD_ENABLED`/`BATCH_ENABLED`。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 MQ-12 / B-10-2 / P4。
+
+- [x] **T-1 能力层模型设计（✅ 2026-08-10）**：`Capabilities`/`CapabilityInfo` 类型（id/enabled/description/endpoints/config）；能力注册表 `PaymentsService.capabilities()`；router 按能力 `cap()` 守卫动态挂载（禁用→503）
+- [x] **T-2 a2a rail 恢复（✅ 2026-08-10）**：`POST /payments/a2a`（phase1 意图：subscriber+valueWei+payee?→paymentId/amountWei/payee）+ `POST /payments/a2a/settle`（phase2 链上 tx 验证入账，复用 x402 `verifyAndCredit`，幂等）；`payment_intents.payee` 列恢复（005 迁移）；事件 `a2a.created`/`a2a.settled`
+- [x] **T-3 period rail 恢复（✅ 2026-08-10）**：`payment_authorizations` 表恢复（005 迁移：owner/asset/chain/amount_wei/remaining_wei/period_price_wei/periods/nonce/reference/status）+ `PgAuthorizationStore`（create/get/chargePeriod 原子扣减+exhausted 状态）；`POST /payments/period/charge`（续费）+ `GET /payments/period/authorization`；事件 `authorization.charged`
+- [x] **T-4 batch rail 新增（✅ 2026-08-10）**：`payment_batches` 表（006 迁移：items JSONB + 原子全完成→completed）+ `PgBatchStore`；`POST /payments/batch`（一次建 N 个 a2a 意图）→ `POST /payments/batch/settle`（逐项验证 tx）→ `GET /payments/batch`（状态）→ `POST /payments/batch/cancel`；事件 `batch.created`/`batch.item.settled`/`batch.completed`
+- [x] **T-5 能力探测端点（✅ 2026-08-10）**：`GET /payments/capabilities` 返回全部 rail 的 enabled/endpoints/config；服务启动日志打印能力清单（原 rails 打印替换）
+- [x] **T-6 服务端 ENV 配置化（✅ 2026-08-10）**：[server.ts](projects/payments/server.ts) 增加 `A2A_ENABLED`（默认 true 随 x402）/`PERIOD_ENABLED`/`BATCH_ENABLED` 开关，按开关注入 `PgAuthorizationStore`/`PgBatchStore`
+- [x] **T-7 回归（✅ 2026-08-10）**：tsc 通过 + vitest **11 文件 106 用例全绿**（新增 `tests/capabilities.test.ts` 17 例：capabilities 探测/a2a 两阶段/period 授权扣减耗尽/batch 创建结算完成取消/router 503 守卫）
+- [x] **T-8 部署生产 + 验证（✅ 2026-08-10）**：迁移 005/006 上生产（`migrations applied (6)`）→ 重启 infrax-payments → 验证：`/payments/capabilities` 完整清单（默认仅 chain 启用）、a2a/period/batch 未启用端点 503 守卫、chain-info 200（chain 能力无回归）、无 key 401 → drop-in 开启 `PERIOD_ENABLED`/`BATCH_ENABLED` 后 capabilities 显示 chain+period（batch 依赖 x402，生产未启保持关闭）→ **period 生产实测**：插入 3 周期授权 → `/period/charge` 三次：renewed true/true/false（剩余 2000→1000→0，第三次 exhausted）→ 第四次 500 → `/period/authorization` 状态正确 → **测试数据已清理**。batch 待 x402 key 到位后随 MQ-12 D-2 一并启用
+- [x] **T-9 文档更新（✅ 2026-08-10）**：`projects/payments/README.md`（迁移表 001-006 + 能力层章节：探测/503 守卫/新端点）；`HANDOVER.md`（§1 范围说明改为可插拔能力、§2 功能矩阵新增 a2a/period/batch/capabilities 四行、§12 能力开关说明）；`MIGRATION.md`（§7 遗留更新）；本 tasklist MQ-13 段登记
+
+**MQ-14 agent 自动收费邀请 + 账本内转账（2026-08-10 需求登记；方案已批准并实施）**：
+> 背景：用户确认"agent 应具备自动发收费邀请"的能力，选择增强方向：**邀请端点+状态机**（invite）+ **账本内转账**（transfer）。方案要点：invite 复用 a2a 意图，封装业务账单（payer/payee/amount/dueAt/memo），状态机 `created→sent→settled|expired|cancelled`，两种结算路径（链上 settle / 余额 pay）；transfer 为平台余额间原子划转（debit+credit 单事务，无新签名），reference 幂等，解决"settle 后资金记在付款方余额、收款方未直接到账"的归属问题。ENV：`INVITE_ENABLED`（依赖 x402）/`TRANSFER_ENABLED`。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 MQ-13 / MQ-12。
+
+- [x] **T-1 能力设计（✅ 2026-08-10）**：`invite`/`transfer` 加入能力注册表（`CapabilityId` 扩展）；未启用端点 503 守卫沿用；`GET /payments/capabilities` 暴露新端点清单
+- [x] **T-2 store 层（✅ 2026-08-10）**：[store.ts](projects/payments/src/store.ts) 新增 `InviteStore`/`PgInviteStore`（create/get/list/markSettled/markCancelled/expireDue 惰性过期）、`TransferStore`/`PgTransferStore`（executeTransfer 单事务 claim→debit→credit，余额不足整笔回滚）；`SqlExecutor` 增加可选 `transaction` runner（server.ts 以 pg client BEGIN/COMMIT 实现）
+- [x] **T-3 迁移（✅ 2026-08-10）**：`007_payment_invites.sql`（invite_id/payment_id/payer/payee/amount_wei/memo/due_at/status/settled_method/settled_ref + 索引）、`008_payment_transfers.sql`（transfer_id/from/to/amount/status/confirm_method/reference UNIQUE 幂等键 + 索引）
+- [x] **T-4 service 层（✅ 2026-08-10）**：[service.ts](projects/payments/src/service.ts) `createInvite`（包装 a2a 意图+账单）/`getInvite`（读时惰性过期）/`listInvites`（按 payer/payee+状态）/`cancelInvite`/`settleInvite`（链上验 tx，过期→410 EXPIRED）/`payInviteByBalance`（余额结算，reference=inviteId 幂等，不足→400 INSUFFICIENT_BALANCE）；`createTransfer`（reference 幂等）/`confirmTransfer`（原子执行）/`getTransfer`/`cancelTransfer`/`listTransfers`；事件 `invite.created/settled/expired/cancelled`、`transfer.requested/executed/rejected`；`errors.ts` 新增 `EXPIRED`/`INSUFFICIENT_BALANCE` 码
+- [x] **T-5 router 层（✅ 2026-08-10）**：[router.ts](projects/payments/src/router.ts) `POST /invites`、`GET /invites?address=&role=`、`GET /invites/:id`、`POST /invites/:id/cancel|settle|pay`、`POST /transfers`、`POST /transfers/:id/confirm`、`GET /transfers?address=&role=`、`GET /transfers/:id`、`POST /transfers/:id/cancel`
+- [x] **T-6 服务端开关（✅ 2026-08-10）**：[server.ts](projects/payments/server.ts) `INVITE_ENABLED`/`TRANSFER_ENABLED` + `PgInviteStore`/`PgTransferStore` 注入 + `sql` executor（带 transaction runner）
+- [x] **T-7 单元测试（✅ 2026-08-10）**：新增 `tests/invite-transfer.test.ts` **17 用例**：invite 状态机（创建/链上 settle/无效 tx 拒绝/重复 settle 幂等/取消/惰性过期 410/未来不期/按角色查询/余额支付成功+引用/余额不足分文不动/503 守卫）+ transfer 原子划转（reference 幂等/确认扣增正确/余额不足整笔不动/重复确认不双扣/取消后不可执行/503 守卫）；**全量 12 文件 123 用例全绿** + tsc/build 通过
+- [ ] **T-8 部署生产 + 验证**：迁移 007/008 上生产 → drop-in 开启 INVITE/TRANSFER_ENABLED → 探测 /capabilities → invite 全流程（创建→链上/余额结算）+ transfer 原子性生产实测（含余额不足回滚）→ 测试数据清理
+- [ ] **T-9 文档更新**：README（能力表+迁移 001-008+invite/transfer 端点）/HANDOVER（§2 矩阵 + §12 开关）/CALLER_SETUP 补充邀请结算契约
+
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
 > ⚠️ 下表为**盘点时点**的状态快照；各服务已完成项以 §9.8.1~9.8.4 任务表 ✅ 为准（MPC 鉴权/验证码 `148cc42`、Vault 鉴权 `148cc42` + B-5 `a0dbc76`、Payment 鉴权 `148cc42`、Session Key 上线 `414248c`、web subscription 代理 `414248c`）。

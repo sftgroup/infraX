@@ -15,10 +15,15 @@ import { join } from 'node:path'
 import { Pool } from 'pg'
 import { createAuthMiddleware } from '../shared/auth-express'
 import { createPaymentsRouter } from './src/router'
+import type { SqlExecutor } from './src/store'
 import {
   PaymentsService,
   PgPaymentStore,
   PgMPPSessionStore,
+  PgAuthorizationStore,
+  PgBatchStore,
+  PgInviteStore,
+  PgTransferStore,
   createWebhookForwarder,
 } from './src/index'
 
@@ -50,6 +55,29 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30_000,
 })
+
+/**
+ * SQL executor with a transaction runner. Transfers (debit + credit) must be
+ * atomic across rows; hosts without a `transaction` capability get transfers
+ * that reject at confirm.
+ */
+const sql: SqlExecutor = {
+  query: (text, values) => pool.query(text, values),
+  transaction: async (fn) => {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      const result = await fn({ query: (text, values) => client.query(text, values) })
+      await client.query('COMMIT')
+      return result
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
+  },
+}
 
 // ── Chain config (env-prefix driven; route via chain-rpc when a key is set) ──
 const CHAIN_KEYS = ['oxachain', 'sepolia', 'polygon', 'base'] as const
@@ -95,9 +123,20 @@ if (process.env.X402_ENABLED === 'true' && (!process.env.X402_PAY_TO || !process
   throw new Error('X402_ENABLED=true requires X402_PAY_TO and X402_PRICE_WEI')
 }
 
+// ── Capability toggles (each rail is opt-in; probe GET /payments/capabilities) ──
+const a2aEnabled = process.env.A2A_ENABLED !== 'false' // default on with x402
+const periodEnabled = process.env.PERIOD_ENABLED === 'true'
+const batchEnabled = process.env.BATCH_ENABLED === 'true'
+const inviteEnabled = process.env.INVITE_ENABLED === 'true'
+const transferEnabled = process.env.TRANSFER_ENABLED === 'true'
+
 const payments = new PaymentsService({
-  store: new PgPaymentStore(pool),
-  mppStore: new PgMPPSessionStore(pool),
+  store: new PgPaymentStore(sql),
+  mppStore: new PgMPPSessionStore(sql),
+  authorizations: periodEnabled ? new PgAuthorizationStore(sql) : undefined,
+  batch: batchEnabled ? new PgBatchStore(sql) : undefined,
+  invites: inviteEnabled ? new PgInviteStore(sql) : undefined,
+  transfers: transferEnabled ? new PgTransferStore(sql) : undefined,
   chains,
   stripe: process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET
     ? { secretKey: process.env.STRIPE_SECRET_KEY, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET }
@@ -120,6 +159,7 @@ const payments = new PaymentsService({
         settleIntervalSec: Number(process.env.MPP_SETTLE_INTERVAL_SEC ?? 0) || undefined,
       }
     : undefined,
+  a2a: { enabled: a2aEnabled },
   onWebhookEvent: forwarder?.onWebhookEvent,
   onCredit: forwarder?.onCredit,
   logger,
@@ -143,8 +183,11 @@ const PORT = Number(process.env.PORT ?? 9132)
 async function boot(): Promise<void> {
   try {
     await runMigrations()
+    const enabled = Object.values(payments.capabilities())
+      .filter((c) => c.enabled)
+      .map((c) => c.id)
     app.listen(PORT, () =>
-      logger.info(`listening on :${PORT} (rails: stripe=${!!payments.stripe} x402=${!!payments.x402} mpp=${!!payments.mpp})`)
+      logger.info(`listening on :${PORT} (capabilities: ${enabled.join(', ')})`)
     )
   } catch (err) {
     logger.error(`boot failed: ${(err as Error).message}`)

@@ -68,14 +68,16 @@ cd payments && npm install && npm run build
 
 ## 数据库迁移
 
-模块拥有自己的 `payment_*` 表（4 个迁移文件，随包发布在 `db/migrations/`）：
+模块拥有自己的 `payment_*` 表（6 个迁移文件，随包发布在 `db/migrations/`）：
 
 | 迁移 | 表 | 用途 |
 | --- | --- | --- |
-| `001_payment_intents.sql` | `payment_intents` | 统一支付意图（chain / fiat / x402 / mpp） |
+| `001_payment_intents.sql` | `payment_intents` | 统一支付意图（chain / fiat / x402 / mpp / a2a） |
 | `002_payment_credits.sql` | `payment_credits` / `payment_balances` / `payment_access` | 入账台账、余额、通用访问登记表 |
 | `003_payment_sessions.sql` | `payment_sessions` / `payment_vouchers` | MPP 通道会话 / 凭证 |
 | `004_payment_events.sql` | `payment_events` | 归一化 webhook 事件回放 |
+| `005_payment_authorizations.sql` | `payment_authorizations`（+ `payment_intents.payee`） | period 授权（订阅周期计费） |
+| `006_payment_batches.sql` | `payment_batches` | batch 批量收款（一次 N 个 a2a 意图） |
 
 在**新项目自己的数据库**中执行（不要复用其他项目的表）：
 
@@ -189,7 +191,7 @@ const access = await payments.resolveAccess(subscriber, { agentId }, { chain: 's
 
 ### 可选：现成 Express router（版本 A 推荐）
 
-`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/mpp/*`）的现成 router，挂载即用：
+`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/capabilities` `/mpp/*` `/a2a/*` `/period/*` `/batch/*`）的现成 router，挂载即用：
 
 ```ts
 import { createPaymentsRouter } from '@0xinfrax/payments/router'
@@ -199,6 +201,18 @@ app.use('/payments', createPaymentsRouter(payments))
 ```
 
 `express` 是 optional peer 依赖：不调用 `createPaymentsRouter` 就不需要它。
+
+### 能力层（可插拔 rail）
+
+每个通道是一个**可插拔能力**（chain / fiat / x402 / mpp / a2a / period / batch），由构造参数（+ ENV 开关）决定启用与否：
+
+- `GET /capabilities` 返回能力清单（`enabled` / `endpoints` / `config`），调用者先探测再使用：
+  ```json
+  { "capabilities": { "a2a": { "enabled": true, "endpoints": ["POST /a2a", "POST /a2a/settle"], "config": { "defaultPayee": "0x..." } }, "...": {} } }
+  ```
+- 未启用能力的端点仍存在但返回 **503**（显式 "not enabled" 而非 404），便于调用方识别配置缺失。
+- 新增能力不破坏旧调用：`createPayment(method)` 增加 `a2a`（两阶段意图）与 `batch`（一次向 N 个 payee 收款）；`chargePeriod` / `getAuthorization` 走 period 授权。
+- 独立开关：`a2a` 默认随 `x402` 开启（可 `A2A_ENABLED=false` 关闭）；`period` / `batch` 需注入对应 store seam 才启用。
 
 ---
 

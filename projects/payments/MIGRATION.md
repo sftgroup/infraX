@@ -101,4 +101,5 @@ InfraX 发布 @0xinfrax/payments 新版
 - [x] 首次「跟随升级」演练（0.1.1 触发一次完整 check-list，解耦回归 19 断言 + gateway 回归全绿）
 - [x] 旧包 `@agentxv2/payments` deprecate 提示（npm 侧执行）
 - [x] 场景剥离（2026-08-10）：a2a / period 授权制从模块删除，定位收敛为通用支付通道
-- [ ] AgentX 侧：若定制层仍引用 `A2AClient` / `PeriodClient` 等场景能力，需自行实现或移除（见 AgentX 侧通知）
+- [x] **能力层重构（2026-08-10，MQ-13）**：a2a / period 恢复为**可配置能力**（构造参数 + ENV 开关），并新增 batch（批量收款）与 `GET /capabilities` 探测；005 迁移恢复、006 迁移新增——详见 [HANDOVER.md §2](./HANDOVER.md#2-功能矩阵)
+- [ ] AgentX 侧：定制层可经 `GET /capabilities` 探测并按需开启 a2a / period / batch 能力（见 AgentX 侧通知）

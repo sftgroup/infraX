@@ -17,11 +17,24 @@ import type { MPPConfig, MPPVoucherInput } from './adapters/mpp'
 import { StripeAdapter } from './adapters/stripe'
 import { X402Adapter } from './adapters/x402'
 import { PaymentError } from './errors'
-import type { MPPSessionRow, MPPSessionStore, PaymentStore } from './store'
+import type {
+  AuthorizationStore,
+  BatchStore,
+  InviteStore,
+  MPPSessionRow,
+  MPPSessionStore,
+  PaymentAuthorization,
+  PaymentInvite,
+  PaymentStore,
+  PaymentTransfer,
+  TransferStore,
+} from './store'
 import { PAYMENT_INTENT_STATUSES } from './store'
 import type { PaymentIntentStatus } from './store'
 import { NATIVE_ASSET } from './types'
 import type {
+  BatchItemResult,
+  Capabilities,
   ChainKey,
   CreatePaymentInput,
   CreatePaymentResult,
@@ -63,14 +76,29 @@ export interface X402Options {
 
 export interface MPPOptions extends MPPConfig {}
 
+/** a2a rail toggle (defaults to on whenever the x402 verification engine is on). */
+export interface A2AOptions {
+  enabled?: boolean
+}
+
 export interface PaymentsServiceOptions {
   store: PaymentStore
   /** MPP sessions seam (payment channels). */
   mppStore?: MPPSessionStore
+  /** Period-authorization seam (subscription billing). */
+  authorizations?: AuthorizationStore
+  /** Batch seam (one-shot multi-payee collection). */
+  batch?: BatchStore
+  /** Billing-invitation seam (agent → agent charge invitations). */
+  invites?: InviteStore
+  /** Ledger-internal transfer seam (balance → balance, no new signature). */
+  transfers?: TransferStore
   chains: ChainConfigInput
   stripe?: StripeOptions
   x402?: X402Options
   mpp?: MPPOptions
+  /** a2a rail toggle (default on with x402). */
+  a2a?: A2AOptions
   /** Host callback for normalized webhook events (e.g. Stripe). */
   onWebhookEvent?: (event: WebhookEvent) => Promise<void>
   /** Host callback after a payment is credited (idempotent; carries metadata). */
@@ -84,6 +112,12 @@ export class PaymentsService {
   readonly stripe: StripeAdapter | null
   readonly x402: X402Adapter | null
   readonly mpp: MPPAdapter | null
+  /** Batch rail store seam (null when the capability is off). */
+  readonly batch: BatchStore | null
+  /** Invite capability store seam. */
+  readonly invites: InviteStore | null
+  /** Transfer capability store seam. */
+  readonly transfers: TransferStore | null
 
   private logger: { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void }
 
@@ -93,6 +127,9 @@ export class PaymentsService {
       warn: (m) => console.warn(`[payments] ${m}`),
       error: (m) => console.error(`[payments] ${m}`),
     }
+    this.batch = opts.batch ?? null
+    this.invites = opts.invites ?? null
+    this.transfers = opts.transfers ?? null
     this.chain = new ChainAdapter(opts.chains as ChainAdapter['chains'])
     this.stripe = opts.stripe ? new StripeAdapter({ apiBase: opts.stripe.apiBase ?? 'https://api.stripe.com/v1', secretKey: opts.stripe.secretKey, webhookSecret: opts.stripe.webhookSecret }) : null
     this.x402 = opts.x402
@@ -164,6 +201,10 @@ export class PaymentsService {
       }
       case 'mpp':
         return this._mppOpen(input)
+      case 'a2a':
+        return this._a2aCreate(input)
+      case 'batch':
+        return this._batchCreate(input)
       default:
         throw new PaymentError('UNSUPPORTED_METHOD', `createPayment(method="${input.method}") is not implemented yet — use verifyPayment for on-chain rails`, 400)
     }
@@ -326,6 +367,494 @@ export class PaymentsService {
   async mppSession(channelId: string): Promise<MPPSessionRow | null> {
     if (!this.mpp) throw new PaymentError('NOT_CONFIGURED', 'MPP is not configured', 503)
     return this.mpp.session(channelId)
+  }
+
+  // ── a2a rail (paymentId two-phase: intent → on-chain tx → settle) ──────
+
+  /** Phase 1: create an a2a intent → return paymentId + amount + payee. */
+  private async _a2aCreate(input: CreatePaymentInput): Promise<CreatePaymentResult> {
+    if (!this.x402 || (this.opts.a2a?.enabled ?? true) === false) {
+      throw new PaymentError('NOT_CONFIGURED', 'a2a rail is not configured', 503)
+    }
+    const subscriber = input.subscriber
+    const payee = input.payee ?? this.x402.payTo()
+    const amountWei = input.valueWei
+    if (!subscriber || !payee || !amountWei) {
+      throw new PaymentError('INVALID_INPUT', 'a2a: subscriber, payee (or x402 payTo) and valueWei are required', 400)
+    }
+    const paymentId = `a2a_${randomUUID()}`
+    const asset = input.asset ?? NATIVE_ASSET
+    await this.opts.store.recordIntent?.({
+      paymentId,
+      method: 'a2a',
+      subscriber,
+      amountWei,
+      asset,
+      chain: input.chain,
+      status: 'created',
+      metadata: input.metadata,
+    })
+    await this.emit('a2a.created', paymentId, {
+      paymentId,
+      payer: subscriber,
+      payee,
+      amountWei,
+      asset,
+      metadata: input.metadata,
+    })
+    return { method: 'a2a', paymentId, amountWei, payee }
+  }
+
+  /**
+   * Phase 2: verify the payer's on-chain payment tx for an a2a intent and
+   * credit it (idempotent per tx hash). The tx must be a valid payment to the
+   * deployment payee wallet — the module then credits the payer's ledger
+   * balance and lets the host route funds via onCredit / webhook events.
+   */
+  async a2aSettle(input: { paymentId: string; txHash: string; chain?: ChainKey }): Promise<VerifiedPayment | null> {
+    if (!this.x402) throw new PaymentError('NOT_CONFIGURED', 'x402 is not configured', 503)
+    const verified = await this.x402.verifyAndCredit(input.txHash, input.chain)
+    if (!verified) return null
+    await this.opts.store.updateIntentStatus?.(input.paymentId, 'paid')
+    await this.emit('a2a.settled', input.paymentId, {
+      paymentId: input.paymentId,
+      reference: verified.reference,
+      payer: verified.payer,
+      creditedWei: verified.creditedWei,
+    })
+    await this.emit('payment.credited', verified.reference, {
+      reference: verified.reference,
+      payer: verified.payer,
+      amountWei: verified.creditedWei,
+      asset: verified.asset,
+      chain: verified.chain,
+      chainId: this.chain.chainIdOf(verified.chain),
+    })
+    await this.opts.onCredit?.({
+      reference: verified.reference,
+      payer: verified.payer,
+      amountWei: verified.creditedWei,
+      asset: verified.asset,
+      chainId: this.chain.chainIdOf(verified.chain),
+    })
+    return verified
+  }
+
+  // ── Batch rail (one-shot multi-payee collection) ───────────────────────
+
+  /**
+   * Create a batch of a2a intents: one payer, N payees. Each item carries its
+   * own paymentId and settles through a2aSettle (or POST /a2a/settle) with
+   * its own on-chain tx. The batch flips to `completed` once every item is
+   * paid.
+   */
+  private async _batchCreate(input: CreatePaymentInput): Promise<CreatePaymentResult> {
+    if (!this.batch || !this.x402 || (this.opts.a2a?.enabled ?? true) === false) {
+      throw new PaymentError('NOT_CONFIGURED', 'Batch rail is not configured', 503)
+    }
+    const subscriber = input.subscriber
+    const items = input.items
+    if (!subscriber || !items?.length) {
+      throw new PaymentError('INVALID_INPUT', 'batch: subscriber and items (non-empty payee list) are required', 400)
+    }
+    const chain = input.chain ?? 'oxachain'
+    const batchId = `batch_${randomUUID()}`
+    const results: BatchItemResult[] = []
+    for (const item of items) {
+      const payee = String(item.payee ?? '').toLowerCase()
+      const amountWei = String(item.amountWei ?? '')
+      if (!payee || !amountWei) {
+        throw new PaymentError('INVALID_INPUT', 'batch: each item needs payee and amountWei', 400)
+      }
+      const paymentId = `a2a_${randomUUID()}`
+      const asset = (item.asset ?? NATIVE_ASSET).toLowerCase()
+      results.push({ itemId: randomUUID(), paymentId, payee, amountWei, asset })
+      await this.opts.store.recordIntent?.({
+        paymentId,
+        method: 'a2a',
+        subscriber,
+        amountWei,
+        asset,
+        chain,
+        status: 'created',
+        metadata: item.metadata,
+      })
+    }
+    await this.batch.createBatch({
+      batchId,
+      payer: subscriber.toLowerCase(),
+      chain,
+      status: 'open',
+      items: results.map((r) => ({ ...r, status: 'pending' })),
+      metadata: input.metadata,
+    })
+    await this.emit('batch.created', batchId, {
+      batchId,
+      payer: subscriber,
+      chain,
+      itemCount: results.length,
+      items: results,
+      metadata: input.metadata,
+    })
+    return { method: 'batch', batchId, items: results }
+  }
+
+  /**
+   * Settle one batch item: verify the payer's tx for that item's paymentId and
+   * mark the item paid (flipping the batch to `completed` when all are paid).
+   */
+  async settleBatchItem(input: { batchId: string; itemId: string; txHash: string; chain?: ChainKey }): Promise<VerifiedPayment | null> {
+    if (!this.batch) throw new PaymentError('NOT_CONFIGURED', 'Batch rail is not configured', 503)
+    const verified = await this.a2aSettle({ paymentId: input.itemId, txHash: input.txHash, chain: input.chain })
+    if (!verified) return null
+    await this.batch.settleItem(input.batchId, input.itemId, verified.reference)
+    const batch = await this.batch.getBatch(input.batchId)
+    await this.emit('batch.item.settled', input.batchId, {
+      batchId: input.batchId,
+      itemId: input.itemId,
+      reference: verified.reference,
+    })
+    if (batch?.status === 'completed') {
+      await this.emit('batch.completed', input.batchId, {
+        batchId: input.batchId,
+        payer: batch.payer,
+        itemCount: batch.items.length,
+      })
+    }
+    return verified
+  }
+
+  /** Read a batch's current state. */
+  async getBatch(batchId: string): Promise<import('./store').PaymentBatch | null> {
+    if (!this.batch) throw new PaymentError('NOT_CONFIGURED', 'Batch rail is not configured', 503)
+    return this.batch.getBatch(batchId)
+  }
+
+  /** Cancel a batch (items that were never paid). */
+  async cancelBatch(batchId: string): Promise<void> {
+    if (!this.batch) throw new PaymentError('NOT_CONFIGURED', 'Batch rail is not configured', 503)
+    await this.batch.cancelBatch(batchId)
+    await this.emit('batch.completed', batchId, { batchId, cancelled: true })
+  }
+
+  // ── Period authorizations (subscription billing) ───────────────────────
+
+  /**
+   * Charge one period of an authorization. Idempotent guard: a host renews
+   * subscriptions on each period boundary by calling this; the authorization
+   * drains without any new signature.
+   */
+  async chargePeriod(authorizationId: string): Promise<{ renewed: boolean; remainingWei: string }> {
+    if (!this.opts.authorizations) throw new PaymentError('NOT_CONFIGURED', 'Period rail is not configured', 503)
+    const result = await this.opts.authorizations.chargePeriod(authorizationId)
+    await this.emit('authorization.charged', authorizationId, { authorizationId, ...result })
+    return result
+  }
+
+  /** Read a period authorization. */
+  async getAuthorization(authorizationId: string): Promise<PaymentAuthorization | null> {
+    if (!this.opts.authorizations) throw new PaymentError('NOT_CONFIGURED', 'Period rail is not configured', 503)
+    return this.opts.authorizations.getAuthorization(authorizationId)
+  }
+
+  // ── Billing invitations (agent → agent charge invites) ─────────────────
+
+  /**
+   * Create a billing invitation: an a2a intent with a business bill on top.
+   * The payee (collecting agent) is the invite owner; the payer settles either
+   * on-chain (settleInvite) or from their ledger balance (payInviteByBalance).
+   */
+  async createInvite(input: {
+    payer: string
+    payee: string
+    valueWei: string
+    asset?: string
+    chain?: ChainKey
+    dueAt?: Date | string
+    memo?: string
+    metadata?: Record<string, unknown>
+  }): Promise<{ inviteId: string; paymentId: string; amountWei: string; payee: string; dueAt: string | null }> {
+    if (!this.invites) throw new PaymentError('NOT_CONFIGURED', 'Invite rail is not configured', 503)
+    // NOTE: creating an invite and settling it from the payer's ledger balance
+    // (payInviteByBalance) do NOT need x402 — only the on-chain settle path
+    // does (a2aSettle checks it internally). This lets hosts run invitation
+    // billing with balance transfers alone.
+    const payer = String(input.payer ?? '').toLowerCase()
+    const payee = String(input.payee ?? '').toLowerCase()
+    const amountWei = String(input.valueWei ?? '')
+    if (!payer || !payee || !amountWei) {
+      throw new PaymentError('INVALID_INPUT', 'invite: payer, payee and valueWei are required', 400)
+    }
+    const chain = input.chain ?? 'oxachain'
+    const dueAt = input.dueAt ? new Date(input.dueAt) : null
+    if (dueAt && Number.isNaN(dueAt.getTime())) {
+      throw new PaymentError('INVALID_INPUT', 'dueAt is not a valid date', 400)
+    }
+    const inviteId = `inv_${randomUUID()}`
+    // Underlying a2a intent, recorded without the x402 engine (creation and
+    // balance settlement need no on-chain verification — only settleInvite's
+    // chain path does, and a2aSettle checks that internally).
+    const paymentId = `a2a_${randomUUID()}`
+    const asset = (input.asset ?? NATIVE_ASSET).toLowerCase()
+    await this.opts.store.recordIntent?.({
+      paymentId,
+      method: 'a2a',
+      subscriber: payer,
+      amountWei,
+      asset,
+      chain,
+      status: 'created',
+      metadata: input.metadata,
+    })
+    await this.emit('a2a.created', paymentId, {
+      paymentId,
+      payer,
+      payee,
+      amountWei,
+      asset,
+      metadata: input.metadata,
+    })
+    await this.invites.createInvite({
+      inviteId,
+      paymentId,
+      payer,
+      payee,
+      asset,
+      chain,
+      amountWei,
+      memo: input.memo ?? null,
+      dueAt,
+      status: 'created',
+      metadata: input.metadata,
+    })
+    await this.emit('invite.created', inviteId, {
+      inviteId,
+      paymentId,
+      payer,
+      payee,
+      amountWei,
+      dueAt: dueAt?.toISOString() ?? null,
+      memo: input.memo,
+      metadata: input.metadata,
+    })
+    return { inviteId, paymentId, amountWei, payee, dueAt: dueAt?.toISOString() ?? null }
+  }
+
+  /** Read one invite (past-due invites flip to `expired` lazily). */
+  async getInvite(inviteId: string): Promise<PaymentInvite | null> {
+    if (!this.invites) throw new PaymentError('NOT_CONFIGURED', 'Invite rail is not configured', 503)
+    await this.invites.expireDue(inviteId)
+    return this.invites.getInvite(inviteId)
+  }
+
+  /** List invitations for an address (payer=issued, payee=owed). */
+  async listInvites(address: string, role: 'payer' | 'payee', status?: 'open' | 'created' | 'sent' | 'settled' | 'expired' | 'cancelled'): Promise<PaymentInvite[]> {
+    if (!this.invites) throw new PaymentError('NOT_CONFIGURED', 'Invite rail is not configured', 503)
+    await this.invites.expireDue()
+    return this.invites.listInvites(address, { role, status })
+  }
+
+  /** Cancel an open invitation (created/sent only). */
+  async cancelInvite(inviteId: string): Promise<{ cancelled: boolean }> {
+    if (!this.invites) throw new PaymentError('NOT_CONFIGURED', 'Invite rail is not configured', 503)
+    const cancelled = await this.invites.markCancelled(inviteId)
+    await this.emit('invite.cancelled', inviteId, { inviteId })
+    return { cancelled }
+  }
+
+  /**
+   * Settle an invitation on-chain: verify the payer's tx for the wrapped a2a
+   * intent and mark the invite settled. Returns null when the tx is not a
+   * valid platform payment.
+   */
+  async settleInvite(inviteId: string, txHash: string, chain?: ChainKey): Promise<{ settled: boolean; reference?: string } | null> {
+    if (!this.invites) throw new PaymentError('NOT_CONFIGURED', 'Invite rail is not configured', 503)
+    const invite = await this.getInvite(inviteId)
+    if (!invite) throw new PaymentError('NOT_FOUND', `Invite ${inviteId} not found`, 404)
+    if (invite.status === 'expired') throw new PaymentError('EXPIRED', 'Invite has expired', 410)
+    if (invite.status === 'settled') return { settled: false }
+    const verified = await this.a2aSettle({ paymentId: invite.paymentId, txHash, chain })
+    if (!verified) return null
+    const settled = await this.invites.markSettled(inviteId, 'chain', verified.reference)
+    await this.emit('invite.settled', inviteId, {
+      inviteId,
+      method: 'chain',
+      reference: verified.reference,
+      payer: verified.payer,
+      amountWei: verified.creditedWei,
+    })
+    return { settled, reference: verified.reference }
+  }
+
+  /**
+   * Settle an invitation from the payer's ledger balance (no new signature).
+   * Internally creates + confirms a transfer keyed by the invite id; the
+   * transfer id becomes the invite's settled reference.
+   */
+  async payInviteByBalance(inviteId: string): Promise<{ settled: boolean; transferId?: string }> {
+    if (!this.invites || !this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Invite/transfer rail is not configured', 503)
+    const invite = await this.getInvite(inviteId)
+    if (!invite) throw new PaymentError('NOT_FOUND', `Invite ${inviteId} not found`, 404)
+    if (invite.status === 'settled') return { settled: false }
+    if (invite.status === 'expired') throw new PaymentError('EXPIRED', 'Invite has expired', 410)
+    const created = await this.createTransfer({
+      from: invite.payer,
+      to: invite.payee,
+      valueWei: invite.amountWei,
+      asset: invite.asset,
+      reference: inviteId, // idempotency: one invite → at most one transfer
+      metadata: { inviteId },
+    })
+    const exec = await this.confirmTransfer(created.transferId)
+    if (!exec.ok) {
+      throw new PaymentError('INSUFFICIENT_BALANCE', `Balance payment failed: ${exec.reason}`, 400)
+    }
+    await this.invites.markSettled(inviteId, 'balance', created.transferId)
+    await this.emit('invite.settled', inviteId, { inviteId, method: 'balance', reference: created.transferId })
+    return { settled: true, transferId: created.transferId }
+  }
+
+  // ── Ledger-internal transfers (balance → balance) ───────────────────────
+
+  /**
+   * Request a ledger transfer. Idempotent on `reference`: a reference already
+   * used returns the existing transfer instead of creating a second one.
+   */
+  async createTransfer(input: { from: string; to: string; valueWei: string; asset?: string; reference?: string; metadata?: Record<string, unknown> }): Promise<{ transferId: string; status: PaymentTransfer['status'] }> {
+    if (!this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Transfer rail is not configured', 503)
+    const from = String(input.from ?? '').toLowerCase()
+    const to = String(input.to ?? '').toLowerCase()
+    const amountWei = String(input.valueWei ?? '')
+    if (!from || !to || !amountWei) {
+      throw new PaymentError('INVALID_INPUT', 'transfer: from, to and valueWei are required', 400)
+    }
+    const asset = (input.asset ?? NATIVE_ASSET).toLowerCase()
+    const reference = String(input.reference ?? `tf_${randomUUID()}`).toLowerCase()
+    const existing = await this.transfers.getTransferByReference(reference)
+    if (existing) return { transferId: existing.transferId, status: existing.status }
+    const transferId = `tf_${randomUUID()}`
+    await this.transfers.createTransfer({
+      transferId,
+      fromAddr: from,
+      toAddr: to,
+      asset,
+      amountWei,
+      status: 'requested',
+      confirmMethod: 'callback',
+      reference,
+      metadata: input.metadata,
+    })
+    await this.emit('transfer.requested', transferId, { transferId, from, to, amountWei, asset, reference, metadata: input.metadata })
+    return { transferId, status: 'requested' }
+  }
+
+  /**
+   * Confirm (and execute) a requested transfer. The payer's host calls this
+   * once; the store debits `from` and credits `to` atomically.
+   */
+  async confirmTransfer(transferId: string): Promise<{ ok: boolean; status: PaymentTransfer['status']; reason?: string }> {
+    if (!this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Transfer rail is not configured', 503)
+    const result = await this.transfers.executeTransfer(transferId)
+    if (result.ok) {
+      await this.emit('transfer.executed', transferId, { transferId })
+      return { ok: true, status: 'executed' }
+    }
+    await this.emit('transfer.rejected', transferId, { transferId, reason: result.reason })
+    return { ok: false, status: 'rejected', reason: result.reason }
+  }
+
+  /** Read a transfer's state. */
+  async getTransfer(transferId: string): Promise<PaymentTransfer | null> {
+    if (!this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Transfer rail is not configured', 503)
+    return this.transfers.getTransfer(transferId)
+  }
+
+  /** Cancel an open (requested) transfer. */
+  async cancelTransfer(transferId: string): Promise<void> {
+    if (!this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Transfer rail is not configured', 503)
+    await this.transfers.cancelTransfer(transferId)
+  }
+
+  /** List transfers for an address (from=debited, to=credited). */
+  async listTransfers(address: string, role: 'from' | 'to'): Promise<PaymentTransfer[]> {
+    if (!this.transfers) throw new PaymentError('NOT_CONFIGURED', 'Transfer rail is not configured', 503)
+    return this.transfers.listTransfers(address, role)
+  }
+
+  // ── Capabilities (pluggable rail discovery) ────────────────────────────
+
+  /**
+   * Current capability map (id → info). Callers probe this before using any
+   * rail; the generic router mounts endpoints dynamically from the same map.
+   */
+  capabilities(): Capabilities {
+    const caps: Capabilities = {
+      chain: {
+        id: 'chain',
+        enabled: true,
+        description: 'On-chain plan pricing + escrow subscription status (SubscriptionManager reads)',
+        endpoints: ['GET /price', 'GET /chain-info/:chain', 'GET /subscription/:chain/:subscriber/:resourceId'],
+      },
+      fiat: {
+        id: 'fiat',
+        enabled: !!this.stripe,
+        description: 'Stripe checkout + webhook (signature verified in-engine)',
+        endpoints: ['POST /checkout', 'POST /webhook'],
+        config: this.stripe ? { provider: 'stripe' } : undefined,
+      },
+      x402: {
+        id: 'x402',
+        enabled: !!this.x402,
+        description: 'Single-shot on-chain payment verification (native + stablecoin)',
+        endpoints: ['POST /verify', 'GET /info'],
+        config: this.x402
+          ? { chain: this.x402.chain(), payTo: this.x402.payTo(), stablecoin: this.x402.stablecoinAvailable() }
+          : undefined,
+      },
+      mpp: {
+        id: 'mpp',
+        enabled: !!this.mpp,
+        description: 'Payment channels (open → vouchers* → settle/close)',
+        endpoints: ['POST /mpp/open', 'POST /mpp/voucher', 'POST /mpp/topup', 'POST /mpp/settle', 'POST /mpp/close', 'GET /mpp/session'],
+        config: this.mpp ? { payee: this.mpp.payeeOf(), chain: this.mpp.chain() } : undefined,
+      },
+      a2a: {
+        id: 'a2a',
+        enabled: !!this.x402 && (this.opts.a2a?.enabled ?? true),
+        description: 'Two-phase account-to-account: intent → on-chain tx → settle',
+        endpoints: ['POST /a2a', 'POST /a2a/settle'],
+        config: this.x402 ? { defaultPayee: this.x402.payTo() } : undefined,
+      },
+      batch: {
+        id: 'batch',
+        enabled: !!this.opts.batch && !!this.x402 && (this.opts.a2a?.enabled ?? true),
+        description: 'One-shot multi-payee collection (N a2a intents in one request)',
+        endpoints: ['POST /batch', 'POST /batch/settle', 'GET /batch', 'POST /batch/cancel'],
+        config: this.opts.batch ? { store: 'payment_batches' } : undefined,
+      },
+      period: {
+        id: 'period',
+        enabled: !!this.opts.authorizations,
+        description: 'Subscription billing: one authorization funds n periods, charged without re-signing',
+        endpoints: ['POST /period/charge', 'GET /period/authorization'],
+        config: this.opts.authorizations ? { store: 'payment_authorizations' } : undefined,
+      },
+      invite: {
+        id: 'invite',
+        enabled: !!this.invites,
+        description: 'Billing invitations: agent A charges agent B (a2a intent + bill), settle on-chain or from balance',
+        endpoints: ['POST /invites', 'GET /invites', 'GET /invites/:inviteId', 'POST /invites/:inviteId/cancel', 'POST /invites/:inviteId/settle', 'POST /invites/:inviteId/pay'],
+        config: this.invites ? { store: 'payment_invites', defaultPayee: this.x402?.payTo() } : undefined,
+      },
+      transfer: {
+        id: 'transfer',
+        enabled: !!this.transfers,
+        description: 'Ledger-internal transfers: debit from → credit to atomically, no new signature (payer host confirms once)',
+        endpoints: ['POST /transfers', 'POST /transfers/:transferId/confirm', 'GET /transfers', 'GET /transfers/:transferId', 'POST /transfers/:transferId/cancel'],
+        config: this.transfers ? { store: 'payment_transfers' } : undefined,
+      },
+    }
+    return caps
   }
 
   // ── Verify payment (x402 rail) ─────────────────────────────────────────

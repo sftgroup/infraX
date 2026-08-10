@@ -13,7 +13,7 @@
 
 **零业务耦合的通用支付引擎**。模块只负责「钱」：支付方式（method）、资产、金额、链上凭证验证与幂等入账；**业务上下文（agentId、订单号、套餐 ID 等）一律经 `metadata` 透传，模块不解释、不校验、不消费**。持久化走注入的 `PaymentStore` 接缝，宿主业务只通过 `onWebhookEvent` / `onCredit` 回调接入。
 
-> **范围说明（2026-08-10）**：模块只保留**通用通道能力**（chain / fiat / x402 / MPP / 稳定币）。a2a-pay、period 授权制等**业务场景定义**已从模块剥离（见 §2），相应 client / router / store / 迁移已删除。
+> **能力范围说明（2026-08-10 更新）**：模块作为**可编程、针对 agent 支付优化的通用通道**，全部 rails 均为**可插拔能力**（chain / fiat / x402 / MPP / stablecoin / **a2a** / **period** / **batch**），由构造参数 + ENV 开关决定启用，`GET /capabilities` 探测，未启用端点返回 503（详见 §2 与 README §能力层）。a2a（两阶段意图支付）与 period（订阅周期授权）已于 MQ-13 恢复为可配置项。
 
 ## 2. 功能矩阵
 
@@ -25,6 +25,10 @@
 | **x402 v2** | `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE` 三个 base64 header；scheme `exact` / `upto`；EIP-712 Payment 分片方案（domain 含 chainId + verifyingContract） | 单测 + harness F4 |
 | **MPP 支付通道 (P2)** | 三阶段 open → (voucher)\* → close + topUp；EIP-712 `Voucher(channelId, cumulativeAmount)` 签名复用幂等（`mode: 'reuse'`）；auto-settle 阈值触发批量扣减；`channelId = keccak256(encodePacked(payer, payee, asset, salt, chainId))` | 单测 + harness F5 |
 | **稳定币 (P3)** | EIP-3009 `transferWithAuthorization` + Permit2 `permitTransferFrom` 双机制；`Transfer(from→payTo, value≥price)` 事件作为入账凭证；6 位精度原子单位；`x402.verifyAndCredit` 原生验证失败自动回退 stablecoin | 单测 + harness F6 |
+| **a2a (两阶段意图)** | `POST /a2a` 创建意图（paymentId/amount/payee）→ 链上支付 → `POST /a2a/settle` 验 tx 入账（复用 x402 `verifyAndCredit`，幂等）；`payment_intents.payee` 记录收款方 | 单测（capabilities.test.ts） |
+| **period (订阅周期)** | `payment_authorizations` 一份授权 n 周期；`POST /period/charge` 每周期边界原子扣减（无需重新签名），余量不足自动 `exhausted`；`GET /period/authorization` 查状态 | 单测（capabilities.test.ts） |
+| **batch (批量收款)** | 一次向 N 个 payee 创建 N 个 a2a 意图；`POST /batch/settle` 逐项验 tx，全部完成批次原子 `completed`；`GET /batch` / `POST /batch/cancel` | 单测（capabilities.test.ts） |
+| **capabilities 探测** | `GET /capabilities` 返回各 rail `enabled` / `endpoints` / `config`；未启用 rail 端点返回 503（显式而非 404） | 单测（capabilities.test.ts） |
 
 > 计费周期（`PaymentPeriod`：`day/week/month/year`）是**通用能力**，保留在 checkout、stripe recurring、on-chain `plan.period` 中；它不是授权场景。
 
@@ -203,4 +207,4 @@ npm view @0xinfrax/payments dist-tags   # latest 指向新版本
 - AgentX 侧保留定制支付 SDK：`@agentxv2/sdk`（`SubscriptionPayments` 业务封装 + `MPPClient` / `X402Client` / `PaymentsClient` 协议客户端 re-export）
 - **依赖方向**：AgentX 定制层 → `@0xinfrax/payments`（registry）→（无反向）；`@agentxv2/payments` 旧包已 deprecate
 - 通用层零业务依赖；双方版本通过 semver `^` 范围对接
-- **注意**：模块 0.1.2+ 不再导出 `A2AClient` / `PeriodClient` 与 a2a/period 端点；AgentX 定制层若引用这些场景能力，需在业务侧自行实现或移除（见 AgentX 侧通知）
+- **注意**：a2a / period / batch 为**能力**（见 §2），0.1.3+ 经 `GET /capabilities` 探测、ENV/构造参数开关启用；AgentX 定制层如需这些场景能力，直接开对应开关或注入对应 store seam 即可

@@ -14,6 +14,8 @@ export type PaymentErrorCode =
   | 'INVALID_SIGNATURE'    // webhook signature verification failed
   | 'UNSUPPORTED_METHOD'   // createPayment called with an unimplemented rail
   | 'NOT_FOUND'            // nothing matched
+  | 'EXPIRED'              // a time-boxed resource (invite/authorization) is past its deadline
+  | 'INSUFFICIENT_BALANCE' // ledger balance cannot cover a transfer/deduct
 
 export class PaymentError extends Error {
   constructor(

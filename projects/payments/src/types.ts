@@ -6,8 +6,8 @@
 // never interpreted here.
 // ---------------------------------------------------------------------------
 
-/** Payment rails supported by the module. */
-export type PaymentMethod = 'chain' | 'fiat' | 'x402' | 'mpp'
+/** Payment rails supported by the module (each is a pluggable capability). */
+export type PaymentMethod = 'chain' | 'fiat' | 'x402' | 'mpp' | 'a2a' | 'batch'
 
 export type PaymentPeriod = 'day' | 'week' | 'month' | 'year'
 
@@ -27,16 +27,18 @@ export interface CreatePaymentInput {
   amountCents?: number
   currency?: string
   chain?: ChainKey
-  /** Chain / MPP rail: native value override (defaults to the plan price / deposit). */
+  /** Chain / MPP / a2a rail: native value override (defaults to the plan price / deposit). */
   valueWei?: string
   /** Asset for valueWei (NATIVE_ASSET default; token address for stablecoin). */
   asset?: string
-  /** MPP rail: receiving wallet for the deposit (defaults to the deployment payee). */
+  /** a2a / MPP rail: receiving wallet for the deposit (defaults to the deployment payee). */
   payee?: string
   /** MPP rail: channel salt (binds the channel to a fresh context). */
   salt?: string
   /** MPP rail: the funding/credential tx to verify on open. */
   txHash?: string
+  /** Batch rail: one-shot collection targets (payer pays each payee once). */
+  items?: BatchItemInput[]
   /** Item used for auto-pricing (e.g. an on-chain plan id). */
   pricing?: { planId: number }
   /** Opaque business context passed through unchanged (e.g. { agentId }). */
@@ -63,6 +65,8 @@ export type CreatePaymentResult =
   | { method: 'chain'; paymentId: string; reference: string }
   | { method: 'x402'; reference: string }
   | { method: 'mpp'; channelId: string; depositWei: string; payee: string }
+  | { method: 'a2a'; paymentId: string; amountWei: string; payee: string }
+  | { method: 'batch'; batchId: string; items: BatchItemResult[] }
 
 /** A verified incoming payment credited to the payer's balance (idempotent). */
 export interface PaymentCredit {
@@ -134,6 +138,19 @@ export type PaymentEventType =
   | 'mpp.session.opened'
   | 'mpp.settled'
   | 'mpp.closed'
+  | 'a2a.created'
+  | 'a2a.settled'
+  | 'authorization.charged'
+  | 'batch.created'
+  | 'batch.item.settled'
+  | 'batch.completed'
+  | 'invite.created'
+  | 'invite.settled'
+  | 'invite.expired'
+  | 'invite.cancelled'
+  | 'transfer.requested'
+  | 'transfer.executed'
+  | 'transfer.rejected'
 
 /** An outbound payment event (module writes; host consumes). */
 export interface PaymentEvent {
@@ -143,3 +160,49 @@ export interface PaymentEvent {
   /** Opaque JSON payload (business context travels inside metadata). */
   payload: Record<string, unknown>
 }
+
+// ---------------------------------------------------------------------------
+// a2a rail (paymentId two-phase: intent → on-chain tx → settle)
+// ---------------------------------------------------------------------------
+
+/** One collection target inside a batch (agent A collects from many agents). */
+export interface BatchItemInput {
+  /** Receiving wallet (the agent being paid). */
+  payee: string
+  /** Atomic units of the native asset (or `asset` when given). */
+  amountWei: string
+  asset?: string
+  /** Opaque per-item business context (e.g. { agentId, resourceId }). */
+  metadata?: Record<string, unknown>
+}
+
+/** A batch item as created (carries its own a2a paymentId for settling). */
+export interface BatchItemResult {
+  itemId: string
+  /** a2a payment intent id — feed it to POST /a2a/settle with a txHash. */
+  paymentId: string
+  payee: string
+  amountWei: string
+  asset: string
+}
+
+// ---------------------------------------------------------------------------
+// Capabilities (pluggable rail discovery)
+// ---------------------------------------------------------------------------
+
+/** A single rail capability as seen by /capabilities. */
+export type CapabilityId = PaymentMethod | 'period' | 'invite' | 'transfer'
+
+/** A single rail capability as seen by /capabilities. */
+export interface CapabilityInfo {
+  id: CapabilityId
+  enabled: boolean
+  description: string
+  /** REST endpoints mounted by the generic router when this capability is on. */
+  endpoints: string[]
+  /** Optional static config the caller may want to read (e.g. payee). */
+  config?: Record<string, unknown>
+}
+
+/** Full capability map (id → info). Order is stable across calls. */
+export type Capabilities = Partial<Record<CapabilityId, CapabilityInfo>>
