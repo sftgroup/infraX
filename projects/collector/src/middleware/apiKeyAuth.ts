@@ -46,7 +46,7 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
-  pool.query('SELECT id, label, rate_limit, enabled FROM api_keys WHERE api_key = $1', [key])
+  pool.query('SELECT id, label, rate_limit, enabled, market_plan_id FROM api_keys WHERE api_key = $1', [key])
     .then(r => {
       if (r.rows.length === 0) {
         res.status(401).json({ code: -1, message: 'Invalid API Key' });
@@ -65,7 +65,7 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
         return;
       }
 
-      (req as any).apiKey = { id: row.id, label: row.label, rateLimit: limit };
+      (req as any).apiKey = { id: row.id, label: row.label, rateLimit: limit, marketPlanId: row.market_plan_id || 'market_free' };
 
       // Fire-and-forget usage tracking
       pool.query(

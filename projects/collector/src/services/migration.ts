@@ -299,6 +299,36 @@ export async function migrateEventCollectorTables(): Promise<void> {
     });
 
     // ============================================================
+    // MQ-16 T-2: Market 行情 API 按量套餐
+    // api_keys 扩展订阅状态列（key 与套餐绑定，pending→active 状态机）
+    // market_usage / market_usage_daily：请求级用量明细 + 日聚合（对齐 dc api_usage 模式）
+    // ============================================================
+    await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS market_plan_id TEXT DEFAULT 'market_free';`);
+    await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS market_sub_status VARCHAR(20) DEFAULT 'active';`);
+    await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS market_payment_method VARCHAR(20);`);
+    await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS market_payment_ref VARCHAR(200);`);
+    await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS market_sub_updated_at TIMESTAMPTZ;`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS market_usage (
+        id BIGSERIAL PRIMARY KEY,
+        key_id INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_market_usage_key_ts ON market_usage(key_id, timestamp);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS market_usage_daily (
+        key_id INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        endpoint TEXT NOT NULL DEFAULT 'total',
+        total_calls INT NOT NULL DEFAULT 0,
+        PRIMARY KEY (key_id, date, endpoint)
+      );
+    `);
+
+    // ============================================================
     // okx_market_candles — K-line candle snapshots (time-series)
     // ============================================================
     await client.query(`

@@ -27,8 +27,10 @@ import { handleWsUpgrade } from './services/eventBus';
 import relayRoutes from './routes/relayRoutes';
 import priceRoutes from './routes/priceRoutes';
 import marketRoutes from './routes/marketRoutes';
+import marketSubscriptionRoutes from './routes/marketSubscriptionRoutes';
 import trackedTokenRoutes from './routes/trackedTokenRoutes';
 import customEventRoutes from './routes/customEventRoutes';
+import { marketQuotaEnforce } from './middleware/marketQuotaEnforce';
 
 const app = express();
 
@@ -114,7 +116,10 @@ app.use('/api/v2/admin', sessionAuth, apiKeyRoutes, adminRoutes, managementRoute
 // Data: API key auth at mount point
 app.use('/api/v2/data', apiKeyAuth, dataRoutes);
 app.use('/api/v2/data', apiKeyAuth, priceRoutes);
-app.use('/api/v2/data', apiKeyAuth, marketRoutes);
+// Market 行情端点：API key auth + MQ-16 T-2 按量计费（超配额 503）
+app.use('/api/v2/data', apiKeyAuth, marketQuotaEnforce, marketRoutes);
+// MQ-16 T-2: Market 订阅端点（plans 公开；checkout/payment-check/verify/usage 各路由内 key 鉴权；payment-callback HMAC 验签）
+app.use('/api/v2/market', marketSubscriptionRoutes);
 // Relay: API key auth at mount point (was previously inside router only)
 app.use('/api/v1', apiKeyAuth, relayRoutes);
 
