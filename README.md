@@ -42,7 +42,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | RAGservicer/LightRAG | ✅ | ✅ (MCP + LightRAG STDIO) | ✅（ragservicer-sdk TS 类型） | ✅（lightrag-client 2.0.0，PyPI） |
 | Admin | ✅ | — | — | — |
 
-> 四种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。Python SDK 于 2026-08-11 发布 PyPI（`lightrag-client` 2.0.0 / `infra-data-client` 0.2.0）。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
+> 四种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。Python SDK 于 2026-08-11 发布 PyPI（`lightrag-client` 2.0.0 / `infra-data-client` 0.2.0）。每个微服务的**详细使用文档 + 样例代码**见 [docs/services/](./docs/services/)（13 篇，2026-08-11 生产逐一实测）。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
 
 ---
 

@@ -22,6 +22,8 @@ const COLLECTOR_PORT = parseInt(process.env.COLLECTOR_PORT || '9101', 10);
 
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
+  // collector 行情数据面（/api/v2/data/market/*）必须位于 /api/v2/data 之前，否则被 DC 前缀吞掉
+  '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
   '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },
