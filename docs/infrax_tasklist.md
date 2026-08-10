@@ -1323,3 +1323,67 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | 🔲 | P1 |
 | B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 | P1 |
 | B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | 🔲 | P2 |
+
+---
+
+**9.12 服务鉴权审计（2026-08-11，全站 15 服务源码审计）**
+
+> 触发：用户提问"各个服务是不是都已经做好了鉴权？"。结论：**非全部**——waas 存在裸路由漏洞群 + `requireAdmin` 形同虚设；dc 余额查询无鉴权；collector / chain-rpc / aa-relay / data / injector 为**条件性开放**（配置 key 才强制校验）。shared `auth-express`（三选一 header + fail-closed）已在部分服务生效，但 waas 未接入全局兜底。
+
+**审计结论（按服务）**
+
+| 服务 | 结论 | 关键发现 |
+|---|---|---|
+| waas :9109 | 🔴 严重 | 无全局鉴权兜底；`requireAdmin` 校验失败仍 `next()` 形同虚设（[auth.ts](projects/waas/middleware/auth.ts) L104-115）；**裸路由漏洞群**——`/api/v2/saas/tenants/:tenantId/{apikey,apikey/rotate,hot-wallet,tokens}` 的 API key 生成/轮换/删除、hot-wallet、tokens 增删查**均无鉴权**（[saasRoutes.ts](projects/waas/routes/saasRoutes.ts) L563-683；对照 L474-546 有 authenticate 的 `/apikeys`） |
+| dc :9102 | 🔴 P0 | `GET /api/v2/data/balance` **无鉴权**（[index.ts](projects/dc/index.ts) L811-829，可枚举任意地址跨链余额；对照 L659 checkpoints 有 `requireDcApiKey`） |
+| collector :9101 | 🟡 P1 | 弱密码：默认 `ADMIN_PASSWORD=infrax123` 仅 warn 不阻断（[config.ts](projects/collector/src/config.ts) L22/L86-87）；明文 key：`CWALLET_API_KEY` 默认 `dev-cwallet-key`（L16） |
+| chain-rpc :9130 | 🟡 条件性 | 配置 READ/BROADCAST key 才强制校验，未配置则开放（[auth.ts](projects/chain-rpc/src/middleware/auth.ts)） |
+| aa-relay :9131 | 🟡 条件性 | `if (!RELAY_KEY) return next()` 开放语义（[index.ts](projects/aa-relay/src/index.ts) L68-75） |
+| data :9112 / injector :9113 | 🟡 条件性 | `DATA_API_KEY`/`INJECTOR_API_KEY` 可配置，未配置则开放（§4.6） |
+| vault :9107 | ✅ 良好 | 鉴权完整（`148cc42`） |
+| mpc :9104 | ✅ 良好 | 鉴权 + 验证码完整（`148cc42`） |
+| payments :9132 | ✅ 良好 | 三 header + webhook 豁免 |
+| session-key | ✅ 良好 | 三层鉴权 |
+| admin :3002 | ✅ 良好 | 登录态 + X-Admin-Token |
+| ragservicer :9721 | ✅ 良好 | 强制三层（bridge/admin/租户） |
+| payment（已下线 :9106） | ✅ 良好 | 历史服务，代码保留 |
+
+**任务拆解（2026-08-11 登记）**
+
+| 编号 | 任务 | 说明 | 状态 | 优先级 |
+|---|---|---|---|---|
+| C-1 | waas 裸路由补鉴权 | `/api/v2/saas/tenants/:tenantId/*`（apikey 生成/rotate/删除、hot-wallet、tokens 增删查）全部挂 authenticate；并加全局兜底中间件 | 🔲 | P0 |
+| C-2 | waas `requireAdmin` 修复 | [auth.ts](projects/waas/middleware/auth.ts) L104-115：校验失败时 `next(Errors.unauthorized(...))` 而非静默 `next()` | 🔲 | P0 |
+| C-3 | dc balance 补鉴权 | `GET /api/v2/data/balance` 挂 `requireDcApiKey` + `dcQuotaEnforce`（对齐 checkpoints） | 🔲 | P0 |
+| C-4 | collector 弱密码/明文 key | 无 `ADMIN_PASSWORD` 时 fail-closed 拒绝启动；移除 `dev-cwallet-key` 默认值 | 🔲 | P1 |
+| C-5 | 条件性开放服务收口 | chain-rpc / aa-relay / data / injector 未配置 key 时 fail-closed（或文档显式声明仅内网开放边界） | 🔲 | P1 |
+
+---
+
+**9.13 SDK 独立包拆分（2026-08-11 用户裁定；§1.1 已写入 SDK_INTEGRATION.md，commit 7a76c17）**
+
+> 用户裁定 SDK 架构：**统一包覆盖 + 每个服务有独立包**。`@0xinfrax/infrax-dk` 保持统一入口（一次配置覆盖全部服务），同时每微服务提供独立 npm 包——**独立包薄封装 infrax-dk 对应 API 类，同源同步发版**，调用方可按需二选一（全量或单服务）。
+
+**独立包矩阵（已发布 ✅ / 规划 🔲）**
+
+| 微服务 | 独立包 | 覆盖方法 | 状态 |
+|---|---|---|---|
+| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | 🔲 规划 |
+| Vault | `@0xinfrax/vault-sdk` | vault | 🔲 规划 |
+| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | 🔲 规划 |
+| Market | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | 🔲 规划 |
+| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | 🔲 规划 |
+| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | 🔲 规划 |
+| Data / ML | `@0xinfrax/data-sdk` | data + ml | 🔲 规划 |
+| MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
+| Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
+| LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
+| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions | ✅ 0.2.0 |
+
+**任务拆解（2026-08-11 登记）**
+
+| 编号 | 任务 | 说明 | 状态 | 优先级 |
+|---|---|---|---|---|
+| D-1 | 独立包脚手架 | 7 个规划包（waas/vault/dc/market/chain-rpc/payments/data）monorepo 结构 + publishConfig | 🔲 | P2 |
+| D-2 | 薄封装实现 | 各包薄封装 infrax-dk 对应 API 类（同源同步发版，不复制实现） | 🔲 | P2 |
+| D-3 | SDK_INTEGRATION.md 更新 | §1 总览 + §1.1 独立包总览表已更新（commit 7a76c17） | ✅ | — |
