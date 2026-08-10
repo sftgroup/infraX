@@ -115,7 +115,7 @@ GLOBAL_MARKET_COLLECT_ENABLED = os.getenv("GLOBAL_MARKET_COLLECT_ENABLED", "true
 GLOBAL_MARKET_COLLECT_INTERVAL_SEC = int(os.getenv("GLOBAL_MARKET_COLLECT_INTERVAL_SEC", "900"))
 
 # ── 旧栈 collector 合并（rawdata 位点 + OKX ChainOS 行情）────────────────
-# COLLECTOR_URL: 旧栈 collector 服务（Express :9101），http://43.156.99.215:9101
+# COLLECTOR_URL: 旧栈 collector 服务（Express :9101），http://43.163.105.172:9101
 # COLLECTOR_API_KEY: 旧栈 api_keys 表签发的只读 key（X-API-Key header，非 Bearer）
 COLLECTOR_URL = os.getenv("COLLECTOR_URL", "")
 COLLECTOR_API_KEY = os.getenv("COLLECTOR_API_KEY", "")

@@ -2,14 +2,14 @@
 /**
  * InfraX E2E Test Suite — Production Environment
  * Version: v0.3.1-20260717
- * Target: 43.156.99.215 (ports 9100-9111)
+ * Target: 43.163.105.172 (ports 9100-9111)
  *
  * Usage:
  *   # On the production server itself:
  *   node e2e-test.js
  *
  *   # Against a remote server:
- *   TARGET_HOST=43.156.99.215 node e2e-test.js
+ *   TARGET_HOST=43.163.105.172 node e2e-test.js
  *
  *   # Custom web proxy port:
  *   WEB_PORT=9111 node e2e-test.js

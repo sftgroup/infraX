@@ -34,7 +34,7 @@
 #   help        This help message
 
 set -e
-INFRAX_URL="${INFRAX_URL:-http://43.156.99.215:9111}"
+INFRAX_URL="${INFRAX_URL:-http://43.163.105.172:9111}"
 TEST_PK="0xb1eb7c5b3ad9ea36d62e744c4bd07dfb99b0605c2675faaaf8f9c4121ecd8644"
 ADMIN_PASS="${ADMIN_PASS:-a87cefd6e1ce487334a67b0c}"
 

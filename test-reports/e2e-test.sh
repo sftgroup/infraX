@@ -1,17 +1,17 @@
 #!/bin/bash
 # InfraX E2E Test Suite — Production Environment
 # Version: v0.3.1-20260717
-# Target: 43.156.99.215 (ports 9100-9111)
+# Target: 43.163.105.172 (ports 9100-9111)
 #
 # Usage:
 #   # On the production server itself:
 #   bash e2e-test.sh
 #
 #   # Against a remote server:
-#   TARGET_HOST=43.156.99.215 WEB_PORT=9111 bash e2e-test.sh
+#   TARGET_HOST=43.163.105.172 WEB_PORT=9111 bash e2e-test.sh
 #
 #   # With admin credentials:
-#   ADMIN_USER=admin ADMIN_PASS=mypass TARGET_HOST=43.156.99.215 bash e2e-test.sh
+#   ADMIN_USER=admin ADMIN_PASS=mypass TARGET_HOST=43.163.105.172 bash e2e-test.sh
 
 # Do NOT set -e; we handle errors per test
 
