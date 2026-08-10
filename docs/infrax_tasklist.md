@@ -1,6 +1,6 @@
 # InfraX 统一任务清单（infrax_tasklist）
 
-> 最后更新: 2026-08-10 | 适用版本 `v0.6.0-20260806`
+> 最后更新: 2026-08-11 | 适用版本 `v0.6.2-20260811`
 >
 > MQ-10 收敛与优化 DC-1~DC-10 已全部完成并在生产验证（2026-08-08），见 §9.7 MQ-10 方案段。
 > **Agent 钱包架构决策（MQ-10 补充 E，2026-08-08）**：以 aa-sdk（Kernel v3 ERC-4337）为主主线，aa-sdk 三缺口（Paymaster/多链/aa-relay）已排期（MQ-10 补充 E-1，🔲）。
@@ -1152,7 +1152,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **T-9 文档更新（✅ 2026-08-10，commit f637263）**：README（能力清单+迁移 001-008+invite/transfer 端点与能力说明）/HANDOVER（§1 能力范围、§2 矩阵新增 invite/transfer 行、迁移表 005-008、§8 生产实测、§10 修正 MQ-13 推翻说明+占位符踩坑、§12 开关）/CALLER_SETUP（账本内结算模型、嵌入式注入+事务 runner 示例、env 开关、自检清单 6-7 项）
 
 **MQ-15 旧 payment 服务下线迁移（2026-08-10 需求登记；方案：前端切至 waas 订阅 → admin 收口 → 停服归档）**：
-> 背景：盘点确认旧 payment（:9106，projects/payment）为**僵尸服务**——唯一调用方是 web proxy `/api/v2/payment → :9106`，而前端请求的端点一半不存在（`/x402/request`、`/methods` 404，其余靠 afetchMock 兜底成空数据）；生产 `pocketx_payment.payment_orders` 仅 3 行全部 pending、最新 2026-07-21，近 3 周零新增、0 活跃连接；内部服务（mcp-server `PAYMENTS_URL→:9132`、waas MQ-12）早已迁移新引擎。方案分两阶段：**阶段一**前端路由切换（Payment 模块并入 waas 订阅流程、移除 proxy 路由与页面、admin 统计收口到 `pocketx_payments` 库）；**阶段二**观察 1 周无回归后停服归档（pg_dump → stop/disable unit → 代码保留 git 历史）。
+> 背景：盘点确认旧 payment（:9106，projects/payment）为**僵尸服务**——唯一调用方是 web proxy `/api/v2/payment → :9106`，而前端请求的端点一半不存在（`/x402/request`、`/methods` 404，其余靠 afetchMock 兜底成空数据）；生产 `pocketx_payment.payment_orders` 仅 3 行全部 pending、最新 2026-07-21，近 3 周零新增、0 活跃连接；内部服务（mcp-server `PAYMENTS_URL→:9132`、waas MQ-12）早已迁移新引擎。方案分两阶段：**阶段一**前端路由切换（Payment 模块并入 waas 订阅流程、移除 proxy 路由与页面、admin 统计收口到 `pocketx_payments` 库）；**阶段二**停服归档（pg_dump → stop/删除 unit → 代码保留 git 历史）——T-6 验证无回归后**应业务要求于 2026-08-11 直接执行 T-7 停服**（未等待 1 周观察期）。
 > 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 MQ-12 / MQ-14。
 
 - [x] **T-1 前端 payment 模块并入 waas 订阅（✅ 2026-08-10）**：[payment.js](projects/web/modules/payment.js) 四个端点（`/x402/request`、`/create-order`、`/orders`、`/methods`）全部改走 WaaS 订阅 API——`/api/v2/subscription/plans`（套餐列表渲染 + 卡片直接订阅）、`/api/v2/subscription/me`（当前套餐状态）、`waasUpgradePlan`（free 直通/chain 轮询/fiat 跳转/x402 输 txHash，已走 :9132）；Payment 导航点击 → [core.js](projects/web/modules/core.js) 分发至 `switchToWaasSubscription()` 跳转 WaaS 订阅页（高亮保留在 Payment 导航项）
@@ -1162,7 +1162,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **T-4 admin 统计收口（✅ 2026-08-10）**：[admin/server/index.ts](projects/admin/server/index.ts) pool `payment→pocketx_payment` 改为 `payments→pocketx_payments`（env `PAYMENTS_DB`）；dashboard `totalRevenue`：`payment_orders confirmed` → `payment_intents status='paid'`；revenue 30d：`payment_orders` 按 status 分组 → `payment_intents` 按 status 分组；服务状态 `payment:9106` → `payments:9132`（健康检查 /health）；[Revenue.tsx](projects/admin/src/pages/Revenue.tsx) 修复历史遗留 `p.total_usd`（后端从未返回，恒 NaN）——30d Revenue 卡改为 paid 意图笔数，表格去除 Total USD 列；`npm run build`（tsc+vite）通过
 - [x] **T-5 联调验证（✅ 2026-08-10）**：新增 [mq15_verify.sh](projects/web/scripts/mq15_verify.sh)（`static` 本地静态回归 7/7 通过：web/admin/sdk 零旧引用 + 语法检查；`api` 生产联调 14/14 通过）——payments 引擎 :9132（health/capabilities=chain,period,invite,transfer/price/balance）；waas 订阅全流程（plans 三套餐 → free→active → /me → pro chain rail 支付信息含 price → 回归 → 测试钱包数据清理）；admin /health 正常；fiat 未启用按能力开关跳过断言；日志基线：web 24h 内 :9106 命中 1 次（部署前，T-6 后复核应恒 0）、admin 0 次
 - [x] **T-6 生产部署 + 观察（✅ 2026-08-11 部署完成，观察期至 08-18）**：生产 git 仓库 c9917c3 → **4fe67d7**（清理 28 个 MQ-12~14 scp 残留未跟踪文件：备份 `/tmp/untracked_conflict.tgz` + `/tmp/mq_residue.patch`，payments 迁移 006/007/008 + paymentsClient.ts 由提交正式版接管，ragservicer/data 与 .env.bak 保留）；admin `npm run build`（Revenue 统计 UI）；重启 infrax-payments（migrations 8，capabilities: chain,period,invite,transfer）/infrax-web（代理路由已无 `/api/v2/payment`）/infrax-admin；验证——web 首页零 payment 引用、`POST /api/v2/payment/create` 返回 HTML（路由已移除）、**web/admin 日志自重启后 :9106 命中 0**、admin dashboard/revenue 读 `pocketx_payments`（login token 流程）、mq15_verify.sh api **16/16 全绿**（含日志归零断言）；**观察 1 周**至 08-18 无回归后执行 T-7
-- [ ] **T-7 停服归档（🔲 待办）**：`pg_dump pocketx_payment` 备份归档（3 行历史订单）→ `sudo systemctl stop --now infrax-payment` → 删除 unit 文件 + `daemon-reload` → README/DEPLOYMENT 标注已下线；`projects/payment` 代码保留 git 历史
+- [x] **T-7 停服归档（✅ 2026-08-11，应业务要求跳过观察期直接执行）**：`pg_dump pocketx_payment` → `/home/ubuntu/backups/pocketx_payment_20260811.sql`（146 行，payment_orders 3 行历史订单全 pending）→ `sudo systemctl stop --now infrax-payment`（服务本为僵尸 inactive，无存活进程）→ 删除 `/etc/systemd/system/infrax-payment.service` + `daemon-reload` → 确认 9106 端口无监听；[README.md](README.md)/[DEPLOYMENT.md](DEPLOYMENT.md) 全量标注已下线（服务表/拓扑图/目录结构/防火墙端口/重启列表/DB 列表/部署循环/健康检查端口/修复备忘；服务计数 25→24）；`projects/payment` 代码保留 git 历史
 
 **MQ-16 对外套餐服务矩阵（2026-08-10 需求登记；方案：以 waas 订阅为模板 + 引擎统一账本/period 能力）**：
 > 背景：盘点对外服务套餐能力——waas 已有完整闭环（`subscriptions` 表 + pending→active + 三 rail 支付，MQ-12，作为模板）；dc 有套餐模型但**配额无真实扣减**（usage 硬编码 0、全仓无 api_usage 写入方）；market（39 端点免费）、chain-rpc（对外读）、mpc（Agent Wallet）无套餐；agent 专属能力（invite/transfer/batch）未对外开放。方案：统一入口复制 waas 订阅模式——业务服务管"权益激活"、支付引擎管"钱"（chain/fiat/x402 收钱 + 账本 balance/credit/deduct 记钱 + period 周期授权扣费 + invite/transfer/batch 满足 agent 场景）。优先级：DC 配额真实扣减（P0）→ Market/Chain RPC 按量套餐（P1）→ MPC/Agent 专属开放（P2）。

@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-08-10 | 版本 `v0.6.1-20260810`
+> 最后更新: 2026-08-11 | 版本 `v0.6.2-20260811`
 
 > 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**25 个 systemd 服务 + 1 个清理 timer**）。
 > **本文档覆盖区块链服务栈（9100-9111）与平台服务（9130-9132）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
@@ -23,7 +23,7 @@
 ssh ubuntu@43.163.105.172
 ```
 
-## 当前运行服务（25 个 systemd + 1 timer）
+## 当前运行服务（24 个 systemd + 1 timer）
 
 ### 区块链栈（9100-9111）
 
@@ -129,7 +129,6 @@ ssh ubuntu@43.163.105.172
 /api/v2/saas    → :9109
 /api/vault      → :9107
 /api/v2/vault   → :9107
-/api/v2/payment → :9106
 /api/v2/admin   → :9100
 ```
 
@@ -155,7 +154,7 @@ ssh ubuntu@43.163.105.172
 | **9111** | Web / Landing Page | **必须开放** |
 | **9100** | Admin 面板 | **建议开放** |
 | 9103/9105/9108/9110 | MCP 服务 | 外部 AI Agent 调用时开放 |
-| 9101/9102/9104/9106/9107/9109 | 后端 API | 仅内部调用 |
+| 9101/9102/9104/9107/9109 | 后端 API | 仅内部调用 |
 
 ## 支持的区块链
 
@@ -379,7 +378,7 @@ MPC_URL=http://localhost:9104
 cd /home/ubuntu/infraX-1
 git pull origin master
 # 如有新增依赖
-for d in admin collector dc mcp-server mpc payment vault waas web; do
+for d in admin collector dc mcp-server mpc vault waas web; do
   cd /home/ubuntu/infraX-1/projects/$d && npm install 2>/dev/null || true
 done
 # 重启变更的服务
@@ -431,7 +430,7 @@ sudo systemctl restart infrax-admin
 | Admin 密码硬编码 admin123 | 写在源码中 | 环境变量 `ADMIN_PASS`，不设拒绝启动 |
 | MPC 无 Agent 签名能力 | 仅有注册/恢复，无私钥使用能力 | 新增 Session Token 机制 + 9 个端点（签名/转账/合约） |
 | MPC MCP 仅 5 tools | 零 Agent 操作能力 | 扩展至 15 tools |
-| Web Proxy 缺 Payment | 前端调 `/api/v2/payment` 不行 | 补全代理 |
+| Web Proxy 缺 Payment（旧 Payment :9106，MQ-15 T-7 已下线） | 前端调 `/api/v2/payment` 不行 | 补全代理 |
 
 ### v0.2.3 OxaChain 集成 (2026-07-15)
 | 问题 | 根因 | 修复 | Commit |
@@ -444,7 +443,7 @@ sudo systemctl restart infrax-admin
 
 ```bash
 # 全部服务
-for port in 3002 3008 3011 3012 3500 9100 9101 9102 9103 9104 9105 9106 9107 9108 9109 9110 9111 9112 9113 9130 9131 9132 9200 9201 9721; do
+for port in 3002 3008 3011 3012 3500 9100 9101 9102 9103 9104 9105 9107 9108 9109 9110 9111 9112 9113 9130 9131 9132 9200 9201 9721; do
   curl -s --max-time 2 http://localhost:$port/health 2>/dev/null \
     && echo ":$port OK" || echo ":$port DOWN"
 done

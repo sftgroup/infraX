@@ -1,6 +1,6 @@
 # InfraX — Web3 基础设施平台
 
-> Monorepo | 17 模块 | Version `v0.6.1-20260810` | 生产（单机）`43.163.105.172`
+> Monorepo | 16 模块 | Version `v0.6.2-20260811` | 生产（单机）`43.163.105.172`
 
 ## 项目介绍
 
@@ -34,7 +34,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 |------|----------|-----|--------|
 | WAAS/Wallet | ✅ | ✅ | ✅ |
 | Safe/Vault | ✅ | ✅ | ✅ |
-| Payment | ✅ | ✅ | ✅ |
+| Payments（支付引擎） | ✅ | — | ✅ |
 | Data Center | ✅ | ✅ (7 tools) | ✅ |
 | Market (行情+分析) | ✅ (39 endpoints) | ✅ (13 tools) | ✅ (16 methods) |
 | MPC | ✅ | ✅ (15 tools) | ✅ |
@@ -115,8 +115,8 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
              │                       │
              ▼                       ▼
         ┌─────────┐           ┌──────────┐
-        │Collector │          │ Payment  │              ← 依赖层
-        │ :9101   │          │ :9106   │                 (内部调用)
+        │Collector │          │ Payments │             ← 依赖层
+        │ :9101   │          │  :9132   │                (内部调用)
         └─────────┘          └──────────┘
                                     │
               ┌─────────────────────┤
@@ -164,8 +164,9 @@ postgres://localhost:5432
 ├── pocketx_vault      (4 表)  — safe_wallets/transactions/signatures/risk_rules
 ├── pocketx_dc         (3 表)  — subscriptions/api_keys/usage_log
 ├── pocketx_mpc        (2 表)  — mpc_wallets/mpc_sessions
-├── pocketx_payment    (3 表)  — orders/payments/webhooks
+├── pocketx_payments   (11 表) — payment_intents/sessions/credits/transfers/invites 等（通用支付引擎）
 └── pocketx_admin      (3 表)  — users/rpc_configs/settings
+（旧 pocketx_payment 库已归档至 backups/pocketx_payment_20260811.sql，MQ-15 T-7）
 
 每个模块拥有独立数据库，模块间不共享 schema。
 跨模块调用通过 HTTP API，不跨库 JOIN。
@@ -249,7 +250,6 @@ infraX/
 /api/v2/saas/*    → :9109 (WAAS)
 /api/vault/*      → :9107 (Vault)
 /api/v2/vault/*   → :9107 (Vault)
-/api/v2/payment/* → :9106 (Payment)
 /api/v2/admin/*   → :9100 (Admin)
 其他路径          → 静态文件 (web/)
 ```
@@ -322,7 +322,7 @@ infraX/
 
 | 环境 | 服务器 | 规格 | 方式 |
 |------|--------|------|------|
-| **生产（单机全栈）** | **43.163.105.172** | 2C/3.6G/59G | systemd（数据栈 9112/9113/9721 + 区块链栈 9100-9111 + 平台服务 9130-9132/9200-9201/3500 + MCP 3008/3011/3012/9103/9105/9108/9110 + nginx 80/443，25 units + timer） |
+| **生产（单机全栈）** | **43.163.105.172** | 2C/3.6G/59G | systemd（数据栈 9112/9113/9721 + 区块链栈 9100-9111（9106 已下线）+ 平台服务 9130-9132/9200-9201/3500 + MCP 3008/3011/3012/9103/9105/9108/9110 + nginx 80/443，24 units + timer） |
 | ml-service | 43.156.25.197 | 2C/4G | systemd（:9120，独立服务器） |
 | 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ | — | 已弃用 |
 

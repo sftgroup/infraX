@@ -33,7 +33,6 @@ const DIRECT_PORTS = {
   dcMcp:    parseInt(process.env.DC_MCP_PORT   || '9103', 10),
   mpc:      parseInt(process.env.MPC_PORT      || '9104', 10),
   mpcMcp:   parseInt(process.env.MPC_MCP_PORT  || '9105', 10),
-  payment:  parseInt(process.env.PAYMENT_PORT  || '9106', 10),
   vault:    parseInt(process.env.VAULT_PORT    || '9107', 10),
   vaultMcp: parseInt(process.env.VAULT_MCP_PORT|| '9108', 10),
   waas:     parseInt(process.env.WAAS_PORT     || '9109', 10),
@@ -120,7 +119,6 @@ async function testWebProxy() {
     ['Wallet Bal',  '/api/v2/wallet/balance?address=0x000&chain=sepolia'],
     ['SAAS Tenants','/api/v2/saas/tenants/my'],
     ['Vault Dash',  '/api/vault/dashboard'],
-    ['Payment Creat','/api/v2/payment/create'],
   ];
   for (const [name, path] of proxyTests) {
     try {
@@ -372,16 +370,6 @@ async function testWaasEndpoints() {
   } catch (e) { record('GET /api/v2/wallet/balance', false, e.message); }
 }
 
-// T7: Payment Endpoints
-async function testPaymentEndpoints() {
-  console.log('\n═══ T7: Payment Endpoints (:9106) ═══');
-  try {
-    const r = await apiPost('/api/v2/payment/create', { planId: 'test', amount: '0' });
-    record('POST /api/v2/payment/create', r.status < 500,
-      `HTTP ${r.status}`);
-  } catch (e) { record('POST /api/v2/payment/create', false, e.message); }
-}
-
 // T8: Vault Endpoints
 async function testVaultEndpoints() {
   console.log('\n═══ T8: Vault Endpoints (:9107) ═══');
@@ -492,7 +480,6 @@ async function testCollector() {
   await testDCEndpoints();
   await testMpcEndpoints();
   await testWaasEndpoints();
-  await testPaymentEndpoints();
   await testVaultEndpoints();
   await testMcpServers();
   await testSecurityHeaders();

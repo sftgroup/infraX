@@ -148,7 +148,7 @@ test_health_checks() {
   fi
 
   # Internal-only services — cannot test externally
-  local internal_svcs=("collector:9101" "dc-mcp:9103" "mpc:9104" "mpc-mcp:9105" "payment:9106" "vault:9107" "vault-mcp:9108" "waas:9109" "wallet-mcp:9110")
+  local internal_svcs=("collector:9101" "dc-mcp:9103" "mpc:9104" "mpc-mcp:9105" "vault:9107" "vault-mcp:9108" "waas:9109" "wallet-mcp:9110")
   for svc in "${internal_svcs[@]}"; do
     local name="${svc%%:*}"
     record "$name (internal)" "SKIP" "not exposed externally"
@@ -414,17 +414,6 @@ test_waas_endpoints() {
   record "GET /api/v2/wallet/balance" $([ "$http_code" = "200" ] && echo 0 || echo 1) "HTTP $http_code"
 }
 
-test_payment_endpoints() {
-  echo ""
-  echo "═══ T7: Payment Endpoints (:9106) ═══"
-  local http_code
-  http_code=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' -X POST \
-    -H "Content-Type: application/json" \
-    -d '{"planId":"test","amount":"0"}' \
-    "${BASE_URL}/api/v2/payment/create" 2>/dev/null)
-  record "POST /api/v2/payment/create" $([ "$http_code" != "502" ] && [ "$http_code" != "000" ] && echo 0 || echo 1) "HTTP $http_code"
-}
-
 test_vault_endpoints() {
   echo ""
   echo "═══ T8: Vault Endpoints (:9107) ═══"
@@ -545,7 +534,6 @@ main() {
   test_dc_endpoints
   test_mpc_endpoints
   test_waas_endpoints
-  test_payment_endpoints
   test_vault_endpoints
   test_mcp_servers
   test_security
