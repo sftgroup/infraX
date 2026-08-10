@@ -15,8 +15,6 @@ const WAAS_HOST     = process.env.WAAS_HOST || 'localhost';
 const WAAS_PORT     = parseInt(process.env.WAAS_PORT || '9109', 10);
 const VAULT_HOST    = process.env.VAULT_HOST|| 'localhost';
 const VAULT_PORT    = parseInt(process.env.VAULT_PORT|| '9107', 10);
-const PAYMENT_HOST  = process.env.PAYMENT_HOST || 'localhost';
-const PAYMENT_PORT  = parseInt(process.env.PAYMENT_PORT || '9106', 10);
 const ADMIN_HOST    = process.env.ADMIN_HOST || 'localhost';
 const ADMIN_PORT    = parseInt(process.env.ADMIN_PORT || '9100', 10);
 
@@ -29,7 +27,6 @@ const API_ROUTES = {
   '/api/v2/saas':    { host: WAAS_HOST,    port: WAAS_PORT },
   '/api/vault':      { host: VAULT_HOST,   port: VAULT_PORT },
   '/api/v2/vault':   { host: VAULT_HOST,   port: VAULT_PORT },
-  '/api/v2/payment': { host: PAYMENT_HOST, port: PAYMENT_PORT },
   '/api/v2/subscription': { host: WAAS_HOST, port: WAAS_PORT },
 };
 

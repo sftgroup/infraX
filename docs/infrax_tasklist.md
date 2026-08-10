@@ -1156,7 +1156,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 > 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 MQ-12 / MQ-14。
 
 - [x] **T-1 前端 payment 模块并入 waas 订阅（✅ 2026-08-10）**：[payment.js](projects/web/modules/payment.js) 四个端点（`/x402/request`、`/create-order`、`/orders`、`/methods`）全部改走 WaaS 订阅 API——`/api/v2/subscription/plans`（套餐列表渲染 + 卡片直接订阅）、`/api/v2/subscription/me`（当前套餐状态）、`waasUpgradePlan`（free 直通/chain 轮询/fiat 跳转/x402 输 txHash，已走 :9132）；Payment 导航点击 → [core.js](projects/web/modules/core.js) 分发至 `switchToWaasSubscription()` 跳转 WaaS 订阅页（高亮保留在 Payment 导航项）
-- [ ] **T-2 web proxy 移除路由（🔲 待办）**：[server.js](projects/web/server.js#L32) 删除 `/api/v2/payment` → `PAYMENT_HOST:PAYMENT_PORT(:9106)` 代理（同时清理 PAYMENT_HOST/PAYMENT_PORT 常量）
+- [x] **T-2 web proxy 移除路由（✅ 2026-08-10）**：[server.js](projects/web/server.js) 删除 `/api/v2/payment` → `PAYMENT_HOST:PAYMENT_PORT(:9106)` 代理 + `PAYMENT_HOST`/`PAYMENT_PORT` 常量（health `backends` 与启动日志自动派生，随之更新）；node --check 通过
+- [ ] **T-8 SDK PaymentClient 迁移（🔲 待办）**：全仓检索发现 [sdk/src/index.ts](projects/sdk/src/index.ts#L280-L286) `PaymentClient`（create/status/confirm/history/x402Pay/x402Info）仍调旧 `/api/v2/payment/*`（:9106）——改为对接新引擎 @0xinfrax/payments（checkout/verify 或引擎 /payments/* 端点），确认无其他消费者后再定；`test-reports/e2e-test.js` 历史脚本的 `/api/v2/payment/create` 断言随 T-7 停服时一并清理
 - [ ] **T-3 页面清理（🔲 待办）**：[index.html](projects/web/index.html) 移除 Payment 导航项、`page-payment` 区块、`payment.js` 引用（L50/770/1005）；[landing.html](projects/web/landing.html#L150) 静态文案 `:9106 · Web3-native billing` 更新为新引擎 :9132
 - [ ] **T-4 admin 统计收口（🔲 待办）**：[admin/server/index.ts](projects/admin/server/index.ts#L88-L99) dashboard `payment_orders` 统计 → 改查新引擎 `pocketx_payments`（`payment_intents`/`payment_transfers`/`payment_balances`）；健康检查端口 :9106 → :9132（L146）
 - [ ] **T-5 联调验证（🔲 待办）**：浏览器验证 waas 订阅购买全流程（plans→subscribe→check）无回归；web/admin 日志无 :9106 请求残留
