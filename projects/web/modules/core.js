@@ -8,7 +8,6 @@ var API = "";
   var activeChain = 'sepolia';
   var histPage = 1, histFilter = 'all';
   var waasActiveTenantId = '';
-  var paymentEnabled = false;
   var ncCustomTokens = [];
   var mpcCurrentEmail = '', mpcCurrentAddr = '', mpcActivated = false;
   var mpcEmail = '';
@@ -16,7 +15,7 @@ var API = "";
   var waasSelectedPlan = 'free';
   var safeEnabled = false;
 
-  var PAGE_TITLES = { noncustodial:'Non-Custodial Wallet', mpc:'MPC Wallet', waas:'WaaS · B2B Wallet Service', datacenter:'Data Center · On-Chain API', safe:'Multi-Sig Vault', payment:'Payment' };
+  var PAGE_TITLES = { noncustodial:'Non-Custodial Wallet', mpc:'MPC Wallet', waas:'WaaS · B2B Wallet Service', datacenter:'Data Center · On-Chain API', safe:'Multi-Sig Vault' };
 
   // ── Re-declare all functions below (code preserved from original, wrapped) ──
 // ═══════════════════════════════════════════════════════
@@ -134,13 +133,6 @@ function afetchMock(url) {
       { id: 'enterprise', name: 'Enterprise', price: 199, interval: 'month', features: ['Everything in Pro', 'White label', 'Dedicated Slack'] }
     ],
     '/api/v2/subscription/me': null,
-    '/api/v2/payment/methods': { methods: [
-      { id: 'stripe', icon: '💳', name: 'Credit Card', description: 'Visa/MC/UnionPay', minAmount: 1, maxAmount: 99999, currency: 'USD' },
-      { id: 'wallet', icon: '🔐', name: 'Wallet Transfer', description: 'Connected wallet', minAmount: 0.001, maxAmount: 100, currency: 'ETH', chains: ['sepolia'] },
-      { id: 'qr', icon: '📱', name: 'QR Scan', description: 'External wallet', minAmount: 0.001, maxAmount: 100, currency: 'ETH', chains: ['sepolia'] },
-      { id: 'x402', icon: '⚡', name: 'x402 Protocol', description: 'HTTP 402 Agent Pay', minAmount: 0.001, maxAmount: 100, currency: 'ETH', chains: ['sepolia'] }
-    ], defaultMethod: 'stripe' },
-    '/api/v2/payment/orders': { orders: [] }
   };
   if (mocks[url]) return mocks[url];
   // Try matching prefix
@@ -189,8 +181,6 @@ function setupNav() {
   document.querySelectorAll('.nav-item[data-page]').forEach(function (el) {
     el.addEventListener('click', function () {
       var p = el.dataset.page;
-      // MQ-15 T-1: Payment 已并入 WaaS 订阅，点击直接跳转 WaaS 订阅页（替代 page-payment）
-      if (p === 'payment') { switchToWaasSubscription(); return; }
       document.querySelectorAll('.nav-item').forEach(function (x) { x.classList.remove('active'); });
       el.classList.add('active');
       document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('active'); });
@@ -198,14 +188,14 @@ function setupNav() {
       if (!target) return;
       target.classList.add('active');
       document.getElementById('page-title').textContent = PAGE_TITLES[p] || p;
-      var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, payment: paymentInit };
+      var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit };
       try { if (loaders[p]) loaders[p](); } catch(e) { console.error('Page loader failed:', p, e); }
     });
   });
 }
 
 function initActivePage() {
-  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, payment: paymentInit };
+  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit };
   var activePage = document.querySelector('.page.active');
   if (!activePage) return;
   var pageId = activePage.id.replace('page-', '');
@@ -237,7 +227,7 @@ document.addEventListener('click', function (e) {
     'mpc-reg': mpcReg, 'mpc-rec': mpcRec, 'mpc-dash': mpcDash, 'mpc-send': mpcSendLoad, 'mpc-recv': mpcReceiveLoad,
     'waas-dash-overview': waasLoadOverviewWithState, 'waas-dash-tokens': waasTokens, 'waas-dash-addresses': waasAddresses,
     'waas-dash-sweep': waasSweep, 'waas-dash-withdrawals': waasWithdrawals, 'waas-dash-api': waasApiTab,
-    'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'dc-explorer': dcSwitchTab.bind(null, 'dc-explorer'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {}, 'pay-create': function() {}, 'pay-history': paymentLoadHistory, 'pay-methods': paymentLoadMethods,
+    'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'dc-explorer': dcSwitchTab.bind(null, 'dc-explorer'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {},
     'safe-pending': function () {}, 'safe-owners': function () {}
   };
   if (subLoaders[s]) subLoaders[s]();

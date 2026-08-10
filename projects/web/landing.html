@@ -144,10 +144,10 @@
     </div>
     <div class="card">
       <span class="card-icon">💳</span>
-      <h3>Payment</h3>
-      <p>Subscription management, payment orders, and billing events. Designed for SaaS monetization with Web3-native payment flows and automated invoicing.</p>
+      <h3>Payments</h3>
+      <p>Generic payment engine powering plan subscriptions — on-chain escrow, Stripe fiat, x402, and agent billing (invites / ledger transfers).</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9106 · Web3-native billing</div>
+      <div class="port">Port :9132 · Universal payment gateway</div>
     </div>
     <div class="card">
       <span class="card-icon">🔍</span>
@@ -220,7 +220,7 @@
   <span style="color:var(--dim)">apiKey</span>:  process.env.<span style="color:var(--blue)">INFRAX_KEY</span>
 });
 
-<span style="color:var(--dim)">// Wallet, Vault, MPC, DC, Payment — all via one client</span>
+<span style="color:var(--dim)">// Wallet, Vault, MPC, DC, Payments — all via one client</span>
 <span style="color:var(--purple)">const</span> wallets = <span style="color:var(--purple)">await</span> infrax.<span style="color:var(--blue)">wallet</span>.<span style="color:var(--blue)">list</span>();
 <span style="color:var(--purple)">const</span> tx     = <span style="color:var(--purple)">await</span> infrax.<span style="color:var(--blue)">vault</span>.<span style="color:var(--blue)">propose</span>({...});
 <span style="color:var(--purple)">const</span> events = <span style="color:var(--purple)">await</span> infrax.<span style="color:var(--blue)">dc</span>.<span style="color:var(--blue)">subscribe</span>({...});</pre>
@@ -275,7 +275,7 @@
           <div class="arch-box">Vault :9107</div>
           <div class="arch-box">MPC :9104</div>
           <div class="arch-box">DC :9102</div>
-          <div class="arch-box">Payment :9106</div>
+          <div class="arch-box">Payments :9132</div>
           <div class="arch-box">Collector :9101</div>
         </div>
       </div>

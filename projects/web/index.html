@@ -47,9 +47,6 @@
       <span>📡</span> Data Center
       <span class="badge">API</span>
     </button>
-    <button class="nav-item" data-page="payment">
-      <span>💳</span> Payment
-    </button>
   </nav>
 
   <!-- sidebar-bottom: Disconnect moved to topbar -->
@@ -764,88 +761,7 @@ Body:
       </div>
     </div>
   </div>
-  <!-- ============================================================ -->
-  <!-- MODULE 5: Payment — B2B2C Unified Payment                  -->
-  <!-- ============================================================ -->
-  <div class="page" id="page-payment">
-    <!-- Payment Intro (not activated) -->
-    <div id="payment-intro" style="display:none">
-      <div style="text-align:center;padding:40px 20px">
-        <div style="font-size:48px;margin-bottom:16px">💳</div>
-        <h2 style="font-size:22px;margin:0 0 8px">Unified Payment</h2>
-        <p style="color:var(--text-secondary);max-width:520px;margin:0 auto 20px;line-height:1.6">
-          Accept payments from your users with three flexible methods — credit card via Stripe, direct wallet transfer, or QR code scan with any external wallet.
-        </p>
-        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:24px">
-          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
-            <div style="font-size:24px;margin-bottom:4px">💳</div>
-            <div style="font-size:13px;color:var(--text-secondary)">Stripe</div>
-            <div style="font-size:11px;color:var(--text-muted)">Visa / MC / UnionPay</div>
-          </div>
-          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
-            <div style="font-size:24px;margin-bottom:4px">🔐</div>
-            <div style="font-size:13px;color:var(--text-secondary)">Wallet Pay</div>
-            <div style="font-size:11px;color:var(--text-muted)">MPC / Non-Custodial</div>
-          </div>
-          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
-            <div style="font-size:24px;margin-bottom:4px">📱</div>
-            <div style="font-size:13px;color:var(--text-secondary)">QR Scan</div>
-            <div style="font-size:11px;color:var(--text-muted)">MetaMask / OKX / any</div>
-          </div>
-          <div style="background:var(--card-bg);border-radius:12px;padding:16px 20px;text-align:center">
-            <div style="font-size:24px;margin-bottom:4px">⚡</div>
-            <div style="font-size:13px;color:var(--text-secondary)">x402 Protocol</div>
-            <div style="font-size:11px;color:var(--text-muted)">HTTP 402 · AI-Agent Pay</div>
-          </div>
-        </div>
-        <div style="margin-bottom:20px">
-          <button class="btn btn-primary" onclick="paymentEnable()" style="padding:12px 32px;font-size:15px">💳 Enable Payment Module</button>
-        </div>
-        <p style="font-size:12px;color:var(--text-muted)">2.9% + $0.30 Stripe fee. Gas fee applies for on-chain payments.</p>
-      </div>
-    </div>
-    <!-- Payment Dashboard (activated) -->
-    <div id="payment-dashboard-area" style="display:none">
-      <div class="tab-row">
-        <button class="tab-btn active" data-sub="pay-create">Create Order</button>
-        <button class="tab-btn" data-sub="pay-history">Order History</button>
-        <button class="tab-btn" data-sub="pay-methods">Payment Methods</button>
-      </div>
-      <!-- Create Order -->
-      <div class="sub-panel active" id="sub-pay-create">
-        <div class="panel">
-          <div class="panel-header">Create Payment Order</div>
-          <div class="panel-body">
-            <div class="form-row">
-              <div><label>Amount (USD)</label><input class="input" id="pay-amount" placeholder="49.00" type="text" inputmode="decimal" step="0.01"></div>
-              <div><label>Payment Method</label>
-                <select class="input" id="pay-method" onchange="paymentMethodChange()">
-                  <option value="stripe">💳 Credit Card (Stripe)</option>
-                  <option value="wallet">🔐 Connected Wallet</option>
-                  <option value="qr">📱 QR Scan</option>
-                  <option value="x402">⚡ x402 Protocol</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div><label>Description</label><input class="input" id="pay-desc" placeholder="WaaS Pro Subscription"></div>
-              <div><label>Chain (on-chain)</label><input class="input" id="pay-chain" value="sepolia" disabled></div>
-            </div>
-            <button class="btn btn-primary" id="pay-create-btn" onclick="paymentCreateOrder()">Create Order</button>
-            <div id="pay-result" style="margin-top:16px"></div>
-          </div>
-        </div>
-      </div>
-      <!-- Order History -->
-      <div class="sub-panel" id="sub-pay-history">
-        <div id="pay-history-list"><div class="empty"><span class="spin"></span></div></div>
-      </div>
-      <!-- Payment Methods Info -->
-      <div class="sub-panel" id="sub-pay-methods">
-        <div id="pay-methods-info"><span class="spin"></span></div>
-      </div>
-    </div>
-  </div>  <div class="page" id="page-datacenter">
+  <div class="page" id="page-datacenter">
     <div id="dc-intro" class="waas-intro" style="display:block">
       <div class="waas-intro-hero"><div class="waas-intro-icon">📡</div><h2>Data Center — On-Chain API</h2><p>Query standardized on-chain event data across 7 chains via simple REST API.</p></div>
       <div class="waas-feature-row">
@@ -1002,7 +918,6 @@ Body:
   </div>
 
 <script src="/modules/core.js?v=1783820000"></script>
-<script src="/modules/payment.js?v=1783731217"></script>
 <script src="/modules/nc-wallet.js?v=1784046356"></script>
 <script src="/modules/mpc-wallet.js?v=1783734639"></script>
 <script src="/modules/waas.js?v=1784050055"></script>
