@@ -9,12 +9,33 @@
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
 | `@0xinfrax/infrax-dk`（npm） | **0.6.0** | ✅ 已发布（registry 已验证，2026-08-11） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
-| `@0xinfrax/mpc-sdk`（npm，独立轻量） | 0.1.0 | ✅ 已发布 + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC 钱包模块（sendCode/register/recover/status/createWallet）+ 会话模块（unlock/lock/status）；链上模块（7 方法）后续版本 |
+| `@0xinfrax/mpc-sdk`（npm，独立轻量） | **0.3.0** | ✅ 已发布（npm registry 已验证，2026-08） + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC **16 方法**：钱包模块 6（sendCode/register/recover/status/listWallets/createWallet）+ 会话模块 3（unlock/lock/status）+ **链上模块 7（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，E-5d 已随 0.3.0 发布）** |
+| `@0xinfrax/session-key-core` / `-client` / `-evm` / `-server`（npm，独立 4 包） | **0.2.0** / 0.1.0 / 0.1.1 / 0.1.1 | ✅ 已发布（2026-07-31 ~ 08-07） | Session Key 引擎（EIP-712 授权 + 受限代执行）；**core 0.2.0 并入 aa-sdk（`Aa` 命名空间：BundlerClient / PaymasterClient / SessionKeySigner / MpcSigner / KernelV3SessionDataBuilder，含 oxachain:19505）** |
 | `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
 | `infra-data-client`（PyPI） | 0.2.0 | ✅ 已发布（pypi.org，2026-08-11） | DATA（data-service） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
 | 手写 OpenAPI 3.0（injector :9113 / ragservicer :9721） | 3.0 | ✅ 生产免 key 可访问 | LightRAG |
+
+### 1.1 独立包总览（统一包 + 每服务独立包，2026-08-11 规划）
+
+设计原则：`@0xinfrax/infrax-dk` 保持**统一入口**（一次配置覆盖全部服务），同时**每个微服务提供独立 npm 包**（仅依赖该服务的调用方无需安装全量包）。已发布 ✅ / 规划中 🔲：
+
+| 微服务 | 独立包 | 覆盖方法（对应 infrax-dk 命名空间） | 状态 |
+|---|---|---|---|
+| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | 🔲 规划 |
+| Vault | `@0xinfrax/vault-sdk` | vault | 🔲 规划 |
+| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | 🔲 规划 |
+| Market（collector） | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | 🔲 规划 |
+| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | 🔲 规划 |
+| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | 🔲 规划 |
+| Data / ML | `@0xinfrax/data-sdk` | data + ml | 🔲 规划 |
+| MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
+| Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
+| LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
+| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions | ✅ 0.2.0 |
+
+> 拆分实施后，统一包与独立包**同源同步发版**（独立包薄封装 infrax-dk 对应 API 类）；调用方可按需二选一（全量 `infrax-dk` 或单服务独立包）。
 
 ---
 
@@ -170,7 +191,7 @@ await infrax.payment.transferConfirm(tr.transferId);        // 原子入账
 
 ## 2A. 独立 MPC SDK：`@0xinfrax/mpc-sdk`（MQ-10 补充 E-5）
 
-独立轻量包，**不依赖 infrax-dk**，仅面向 MPC 微服务契约（`/api/v2/mpc/*`）。首期覆盖**钱包模块（5 方法）+ 会话模块（3 方法）**；链上模块（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate）为后续版本。
+独立轻量包，**不依赖 infrax-dk**，仅面向 MPC 微服务契约（`/api/v2/mpc/*`）。**0.3.0 全量 16 方法**：钱包模块（6 方法）+ 会话模块（3 方法）+ **链上模块（7 方法，E-5d 已随 0.3.0 发布）**。
 
 ### 2A.1 安装与初始化
 
@@ -187,7 +208,7 @@ const mpc = new MpcClient({
 });
 ```
 
-### 2A.2 钱包模块（5 方法）
+### 2A.2 钱包模块（6 方法）
 
 | 方法 | 端点 | 说明 |
 |---|---|---|
@@ -195,6 +216,7 @@ const mpc = new MpcClient({
 | `wallet.register({ email, code, walletAddress? })` | `POST /api/v2/mpc/register` | 注册托管钱包（E2E 实测返回真实 EOA） |
 | `wallet.recover({ email, code, expectedAddress? })` | `POST /api/v2/mpc/recover` | 恢复流程封装：验证码→分片重建→地址校验（不一致抛 409/40900） |
 | `wallet.status({ email } \| { walletAddress })` | `GET /api/v2/mpc/status` | 双查询键钱包状态 |
+| `wallet.listWallets({ email })` | `GET /api/v2/mpc/wallets` | 列出邮箱名下全部托管钱包（含地址/chain/状态） |
 | `wallet.createWallet({ email })` | `POST /api/v2/mpc/send-code` | 组合入口（发码→register） |
 
 ### 2A.3 会话模块（3 方法）
@@ -205,11 +227,23 @@ const mpc = new MpcClient({
 | `session.lock(token)` | `POST /api/v2/mpc/session/lock` | 锁定令牌 |
 | `session.status({ token })` | `GET /api/v2/mpc/session/status` | 状态 + 剩余秒数 |
 
-### 2A.4 错误语义（E-5e）
+### 2A.4 链上模块（7 方法，E-5d 已随 0.3.0 发布）
+
+| 方法 | 端点 | 说明 |
+|---|---|---|
+| `chain.balance({ walletId, chain, tokenAddress? })` | `POST /api/v2/mpc/balance` | 钱包余额：原生币；传入 `tokenAddress` 附带 ERC20 余额/symbol/decimals |
+| `chain.signMessage({ walletId, message })` | `POST /api/v2/mpc/sign-message` | EIP-191 personal_sign 语义消息签名（服务端算摘要 + TSS 分片签名） |
+| `chain.signTypedData({ walletId, typedData })` | `POST /api/v2/mpc/sign-typed-data` | EIP-712 结构化数据签名（domain/types/value 原样透传，服务端 TypedDataEncoder.hash） |
+| `chain.sendTransaction({ walletId, to, value, chain, tokenAddress? })` | `POST /api/v2/mpc/send-transaction` | 发送交易：原生币转账；传入 `tokenAddress` = ERC20 transfer |
+| `chain.contractRead({ walletId, to, abi, method, args?, chain })` | `POST /api/v2/mpc/contract-read` | 合约只读调用（eth_call，不产生交易） |
+| `chain.contractWrite({ walletId, to, abi, method, args?, value?, chain })` | `POST /api/v2/mpc/contract-write` | 合约写调用（staticCall 模拟通过后 TSS 签名广播） |
+| `chain.gasEstimate({ walletId, to?, value?, data?, chain })` | `POST /api/v2/mpc/gas-estimate` | 估算交易 gas（gasLimit/gasPrice/estimatedCost） |
+
+### 2A.5 错误语义（E-5e）
 
 失败统一抛 `MpcApiError`（`status`/`code`/`kind`）：401 `unauthorized`（缺 key/会话无效）、400 `bad_request`（验证码错误/过期，code 1001）、404 `not_found`（未注册，code 1004）、409 `conflict`（SDK 恢复地址不一致，code 40900）、429 `rate_limited`（验证码尝试超限）、5xx `server_error`（分片解密失败 code 1007）。网络/超时抛 `MpcNetworkError`。
 
-### 2A.5 生产验证（2026-08-08，43.163.105.172）
+### 2A.6 生产验证（2026-08-08，43.163.105.172）
 
 `projects/mpc-sdk/scripts/mpc-sdk-e2e.mjs` 生产实测 **22/22 全绿**：无 key 401、注册/重复注册、status 双键、unlock→status→lock 全流程、伪造/已锁 token、recover 一致/不一致(409)/未注册(404)。测试中发现并修复生产缺陷：**MPC server 缺统一 JSON 错误处理器**（错误路径曾返回 Express HTML 而非信封）——`projects/mpc/server.ts` 新增 `app.use` 错误中间件后已随 `infrax-mpc` 重启生效，错误分支现返回 `{code,message,data}`。
 
