@@ -25,6 +25,10 @@ export interface InfraXConfig {
   /** chain-rpc gateway 广播 key（服务端签发的独立 key，仅 /v1/broadcast 端点可用；读端点拒绝）。
    *  未配置时 chainRpc.broadcast() 将明确报错（fail-closed），不会用读 key 打广播端点。 */
   chainRpcBroadcastKey?: string;
+  /** 通用支付引擎 @0xinfrax/payments (:9132) base URL；回退 baseUrl */
+  paymentsUrl?: string;
+  /** 支付引擎 API key（PAYMENTS_API_KEY）；回退 apiKey */
+  paymentsApiKey?: string;
   /** WAAS wallet/tx 端点（/api/v2/wallet/*、/api/v2/tx/*）钱包签名鉴权头（EIP-191，消息 `InfraX auth: <ts>`）。
    *  配置后 WalletAPI 每次请求自动生成 x-wallet-address/x-wallet-signature/x-wallet-timestamp。 */
   walletAddress?: string;
@@ -58,12 +62,45 @@ export interface SafeConfirmResult { sigCount: number; threshold: number; ready:
 export interface SafeExecuteParams { safeTxHash: string; }
 export interface SafeExecuteResult { txHash: string; executed: boolean; }
 
-// Payment
-export interface PaymentCreateParams { planId: string; amount: string; method?: string; currency?: string; }
-export interface PaymentCreateResult { paymentId: string; amount: string; status: string; }
-export interface PaymentStatusResult { paymentId: string; status: string; amount: string; }
-export interface X402PayParams { recipient: string; amount: string; token?: string; chain?: string; description?: string; }
-export interface X402PayResult { txHash: string; amount: string; token: string; }
+// Payment — @0xinfrax/payments 通用支付引擎（MQ-15 T-8 迁移；旧 :9106 /api/v2/payment/* 已下线）
+export interface PaymentCheckoutParams {
+  subscriber: string;
+  amountCents?: number;
+  planId?: string | number;
+  period?: string;
+  currency?: string;
+  chain?: string;
+  metadata?: Record<string, unknown>;
+  clientReference?: string;
+  successUrl?: string;
+  cancelUrl?: string;
+}
+export interface PaymentCheckoutResult { method: 'fiat'; paymentId: string; sessionUrl: string; sessionId: string; }
+export interface A2ACreateParams { subscriber: string; valueWei: string; payee?: string; asset?: string; chain?: string; metadata?: Record<string, unknown>; }
+export interface A2ACreateResult { method: 'a2a'; paymentId: string; amountWei: string; payee: string | null; }
+export interface A2ASettleParams { paymentId: string; txHash: string; chain?: string; }
+export interface A2ASettleResult { settled: boolean; paymentId: string; reference: string; payer: string; creditedWei: string; asset: string; chain: string; }
+export interface PaymentVerifyResult { verified: boolean; reference: string; payer: string; creditedWei: string; asset: string; chain: string; }
+export interface PaymentBalanceResult { address: string; balanceWei: string; }
+export interface PaymentPriceResult { planId: number; agentId: string; price: string; period: string; active: boolean; trialDays: number | null; payToken: string | null; }
+export interface PaymentCapability { id: string; enabled: boolean; endpoints: string[]; config?: Record<string, unknown>; }
+export interface PaymentCapabilitiesResult { capabilities: Record<string, PaymentCapability>; }
+// 旧方法兼容壳（签名保留；按 method 路由到新端点）
+export interface PaymentCreateParams {
+  subscriber: string;
+  planId?: string | number;
+  /** USD 金额（fiat 时 *100 转美分；chain/a2a 忽略，用 valueWei） */
+  amount?: string | number;
+  method?: 'fiat' | 'chain' | 'a2a';
+  currency?: string;
+  chain?: string;
+  /** chain/a2a 时必填：金额（wei） */
+  valueWei?: string;
+  payee?: string;
+  asset?: string;
+  metadata?: Record<string, unknown>;
+}
+export interface PaymentCreateResult { method: 'fiat' | 'a2a'; paymentId: string; amount: string; status: string; sessionUrl?: string; sessionId?: string; }
 
 // SaaS
 export interface TenantCreateParams { name: string; planId?: string; metadata?: Record<string, any>; }
@@ -189,7 +226,19 @@ class HttpClient {
     return r.json();
   }
 
+  /** Raw GET — 返回裸 JSON（对接 @0xinfrax/payments 引擎：其响应非 InfraXResponse 包装） */
+  async getRaw<T>(path: string, headers?: Record<string, string>): Promise<T> {
+    const r = await this.fetch(path, { method: 'GET', headers });
+    return r.json();
+  }
+
   async post<T>(path: string, body?: any, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
+    const r = await this.fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, headers });
+    return r.json();
+  }
+
+  /** Raw POST — 返回裸 JSON（对接 @0xinfrax/payments 引擎） */
+  async postRaw<T>(path: string, body?: any, headers?: Record<string, string>): Promise<T> {
     const r = await this.fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, headers });
     return r.json();
   }
@@ -273,17 +322,72 @@ class SafeAPI {
   async status(walletAddress?: string) { return this.http.get<any>('/api/vault/safe/status' + (walletAddress ? '?walletAddress=' + walletAddress : '')); }
 }
 
-// ═══════════════ Payment — checkout, x402 auto-pay ═══════════════
+// ═══════════════ Payment — @0xinfrax/payments 通用支付引擎（MQ-15 T-8 迁移） ═══════════════
+// 旧 :9106 /api/v2/payment/* 已下线；以下全部对接通用支付引擎 :9132 /payments/*。
+// 鉴权：X-API-Key（= PAYMENTS_API_KEY）。引擎响应为裸 JSON，非 InfraXResponse 包装。
 
 class PaymentAPI {
   constructor(private http: HttpClient) {}
-  async create(params: PaymentCreateParams) { return this.http.post<PaymentCreateResult>('/api/v2/payment/create', params); }
-  async status(paymentId: string) { return this.http.get<PaymentStatusResult>('/api/v2/payment/status?paymentId=' + encodeURIComponent(paymentId)); }
-  async confirm(paymentId: string) { return this.http.post<any>('/api/v2/payment/confirm', { paymentId }); }
-  async history() { return this.http.get<any>('/api/v2/payment/history'); }
-  /** x402: auto-approve ERC20 payment for API access */
-  async x402Pay(params: X402PayParams) { return this.http.post<X402PayResult>('/api/v2/payment/x402/pay', params); }
-  async x402Info() { return this.http.get<any>('/api/v2/payment/x402/info'); }
+
+  /** fiat checkout（Stripe）——创建支付会话，返回跳转 URL */
+  async checkout(params: PaymentCheckoutParams): Promise<PaymentCheckoutResult> {
+    return this.http.postRaw<PaymentCheckoutResult>('/payments/checkout', params);
+  }
+
+  /** a2a 意图——创建一笔直接收款意图（后续链上支付 + a2aSettle 结算，或账本支付） */
+  async a2a(params: A2ACreateParams): Promise<A2ACreateResult> {
+    return this.http.postRaw<A2ACreateResult>('/payments/a2a', params);
+  }
+
+  /** a2a 结算——提交 payer 的链上 txHash，验证并记账（x402 rail 校验） */
+  async a2aSettle(params: A2ASettleParams): Promise<A2ASettleResult> {
+    return this.http.postRaw<A2ASettleResult>('/payments/a2a/settle', params);
+  }
+
+  /** 链上支付验证（x402 rail）——校验 tx 是否打到平台收款地址 */
+  async verify(txHash: string, chain?: string): Promise<PaymentVerifyResult> {
+    return this.http.postRaw<PaymentVerifyResult>('/payments/verify', { txHash, chain });
+  }
+
+  /** 账本余额查询（引擎 credit 账本） */
+  async balance(address: string, asset?: string): Promise<PaymentBalanceResult> {
+    return this.http.getRaw<PaymentBalanceResult>('/payments/balance?address=' + encodeURIComponent(address) + (asset ? '&asset=' + encodeURIComponent(asset) : ''));
+  }
+
+  /** 引擎能力探测——查看已启用 rail（chain/fiat/x402/period/batch/invite/transfer/...） */
+  async capabilities(): Promise<PaymentCapabilitiesResult> {
+    return this.http.getRaw<PaymentCapabilitiesResult>('/payments/capabilities');
+  }
+
+  /** 链上套餐定价（替代旧 x402/info） */
+  async price(planId: number | string, chain?: string): Promise<PaymentPriceResult> {
+    return this.http.getRaw<PaymentPriceResult>('/payments/price?planId=' + encodeURIComponent(String(planId)) + (chain ? '&chain=' + encodeURIComponent(chain) : ''));
+  }
+
+  // ── 旧方法兼容壳（签名保留；按 method 路由到新端点）──
+
+  /** create：按 method 路由——fiat→checkout；chain/a2a→a2a（需 subscriber + valueWei） */
+  async create(params: PaymentCreateParams): Promise<PaymentCreateResult> {
+    const method = params.method || 'fiat';
+    if (method === 'chain' || method === 'a2a') {
+      if (!params.valueWei) throw new Error('[infrax-sdk] payment.create(method="chain"/"a2a") 需要 valueWei（wei）——或直接调用 payment.a2a()');
+      const r = await this.a2a({ subscriber: params.subscriber, valueWei: params.valueWei, payee: params.payee, asset: params.asset, chain: params.chain, metadata: params.metadata });
+      return { method: 'a2a', paymentId: r.paymentId, amount: r.amountWei, status: 'created' };
+    }
+    const amountCents = params.amount !== undefined ? Math.max(1, Math.round(Number(params.amount) * 100)) : undefined;
+    const r = await this.checkout({ subscriber: params.subscriber, amountCents, planId: params.planId, currency: params.currency, chain: params.chain, metadata: params.metadata });
+    return { method: 'fiat', paymentId: r.paymentId, amount: params.amount !== undefined ? String(params.amount) : '', status: 'created', sessionUrl: r.sessionUrl, sessionId: r.sessionId };
+  }
+
+  /** confirm：提交链上交易确认（→ a2a/settle；需 paymentId + txHash） */
+  async confirm(paymentId: string, txHash: string, chain?: string): Promise<A2ASettleResult> {
+    return this.a2aSettle({ paymentId, txHash, chain });
+  }
+
+  /** x402Info：旧 x402/info → 引擎链上套餐定价（需 planId） */
+  async x402Info(planId: number | string, chain?: string): Promise<PaymentPriceResult> {
+    return this.price(planId, chain);
+  }
 }
 
 // ═══════════════ SaaS — tenant management, billing, apikeys ═══════════════
@@ -723,7 +827,12 @@ export class InfraX {
     this.http = new HttpClient(config);
     this.wallet = new WalletAPI(this.http, config);
     this.safe = new SafeAPI(this.http);
-    this.payment = new PaymentAPI(this.http);
+    // 通用支付引擎独立 baseUrl（paymentsUrl 优先，回退 baseUrl）+ 独立 key（paymentsApiKey 优先，回退 apiKey）
+    this.payment = new PaymentAPI(new HttpClient({
+      ...config,
+      baseUrl: config.paymentsUrl || config.baseUrl,
+      apiKey: config.paymentsApiKey || config.apiKey,
+    }));
     this.saas = new SaaSAPI(this.http);
     this.sub = new SubAPI(this.http);
     this.dc = new DCAPI(this.http);

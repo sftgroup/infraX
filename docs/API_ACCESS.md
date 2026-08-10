@@ -165,13 +165,23 @@ Base URL:  https://api.infrax.io
 
 ---
 
-### 💳 Payment — 支付引擎 (`:9106`)
+### 💳 Payment — 通用支付引擎 @0xinfrax/payments (`:9132`，MQ-15 T-8 迁移；旧 `:9106 /api/v2/payment/*` 已下线)
+
+SDK 用法：`ix.payment.checkout() / a2a() / a2aSettle() / verify() / balance() / capabilities() / price()`（需配置 `paymentsUrl` + `paymentsApiKey`）。
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
-| `POST` | `/api/v2/payment/create` | 创建支付 |
-| `GET` | `/api/v2/payment/status` | 查询状态 |
-| `POST` | `/api/v2/payment/x402/pay` | x402 自动支付 |
+| `POST` | `/payments/checkout` | Stripe fiat checkout（创建支付会话，返回 sessionUrl） |
+| `POST` | `/payments/a2a` | a2a 收款意图（返回 paymentId，链上/账本支付） |
+| `POST` | `/payments/a2a/settle` | 提交链上 txHash 结算（x402 验证 + 记账） |
+| `POST` | `/payments/verify` | 链上支付验证（txHash → 是否打到平台收款地址） |
+| `GET` | `/payments/balance?address=` | 账本余额 |
+| `GET` | `/payments/capabilities` | 引擎能力探测 |
+| `GET` | `/payments/price?planId=` | 链上套餐定价 |
+| `POST` | `/payments/period/charge` | 订阅周期扣费（period 能力） |
+| `POST` | `/payments/invites` | agent 自动收费邀请（invite 能力） |
+| `POST` | `/payments/transfers` | 账本内转账（transfer 能力） |
+| `POST` | `/payments/batch` | 批量收款（batch 能力） |
 
 ---
 
@@ -466,8 +476,15 @@ await ix.vault.createTransaction({ safeId: safe.data.address, to: '0x...', amoun
 // ═══ DC ═══
 const events = await ix.dc.events({ chain: 'ethereum', eventType: 'Transfer', limit: 50 });
 
-// ═══ Payment ═══
-await ix.payment.x402Pay({ recipient: '0x...', amount: '10', token: 'USDC' });
+// ═══ Payment — @0xinfrax/payments 通用支付引擎（MQ-15 T-8 迁移，旧 x402Pay 已下线）═══
+// 需配置 paymentsUrl + paymentsApiKey（或由网关 /payments 反代 + apiKey）
+// Stripe fiat checkout（返回跳转 URL）：
+await ix.payment.checkout({ subscriber: '0xuser', amountCents: 4900, period: 'month' });
+// 链上 a2a 意图 → 用户钱包支付 → 提交 txHash 结算（x402 rail 验证）：
+const intent = await ix.payment.a2a({ subscriber: '0xuser', valueWei: '1000000000000000', chain: 'sepolia' });
+const settled = await ix.payment.a2aSettle({ paymentId: intent.paymentId, txHash: '0x...', chain: 'sepolia' });
+// 链上支付验证（等效 verify）：
+const ok = await ix.payment.verify('0x...', 'sepolia');
 ```
 
 ### Session Key SDK
