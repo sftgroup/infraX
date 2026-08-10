@@ -1295,7 +1295,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
 | A-8 | vault 增强实施（待排期） | 按 W-4.1：vault 支持 MPC session confirm（`wallets` 表登记 / executeTransaction 加固）+ SDK 透传 + 文档样例 | 🔲 | P2 |
-| A-9 | Paymaster/relay 配额前端展示 | 集成方控制台（admin/自助面板）展示 aa-relay 配额与剩余配额（按调用者 API Key，对应 §7 通用化设计第 4 项）：数据源 = relay 配额统计接口（period/quota/used/remaining/resetAt），前端配额页 + 用量表 + 超限提示（对齐 market `/usage` 交互：planName/monthlyQuota/currentUsage） | 🔲 | P2 |
+| A-9 | Paymaster/relay 配额前端展示 | 集成方控制台（admin/自助面板）展示 aa-relay 配额与剩余配额（按调用者 API Key，对应 §7 通用化设计第 4 项）：数据源 = relay 配额统计接口（period/quota/used/remaining/resetAt），前端配额页 + 用量表 + 超限提示（对齐 market `/usage` 交互：planName/monthlyQuota/currentUsage）。**已按 A-10 修正：配额展示按产品线独立（per-product），不做统一租户视图** | 🔲 | P2 |
+| A-10 | per-product 计费设计（2026-08-11 登记） | **机制统一、账户分离**：payments 引擎 ledger 机制复用（subscriber 维度通用字符串、transfers 原子扣费、capabilities 守卫、webhook 多目标、px_ key 校验——**引擎已完成 ✅，无引擎侧开发**）；各产品线独立订阅/配额/定价（用户群不同，不收敛统一租户账本）——dc/market/chain-rpc/mpc 已接入 ✅（MQ-16 T-1~T-4）；**待接入 🔲**：vault 线（gas 用户自付，仿 mpc：用户钱包 subscriber → 充值 → createSafe/execute 按实际 gas 扣费，GAS_POOL 仅广播，不垫付）、session/AA 线（session 订阅：UserOp 次数 + paymaster gas 代付，subscriber 扣费） | 🔲 | P1 |
 
 **9.11 PocketX → InfraX 交接更新（2026-08-11）**
 
