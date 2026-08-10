@@ -57,8 +57,8 @@
 | 系统 | Ubuntu 24.04.4 LTS |
 | 规格 | 2C / 3.6G / 59G |
 | 代码路径 | `/home/ubuntu/infraX-1` |
-| 承载范围 | 数据栈（9112/9113/9721/3002）+ 区块链栈（9100-9111）+ session-key（3500）+ MCP（3008/3011）+ admin/web + nginx（80/443）——18 个 systemd 服务 |
-| 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 已弃用 |
+| 承载范围 | 数据栈（9112/9113/9721/3002）+ 区块链栈（9100-9111）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx（80/443）——24 个 systemd 服务 + 1 清理 timer |
+| 旧服务器 | ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ **已彻底移除**（2026-08-11 全量核查：systemd/nginx/cron、服务 env、代码库非文档、`.env`、PostgreSQL 均无残留引用；`projects/data/.env.example` COLLECTOR_URL 已改指 `43.163.105.172:9101`） |
 
 ```bash
 ssh ubuntu@43.163.105.172
@@ -959,7 +959,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | R-1 | **SDK `wallet.rpc()`（通用 RPC 转发代理）服务端不存在**：`POST /api/v2/wallet/rpc` 无路由 → 调用必 404（B-10-4 实锤） | `projects/sdk/src/index.ts` `rpc()` vs `projects/waas/routes/walletRoutes.ts`（仅 create/import/balance/address/transactions/token-info/token-balance/nfts/:chainId/custom-token*） | ✅ 已收口：MQ-1（2026-08-07）waas `POST /api/v2/wallet/rpc` 通用 RPC 转发代理落地，SDK `wallet.rpc()` 返回真实链上结果（B-10-4 关闭）；MQ-10 起由 chain-rpc 网关统一承载 |
 | R-2 | **SDK WalletAPI 与后端契约系统性错位**：`wallet.send/simulate/sweep/txStatus` 指向不存在端点；waas 真实端点为 `/api/v2/tx/*`（txRoutes）与 `/api/v2/internal/*` | `projects/sdk/src/index.ts` L174-179 | ✅ 已收口：MQ-2（2026-08-07）SDK WalletAPI 对齐 waas 真实端点（send/simulate/sweep/txStatus/rpc） |
 | R-3 | **okxchainos 新栈仅 2 类快照**：`okx_hot_tokens` + `okx_index_prices`（60s 落 raw_snapshots，自旧栈 collector `COLLECTOR_URL` 拉取）；candles 仅旧栈落库；SDK MarketAPI 14 方法按需直连 collector 不落库 | `projects/data/app/collectors/okx_chainos.py`；`okxMarketScheduler.ts` | ⚠️ |
-| R-4 | **okxchainos 生产出数无实证**：仓库无 data `.env`（生产值不可验证），`.env.example` 的 `COLLECTOR_URL` 示例指向已弃用旧服务器 43.156.99.215；需实测 `/snapshots?type=okx` 与 collector `okx_token_snapshots` 表 | `.env.example` L87-88；本文件 L55 弃用标注 | ⚠️ 待实测（建议 2026-08-07） |
+| R-4 | **okxchainos 生产出数无实证**：仓库无 data `.env`（生产值不可验证），`.env.example` 的 `COLLECTOR_URL` 示例当时指向旧服务器 43.156.99.215（2026-08-11 核查：L87 已改指 `43.163.105.172:9101`，旧服务器地址已彻底移除，见 §2 旧服务器行）；需实测 `/snapshots?type=okx` 与 collector `okx_token_snapshots` 表 | `.env.example` L87-88；本文件 §2 旧服务器行 | ⚠️ 待实测（建议 2026-08-07） |
 | R-5 | **MPC SDK 封装不完整**：infrax-dk `MPCAPI` 仅 5/15 方法（send-code/register/recover/status/createWallet），签名/会话/交易/合约读写未封装 | `projects/sdk/src/index.ts` L270-277 vs `projects/mpc/server.ts` | ✅ 已收口：MQ-7（2026-08-07）infrax-dk `MPCAPI` 5→15 方法全端点封装；另有独立包 `@0xinfrax/mpc-sdk`（16 方法，0.3.0） |
 | R-6 | **Session Key 额度校验未实现**：`maxPerTx/maxTotal/totalSpent` 无校验，`addSpent()` 无调用点，`quota_exhausted` 不可达（PRD S-05"额度三重校验"实为两重）；`expireStale()` 过期清理未接线 | `session-key/packages/server/src/services/execution-service.ts` L30-40；`session-repo.ts` L59-63 | ✅ 已收口：MQ-4（2026-08-07）三重额度校验落地（`addSpent` 接线、`maxPerTx/maxTotal` 真实校验、`quota_exhausted` 可达）+ `expireStale()` 过期清理接线 |
 | R-7 | **Session Key PRD 未定稿**（v1.0 Draft）+ 声明的集成测试文件不存在（全仓无 `*.test.ts`） | `docs/SESSION_KEY_ENGINE_PRD.md` | ⚠️ |
