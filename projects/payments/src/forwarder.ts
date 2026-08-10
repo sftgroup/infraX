@@ -6,13 +6,15 @@
 // normalized payment events to the host that owns the business state.
 //
 // Delivery contract (both callbacks):
-//   POST {targetUrl}
+//   POST {each targetUrl}
 //     headers:
 //       content-type: application/json
 //       idempotency-key: <event object id | credit.reference>   (idempotent)
 //       x-payments-signature: HMAC-SHA256(body, secret)          (when secret set)
 //     body: { type: 'webhook' | 'credit', eventId, event, forwardedAt }
 //
+// Multiple targets (MQ-16 前置项): opts.targets 是独立业务回调端点数组，事件逐一投递到
+// 每个目标，各目标独立重试/退避——单个目标失败不影响其余目标（业务方各自按 reference 幂等对账）。
 // Failures never throw — the payment engine keeps working; delivery is
 // retried with exponential backoff and dropped with a warn log when exhausted
 // (the business host is expected to reconcile from the payment_* tables).
@@ -22,8 +24,8 @@ import { hmacSha256Hex } from './crypto'
 import type { PaymentCredit, WebhookEvent } from './types'
 
 export interface WebhookForwardOptions {
-  /** Business callback endpoint that consumes the normalized events. */
-  targetUrl: string
+  /** Business callback endpoints that consume the normalized events (>=1). */
+  targets: string[]
   /** HMAC-SHA256 signing secret for `x-payments-signature`. Optional. */
   secret?: string
   /** Per-attempt request timeout in ms. Default 10_000. */
@@ -52,7 +54,7 @@ export function createWebhookForwarder(opts: WebhookForwardOptions): WebhookForw
     error: (m: string) => console.error(`[payments-forwarder] ${m}`),
   }
 
-  /** POST one normalized event; retry with backoff; never throws. */
+  /** POST one normalized event to every target; per-target retry with backoff; never throws. */
   async function deliver(kind: 'webhook' | 'credit', eventId: string, payload: unknown): Promise<void> {
     const body = JSON.stringify({ type: kind, eventId, event: payload, forwardedAt: new Date().toISOString() })
     const headers: Record<string, string> = {
@@ -62,27 +64,29 @@ export function createWebhookForwarder(opts: WebhookForwardOptions): WebhookForw
     if (opts.secret) {
       headers['x-payments-signature'] = await hmacSha256Hex(opts.secret, body)
     }
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const res = await fetch(opts.targetUrl, {
-          method: 'POST',
-          headers,
-          body,
-          signal: AbortSignal.timeout(timeoutMs),
-        })
-        if (res.ok) {
-          log.info(`${kind} ${eventId} → ${opts.targetUrl} (attempt ${attempt + 1})`)
-          return
+    for (const target of opts.targets) {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(target, {
+            method: 'POST',
+            headers,
+            body,
+            signal: AbortSignal.timeout(timeoutMs),
+          })
+          if (res.ok) {
+            log.info(`${kind} ${eventId} → ${target} (attempt ${attempt + 1})`)
+            break
+          }
+          throw new Error(`status ${res.status}`)
+        } catch (err) {
+          if (attempt >= maxRetries) {
+            log.error(`${kind} ${eventId} → ${target} failed after ${maxRetries + 1} attempts: ${(err as Error).message}`)
+            continue
+          }
+          const backoffMs = 500 * 2 ** attempt
+          log.warn(`${kind} ${eventId} → ${target} attempt ${attempt + 1} failed: ${(err as Error).message} — retry in ${backoffMs}ms`)
+          await sleep(backoffMs)
         }
-        throw new Error(`status ${res.status}`)
-      } catch (err) {
-        if (attempt >= maxRetries) {
-          log.error(`${kind} ${eventId} failed after ${maxRetries + 1} attempts: ${(err as Error).message}`)
-          return
-        }
-        const backoffMs = 500 * 2 ** attempt
-        log.warn(`${kind} ${eventId} attempt ${attempt + 1} failed: ${(err as Error).message} — retry in ${backoffMs}ms`)
-        await sleep(backoffMs)
       }
     }
   }

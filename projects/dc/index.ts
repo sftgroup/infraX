@@ -1,12 +1,12 @@
 // InfraX DC Server — Data Center Service
 // API: subscription management + B-end data query (events/stats/checkpoints)
-// API: subscription management + B-end data query (events/stats/checkpoints)
 // DB: pocketx_dc (independent PostgreSQL)
 import express from 'express';
 import { Pool } from 'pg';
 import crypto from 'crypto';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
+import client from 'prom-client';
 
 // ─── DB Pools: dc service uses pocketx_dc (users/tenants) + pocketx_collector (events) ───
 const eventsPool = new Pool({
@@ -196,6 +196,87 @@ function monthStart(): Date {
   const d = new Date();
   d.setDate(1); d.setHours(0, 0, 0, 0);
   return d;
+}
+
+// ─── MQ-16 监控：Prometheus /metrics（配额使用率 + 订阅状态分布）───
+// 对齐 projects/shared/metrics.py 的统一监控接入（/metrics 免鉴权，探针可拉取）。
+// 数据源：pocketx_dc（api_usage 月度计数 + tenants 订阅状态），刮取时刷新（15s TTL 防频繁查库）。
+const metricsRegistry = new client.Registry();
+client.collectDefaultMetrics({ register: metricsRegistry });
+
+const subStatusTotal = new client.Gauge({
+  name: 'dc_subscription_status_total',
+  help: '租户订阅状态分布（active/pending/failed/none）',
+  labelNames: ['status'],
+  registers: [metricsRegistry],
+});
+const quotaUsedByPlan = new client.Gauge({
+  name: 'dc_quota_used_total',
+  help: '本月已用配额（api_usage 月度计数）按套餐聚合',
+  labelNames: ['plan'],
+  registers: [metricsRegistry],
+});
+const quotaLimitByPlan = new client.Gauge({
+  name: 'dc_quota_limit_total',
+  help: '套餐月度配额上限（apiCallsPerMonth）',
+  labelNames: ['plan'],
+  registers: [metricsRegistry],
+});
+const quotaUsageRatio = new client.Gauge({
+  name: 'dc_quota_usage_ratio',
+  help: '租户本月配额使用率（used/quota，0-1，超限按 1）',
+  labelNames: ['tenant', 'plan'],
+  registers: [metricsRegistry],
+});
+
+let metricsLastRefresh = 0;
+async function refreshMetrics(): Promise<void> {
+  const now = Date.now();
+  if (now - metricsLastRefresh < 15_000) return; // TTL：避免每刮一次查一次库
+  metricsLastRefresh = now;
+  try {
+    const [statusRes, usedRes, tenantsRes] = await Promise.all([
+      pool.query(`SELECT COALESCE(dc_sub_status, 'none') AS status, COUNT(*)::int AS cnt FROM tenants GROUP BY 1`),
+      pool.query(
+        `SELECT COALESCE(t.data_plan_id, 'data_free') AS plan, COUNT(a.id)::int AS used
+         FROM tenants t LEFT JOIN api_usage a ON a.tenant_id = t.id AND a.timestamp >= $1
+         GROUP BY 1`,
+        [monthStart()]
+      ),
+      pool.query(`SELECT t.id, COALESCE(t.data_plan_id, 'data_free') AS plan FROM tenants t`),
+    ]);
+    // 订阅状态分布
+    subStatusTotal.reset();
+    for (const row of statusRes.rows) subStatusTotal.labels(row.status).set(row.cnt);
+    // 套餐配额：used + limit
+    const usedMap: Record<string, number> = {};
+    for (const row of usedRes.rows) usedMap[row.plan] = row.used;
+    for (const p of DATA_PLANS) {
+      quotaUsedByPlan.labels(p.id).set(usedMap[p.id] || 0);
+      quotaLimitByPlan.labels(p.id).set(p.features.apiCallsPerMonth);
+    }
+    // 租户级使用率（高基数 label，自托管规模可用；量大时可改为只暴露 top-N）
+    quotaUsageRatio.reset();
+    const usedByTenant = new Map<string, number>();
+    const detail = await pool.query(
+      `SELECT a.tenant_id, COUNT(a.id)::int AS used, COALESCE(t.data_plan_id, 'data_free') AS plan
+       FROM api_usage a JOIN tenants t ON t.id = a.tenant_id
+       WHERE a.timestamp >= $1 GROUP BY a.tenant_id, t.data_plan_id`,
+      [monthStart()]
+    );
+    for (const row of detail.rows) {
+      usedByTenant.set(row.tenant_id, row.used);
+    }
+    for (const row of tenantsRes.rows) {
+      const plan = row.plan;
+      const planDef = DATA_PLANS.find((p: any) => p.id === plan);
+      const quota = planDef ? planDef.features.apiCallsPerMonth : DATA_PLANS[0].features.apiCallsPerMonth;
+      const used = usedByTenant.get(row.id) || 0;
+      quotaUsageRatio.labels(row.id, plan).set(quota > 0 ? Math.min(used / quota, 1) : 1);
+    }
+  } catch (e: any) {
+    console.error('[DC] metrics refresh failed:', e.message);
+  }
 }
 
 /** MQ-16 T-1: 引擎支付确认后激活 DC 订阅（pending→active，幂等；激活时补发 dc_api_key）。 */
@@ -662,6 +743,13 @@ app.get('/api/v2/data/docs', asyncHandler(async (_req: any, res: any) => {
 // ─── Health ───
 app.get('/health', asyncHandler(async (_req: any, res: any) => {
   res.json({ status: 'ok', service: 'infrax-dc', uptime: process.uptime() });
+}));
+
+// MQ-16 监控：Prometheus 指标（配额使用率 + 订阅状态分布；免鉴权，对齐 metrics.py）
+app.get('/metrics', asyncHandler(async (_req: any, res: any) => {
+  await refreshMetrics();
+  res.set('Content-Type', metricsRegistry.contentType);
+  res.send(await metricsRegistry.metrics());
 }));
 
 const PORT = parseInt(process.env.PORT || '3001', 10);

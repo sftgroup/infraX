@@ -109,9 +109,14 @@ function buildChains(): Record<string, { rpcUrl: string; chainId: number; subscr
 }
 
 // ── Event forwarding (standalone shape: business state lives on the host) ──
-const forwarder = process.env.WEBHOOK_FORWARD_URL
+// MQ-16 前置项：WEBHOOK_FORWARD_URL 支持逗号分隔多目标（waas + dc 等业务方各自收事件）
+const forwardTargets = (process.env.WEBHOOK_FORWARD_URL || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+const forwarder = forwardTargets.length > 0
   ? createWebhookForwarder({
-      targetUrl: process.env.WEBHOOK_FORWARD_URL,
+      targets: forwardTargets,
       secret: process.env.WEBHOOK_FORWARD_SECRET,
       logger,
     })

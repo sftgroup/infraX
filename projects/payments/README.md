@@ -10,7 +10,7 @@
 
 - **嵌入式服务**：作为宿主 Gateway 的内部引擎（AgentX 即此形态的参考实现，见 `gateway/src/services/payments.ts`）
 - **独立库**：可被任意项目依赖，以「调用方自持 store」的形态独立运行
-- **独立服务（微服务形态）**：仓库内置部署入口 [`server.ts`](server.ts)（tsx 直跑）——Express + 统一鉴权（auth-express，Bearer/X-API-Key/X-Service-Key）+ `PgPaymentStore`（`pocketx_payments` 独立库，启动自动跑 4 迁移）+ `/health` + `createPaymentsRouter`（挂 `/payments`）；链上读可配 `CHAIN_RPC_READ_KEY` 走 chain-rpc 网关（DC-10）；`WEBHOOK_FORWARD_URL` 时事件出站转发（`createWebhookForwarder`）。systemd 模板见 `deploy/systemd/infrax-payments.service`（:9132）
+- **独立服务（微服务形态）**：仓库内置部署入口 [`server.ts`](server.ts)（tsx 直跑）——Express + 统一鉴权（auth-express，Bearer/X-API-Key/X-Service-Key）+ `PgPaymentStore`（`pocketx_payments` 独立库，启动自动跑 4 迁移）+ `/health` + `createPaymentsRouter`（挂 `/payments`）；链上读可配 `CHAIN_RPC_READ_KEY` 走 chain-rpc 网关（DC-10）；`WEBHOOK_FORWARD_URL` 时事件出站转发（`createWebhookForwarder`，**MQ-16 起支持逗号分隔多目标**——如 `http://127.0.0.1:9109/api/v2/subscription/payment-callback,http://127.0.0.1:9102/api/v2/data/payment-callback`，每个业务方独立收事件、独立重试，按 reference 幂等对账）。systemd 模板见 `deploy/systemd/infrax-payments.service`（:9132）
 
 核心设计：**模块只懂钱**（方法 / 资产 / 金额 / 凭证）。业务上下文（如 `agentId`、订单号）一律经 `metadata` 透传；持久化走注入的 `PaymentStore` 接缝；宿主业务（订阅注册、发货）只通过 `onWebhookEvent` / `onCredit` 回调接入。模块不解释、不校验、不消费任何业务参数。
 

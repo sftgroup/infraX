@@ -32,7 +32,7 @@ describe('createWebhookForwarder', () => {
 
   it('forwards webhook events to the target URL with an idempotency key', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200))
-    const fwd = createWebhookForwarder({ targetUrl: 'https://biz.example/cb' })
+    const fwd = createWebhookForwarder({ targets: ['https://biz.example/cb'] })
     await fwd.onWebhookEvent(webhookEvent)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -49,7 +49,7 @@ describe('createWebhookForwarder', () => {
 
   it('forwards credits with the reference as the idempotency key', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200))
-    const fwd = createWebhookForwarder({ targetUrl: 'https://biz.example/cb' })
+    const fwd = createWebhookForwarder({ targets: ['https://biz.example/cb'] })
     await fwd.onCredit(credit)
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -62,7 +62,7 @@ describe('createWebhookForwarder', () => {
 
   it('signs the body with HMAC-SHA256 when a secret is configured', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200))
-    const fwd = createWebhookForwarder({ targetUrl: 'https://biz.example/cb', secret: 's3cret' })
+    const fwd = createWebhookForwarder({ targets: ['https://biz.example/cb'], secret: 's3cret' })
     await fwd.onWebhookEvent(webhookEvent)
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -72,7 +72,7 @@ describe('createWebhookForwarder', () => {
 
   it('retries transient failures with backoff and succeeds on the second attempt', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(500)).mockResolvedValueOnce(jsonResponse(200))
-    const fwd = createWebhookForwarder({ targetUrl: 'https://biz.example/cb', maxRetries: 2 })
+    const fwd = createWebhookForwarder({ targets: ['https://biz.example/cb'], maxRetries: 2 })
     await fwd.onWebhookEvent(webhookEvent)
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -80,8 +80,35 @@ describe('createWebhookForwarder', () => {
 
   it('never throws after exhausting retries', async () => {
     fetchMock.mockResolvedValue(jsonResponse(500))
-    const fwd = createWebhookForwarder({ targetUrl: 'https://biz.example/cb', maxRetries: 1 })
+    const fwd = createWebhookForwarder({ targets: ['https://biz.example/cb'], maxRetries: 1 })
     await expect(fwd.onCredit(credit)).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('forwards one event to every target independently (multi-target)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200))
+    const fwd = createWebhookForwarder({ targets: ['https://waas.example/cb', 'https://dc.example/cb'] })
+    await fwd.onWebhookEvent(webhookEvent)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const urls = fetchMock.mock.calls.map((c) => c[0])
+    expect(urls).toContain('https://waas.example/cb')
+    expect(urls).toContain('https://dc.example/cb')
+    // 两个目标收到相同事件体（相同 idempotency-key，业务方各自幂等）
+    const [, init1] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [, init2] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect((init1.headers as Record<string, string>)['idempotency-key'])
+      .toBe((init2.headers as Record<string, string>)['idempotency-key'])
+    expect(init1.body).toBe(init2.body)
+  })
+
+  it('one failing target does not block delivery to the other target', async () => {
+    fetchMock.mockImplementation((url: string) => Promise.resolve(jsonResponse(url.includes('down') ? 500 : 200)))
+    const fwd = createWebhookForwarder({ targets: ['https://down.example/cb', 'https://up.example/cb'], maxRetries: 1 })
+    await fwd.onCredit(credit)
+
+    expect(fetchMock).toHaveBeenCalledTimes(3) // down 重试 2 次失败 + up 成功
+    const urls = fetchMock.mock.calls.map((c) => c[0])
+    expect(urls.filter((u) => u === 'https://up.example/cb')).toHaveLength(1)
   })
 })
