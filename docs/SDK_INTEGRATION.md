@@ -314,7 +314,7 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 
 ## 6. 覆盖缺口（B-12-* 待办）
 
-- `session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）
+- ~~`session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）~~ ✅ 已闭环：Session Key 为**独立 4 包**（不在 infrax-dk）——`@0xinfrax/session-key-client` 0.1.0 / `-core` 0.1.0 / `-evm` 0.1.1 / `-server` 0.1.1 已发布 npm（2026-07-31 ~ 08-07），接入示例见 [docs/services/session-key.md](./services/session-key.md) Quick Start
 - SDK 未含 ragservicer 图谱方法（走 `lightrag-client` / `ragservicer-sdk`）
 - WAAS 统一鉴权接入后需同步更新 SDK 示例（B-12-1）
 - ~~PyPI 发布待 token（G-9）~~ ✅ 已闭环（lightrag-client 2.0.0 + infra-data-client 0.2.0 已发布，2026-08-11）

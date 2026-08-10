@@ -2,6 +2,46 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+读 key：服务端 `CHAIN_RPC_READ_KEY`；广播 key：服务端单独签发的 `CHAIN_RPC_BROADCAST_KEY`（仅 `/v1/broadcast` 端点可用，读端点拒绝）；或订阅面 `POST /v1/subscription/issue-key` 签发 `rx_` 读 key（仅展示一次）。本服务**仅内网**，外部经 VPN/跳板或业务服务转发访问，无公网代理路径。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  chainRpcUrl: 'http://127.0.0.1:9130',           // 内网直连（服务仅内网）
+  chainRpcApiKey: process.env.CHAIN_RPC_READ_KEY, // 读 key（自动带 x-api-key 头）
+});
+
+// 通用链上读（生产实测 eth_blockNumber）
+const bn = await infrax.chainRpc.call({ chain: 'sepolia', method: 'eth_blockNumber' });
+console.log(bn.data.result);
+
+// 服务健康
+await infrax.chainRpc.health();
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9130/v1/rpc/sepolia \
+  -H "X-Service-Key: <CHAIN_RPC_READ_KEY>" -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 全仓唯一链上 RPC 读取 + 交易广播网关（systemd `infrax-chain-rpc`）：所有中心化服务（waas / dc / collector / mpc / payments…）统一经本网关读链上数据、广播已签名交易；网关**不持有任何私钥**，广播仅转发调用方已签名的 rawTx。读写鉴权分级——读 key 无法触达广播端点。MQ-16 T-3 附加 **RPC 读套餐订阅**面（`/v1/subscription/*`，`rx_` key 鉴权、配额超限返回 **503**）。

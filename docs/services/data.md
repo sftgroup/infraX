@@ -2,6 +2,45 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+平台 bridge key `DATA_API_KEY`（回退链 `RAGSERVICER_API_KEY` → `DOC_API_KEY` → `LIGHTRAG_API_KEY`），或 `POST /admin/api-keys` 签发多租户 `dx_` key（管理端点用 Bearer `ADMIN_API_KEY`）。`/health` 免鉴权。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  dataUrl: 'http://127.0.0.1:9112',   // 内网直连（仅生产机本机）；公网经 nginx https://infrax.0xainet.top/api/data（data 不在 web :9111 代理路由内）
+  dataApiKey: process.env.DATA_API_KEY, // 自动带 x-api-key 头
+});
+
+// 实时报价（生产实测 200：BTC 64093.6）
+const t = await infrax.data.ticker({ symbol: 'BTC/USDT' });
+console.log(t.price);
+
+// 数据库统计（生产实测 kline_rows ≈ 107 万）
+const stats = await infrax.data.stats();
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9112/health   # 免鉴权
+# 或带 key：curl -s "http://127.0.0.1:9112/ticker?symbol=BTC/USDT" -H "X-API-Key: <DATA_API_KEY>"
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **data**（`infrax-data`）是 InfraX 统一市场数据微服务，AItrader data-service 迁入后的数据中枢，提供 **Crypto / 美股 / 港股 / A股 / 外汇 / 期货** 六大类资产的行情、K 线、因子与快照数据：

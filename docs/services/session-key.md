@@ -2,6 +2,56 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/session-key-client @0xinfrax/session-key-core @0xinfrax/session-key-evm
+```
+
+> session-key 为独立 3 包（不在 `@0xinfrax/infrax-dk` 中）。
+
+**2）获取凭据**
+
+服务端 `SESSION_KEY_API_TOKEN`（`API_TOKENS` 白名单 env，逗号分隔）；`GET /api/v1/nonce`、`POST /api/v1/sessions`、`GET /api/v1/health` 为豁免（公开）端点。
+
+**3）最小示例**
+
+```ts
+import { SessionKeyClient } from '@0xinfrax/session-key-client';
+
+const sk = new SessionKeyClient({
+  baseUrl: 'http://127.0.0.1:3500',   // 内网直连；网关 https://infrax.0xainet.top/api/session-key（按部署路由）
+  apiKey: '<SESSION_KEY_API_TOKEN>',  // 豁免端点外的请求自动带 Bearer
+});
+
+// 1. 获取 nonce（公开）→ 用户主钱包展示签名提示消息
+const { nonce, message } = await sk.getNonce('0x0000000000000000000000000000000000000001');
+console.log(message);
+
+// 2. 创建会话（服务端验签通过后返回会话 id + sessionAddress；签名须基于服务端生成的 sessionAddress，见下文 §3 签名域）
+const session = await sk.createSession({
+  signature: '<0xEIP712_SIGNATURE>',
+  chain: 'eth',
+  permissions: { contracts: ['0xUniswapRouter'], functions: ['0x38ed1739'] },
+  validDays: 30,
+  maxPerTx: '1000',
+  maxTotal: '10000',
+  userAddress: '0x0000000000000000000000000000000000000001',
+  nonce,
+});
+console.log(session.id, session.sessionAddress);
+```
+
+**4）验证**
+
+```bash
+curl -s "http://127.0.0.1:3500/api/v1/nonce?user=0x0000000000000000000000000000000000000001"   # 公开，生产实测 200
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **session-key**（Session Key Engine，v0.1.0）是 InfraX 的**会话密钥授权服务**：用户主钱包一次性 EIP-712 签名授权后，服务端为其生成会话密钥对（Session Key），在有效期内自动代签交易——实现 **Agent 免签名交易**（Bundler/Paymaster 执行路径）。

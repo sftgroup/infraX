@@ -2,6 +2,46 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+无需安装 SDK，直接用 REST（fetch / curl）调用即可。
+
+**2）获取凭据**
+
+`POST /api/v2/admin/login`（body：`username` + `password`，对应服务端 `ADMIN_USER` / `ADMIN_PASS`）→ 返回 `data.token`（32 字节 hex）；后续请求带 `x-admin-token` header（或 `admin_token` cookie），会话有效期 8 小时。
+
+**3）最小示例**
+
+```ts
+const base = 'http://127.0.0.1:9100';   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/v2/admin/*
+
+// 登录 → token（生产实测 200）
+const login = await fetch(base + '/api/v2/admin/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: process.env.ADMIN_USER, password: process.env.ADMIN_PASS }),
+});
+const { data } = await login.json() as { data: { token: string } };
+const token = data.token;
+
+// 带 x-admin-token 调 dashboard（跨库聚合，响应较慢）
+const dashboard = await fetch(base + '/api/v2/admin/dashboard', {
+  headers: { 'x-admin-token': token },
+}).then(r => r.json());
+console.log(dashboard.data.totalUsers, dashboard.data.totalRevenue);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9100/health   # 公开
+# 或登录后：curl -s http://127.0.0.1:9100/api/v2/admin/dashboard -H "x-admin-token: <ADMIN_TOKEN>"
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **Admin（聚合管理后台）**是 InfraX 的跨模块管理 API（`projects/admin/server/index.ts`，独立后端 + React 前端静态托管），跨 **7 个数据库**（mpc / admin / waas / dc / vault / payments / collector）聚合：
@@ -10,7 +50,7 @@
 - **服务状态**：`status` 探测 **12 个服务**（collector/waas/dc/vault/mpc/payments/admin/web/wallet-mcp/dc-mcp/vault-mcp/mpc-mcp）的 `/health`。
 - **业务管理**：WaaS 租户（`tenants` 增查改）、交易（`transactions`）、Webhook（`webhooks`）、Sweep（`sweeps`）、DC 订阅（`dc-subscriptions`）、RPC 配置（`rpc`）、风控规则 / Token 黑名单 / 审计日志。
 - **分模块面板**：WaaS（`waas/stats`、`waas/subscriptions`）、DC（`dc/stats`、`dc/checkpoints`）、Vault（`vault/stats`、`vault/safes`、`vault/transactions`）、MPC（`mpc/stats`、`mpc/wallets`）、OKX 数据管线（`okx/accounts`、`okx/health`）、数据栈（`/api/v2/data/*`，经 `dataRoutes` 转发 data :9112 等）。
-- **生产实测（2026-08-11）**：`POST /api/v2/admin/login` 成功返回 token ✅；`dashboard` 为跨库聚合查询，含大表 COUNT（`events` 1 亿+ 行），**响应较慢属性能观察项**，前端轮询场景需设置宽松超时。
+- **生产实测（2026-08-11）**：`POST /api/v2/admin/login` 成功返回 token ✅；`dashboard` 为跨库聚合查询，其中 collector.events 大表（8790 万行）的 `COUNT(*)` 已改为 `pg_class.reltuples` 估算，聚合接口由 20s+ 优化至 <1s 返回（详见"运维优化"）。
 
 ## 2. 鉴权方式
 
@@ -59,7 +99,7 @@
 | GET | `/api/v2/admin/mpc/wallets` | requireAdmin | MPC 钱包列表（≤100） |
 | GET | `/api/v2/admin/okx/accounts` | requireAdmin | OKX ChainOS 账户列表 |
 | GET | `/api/v2/admin/okx/health` | requireAdmin | OKX 数据管线健康（最近快照） |
-| * | `/api/v2/admin/data/*` | requireAdmin | 数据栈管理（dataRoutes 转发 data :9112 等） |
+| * | `/api/v2/data/*` | requireAdmin | 数据栈管理（dataRoutes 转发 data :9112 等） |
 | GET | `/health` | 公开 | 服务健康（service: infrax-admin） |
 
 ## 4. 样例代码

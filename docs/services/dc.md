@@ -2,6 +2,44 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+数据面 key：免费订阅 `POST /api/v2/data/subscribe`（body `{"planId":"data_free"}` + `x-wallet-address`）直通激活返回 `dcApiKey`（`infrax_dc_` 前缀），也可用 `GET /api/v2/data/key` 查询/轮换。订阅面端点用 `x-wallet-address`，数据面用 `x-dc-api-key`（SDK 经 `dcApiKey` 配置自动带 `x-dc-api-key` 头）。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9102',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/v2/data
+  dcApiKey: process.env.DC_API_KEY,   // ← x-dc-api-key（数据面必需）
+});
+
+// 数据面：链上事件统计（生产实测 200：bsc 1.14 亿事件）
+const stats = await infrax.dc.stats();
+
+// 数据面：查询 sepolia 最新 1 条事件
+const events = await infrax.dc.events({ chain: 'sepolia', limit: 1 });
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9102/api/v2/data/stats \
+  -H "x-dc-api-key: <DC_API_KEY>"   # 生产实测 200
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **DC（Data Center）链上数据中心**是 InfraX 的链上事件查询与数据订阅服务（`projects/dc/index.ts`，独立 PostgreSQL `pocketx_dc` + 只读 `pocketx_collector` 事件库）。
@@ -107,7 +145,7 @@ const walletAddress = '0x2bA20a76af1297D4Ef9BD242866F690aceaAb9f1';
 const sub = await infrax.dc.subscribe({ planId: 'data_free', rail: 'chain' }, walletAddress);
 if (sub.data.dcSubStatus === 'pending') {
   // 付费套餐：钱包按 sub.data.payment.payTo 支付后提交 txHash 确认
-  const ok = await infrax.dc.verify(txHash, walletAddress);
+  const ok = await infrax.dc.verify('<0x支付txHash>', walletAddress);
 }
 const usage = await infrax.dc.usage(walletAddress);  // plan / dcApiKey / monthlyQuota / currentUsage
 ```

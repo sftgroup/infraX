@@ -52,9 +52,9 @@
 ## 已知注意事项（2026-08-11 审查发现）
 
 1. **web 代理已修复**：`/api/v2/data/market/*`（collector 行情数据面）此前会被 `/api/v2/data` 前缀吞掉（转发到 DC → 404），已调整 API_ROUTES 顺序修复（server.js）
-2. **admin 密码不同步**：生产 `infrax-admin.service` unit 文件中的 `ADMIN_PASS`（1ff3…）与运行进程环境（a87c…）不一致——unit 被改过但服务未重启，登录以运行进程为准；建议下次重启后统一
-3. **admin dashboard 聚合慢**：跨 7 DB 大表 count，响应可达数十秒（性能观察项，不影响 login/其他端点）
-4. **payments/chain-rpc 仅内网**：公网不可直达，外部集成方需经业务服务调用或使用 SDK 直连（chain-rpc 支持外部 key）
+2. **admin 双实例已收敛**：生产曾同时存在 `infrax-admin.service`（:3002，冗余）与 `infrax-admin-legacy.service`（:9100），unit 与进程 `ADMIN_PASS` 不一致源于两个服务各自配置；已停用冗余 :3002，唯一 admin=:9100（unit 与进程密码一致 a87c…）
+3. **admin dashboard 聚合已优化**：collector.events 大表（8790 万行）的 `COUNT(*)` 已改为 `pg_class.reltuples` 估算，聚合接口 20s+ → <1s；`api-usage` 误查 waas 库（实为 pocketx_dc）已修复，返回真实数据
+4. **payments/chain-rpc 仅内网**：公网不可直达，外部集成方经 SDK 命名空间（infra.payment / infra.chainRpc，配置 paymentsUrl/chainRpcUrl）或业务服务转发调用
 
 ## JS SDK（@0xinfrax/infrax-dk v0.6.0）命名空间对照
 
@@ -68,5 +68,8 @@
 | `infra.wallet.*` / `infra.saas.*` / `infra.sub.*` | WAAS :9109 | [waas.md](./waas.md) |
 | `infra.safe.*` / `infra.vault.*` | Vault :9107 | [vault.md](./vault.md) |
 | `infra.data.*` | Data :9112 | [data.md](./data.md) |
+| `@0xinfrax/session-key-client` 等**独立 4 包** | Session Key :3500（**不在 infrax-dk**，见下） | [session-key.md](./session-key.md) |
+
+> **Session Key 接入说明**：`@0xinfrax/infrax-dk` v0.6.0 **不含** Session Key 能力（其类型中 `Session` 仅指支付会话 sessionUrl/sessionId 与 MPC 会话解锁，`gasSponsored` 为托管钱包代付标记，无 UserOp/Bundler/ERC-4337 封装）。Session Key 服务（:3500）提供**独立 SDK**：`@0xinfrax/session-key-client`（REST 客户端）+ `-core`（类型）+ `-evm`（EIP-712 签名工具），均已发布 npm；集成方请直接安装独立包，勿在 infrax-dk 中寻找 session 命名空间。
 
 Python SDK（PyPI 已发布 2026-08-11）：`lightrag-client` 2.0.0（ragservicer）、`infra-data-client` 0.2.0（data）。

@@ -2,6 +2,42 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+无需安装 SDK，直接用 curl/REST 调用即可。
+
+**2）获取凭据**
+
+业务 key：`INJECTOR_API_KEY`（未配置时回退 `RAGSERVICER_API_KEY`）；管理端点 `/admin/*` 用 `Authorization: Bearer <ADMIN_API_KEY>`。`/health` 免鉴权。本服务绑定 `127.0.0.1:9113`，无独立公网入口（仅本机/内网直连）。
+
+**3）最小示例**
+
+```ts
+const base = 'http://127.0.0.1:9113';
+const key = process.env.INJECTOR_API_KEY!;   // 或回退 RAGSERVICER_API_KEY
+
+// 运行状态（注入器 + 去噪统计；X-API-Key 鉴权）
+const status = await fetch(base + '/status', { headers: { 'X-API-Key': key } }).then(r => r.json());
+console.log(status.injectors);
+
+// 手动触发单类注入（如宏观注入）
+const res = await fetch(base + '/inject/macro', {
+  method: 'POST',
+  headers: { 'X-API-Key': key },
+}).then(r => r.json());
+console.log(res.success, res.duration_ms);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9113/health   # 免鉴权；生产实测 200（injector_count: 19）
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **knowledge-injector**（`infrax-knowledge-injector` v1.0.0）是 InfraX 数据栈的**知识注入器**：按固定周期拉取 data-service 快照与外部数据源 → 语义去噪 → 生成结构化文本 → 注入 ragservicer（:9721）构建知识图谱。内置 **19 类注入器**，每类独立 try/except、fail-silent（一个数据源挂掉不影响其他）。

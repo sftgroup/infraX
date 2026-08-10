@@ -2,6 +2,43 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+SDK 的 `baseUrl` 指向 web 代理（:9111），代理自动注入 `X-Service-Key`；后端受保护端点需按各服务契约自带 header（如 DC 数据面 `x-dc-api-key`、Market `X-API-Key`、Admin `x-admin-token`），随请求透传。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9111',   // 内网直连；公网 http://43.163.105.172:9111（生产 IP）
+  apiKey: process.env.INFRAX_API_KEY, // 平台 key：自动带 x-api-key，透传到后端
+  dcApiKey: process.env.DC_API_KEY,   // DC 数据面：x-dc-api-key（经代理透传）
+});
+
+// 经 web 代理调用后端（web 自动注入 X-Service-Key）
+const mpcPlans = await infrax.mpc.plans();   // 公开费率表
+const dcStats = await infrax.dc.stats();     // 需 dcApiKey（数据面）
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9111/health   # 公开；返回服务状态 + 后端路由表
+# 公网：curl -s http://43.163.105.172:9111/health
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **Web（Web 代理层）**是 InfraX 的公网入口之一（`projects/web/server.js`，零依赖纯 Node http），nginx（80/443）→ web（:9111）→ 各后端微服务：
@@ -37,7 +74,7 @@
 | 任意 | `/api/vault/*`、`/api/v2/vault/*` | **VAULT（9107）** | 多签 Safe |
 | 任意 | `/api/v2/admin/*` | **Admin（9100）** | 聚合管理后台 |
 
-> 注：`/api/v2/data/market/*`（collector 行情数据面）经 **DC :9102** 路由前缀匹配，会先命中 web 的 `/api/v2/data` 路由转发到 DC——此时请**直连 collector :9101** 或确认 DC 侧已挂载对应路由，避免误解（web 代理按最外层前缀匹配）。
+> 注：`/api/v2/data/market/*`（collector 行情数据面）在 `server.js` 的 `API_ROUTES` 中**显式置于 `/api/v2/data` 之前**（防止被 DC 前缀吞掉），按对象插入顺序匹配，实际正确转发至 **collector :9101**；`/api/v2/data/*`（不含 market）转发至 DC :9102。
 
 ### 3.2 其它端点
 

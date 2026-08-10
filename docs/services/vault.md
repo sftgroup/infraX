@@ -2,6 +2,45 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+平台 `VAULT_API_KEY`（bridge key），或 data 服务签发的 scope=`vault` 外部 key（`vx_` 前缀，经 data `/api-keys/verify` 实时校验）。`/health` 公开豁免。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9107',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/vault/*
+  apiKey: process.env.VAULT_API_KEY,  // 自动带 x-api-key 头
+});
+
+// dashboard 总览（生产实测 200：safeCount=28, txCount=3）
+const dash = await infrax.vault.dashboard();
+console.log(dash.data.safeCount, dash.data.txCount);
+
+// Safe 列表
+const safes = await infrax.vault.safes();
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9107/health
+# 或带 key：curl -s http://127.0.0.1:9107/api/vault/dashboard -H "X-API-Key: <VAULT_API_KEY>"
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 基于 Safe{Core} 协议的多签保险库微服务（systemd `infrax-vault`，DB `pocketx_vault`）：Safe 合约部署、交易提案/确认/执行、Owner 管理（走链上多签）、pending 交易重试/同步，以及链上交易风控规则（risk rules）检查。独立于其他模块，集成 Safe{Core} SDK。
@@ -94,12 +133,12 @@ console.log(dash.data.safeCount, dash.data.txCount);
 
 // ── Safe 列表 / 详情 ──
 const safes = await infrax.vault.safes();       // GET /api/vault/safe/list
-const detail = await infrax.vault.safeInfo(safes.data[0]?.safeAddress ?? '0x...');
+const detail = await infrax.vault.safeInfo(safes.data[0]?.address ?? '0x...');
 
-// ── 创建 Safe ──
+// ── 创建 Safe（签名：createSafe({ name?, signers, threshold, chain })）──
 const safe = await infrax.vault.createSafe({
-  chainId: 'eip155:19505',   // oxachain
-  owners: [
+  chain: 'oxachain',           // oxachain（勿写成 chainId；那是 safe.create 的签名）
+  signers: [                   // 签名者地址（勿写成 owners）
     '0x1111111111111111111111111111111111111111',
     '0x2222222222222222222222222222222222222222',
   ],
@@ -109,7 +148,7 @@ const safe = await infrax.vault.createSafe({
 
 // ── 多签流程：提案 → 确认 → 执行（infra.safe.* 同样走 /api/vault/*）──
 const tx = await infrax.safe.propose({
-  safeAddress: safe.data.safeAddress,
+  safeAddress: safe.data.address,
   to: '0x2222222222222222222222222222222222222222',
   value: '0.01',
   data: '0x',
@@ -132,7 +171,7 @@ console.log(risk.data.pass, risk.data.rule);
 
 | HTTP | code | 场景 |
 |---|---|---|
-| 400 | 1001 | 缺少必填字段（create 缺 chainId/owners、propose 缺 safeAddress/to、confirm 缺签名、safe/:address 格式非法） |
+| 400 | 1001 | 缺少必填字段（create 缺 signers/chain、propose 缺 safeAddress/to、confirm 缺签名、safe/:address 格式非法） |
 | 401 | — | 未带 key / key 无效（scope 不匹配） |
 | 404 | — | Safe 不存在 |
 | 201 | 0 | 创建成功（create/propose 返回 201） |

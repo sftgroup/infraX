@@ -2,6 +2,42 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+订阅套餐目录（`/api/v2/subscription/plans`）为公开端点；受保护端点需**租户 API key**——经 `POST /api/v2/saas/tenants/:tenantId/apikey`（服务端管理操作）签发，或钱包签名（EIP-191）走 `POST /api/v2/saas/apikeys` 生成；`infra.wallet.*` 另需配置 `walletAddress` + `walletSign`（未配置时 fail-closed 明确抛错）。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9109',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  apiKey: process.env.WAAS_TENANT_API_KEY, // 租户 API key（自动带 x-api-key 头）
+});
+
+// 订阅套餐目录（公开；生产实测 200：Starter free / Pro 49 / Enterprise 199）
+const plans = await infrax.sub.plans();
+console.log(plans.data);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9109/health
+# 或公网经代理：curl -s http://43.163.105.172:9111/api/v2/subscription/plans
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 钱包即服务 B2B 平台（systemd `infrax-waas`，DB `pocketx_waas`）：托管钱包 / HD 地址分配、交易（send/estimate-gas/sweep）、SaaS 租户管理（tenant CRUD + API key + 归集/提现）、订阅计费（MQ-12，支付走通用支付引擎 :9132）。`/api/v2/*` 按模块挂载：`wallet` / `tx` / `saas` / `subscription` / `data`（DC 数据订阅）/ `auth` / `risk` / `events` / `dashboard`。
@@ -123,7 +159,14 @@ const cur = await infrax.sub.current();
 
 // ── 钱包操作（wallet.* 自动生成签名头）──
 const bal = await infrax.wallet.balance({ address: signer.address, chain: 'sepolia' });
-await infrax.wallet.send({ from: signer.address, to: '0x...', value: '0.01', chain: 'sepolia' });
+// 发送：签名 send({ walletId, toAddress, amount, chain, paymentPassword, tokenAddress? })，经 /api/v2/tx/send
+await infrax.wallet.send({
+  walletId: '<WALLET_ID>',        // 托管钱包 ID（wallet.balance 响应中的 id）
+  toAddress: '0x...',
+  amount: '0.01',
+  chain: 'sepolia',
+  paymentPassword: process.env.WALLET_PAYMENT_PASSWORD!,  // 平台托管钱包支付密码（必填）
+});
 
 // ── SaaS：租户 API key 创建 / 轮换（saas.*）──
 const key = await infrax.saas.createApiKey('<TENANT_ID>'); // POST /api/v2/saas/tenants/:id/apikey

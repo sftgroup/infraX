@@ -2,6 +2,41 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+平台 `MPC_API_KEY`（bridge key），或 data 服务签发的 scope=`mpc` 外部 key（`mp_` 前缀）。`/api/v2/mpc/plans` 公开豁免；注册/会话/签名等操作还需邮件验证码与 `mpc_` 会话令牌（见下文对应章节）。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9104',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  apiKey: process.env.MPC_API_KEY,    // 自动带 x-api-key 头
+});
+
+// 按量费率表（公开；生产实测 200：mode=pay_per_use + 费率表）
+const plans = await infrax.mpc.plans();
+console.log(plans.data.mode, plans.data.platformAddress, plans.data.fees);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9104/api/v2/mpc/plans   # 公开，生产实测 200
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **MPC（多方计算钱包 / Agent Wallet）**是 InfraX 的密钥分片托管钱包服务（`projects/mpc/server.ts`，独立 PostgreSQL `pocketx_mpc`；签名链路经 TSS 签名器 :9200/:9201 完成 2-of-2 分片签名，完整私钥不落库、不重建）。

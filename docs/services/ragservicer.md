@@ -2,6 +2,50 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+pip install lightrag-client==2.0.0
+```
+
+> 无 JS SDK（@0xinfrax/infrax-dk 未覆盖 rag 服务），用 Python SDK `lightrag-client` 或直接 curl。
+
+**2）获取凭据**
+
+bridge key `RAGSERVICER_API_KEY`（回退 `DOC_API_KEY` → `LIGHTRAG_API_KEY`，映射 default 租户）；或 admin 端点 `POST /api/v1/tenants/{id}/keys` 签发 DB 租户 key。`/api/v1/health` 免鉴权。
+
+**3）最小示例**
+
+```python
+from lightrag_client import LightRAGClient
+
+rs = LightRAGClient(
+    base_url="http://127.0.0.1:9721",   # 内网直连；公网经 nginx https://infrax.0xainet.top/api/rag（rag 不在 web :9111 代理路由内）
+    api_key="<RAGSERVICER_API_KEY>",
+    tenant_id="default",                # 可选 X-Tenant-ID
+)
+
+# 健康检查
+print(rs.health())
+
+# 文档列表（生产实测 200）
+docs = rs.list_documents("market", page=1, limit=20)
+print(docs["total"])
+
+# 图谱检索
+result = rs.query("market", "比特币走势")
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9721/api/v1/health   # 免鉴权
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **ragservicer**（`infrax-ragservicer` v2.0.0）是 InfraX 的 **LightRAG 知识图谱微服务**：文档管理（注入 / 列表 / 删除）、图谱检索（query / retrieve）、实体抽取与关系构建由 LLM（默认 DeepSeek）驱动，向量化由 embedding（本地 all-MiniLM-L6-v2 或 DashScope）驱动。支持多租户 namespace 隔离，并内置 MCP Server（STDIO）供 AI Agent 接入。

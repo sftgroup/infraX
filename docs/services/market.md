@@ -2,6 +2,45 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+`api_keys` 表签发的 `pkx_` key，数据面 `/api/v2/data/market/*` 与订阅面 `/api/v2/market/*` 均用 `X-API-Key` 携带（1 分钟滑动窗口限流，默认 100 次/分）；`/api/v2/market/plans` 公开。
+
+**3）最小示例**
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  baseUrl: 'http://127.0.0.1:9101',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  apiKey: process.env.MARKET_API_KEY, // ← X-API-Key（pkx_ key）
+});
+
+// 数据面：热门代币（chainIndex 必填，生产实测 200）
+const hot = await infrax.market.getHotTokens('1', 5);
+
+// 订阅面：套餐目录（公开）
+const plans = await infrax.market.plans();
+console.log(plans.data);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9101/api/v2/data/market/supported-chains \
+  -H "X-API-Key: <MARKET_API_KEY>"   # 生产实测 200
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 **Collector-Market（行情与市场分析）**是 InfraX 的市场数据服务（`projects/collector`，:9101），同时承担链上事件扫描与 OKX ChainOS v6 DEX 行情聚合。

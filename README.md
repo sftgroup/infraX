@@ -44,6 +44,26 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 
 > 四种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。Python SDK 于 2026-08-11 发布 PyPI（`lightrag-client` 2.0.0 / `infra-data-client` 0.2.0）。每个微服务的**详细使用文档 + 样例代码**见 [docs/services/](./docs/services/)（13 篇，2026-08-11 生产逐一实测）。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
 
+### 服务文档索引（docs/services/，13 篇均含 Quick Start）
+
+| 服务 | 端口 | 公网访问 | 鉴权 | 文档 |
+|---|---|---|---|---|
+| Admin 管理后台 | 9100 | 经 web 代理 `/api/v2/admin` | 用户名密码登录 → token | [admin.md](./docs/services/admin.md) |
+| Collector / Market 行情 | 9101 | 经 web 代理 `/api/v2/data/market`、`/api/v2/market` | X-API-Key（pkx_）+ 按量计费（超限 503） | [market.md](./docs/services/market.md) |
+| DC 链上数据中心 | 9102 | 经 web 代理 `/api/v2/data` | 数据面 x-dc-api-key；订阅面 x-wallet-address（超限 429） | [dc.md](./docs/services/dc.md) |
+| MPC 多方计算钱包 | 9104 | 经 web 代理 `/api/v2/mpc` | 统一 key（MPC_API_KEY / mp_ key）；plans 公开（欠费 402） | [mpc.md](./docs/services/mpc.md) |
+| Vault Safe 多签 | 9107 | 经 web 代理 `/api/vault` | 统一 key（VAULT_API_KEY / vx_ key） | [vault.md](./docs/services/vault.md) |
+| WAAS 钱包即服务 | 9109 | 经 web 代理 `/api/v2/wallet`、`/api/v2/saas`、`/api/v2/subscription` | 钱包签名 / tenant key；plans 公开 | [waas.md](./docs/services/waas.md) |
+| Web 代理层 | 9111 | **公网入口**（nginx 80/443 → 9111） | 代理自动注入 X-Service-Key | [web.md](./docs/services/web.md) |
+| Data 数据中心 | 9112 | 经 nginx `/api/data/*` | 统一 key（DATA_API_KEY / dx_ key）；/health /docs 公开 | [data.md](./docs/services/data.md) |
+| Knowledge Injector | 9113 | 仅内网 | INJECTOR_API_KEY | [knowledge-injector.md](./docs/services/knowledge-injector.md) |
+| Chain RPC 网关 | 9130 | **仅内网**（外部经 SDK key 直连） | 读/广播 key / rx_ 订阅 key（超限 503） | [chain-rpc.md](./docs/services/chain-rpc.md) |
+| Payments 通用支付引擎 | 9132 | **仅内网**（业务服务经 key 调用） | 统一 key（PAYMENTS_API_KEY / px_ key） | [payments.md](./docs/services/payments.md) |
+| RAGservicer 知识库 | 9721 | 经 nginx `/api/rag/*` | 租户 key（RAGSERVICER_API_KEY / lightrag-client） | [ragservicer.md](./docs/services/ragservicer.md) |
+| Session Key 会话授权 | 3500 | 经 web 代理（SDK 直连） | API_TOKENS 白名单；nonce/sessions 创建公开 | [session-key.md](./docs/services/session-key.md) |
+
+> 索引与通用接入说明（鉴权契约 / 计费矩阵 / SDK 命名空间对照）见 [docs/services/README.md](./docs/services/README.md)。
+
 ---
 
 ## 系统架构
@@ -232,7 +252,11 @@ infraX/
 │   ├── ragservicer/sdk/python/  # Python SDK lightrag-client 2.0.0（已发布 PyPI，2026-08-11）
 ├── docs/
 │   ├── API_ACCESS.md     # 三合一接入文档（REST/MCP/SDK）
-│   └── MCP_REQUIREMENTS.md
+│   ├── MCP_REQUIREMENTS.md
+│   └── services/         # 13 篇微服务使用文档（Quick Start + 端点清单 + 样例 + 错误码）
+│       ├── README.md     # 服务索引 + 通用鉴权契约 + MQ-16 计费矩阵 + SDK 命名空间对照
+│       └── *.md          # admin / market / dc / mpc / vault / waas / web / data /
+│                         # knowledge-injector / chain-rpc / payments / ragservicer / session-key
 ├── DEPLOYMENT.md
 ├── PROGRESS.md
 └── README.md

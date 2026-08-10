@@ -27,13 +27,26 @@ const pools: Record<string, Pool> = {
   waas:    new Pool({ connectionString: process.env.WAAS_DB    || `${BASE}/pocketx_waas`,    max: 3 }),
   dc:      new Pool({ connectionString: process.env.DC_DB      || `${BASE}/pocketx_dc`,      max: 3 }),
   vault:   new Pool({ connectionString: process.env.VAULT_DB   || `${BASE}/pocketx_vault`,   max: 3 }),
-  payments: new Pool({ connectionString: process.env.PAYMENTS_DB || `${BASE}/pocketx_payments`, max: 3 }),
+  payments: new Pool({ connectionString: process.env.PAYMENTS_DB || process.env.PAYMENT_DB || `${BASE}/pocketx_payments`, max: 3 }),
   collector: new Pool({ connectionString: process.env.COLLECTOR_DB || `${BASE}/pocketx_collector`, max: 3 }),
 };
 
 // ─── Helpers ───
 function asyncHandler(fn: any) {
   return (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+// collector.events 已 8790 万行，COUNT(*) 全表扫描使 dashboard 聚合慢至数十秒。
+// 大盘指标改用 pg_class.reltuples 估算（ANALYZE 快照值，秒级返回）；明细页仍走精确查询。
+async function fastCount(pool: Pool, table: string): Promise<number> {
+  try {
+    const r = await pool.query(
+      'SELECT COALESCE(reltuples::int, 0) AS cnt FROM pg_catalog.pg_class WHERE relname = $1',
+      [table],
+    );
+    return r.rows[0]?.cnt || 0;
+  } catch {
+    return 0;
+  }
 }
 function apiResponse(data: any = null, message = 'success', code = 0) {
   return { code, message, data };
@@ -84,7 +97,7 @@ app.get('/api/v2/admin/dashboard', requireAdmin, asyncHandler(async (_req: any, 
   const [totalUsers, activeTenants, totalEvents, totalRevenue] = await Promise.all([
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM users").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM tenants WHERE status='active'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
-    pools.collector.query("SELECT COUNT(*)::int as cnt FROM events").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
+    fastCount(pools.collector, 'events'),
     pools.payments.query("SELECT COUNT(*)::int as cnt FROM payment_intents WHERE status='paid'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
   ]);
   res.json(apiResponse({ totalUsers, activeTenants, totalEvents, totalRevenue }));
@@ -106,8 +119,9 @@ app.get('/api/v2/admin/revenue', requireAdmin, asyncHandler(async (_req: any, re
 
 // ─── API Usage ───
 app.get('/api/v2/admin/api-usage', requireAdmin, asyncHandler(async (_req: any, res: any) => {
-  const result = await pools.waas.query(
-    "SELECT date, endpoint, COUNT(*)::int as calls FROM api_usage_daily WHERE date >= NOW() - INTERVAL '30 days' GROUP BY date, endpoint ORDER BY date DESC LIMIT 500"
+  // api_usage_daily 实际位于 pocketx_dc（此前误查 waas 库导致恒为空）
+  const result = await pools.dc.query(
+    "SELECT date, endpoint, COALESCE(total_calls, 0)::int as calls FROM api_usage_daily WHERE date >= NOW() - INTERVAL '30 days' ORDER BY date DESC, endpoint LIMIT 500"
   ).catch(() => ({ rows: [] }));
   res.json(apiResponse(result.rows));
 }));
@@ -315,7 +329,7 @@ app.get('/api/v2/admin/waas/subscriptions', requireAdmin, asyncHandler(async (_r
 // ─── DC Panel — FIXED: events/checkpoints/tokens in collector, dc_subscriptions in waas ───
 app.get('/api/v2/admin/dc/stats', requireAdmin, asyncHandler(async (_req: any, res: any) => {
   const [events, checkpoints, subs, tokens] = await Promise.all([
-    pools.collector.query("SELECT COUNT(*)::int as cnt FROM events").then(r => r.rows[0].cnt).catch(() => 0),
+    fastCount(pools.collector, 'events'),
     pools.collector.query("SELECT * FROM event_checkpoints ORDER BY chain").then(r => r.rows).catch(() => []),
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM dc_subscriptions").then(r => r.rows[0].cnt).catch(() => 0),
     pools.collector.query("SELECT COUNT(*)::int as cnt FROM tokens").then(r => r.rows[0].cnt).catch(() => 0),

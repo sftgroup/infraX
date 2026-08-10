@@ -2,6 +2,48 @@
 
 > 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
 
+## 0. 快速开始（Quick Start）
+
+**1）安装**
+
+```bash
+npm install @0xinfrax/infrax-dk
+```
+
+**2）获取凭据**
+
+平台 `PAYMENTS_API_KEY`（bridge key），或 data 服务签发的 scope=`payment` 外部 key（`px_` 前缀，经 data `/api-keys/verify` 实时校验）。本服务**仅内网**，外部经 VPN/跳板或业务服务转发访问，无公网代理路径。
+
+**3）最小示例**
+
+> ⚠️ 引擎响应为**裸 JSON**（非 `{code,message,data}` 信封），SDK 用 raw 调用直接返回数据。
+
+```ts
+import { InfraX } from '@0xinfrax/infrax-dk';
+
+const infrax = new InfraX({
+  paymentsUrl: 'http://127.0.0.1:9132',           // 内网直连（服务仅内网）
+  paymentsApiKey: process.env.PAYMENTS_API_KEY,   // 自动带 x-api-key 头
+});
+
+// 能力探测（建议先调：确认各 rail 是否启用；裸 JSON）
+const caps = await infrax.payment.capabilities();
+console.log(caps.capabilities.chain.enabled);
+
+// 链上套餐定价（裸 JSON）
+const info = await infrax.payment.price(5, 'oxachain');
+console.log(info.price);
+```
+
+**4）验证**
+
+```bash
+curl -s http://127.0.0.1:9132/payments/capabilities \
+  -H "X-API-Key: <PAYMENTS_API_KEY>"   # → 裸 JSON（非信封）
+```
+
+> 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
+
 ## 1. 服务定位
 
 通用支付引擎（`@0xinfrax/payments` standalone 实例，systemd `infrax-payments`），统一承载平台的"钱"通道：**chain**（链上 SubscriptionManager escrow 订阅）、**fiat**（Stripe checkout + webhook）、**x402**（单笔链上原生代币支付验证）、**mpp**（状态通道），以及 MQ-16 T-5 新增的 **period**（周期授权扣费）、**invite**（账单邀请）、**transfer**（账本内部转账）、**batch**（一次多 payee 批量收款）能力。业务服务（waas / dc / collector / chain-rpc）只管"权益激活"，钱全部走本引擎；`pocketx_payments` 库。
