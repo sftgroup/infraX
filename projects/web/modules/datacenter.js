@@ -41,12 +41,19 @@ async function dcInit() {
   }
 
   try {
-    var url = '/api/v2/data/usage?walletAddress=' + encodeURIComponent(addr);
-    const usage = await afetch(url, { auth: 'none' });
-    if (usage && usage.planId) {
-      dcPlan = { id: usage.planId, name: usage.planName };
-      dcUsage = usage;
-      await dcLoadDashboard();
+    const ok = await dcRefreshUsage();
+    if (ok) {
+      // MQ-16 T-1: 付费订阅待支付 → 停留在 intro 并提示等待支付确认
+      if (dcUsage.dcSubStatus === 'pending') {
+        var sEl = document.getElementById('dc-sub-status');
+        if (sEl) sEl.innerHTML = '<span style="color:var(--warning)">⏳ 订阅待支付确认</span> <button class="btn btn-sm btn-primary" onclick="dcRecheckPayment()" style="margin-left:8px">刷新支付状态</button>';
+        var ie = document.getElementById('dc-intro');
+        var de = document.getElementById('dc-dash');
+        if (ie) ie.style.display = 'block';
+        if (de) de.style.display = 'none';
+      } else {
+        await dcLoadDashboard();
+      }
       return;
     }
   } catch (e) {
@@ -58,25 +65,126 @@ async function dcInit() {
   if (de) de.style.display = 'none';
 }
 
+// MQ-16 T-1: 拉取真实用量（plan/quota/usage/订阅状态）并刷新本地状态
+async function dcRefreshUsage() {
+  var addr = '';
+  try { addr = user().walletAddress || ''; } catch(e) {}
+  if (!addr) return false;
+  const usage = await afetch('/api/v2/data/usage?walletAddress=' + encodeURIComponent(addr), { auth: 'none' });
+  if (usage && usage.planId) {
+    dcPlan = { id: usage.planId, name: usage.planName };
+    dcUsage = usage;
+    return true;
+  }
+  return false;
+}
+
 // ─── Subscribe ───────────────────────────────────────────────────────
 async function dcSubscribe(planId) {
   const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
   if (!wallet) { showToast('Connect wallet first', 'error'); return; }
+  var statusEl = document.getElementById('dc-sub-status');
+  function setStatus(html, ok) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:' + (ok ? 'var(--success)' : 'var(--error)') + '">' + html + '</span>';
+  }
   try {
     const resp = await afetch('/api/v2/data/subscribe', {
       method: 'POST', auth: 'none',
       headers: { 'Content-Type': 'application/json', 'x-wallet-address': wallet },
       body: JSON.stringify({ planId }),
     });
-    if (resp && resp.planId) {
-      dcPlan = { id: resp.planId, name: resp.planName };
-      dcUsage = { dcApiKey: resp.dcApiKey, dcApiKeyObscured: obscureKey(resp.dcApiKey), planName: resp.planName, monthlyQuota: resp.monthlyQuota || 10000, currentUsage: resp.currentUsage || 0, dailyBreakdown: [] };
+    // MQ-16 T-1: free 套餐直通 active（返回 dcApiKey）；付费套餐走引擎支付流程（pending）
+    if (resp.dcSubStatus === 'active' && resp.dcApiKey) {
+      setStatus('✅ ' + ((resp.plan && resp.plan.name) || planId) + ' plan activated', true);
       showToast('Data plan activated!', 'success');
+      await dcRefreshUsage();
+      await dcLoadDashboard();
+      return;
+    }
+    var pay = resp.payment;
+    if (!pay) { setStatus('❌ Subscribe failed — please try again', false); showToast('Subscribe failed — please try again', 'error'); return; }
+    if (pay.rail === 'chain') {
+      var isNative = !pay.payToken || pay.payToken === '0x0000000000000000000000000000000000000000';
+      var amount = pay.price !== undefined ? (Number(pay.price) / 1e18).toFixed(4) + ' ' + (isNative ? 'ETH' : pay.payToken) : '';
+      setStatus('⏳ 请在钱包中完成链上订阅（chainId ' + pay.chainId + '）<br>' +
+        'SubscriptionManager: <code>' + pay.subscriptionManager + '</code><br>' +
+        '金额: <b>' + amount + '</b> / ' + (pay.period || 'month') + '<br>' +
+        '<small>当前钱包即 subscriber，支付确认后自动生效</small>', true);
+      showToast('等待链上支付确认…', 'info');
+      dcPollSubscription();
+    } else if (pay.rail === 'fiat') {
+      setStatus('⏳ 跳转支付页…', true);
+      window.location.href = pay.sessionUrl;
+    } else if (pay.rail === 'x402') {
+      var amountEth = pay.priceWei ? (Number(pay.priceWei) / 1e18).toFixed(4) : '';
+      setStatus('⏳ 请向 <code>' + pay.payTo + '</code> 转账 ' + amountEth + ' ETH（' + pay.network + '）<br>' +
+        '<small>转账完成后请输入交易哈希（txHash）确认</small>', true);
+      showToast('完成转账后提交 txHash', 'info');
+      dcSubmitX402(pay.network);
+    }
+  } catch (e) {
+    setStatus('❌ ' + (e.message || 'Network error'), false);
+    showToast(e.message || 'Network error', 'error');
+  }
+}
+
+// MQ-16 T-1: chain rail — 轮询支付状态（payment-check），确认后刷新 dashboard
+var dcPollTimer = null;
+function dcPollSubscription(timeoutMs) {
+  var started = Date.now();
+  if (dcPollTimer) { clearInterval(dcPollTimer); dcPollTimer = null; }
+  dcPollTimer = setInterval(async function () {
+    try {
+      var d = await afetch('/api/v2/data/payment-check', { method: 'POST', auth: 'none' });
+      if (d.status === 'active') {
+        clearInterval(dcPollTimer); dcPollTimer = null;
+        await dcRefreshUsage();
+        showToast('Data plan activated!', 'success');
+        var statusEl = document.getElementById('dc-sub-status');
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ 支付确认，套餐已激活</span>';
+        await dcLoadDashboard();
+      }
+    } catch (_) {}
+    if (Date.now() - started > (timeoutMs || 5 * 60 * 1000)) {
+      clearInterval(dcPollTimer); dcPollTimer = null;
+      var statusEl = document.getElementById('dc-sub-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⏰ 等待支付超时，请确认已支付后重试</span>';
+    }
+  }, 4000);
+}
+
+// MQ-16 T-1: x402 rail — 提示用户输入链上转账 txHash 并调 /verify 激活订阅
+async function dcSubmitX402(network) {
+  var txHash = window.prompt('请输入 ' + (network || '链上') + ' 转账的交易哈希（txHash）:');
+  if (!txHash) return;
+  try {
+    var d = await afetch('/api/v2/data/verify', { method: 'POST', auth: 'none', body: { txHash: txHash } });
+    if (d.verified && d.activated) {
+      showToast('支付已确认，套餐已激活!', 'success');
+      await dcRefreshUsage();
+      var statusEl = document.getElementById('dc-sub-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ 支付确认，套餐已激活</span>';
+      await dcLoadDashboard();
+    } else if (d.verified) {
+      showToast('支付已确认，但未找到待处理订阅', 'error');
+    } else {
+      showToast('支付未确认', 'error');
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// MQ-16 T-1: 手动刷新支付状态（pending 态 intro 按钮）
+async function dcRecheckPayment() {
+  try {
+    var d = await afetch('/api/v2/data/payment-check', { method: 'POST', auth: 'none' });
+    if (d.status === 'active') {
+      await dcRefreshUsage();
+      showToast('支付已确认，套餐已激活!', 'success');
       await dcLoadDashboard();
     } else {
-      showToast('Subscribe failed — please try again', 'error');
+      showToast('支付仍在确认中…', 'warning');
     }
-  } catch (e) { showToast('Network error', 'error'); }
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ─── Load Dashboard ──────────────────────────────────────────────────
@@ -88,7 +196,7 @@ async function dcLoadDashboard() {
     if (ie) ie.style.display = 'none';
     if (de) de.style.display = 'block';
 
-    setHtml('dc-plan-name', dcPlan.name);
+    setHtml('dc-plan-name', dcPlan.name + (dcUsage.dcSubStatus && dcUsage.dcSubStatus !== 'active' ? '<br><span style="font-size:11px;color:var(--warning)">' + dcUsage.dcSubStatus + '</span>' : ''));
     setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
     setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
     var planChains = { data_free: ['Sepolia'], data_pro: ['All 6 chains'], data_enterprise: ['All 6 chains + custom'] };
@@ -140,7 +248,7 @@ async function dcQueryEvents(pageToken) {
     const headers = {};
     if (dcUsage && dcUsage.dcApiKey) headers['x-dc-api-key'] = dcUsage.dcApiKey;
     const resp = await afetch('/api/v2/data/events?' + params.toString(), { auth: 'none', headers: headers });
-    if (!resp || resp.code !== 0) {
+    if (!resp || !resp.data) {
       if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No results</td></tr>';
       return;
     }
