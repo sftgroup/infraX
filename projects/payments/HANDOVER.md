@@ -13,7 +13,7 @@
 
 **零业务耦合的通用支付引擎**。模块只负责「钱」：支付方式（method）、资产、金额、链上凭证验证与幂等入账；**业务上下文（agentId、订单号、套餐 ID 等）一律经 `metadata` 透传，模块不解释、不校验、不消费**。持久化走注入的 `PaymentStore` 接缝，宿主业务只通过 `onWebhookEvent` / `onCredit` 回调接入。
 
-> **能力范围说明（2026-08-10 更新）**：模块作为**可编程、针对 agent 支付优化的通用通道**，全部 rails 均为**可插拔能力**（chain / fiat / x402 / MPP / stablecoin / **a2a** / **period** / **batch**），由构造参数 + ENV 开关决定启用，`GET /capabilities` 探测，未启用端点返回 503（详见 §2 与 README §能力层）。a2a（两阶段意图支付）与 period（订阅周期授权）已于 MQ-13 恢复为可配置项。
+> **能力范围说明（2026-08-10 更新）**：模块作为**可编程、针对 agent 支付优化的通用通道**，全部 rails 均为**可插拔能力**（chain / fiat / x402 / MPP / stablecoin / **a2a** / **period** / **batch** / **invite** / **transfer**），由构造参数 + ENV 开关决定启用，`GET /capabilities` 探测，未启用端点返回 503（详见 §2 与 README §能力层）。a2a（两阶段意图支付）与 period（订阅周期授权）已于 MQ-13 恢复为可配置项；invite（agent 自动收费邀请）与 transfer（账本内原子划转）已于 MQ-14 落地。
 
 ## 2. 功能矩阵
 
@@ -28,6 +28,8 @@
 | **a2a (两阶段意图)** | `POST /a2a` 创建意图（paymentId/amount/payee）→ 链上支付 → `POST /a2a/settle` 验 tx 入账（复用 x402 `verifyAndCredit`，幂等）；`payment_intents.payee` 记录收款方 | 单测（capabilities.test.ts） |
 | **period (订阅周期)** | `payment_authorizations` 一份授权 n 周期；`POST /period/charge` 每周期边界原子扣减（无需重新签名），余量不足自动 `exhausted`；`GET /period/authorization` 查状态 | 单测（capabilities.test.ts） |
 | **batch (批量收款)** | 一次向 N 个 payee 创建 N 个 a2a 意图；`POST /batch/settle` 逐项验 tx，全部完成批次原子 `completed`；`GET /batch` / `POST /batch/cancel` | 单测（capabilities.test.ts） |
+| **invite (收费邀请)** | agent 自动向 payer 发收费邀请：`POST /invites`（payer/payee/valueWei/memo/dueAt，包装 a2a 意图）；状态机 `created→sent→settled|expired|cancelled`，读时惰性过期；双结算路径：链上 `POST /invites/:id/settle`（验 tx）/ 余额 `POST /invites/:id/pay`（账本内结算，reference=inviteId 幂等，不足 400）；`GET /invites?address=&role=payer|payee&status=` 查询 | 单测（invite-transfer.test.ts）+ MQ-14 生产实测 |
+| **transfer (账本内划转)** | 平台余额间原子划转（无新签名）：`POST /transfers`（reference 幂等）→ `POST /transfers/:id/confirm` 单事务 claim→debit→credit，余额不足整笔回滚 422，重复 confirm 幂等不双扣；`GET /transfers?address=&role=from|to` | 单测（invite-transfer.test.ts）+ MQ-14 生产实测 |
 | **capabilities 探测** | `GET /capabilities` 返回各 rail `enabled` / `endpoints` / `config`；未启用 rail 端点返回 503（显式而非 404） | 单测（capabilities.test.ts） |
 
 > 计费周期（`PaymentPeriod`：`day/week/month/year`）是**通用能力**，保留在 checkout、stripe recurring、on-chain `plan.period` 中；它不是授权场景。
@@ -63,13 +65,13 @@ projects/payments/
 ├── README.md               # 使用文档（独立库 + 嵌入式两种形态）
 ├── DEPLOY.md               # 部署手册
 ├── HANDOVER.md             # 本文档
-├── db/migrations/          # 001-004（模块自有 payment_* 表）
+├── db/migrations/          # 001-008（模块自有 payment_* 表）
 ├── src/
 │   ├── index.ts            # 公共入口
 │   ├── types.ts            # 通用类型（metadata 透传约定）
 │   ├── errors.ts           # PaymentError{code,status} + isPaymentError
 │   ├── service.ts          # PaymentsService（引擎 + 回调接缝 + intent 生命周期）
-│   ├── store.ts            # PaymentStore 接口 + Pg 两实现 + SqlExecutor 解耦
+│   ├── store.ts            # PaymentStore 接口 + Pg 六实现（Payment/MPP/Authorization/Batch/Invite/Transfer）+ SqlExecutor 解耦（可选 transaction runner）
 │   ├── client.ts           # X402Client / PaymentsClient / MPPClient
 │   ├── router.ts           # createPaymentsRouter（express optional peer）
 │   ├── protocol/
@@ -82,7 +84,7 @@ projects/payments/
 │       ├── x402.ts         # 原生验证入账 + stablecoin fallback
 │       ├── mpp.ts          # 通道 open/voucher/topUp/settle/close/session
 │       └── stablecoin.ts   # EIP-3009 Transfer 事件入账验证
-└── tests/                  # 10 个文件 89 断言
+└── tests/                  # 12 个文件 124 断言
 ```
 
 ## 5. 存储接缝
@@ -113,6 +115,10 @@ interface PaymentStore {
 | 002 | `payment_credits` / `payment_balances` / `payment_access` |
 | 003 | `payment_sessions` / `payment_vouchers`（MPP，含 auto-settle 策略列） |
 | 004 | `payment_events`（归一化 webhook 回放） |
+| 005 | `payment_authorizations`（+ `payment_intents.payee`）— period 授权 |
+| 006 | `payment_batches` — batch 批量收款 |
+| 007 | `payment_invites` — invite 收费邀请 |
+| 008 | `payment_transfers` — transfer 原子划转 |
 
 > 宿主若自带业务表，可实现自定义 store 注入，此时无需执行模块迁移（AgentX 即此形态）。
 
@@ -148,9 +154,10 @@ AgentX 以「嵌入式服务」形态集成（`gateway/src/services/payments.ts`
 
 | 层 | 内容 | 状态 |
 | --- | --- | --- |
-| 单测 | `npm test`：10 文件 89 断言（协议/适配器/service/router/错误码） | 全绿 |
+| 单测 | `npm test`：12 文件 124 断言（协议/适配器/service/router/错误码/能力层/invite+transfer） | 全绿 |
 | 嵌入式 harness | `scripts/local-payments/run.sh`：postgres+anvil+gateway，`FLOWS="f1 f4 f5 f6"`（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币） | 全绿（生产机验证） |
 | 解耦验证 | `scripts/local-payments/run-decouple.sh`：独立库形态，19 断言（加载路径/依赖仅 pg+viem/无 AgentX token/DB 仅 payment_* 表） | 全绿 |
+| 生产实测 | `scripts/mq14_verify.sh`（MQ-14）：invite 全流程 + transfer 原子性 + 过期 + 清理，11 步 | 全绿（2026-08-10，43.163.105.172） |
 
 ## 9. 客户端与 Router
 
@@ -168,7 +175,8 @@ AgentX 以「嵌入式服务」形态集成（`gateway/src/services/payments.ts`
 7. **宿主 ledger 混资产**（AgentX 侧行为，非模块缺陷）：`AgentxPaymentStore.credit` 把不同资产信用累加进单行原生余额。模块自身按 asset 记账。
 8. **gateway 对 `.env` 的 `source`**：带空格的字符串值必须加引号（`STABLECOIN_DOMAIN_NAME="Mock USD Coin"`）。
 9. **forge script 部署**：`usdc.mint(msg.sender, …)` 在 forge script 里 mint 给的是**脚本合约地址**而非广播者 EOA，须用 `vm.addr(deployerPrivateKey)`。
-10. **场景剥离（2026-08-10）**：a2a / period 授权 rail 已从模块删除（含 `payment_authorizations` 表与 005 迁移）。已在生产库执行过 005 的部署，表数据不受影响（模块不再读写）；新部署不再执行该迁移。
+10. **场景剥离（2026-08-10，已被 MQ-13 推翻）**：早期曾将 a2a / period rail 从模块删除；MQ-13 已按「可插拔能力」设计恢复：a2a / period / batch / invite / transfer 均为构造参数 + ENV 开关启用的能力（`A2A_ENABLED` 默认随 x402 / `PERIOD_ENABLED` / `BATCH_ENABLED` / `INVITE_ENABLED` / `TRANSFER_ENABLED`），未启用端点 503。生产库已执行过 005-008 迁移，表已存在，模块按开关读写。
+11. **SQL 参数占位符必须一一对应（2026-08-10，MQ-14 生产踩坑）**：`pg` 对未匹配的占位符会报 `could not determine data type of parameter $N`。动态拼接 `WHERE` 子句（如 invite 按状态过滤、`expireDue(inviteId)` 的 scope）时，占位符编号与 values 数组顺序须逐一对应，改动后务必用真实 `PgInviteStore` 跑一遍，仅靠内存 fake 单测覆盖不到。已验证的生产回归脚本：`scripts/mq14_verify.sh`。
 
 ## 11. 发版与维护指南
 
@@ -207,4 +215,4 @@ npm view @0xinfrax/payments dist-tags   # latest 指向新版本
 - AgentX 侧保留定制支付 SDK：`@agentxv2/sdk`（`SubscriptionPayments` 业务封装 + `MPPClient` / `X402Client` / `PaymentsClient` 协议客户端 re-export）
 - **依赖方向**：AgentX 定制层 → `@0xinfrax/payments`（registry）→（无反向）；`@agentxv2/payments` 旧包已 deprecate
 - 通用层零业务依赖；双方版本通过 semver `^` 范围对接
-- **注意**：a2a / period / batch 为**能力**（见 §2），0.1.3+ 经 `GET /capabilities` 探测、ENV/构造参数开关启用；AgentX 定制层如需这些场景能力，直接开对应开关或注入对应 store seam 即可
+- **注意**：a2a / period / batch / invite / transfer 为**能力**（见 §2），0.1.3+ 经 `GET /capabilities` 探测、ENV/构造参数开关启用；AgentX 定制层如需这些场景能力，直接开对应开关或注入对应 store seam 即可（invite 依赖 `INVITE_ENABLED` + `PgInviteStore`，transfer 依赖 `TRANSFER_ENABLED` + `PgTransferStore`，且宿主 `SqlExecutor` 需实现可选 `transaction` runner，否则 transfer confirm 会拒绝）

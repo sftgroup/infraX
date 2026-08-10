@@ -9,8 +9,9 @@
 
 ## 0. 一句话模型
 
-- **收款 = 实例级配置**：`chains` / `stripe` / `x402` / `mpp` 四组配置在你创建 `PaymentsService`（嵌入式）或启动 `infrax-payments` 服务（独立服务）时一次性注入，之后所有请求共用这一套收款。
+- **收款 = 实例级配置**：`chains` / `stripe` / `x402` / `mpp` 四组**外部收款**配置 + `invite` / `transfer` 两个**账本内结算**能力，在你创建 `PaymentsService`（嵌入式）或启动 `infrax-payments` 服务（独立服务）时一次性注入，之后所有请求共用这一套。
 - **模块校验收款真实性**：入账前必须通过链上校验（`tx.to == payTo` / `Transfer to == payTo` / Stripe 签名），收款地址被篡改不会入账。
+- **账本内结算不走外部收款**：`invite`（收费邀请）与 `transfer`（账本内划转）只发生在 `payment_balances` 账本内，无新增外部收款配置；但需要宿主 `SqlExecutor` 实现可选 `transaction` runner（transfer 的 debit+credit 必须原子）。
 - 需要多租户收款隔离时，请**每租户部署一个独立实例**；模块不提供实例内的按请求收款切换（那是业务场景，不属于通用通道能力）。
 
 ---
@@ -24,6 +25,8 @@
 | **x402** | **你指定的收款钱包** | `payTo` + `priceWei` + `chain` | `x402.payTo` / `x402.priceWei` / `x402.chain` | `X402_PAY_TO` / `X402_PRICE_WEI` / `X402_CHAIN` | 实例级 |
 | **stablecoin** | 同一收款钱包（复用 `x402.payTo`） | 复用 `payTo` + `asset` / `decimals` / `priceWei` | `x402.stablecoin.*` | 独立服务暂未暴露（嵌入式可配） | 实例级 |
 | **MPP** | **你指定的 payee 收款地址** | `payee` + `domain` + `chain` | `mpp.payee` / `mpp.domain` / `mpp.chain` | `MPP_PAYEE` / `MPP_DOMAIN` / `MPP_CHAIN` | 实例级 |
+| **invite** | 账本内结算（payee 的 `payment_balances`） | store seam + `INVITE_ENABLED` | `invites`（`InviteStore`） | `INVITE_ENABLED=true`（需 `PgInviteStore`） | 实例级 |
+| **transfer** | 账本内划转（from→to 的 `payment_balances`） | store seam + `TRANSFER_ENABLED` | `transfers`（`TransferStore`） | `TRANSFER_ENABLED=true`（需 `PgTransferStore` + `transaction` runner） | 实例级 |
 
 > 收款隔离规则：**一个实例 = 一套收款**。需要多租户收款隔离时，请每租户部署一个独立实例；不要试图在同一个实例里轮换收款。
 
@@ -36,20 +39,34 @@
 ```bash
 # 1. 安装（公开 npm registry 已发布；其余来源见 README §依赖配置）
 npm install @0xinfrax/payments
-# 2. 在你自己项目的数据库执行模块迁移（4 个，全 payment_* 前缀）
+# 2. 在你自己项目的数据库执行模块迁移（8 个，全 payment_* 前缀）
 for f in node_modules/@0xinfrax/payments/db/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 ```
 
 ```ts
 // src/payments.ts —— 收款配置集中在这里
 import { Pool } from 'pg'
-import { PaymentsService, PgPaymentStore } from '@0xinfrax/payments'
+import { PaymentsService, PgPaymentStore, PgInviteStore, PgTransferStore } from '@0xinfrax/payments'
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+// transfer 需要事务 runner（debit+credit 原子）；不带则 confirm 直接拒绝
+const sql = {
+  query: (text: string, values?: unknown[]) => pool.query(text, values),
+  transaction: async <T>(fn: (tx: { query: typeof pool.query }) => Promise<T>) => {
+    const client = await pool.connect()
+    try { await client.query('BEGIN'); const r = await fn({ query: (t, v) => client.query(t, v) }); await client.query('COMMIT'); return r }
+    catch (e) { await client.query('ROLLBACK'); throw e }
+    finally { client.release() }
+  },
+}
 
 export const payments = new PaymentsService({
   // 持久化接缝：通用 Postgres store（模块自有 payment_* 表）
-  store: new PgPaymentStore(pool),
+  store: new PgPaymentStore(sql),
+
+  // ── 账本内结算能力（可选，注入才启用；未启用端点 503）────────────────
+  invites: new PgInviteStore(sql),      // invite 收费邀请（INVITE_ENABLED）
+  transfers: new PgTransferStore(sql),  // transfer 账本内划转（TRANSFER_ENABLED）
 
   // ── 收款配置 ──────────────────────────────────────────────────────────
   // ① chain 轨：收款 = 你自己部署/指定的 SubscriptionManager（escrow）
@@ -163,6 +180,10 @@ MPP_DOMAIN=…                                                     # EIP-712 dom
 MPP_PAYEE=0x…你的收款地址                                         # ← 你的
 MPP_CHAIN=oxachain
 
+# ── 账本内结算能力（可选；未启用端点 503） ───────────────
+INVITE_ENABLED=true    # invite 收费邀请（agent 自动向 payer 发账单）
+TRANSFER_ENABLED=true  # transfer 账本内原子划转（需内置 transaction runner）
+
 # ── 可选：事件出站转发（业务方回调端点） ────────────────
 WEBHOOK_FORWARD_URL=https://your-service.example.com/payments/events
 WEBHOOK_FORWARD_SECRET=…   # HMAC 签名（X-Payments-Signature）
@@ -183,6 +204,8 @@ WEBHOOK_FORWARD_SECRET=…   # HMAC 签名（X-Payments-Signature）
 | 3 | **入账校验收款方** | `POST /payments/verify {txHash}` | `tx.to == 你的 payTo` 才 `verified:true`；转给别人返回 422 |
 | 4 | **fiat 收款账号生效** | `POST /payments/checkout {amountCents:1000}` | 返回 `sessionUrl`（stripe.com，商户=你的账号） |
 | 5 | **webhook 验签** | 用**你自己的** `whsec_*` 签名 POST `/payments/webhook` | `200 received`；错误签名 400 |
+| 6 | **invite 账本内结算** | `POST /payments/invites {payer,payee,valueWei}` → `POST /payments/invites/:id/pay` | 成功：`settled:true`，payer 余额减、payee 余额增 |
+| 7 | **transfer 原子划转** | `POST /payments/transfers {from,to,valueWei}` → `POST /payments/transfers/:id/confirm` | 成功 `executed:true`；余额不足 422 且整笔不动 |
 
 curl 冒烟示例：
 

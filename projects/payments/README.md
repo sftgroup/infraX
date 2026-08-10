@@ -1,6 +1,6 @@
 # @0xinfrax/payments
 
-零业务耦合的通用支付引擎（chain / Stripe / x402 / MPP 支付通道 / 稳定币）。
+零业务耦合的通用支付引擎（chain / Stripe / x402 / MPP 支付通道 / 稳定币 / a2a / period 订阅周期 / batch 批量收款 / invite 自动收费邀请 / transfer 账本内转账）。
 
 > **维护**：由 **InfraX**（GitHub [sftgroup/infraX](https://github.com/sftgroup/infraX)）团队维护；源码位于仓库 [`projects/payments/`](https://github.com/sftgroup/infraX/tree/main/projects/payments) 目录，npm 包 `@0xinfrax/payments` 由 InfraX 账号发布与维护。集成方可作为独立库使用，但问题的修复与演进统一由 InfraX 负责。
 
@@ -68,7 +68,7 @@ cd payments && npm install && npm run build
 
 ## 数据库迁移
 
-模块拥有自己的 `payment_*` 表（6 个迁移文件，随包发布在 `db/migrations/`）：
+模块拥有自己的 `payment_*` 表（8 个迁移文件，随包发布在 `db/migrations/`）：
 
 | 迁移 | 表 | 用途 |
 | --- | --- | --- |
@@ -78,6 +78,8 @@ cd payments && npm install && npm run build
 | `004_payment_events.sql` | `payment_events` | 归一化 webhook 事件回放 |
 | `005_payment_authorizations.sql` | `payment_authorizations`（+ `payment_intents.payee`） | period 授权（订阅周期计费） |
 | `006_payment_batches.sql` | `payment_batches` | batch 批量收款（一次 N 个 a2a 意图） |
+| `007_payment_invites.sql` | `payment_invites` | invite 收费邀请（payer/payee/amount/due_at/memo + 状态机） |
+| `008_payment_transfers.sql` | `payment_transfers` | transfer 账本内原子划转（reference 幂等键） |
 
 在**新项目自己的数据库**中执行（不要复用其他项目的表）：
 
@@ -191,7 +193,7 @@ const access = await payments.resolveAccess(subscriber, { agentId }, { chain: 's
 
 ### 可选：现成 Express router（版本 A 推荐）
 
-`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/capabilities` `/mpp/*` `/a2a/*` `/period/*` `/batch/*`）的现成 router，挂载即用：
+`@0xinfrax/payments/router` 提供了覆盖全部端点（`/info` `/price` `/checkout` `/verify` `/webhook` `/balance` `/access` `/capabilities` `/mpp/*` `/a2a/*` `/period/*` `/batch/*` `/invites/*` `/transfers/*`）的现成 router，挂载即用：
 
 ```ts
 import { createPaymentsRouter } from '@0xinfrax/payments/router'
@@ -204,15 +206,15 @@ app.use('/payments', createPaymentsRouter(payments))
 
 ### 能力层（可插拔 rail）
 
-每个通道是一个**可插拔能力**（chain / fiat / x402 / mpp / a2a / period / batch），由构造参数（+ ENV 开关）决定启用与否：
+每个通道是一个**可插拔能力**（chain / fiat / x402 / mpp / a2a / period / batch / invite / transfer），由构造参数（+ ENV 开关）决定启用与否：
 
 - `GET /capabilities` 返回能力清单（`enabled` / `endpoints` / `config`），调用者先探测再使用：
   ```json
   { "capabilities": { "a2a": { "enabled": true, "endpoints": ["POST /a2a", "POST /a2a/settle"], "config": { "defaultPayee": "0x..." } }, "...": {} } }
   ```
 - 未启用能力的端点仍存在但返回 **503**（显式 "not enabled" 而非 404），便于调用方识别配置缺失。
-- 新增能力不破坏旧调用：`createPayment(method)` 增加 `a2a`（两阶段意图）与 `batch`（一次向 N 个 payee 收款）；`chargePeriod` / `getAuthorization` 走 period 授权。
-- 独立开关：`a2a` 默认随 `x402` 开启（可 `A2A_ENABLED=false` 关闭）；`period` / `batch` 需注入对应 store seam 才启用。
+- 新增能力不破坏旧调用：`createPayment(method)` 增加 `a2a`（两阶段意图）与 `batch`（一次向 N 个 payee 收款）；`chargePeriod` / `getAuthorization` 走 period 授权；`createInvite` / `payInviteByBalance` 走 invite（agent 自动发收费邀请）；`createTransfer` / `confirmTransfer` 走 transfer（账本内原子划转）。
+- 独立开关：`a2a` 默认随 `x402` 开启（可 `A2A_ENABLED=false` 关闭）；`period` / `batch` / `invite` / `transfer` 需注入对应 store seam 才启用（微服务形态另需 `PERIOD_ENABLED` / `BATCH_ENABLED` / `INVITE_ENABLED` / `TRANSFER_ENABLED=true`）。
 
 ---
 
@@ -285,7 +287,7 @@ AgentX 自身即此形态的参考实现：
 | --- | --- | --- |
 | `scripts/local-payments/run.sh` | 嵌入式形态（B） | 起 postgres+anvil → 部署合约（含 MockUSDC）→ 起 gateway → `FLOWS="f1 f4 f5 f6"` 全绿（F1-3 三轨订阅 / F4 x402 v2 / F5 MPP / F6 稳定币 EIP-3009） |
 | `scripts/local-payments/run-decouple.sh` | 独立库形态（A） | 只 import 模块自身 + 独立 `agentx_payments` 库，证明零 AgentX 耦合，19 项断言 |
-| `npm test` | 单测 | 10 个文件 89 项断言（协议 / 适配器 / service / router / 错误码） |
+| `npm test` | 单测 | 12 个文件 124 项断言（协议 / 适配器 / service / router / 错误码 / 能力层 / invite+transfer 状态机与原子划转） |
 
 解耦验证断言示例：模块入口必须从自身 `dist/` 解析、依赖仅 `pg,viem`、src/dist 无 `fiat_subscriptions` / `x402_*` / `@agentxv2/sdk` 等业务 token、DB 仅 `payment_*` 表。
 
@@ -297,13 +299,13 @@ AgentX 自身即此形态的参考实现：
 payments/
 ├── package.json            # @0xinfrax/payments, deps: pg + viem
 ├── tsconfig.json
-├── db/migrations/          # 001-004（模块自有 payment_* 表）
+├── db/migrations/          # 001-008（模块自有 payment_* 表）
 ├── src/
 │   ├── index.ts            # 公共入口
 │   ├── types.ts            # 通用类型（metadata 透传约定）
 │   ├── errors.ts           # PaymentError{code,status}
 │   ├── service.ts          # PaymentsService（引擎 + 回调接缝）
-│   ├── store.ts            # PaymentStore 接口 + PgPaymentStore + PgMPPSessionStore
+│   ├── store.ts            # PaymentStore 接口 + PgPaymentStore + PgMPPSessionStore + PgAuthorizationStore + PgBatchStore + PgInviteStore + PgTransferStore
 │   ├── client.ts           # X402Client / PaymentsClient / MPPClient
 │   ├── router.ts           # createPaymentsRouter（express 为 optional peer）
 │   ├── protocol/
