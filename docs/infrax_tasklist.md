@@ -1149,7 +1149,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - [x] **T-6 服务端开关（✅ 2026-08-10）**：[server.ts](projects/payments/server.ts) `INVITE_ENABLED`/`TRANSFER_ENABLED` + `PgInviteStore`/`PgTransferStore` 注入 + `sql` executor（带 transaction runner）
 - [x] **T-7 单元测试（✅ 2026-08-10）**：新增 `tests/invite-transfer.test.ts` **18 用例**：invite 状态机（创建/链上 settle/无效 tx 拒绝/重复 settle 幂等/取消/惰性过期 410/未来不期/按角色查询/余额支付成功+引用/余额不足分文不动/无 x402 时创建+余额结算可用而链上 settle 503/503 守卫）+ transfer 原子划转（reference 幂等/确认扣增正确/余额不足整笔不动/重复确认不双扣/取消后不可执行/503 守卫）；**全量 12 文件 124 用例全绿** + tsc/build 通过
 - [x] **T-8 部署生产 + 验证（✅ 2026-08-10）**：迁移 007/008 上生产（migrations applied 8）→ drop-in 开启 INVITE/TRANSFER_ENABLED → 探测 /capabilities（chain, period, invite, transfer）→ `scripts/mq14_verify.sh` 11 步全通过：邀请创建/双角色查询/余额支付（payer 1000000→900000、payee 100000）/transfer 充足执行（300000 划转）/余额不足 422/重复 confirm 幂等不双扣/过期状态/测试数据清理；过程中修复 listInvites+expireDue SQL 占位符错位（commit 34e2e4e）
-- [ ] **T-9 文档更新**：README（能力表+迁移 001-008+invite/transfer 端点）/HANDOVER（§2 矩阵 + §12 开关）/CALLER_SETUP 补充邀请结算契约
+- [x] **T-9 文档更新（✅ 2026-08-10，commit f637263）**：README（能力清单+迁移 001-008+invite/transfer 端点与能力说明）/HANDOVER（§1 能力范围、§2 矩阵新增 invite/transfer 行、迁移表 005-008、§8 生产实测、§10 修正 MQ-13 推翻说明+占位符踩坑、§12 开关）/CALLER_SETUP（账本内结算模型、嵌入式注入+事务 runner 示例、env 开关、自检清单 6-7 项）
 
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
