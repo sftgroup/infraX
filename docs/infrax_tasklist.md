@@ -1295,6 +1295,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
 | A-8 | vault 增强实施（待排期） | 按 W-4.1：vault 支持 MPC session confirm（`wallets` 表登记 / executeTransaction 加固）+ SDK 透传 + 文档样例 | 🔲 | P2 |
+| A-9 | Paymaster/relay 配额前端展示 | 集成方控制台（admin/自助面板）展示 aa-relay 配额与剩余配额（按调用者 API Key，对应 §7 通用化设计第 4 项）：数据源 = relay 配额统计接口（period/quota/used/remaining/resetAt），前端配额页 + 用量表 + 超限提示（对齐 market `/usage` 交互：planName/monthlyQuota/currentUsage） | 🔲 | P2 |
 
 **9.11 PocketX → InfraX 交接更新（2026-08-11）**
 
