@@ -113,6 +113,19 @@ export const config = {
     password: process.env.ADMIN_PASS || '',
   },
 
+  // MQ-12: 通用支付引擎（@0xinfrax/payments 独立服务 infrax-payments :9132）。
+  // 用户套餐购买统一走通用支付通道（chain escrow / fiat Stripe / x402），waas 仅保留业务状态。
+  payments: {
+    baseUrl: process.env.PAYMENTS_URL || '',
+    apiKey: process.env.PAYMENTS_API_KEY || '',
+    webhookSecret: process.env.PAYMENTS_WEBHOOK_SECRET || '',
+    defaultChain: process.env.PAYMENTS_CHAIN || 'oxachain',
+    defaultRail: process.env.PAYMENTS_DEFAULT_RAIL || 'chain',
+    fiatPeriod: (process.env.PAYMENTS_FIAT_PERIOD || 'month') as 'day' | 'week' | 'month' | 'year',
+    // 链上套餐 → waas 业务套餐对齐表（planId 为 SubscriptionManager.getPlan 的 id）
+    planIdMap: JSON.parse(process.env.PAYMENTS_PLAN_ID_MAP || '{"free":0,"pro":1,"enterprise":2}') as Record<string, number>,
+  },
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'debug',
 };

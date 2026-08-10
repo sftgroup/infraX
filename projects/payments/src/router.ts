@@ -96,6 +96,37 @@ export function createPaymentsRouter(payments: PaymentsService): Router {
     )
   })
 
+  // GET /chain-info/:chain — chain slot metadata (chainId + SubscriptionManager)
+  // for hosts that drive the on-chain subscribe flow directly from the frontend.
+  router.get('/chain-info/:chain', (req: Request, res: Response, next: NextFunction) => {
+    const chain = String(req.params.chain) as ChainKey
+    handle(
+      () => Promise.resolve(payments.chain.chainConfigOf(chain)),
+      res,
+      next,
+      (info) => res.json({ chain, chainId: info.chainId, subscriptionManager: info.subscriptionManager, nativeAsset: payments.chain.nativeAsset() })
+    )
+  })
+
+  // GET /subscription/:chain/:subscriber/:resourceId — on-chain subscription status
+  // (SubscriptionManager.hasActiveSubscription). Read rail; used by hosts to
+  // confirm an escrow subscription has been paid and activate their business state.
+  router.get('/subscription/:chain/:subscriber/:resourceId', (req: Request, res: Response, next: NextFunction) => {
+    const chain = String(req.params.chain) as ChainKey
+    const subscriber = String(req.params.subscriber ?? '').toLowerCase()
+    const resourceId = Number(req.params.resourceId)
+    if (!subscriber || !resourceId) {
+      res.status(400).json({ error: 'subscriber and resourceId are required' })
+      return
+    }
+    handle(
+      () => payments.chain.hasActiveSubscription(chain, subscriber, resourceId),
+      res,
+      next,
+      (active) => res.json({ active })
+    )
+  })
+
   // POST /checkout — fiat checkout
   // body: { subscriber, amountCents?, planId?, period?, currency?, chain?, metadata?, clientReference?, successUrl?, cancelUrl? }
   router.post('/checkout', (req: Request, res: Response, next: NextFunction) => {

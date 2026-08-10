@@ -273,6 +273,31 @@ export async function initDatabase(): Promise<void> {
     await client.query(`ALTER TABLE saas_withdrawals ADD COLUMN IF NOT EXISTS fee DECIMAL(36,18) DEFAULT 0;`);
     await client.query(`ALTER TABLE saas_withdrawals ADD COLUMN IF NOT EXISTS actual_amount DECIMAL(36,18) DEFAULT 0;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS hd_wallet_index INT;`);
+    // MQ-12: subscriptions 表自举（历史缺口：此前从未由 waas 建表，B-11-1 仅验 plans 静态数据）
+    await client.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan_id VARCHAR(50) NOT NULL,
+        plan_name VARCHAR(100) NOT NULL,
+        price NUMERIC(10, 2) DEFAULT 0,
+        billing_cycle VARCHAR(20) DEFAULT 'monthly',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        expires_at TIMESTAMP,
+        payment_method VARCHAR(20),
+        payment_ref VARCHAR(200),
+        payment_status VARCHAR(20) DEFAULT 'pending',
+        cancelled_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // MQ-12: subscriptions 支付状态列（通用支付引擎接入：pending→active 状态机 + rail 记录）
+    await client.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20);`);
+    await client.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_ref VARCHAR(200);`);
+    await client.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'pending';`);
+    await client.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;`);
 
     // 4.10 Safe multi-sig wallets (F-027~032)
     await client.query(`

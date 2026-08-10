@@ -217,8 +217,12 @@ export async function getTenantByWallet(walletAddress: string): Promise<Tenant |
 
 /**
  * Activate (create) WaaS tenant for a wallet address
+ * T-6（MQ-12）：付费套餐不再允许免支付直通 —— 必须走 /api/v2/subscription/subscribe（通用支付引擎）。
  */
 export async function activateTenant(walletAddress: string, planId: string = 'free'): Promise<Tenant> {
+  if (planId !== 'free') {
+    throw new Error('Paid plans must be purchased via POST /api/v2/subscription/subscribe');
+  }
   const existing = await getTenantByWallet(walletAddress);
   if (existing) {
     return existing;
@@ -242,15 +246,12 @@ export async function activateTenant(walletAddress: string, planId: string = 'fr
   if (userId) {
     const validPlans: Record<string, { name: string; price: number }> = {
       free: { name: 'Starter', price: 0 },
-      pro: { name: 'Pro', price: 49 },
-      enterprise: { name: 'Enterprise', price: 199 },
     };
     const plan = validPlans[planId] || validPlans.free;
-    const expiresAt = plan.price === 0 ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await pool.query(
-      `INSERT INTO subscriptions (user_id, plan_id, plan_name, price, billing_cycle, status, expires_at)
-       VALUES ($1, $2, $3, $4, 'monthly', 'active', $5)`,
-      [userId, planId, plan.name, plan.price, expiresAt]
+      `INSERT INTO subscriptions (user_id, plan_id, plan_name, price, billing_cycle, status, expires_at, payment_method, payment_status)
+       VALUES ($1, $2, $3, $4, 'monthly', 'active', NULL, 'free', 'succeeded')`,
+      [userId, planId, plan.name, plan.price]
     );
   }
 

@@ -1,9 +1,10 @@
 # InfraX 统一任务清单（infrax_tasklist）
 
-> 最后更新: 2026-08-08 | 适用版本 `v0.6.0-20260806`
+> 最后更新: 2026-08-10 | 适用版本 `v0.6.0-20260806`
 >
 > MQ-10 收敛与优化 DC-1~DC-10 已全部完成并在生产验证（2026-08-08），见 §9.7 MQ-10 方案段。
 > **Agent 钱包架构决策（MQ-10 补充 E，2026-08-08）**：以 aa-sdk（Kernel v3 ERC-4337）为主主线，aa-sdk 三缺口（Paymaster/多链/aa-relay）已排期（MQ-10 补充 E-1，🔲）。
+> **MQ-12 套餐支付接入通用支付引擎（2026-08-10）**：waas subscribe 支付意图化（T-1~T-3/T-5~T-6 代码已实现，T-7~T-9 生产部署/验收待办），见 §9.8.8 MQ-12 段。
 > 覆盖模块：`data` (:9112) / `knowledge-injector` (:9113) / `ragservicer` (:9721) / `ml-service` (:9120, 独立服务器)
 >
 > **独立维护文档**：本文档同时承载（a）数据服务栈生产部署流程（§1~§8）与（b）**全站唯一 tasklist 维护点**（§9，覆盖全部需求源——B 端 data-service / RAG 里程碑 / Session Key / MCP / 区块链栈 / 数据清洗与微服务需求补遗）。原 `docs/DEPLOYMENT_DATA_STACK.md` 于 2026-08-07 更名为本文件；各需求源文档保留详细契约，状态统一在本文件登记。
@@ -931,7 +932,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
 | B-11-1 | web `server.js` 代理表补 `/api/v2/subscription`（waasUpgradePlan 点击无响应） | ✅ `414248c`（API_ROUTES 新增 `/api/v2/subscription` → waas:9109；生产 `/api/v2/subscription/plans` 200 返回 waas 真实套餐 JSON） | P1 |
-| B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | 🔲 | P1 |
+| B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | 🔲 **由 MQ-12 承接（2026-08-10 登记，plans 服务端下发已实现，剩余支付流程见 MQ-12 T-5）** | P1 |
 | B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | 🔲（⚠️ 现状无；web 仅有 waas/dc 租户 apikey） | P1 |
 | B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | 🔲 | P1 |
 | B-11-5 | admin 套餐管理（CRUD）页 | 🔲 | P1 |
@@ -1104,6 +1105,22 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
   - [x] **P3-7 生产部署（✅ 2026-08-10）**：43.163.105.172 建 `pocketx_payments` 库 → 装依赖（tsx）→ 跑迁移（5/5，8 表）→ 注册 systemd（`infrax-payments.service`，:9132）→ 冒烟 **5/6 → 6/6 全绿**：`/health` 200 豁免 / 无 key 401 / 带 key `/payments/info` 200 / `/payments/balance` 200 / webhook 缺签名 400 / **`/payments/price?planId=1` 200**（planId=1：price 0.01 ETH、period=monthly、active、trialDays=7）——途中修复 2 个问题：① 生产机 DNS 无法解析 `rpc.l1.oxachain.io`（ENOTFOUND）→ chain-rpc `rpc-pool.json` oxa 端点改 `https://rpc-oxa.0xainet.top`（AgentX 生产在用）+ drop-in 备用；② `/payments/price` 500 `getPlan returned no data ("0x")` —— 根因：chain-rpc 网关默认响应为信封 `{code,message,data:{result}}`，viem http transport 只认标准 JSON-RPC 顶层 `result` → 新增 **raw 透传模式**（请求头 `X-Json-Rpc: raw` → `{jsonrpc,id,result|error}`，batch 同理，[rpcRoutes.ts] 支持），payments `server.ts` buildChains 走网关时自动带该头；既有信封消费方（waas/dc/mcp/sdk/mpc）零影响
 
 > 回滚预案：依赖回滚 `npm install @agentxv2/sdk@0.10.3` / `@agentxv2/payments@^0.2.2`（官方 registry）；代码回滚 `git revert 323d3c9`（旧包未删，双保险）。
+
+**MQ-12 用户套餐支付接入通用支付引擎（2026-08-10 需求登记；方案：waas 保持业务层，支付统一走 @0xinfrax/payments 独立服务）**：
+> 背景：现状 waas `/api/v2/subscription/subscribe`（[subscriptionRoutes.ts](projects/waas/routes/subscriptionRoutes.ts)）与 `saas/tenants/activate`（[tenantService.ts](projects/waas/services/tenantService.ts)）均为**伪支付**——校验套餐后直接 INSERT `status='active'` + `expires_at=now+30d`，pro/enterprise 免费直通，对应 B-10-2（x402 伪实现）与 B-11-2（套餐购买页）。通用支付引擎 `@0xinfrax/payments`（独立服务 **infrax-payments :9132**，chain/fiat/x402/mpp/stablecoin 五通道 + `metadata` 透传 + P3-1 webhook 出站转发）已生产就绪 → **用户套餐购买接入通用支付通道，关停伪支付路径**。
+> 先决决策（推荐已标注）：**D-1 套餐目录形态**——推荐：目录以 waas `subscriptions` 为业务侧唯一事实（现状硬编码 free/pro/enterprise 保留），支付按套餐 rail 路由：chain=链上 SubscriptionManager escrow（`/payments/price` 取价，oxa planId=1 已实测 0.01 ETH/月）、x402=原生代币周期支付、fiat=Stripe checkout；链上 planId 与 waas plan 建立对齐表；**D-2 rails 启用**——chain rail 已在（生产实测），x402/Stripe 需 key 后启用；**D-3 subscriber 映射**——waas `req.user.walletAddress` 即 payments `subscriber`（天然一致，[auth.ts](projects/waas/middleware/auth.ts) 已解析），无额外映射。
+> 状态标记同前：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办；优先级 P1；关联 B-10-2 / B-11-2 / B-11-6 / MQ-11(P3)。
+
+- [x] **T-1 支付意图创建（✅ 已实现 2026-08-10）**：`POST /api/v2/subscription/subscribe`——free 直通；pro/enterprise 按 rail 调 infrax-payments：chain→`GET /payments/price` + `GET /payments/chain-info`（escrow 地址/金额/chainId）、fiat→`POST /payments/checkout`（`clientReference=sub:<id>` + metadata）、x402→`GET /payments/info` 挑战；`subscriptions` 落 `status='pending'`（expires_at 空）不再直接 active；rail 失败 → `failed`。验收：pending+支付信息返回、无 active 直通
+- [x] **T-2 支付确认回调端点（✅ 已实现 2026-08-10）**：waas `POST /api/v2/subscription/payment-callback`（forwarder 目标）——HMAC-SHA256 验签（`PAYMENTS_WEBHOOK_SECRET`）+ 幂等（`activateSubscription` 已 active 跳过）；webhook→解析 `client_reference_id=sub:<id>` 激活；credit→按 payer 匹配 pending x402 激活。验收：伪造签名 401、重复事件幂等、回调后 /subscription/me active
+- [x] **T-3 chain rail 链上兜底校验（✅ 已实现 2026-08-10）**：payments router 新增 `GET /payments/subscription/:chain/:subscriber/:resourceId`（`hasActiveSubscription`）+ `GET /payments/chain-info/:chain`（chainId+SubscriptionManager 地址）；waas `POST /api/v2/subscription/check` 轮询链上状态 → active 则激活；plan 对齐表 `PAYMENTS_PLAN_ID_MAP`（free:0/pro:1/enterprise:2，env 可配）。验收：链上 escrow 有订阅 → /subscription/me active（即使回调缺失）
+- [ ] **T-4 访问控制对齐**：waas `/api/v2/subscription/me` 直查 `subscriptions` 已一致（回调落库，无需自定义 PaymentStore）；payments `POST /payments/access` 供第三方路径文档标注并入 T-10
+- [x] **T-5 前端套餐购买流程（✅ 已实现 2026-08-10）**：[waas.js](projects/web/modules/waas.js) `waasUpgradePlan`——free 直通；chain→展示 escrow 地址/金额 + 4s 轮询 `/check`；fiat→跳转 `sessionUrl`；x402→提示转账 + prompt 提交 txHash 调 `/verify`；pending→active 状态实时反馈。验收：三 rail UI 流程可走通、pending 态明确提示
+- [x] **T-6 伪支付路径关停（✅ 已实现 2026-08-10）**：[tenantService.ts](projects/waas/services/tenantService.ts) `activateTenant` 非 free 抛错（仅 free 试用直通）；subscribe 无"直接 active"分支；`subscriptions` 写入口审计——仅 free 直通 + 支付确认（回调/check/verify）两路。验收：pro/enterprise 无支付不再出现 active 记录
+- [x] **T-7 rails 生产配置（✅ 2026-08-10 部署完成）**：waas drop-in `payments.conf`（PAYMENTS_URL=127.0.0.1:9132 / PAYMENTS_API_KEY / PAYMENTS_WEBHOOK_SECRET / DEFAULT_RAIL=chain / CHAIN=oxachain）；infrax-payments drop-in `webhook-forward.conf`（WEBHOOK_FORWARD_URL=http://127.0.0.1:9109/api/v2/subscription/payment-callback + WEBHOOK_FORWARD_SECRET 与 waas 一致）；rails 启用状态：**仅 chain**（x402/Stripe 按 D-2 待 key）——验收：`/payments/info` → `{"enabled":false,"mpp":{"enabled":false}}`
+- [ ] **T-8 admin 支付订单视图（B-11-6 联动）**：admin 新增「支付订单」页——读 payments `payment_intents`（`pocketx_payments` 库只读查询或 payments 暴露只读端点），展示套餐订单/状态/金额/渠道/metadata——验收：生产订单可见、状态与库一致
+- [ ] **T-9 验收（E2E，⚠️ 部分完成 2026-08-10）**：✅ 已通过——钱包签名 E2E（生产实测）：subscribe pro→201 pending+chain 支付信息（price 0.01ETH/period/trialDays/subscriptionManager/chainId 19505，真实调 payments）、/check 链上兜底（active:false→stays pending）、payment-callback 正向（HMAC 签名→pending→active+expires_at=now+30d）与负向（伪造/缺失签名→401）、subscribe free→active 直通、/subscription/me 状态切换、DB 落库（payment_method/status/ref 正确）、web :9111 代理链路、payments 新端点（chain-info/subscription/price）+ 无 key 401、**测试数据已清理**。🔲 未覆盖——链上真实 escrow 支付（无钱包/无链上订阅，依赖 SubscriptionManager 实际订阅）、前端浏览器钱包流程（waas.js 已部署）、x402/Stripe（D-2 key 到位后）
+- [ ] **T-10 文档与回滚预案（⚠️ 部分完成：tasklist 状态已更新）**：`SERVICE_API_REFERENCE.md` waas 订阅章节（pending/active 状态机 + 回调契约 + rail 路由表）与 `SDK_INTEGRATION.md` payments 客户端（`PaymentsClient`/`X402Client`）消费示例待补；回滚预案——waas 恢复直接订阅逻辑 + payments rails 停用即回退（业务零耦合，互不影响）
 
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 

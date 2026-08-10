@@ -102,6 +102,12 @@ export class ChainAdapter {
     return this.resolve(chain).chainId
   }
 
+  /** Chain slot metadata (chainId + SubscriptionManager address) — used by on-chain subscribe flows. */
+  chainConfigOf(chain: ChainKey): { chainId: number; subscriptionManager: string } {
+    const info = this.resolve(chain)
+    return { chainId: info.chainId, subscriptionManager: info.subscriptionManager }
+  }
+
   nativeAsset(): string {
     return NATIVE_ASSET
   }

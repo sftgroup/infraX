@@ -78,14 +78,96 @@ async function waasActivate() {
 }
 
 async function waasUpgradePlan(planId) {
+  var names = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' };
+  var statusEl = document.getElementById('waas-upgrade-status');
+  var subStatusEl = document.getElementById('waas-ov-sub-status');
+  var planEl = document.getElementById('waas-ov-plan');
+  function setStatus(html, ok) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:' + (ok ? 'var(--success)' : 'var(--error)') + '">' + html + '</span>';
+  }
+  function renderActive() {
+    showToast('Upgraded to ' + (names[planId] || planId) + ' plan!', 'success');
+    if (subStatusEl) subStatusEl.textContent = '🟢 ' + (names[planId] || planId) + ' (Active)';
+    if (planEl) planEl.textContent = names[planId] || planId;
+  }
   try {
     var d = await afetch('/api/v2/subscription/subscribe', { method: 'POST', body: { planId: planId } });
-    var names = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' };
-    showToast('Upgraded to ' + (names[planId] || planId) + ' plan!', 'success');
-    document.getElementById('waas-ov-sub-status').textContent = '🟢 ' + (names[planId] || planId) + ' (Active)';
-    document.getElementById('waas-ov-plan').textContent = names[planId] || planId;
-    document.getElementById('waas-upgrade-status').innerHTML = '<span style="color:var(--success)">✅ Switched to ' + (names[planId] || planId) + ' plan</span>';
-  } catch (e) { showToast(e.message, 'error'); document.getElementById('waas-upgrade-status').innerHTML = '<span style="color:var(--error)">❌ ' + e.message + '</span>'; }
+    // free 套餐直通 active
+    if (!d.payment || d.payment.rail === 'none') {
+      renderActive();
+      setStatus('✅ Switched to ' + (names[planId] || planId) + ' plan', true);
+      return;
+    }
+    var pay = d.payment;
+    if (pay.rail === 'chain') {
+      var isNative = !pay.payToken || pay.payToken === '0x0000000000000000000000000000000000000000';
+      var amount = pay.price !== undefined ? (Number(pay.price) / 1e18).toFixed(4) + ' ' + (isNative ? 'ETH' : pay.payToken) : '';
+      setStatus('⏳ 请在钱包中完成链上订阅（chainId ' + pay.chainId + '）<br>' +
+        'SubscriptionManager: <code>' + pay.subscriptionManager + '</code><br>' +
+        '金额: <b>' + amount + '</b> / ' + (pay.period || 'month') + '<br>' +
+        '<small>当前钱包即 subscriber，支付确认后自动生效</small>', true);
+      showToast('等待链上支付确认…', 'info');
+      waasPollSubscription(planId, 5 * 60 * 1000);
+    } else if (pay.rail === 'fiat') {
+      setStatus('⏳ 跳转支付页…', true);
+      window.location.href = pay.sessionUrl;
+    } else if (pay.rail === 'x402') {
+      var amountEth = pay.priceWei ? (Number(pay.priceWei) / 1e18).toFixed(4) : '';
+      setStatus('⏳ 请向 <code>' + pay.payTo + '</code> 转账 ' + amountEth + ' ETH（' + pay.network + '）<br>' +
+        '<small>转账完成后请输入交易哈希（txHash）确认</small>', true);
+      showToast('完成转账后提交 txHash', 'info');
+      waasSubmitX402(pay.network);
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+    setStatus('❌ ' + e.message, false);
+  }
+}
+
+// MQ-12: x402 rail — 提示用户输入链上转账 txHash 并调 /verify 激活订阅
+async function waasSubmitX402(network) {
+  var txHash = window.prompt('请输入 ' + (network || '链上') + ' 转账的交易哈希（txHash）:');
+  if (!txHash) return;
+  try {
+    var d = await afetch('/api/v2/subscription/verify', { method: 'POST', body: { txHash: txHash } });
+    if (d.verified && d.activated) {
+      showToast('支付已确认，套餐已激活!', 'success');
+      var statusEl = document.getElementById('waas-upgrade-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ 支付确认，套餐已激活</span>';
+      clearMe();
+    } else {
+      showToast('支付未确认或未找到待处理订阅', 'error');
+    }
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// MQ-12: 轮询支付状态（chain rail 链上确认；fiat/x402 依赖回调或 verify）
+var waasPollTimer = null;
+function waasPollSubscription(planId, timeoutMs) {
+  var started = Date.now();
+  var names = { free: 'Free', pro: 'Pro', enterprise: 'Enterprise' };
+  if (waasPollTimer) { clearInterval(waasPollTimer); waasPollTimer = null; }
+  waasPollTimer = setInterval(async function () {
+    try {
+      var d = await afetch('/api/v2/subscription/check', { method: 'POST' });
+      if (d.status === 'active') {
+        clearInterval(waasPollTimer); waasPollTimer = null;
+        showToast('Upgraded to ' + (names[planId] || planId) + ' plan!', 'success');
+        var subStatusEl = document.getElementById('waas-ov-sub-status');
+        var planEl = document.getElementById('waas-ov-plan');
+        if (subStatusEl) subStatusEl.textContent = '🟢 ' + (names[planId] || planId) + ' (Active)';
+        if (planEl) planEl.textContent = names[planId] || planId;
+        var statusEl = document.getElementById('waas-upgrade-status');
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ ' + (names[planId] || planId) + ' plan activated</span>';
+        clearMe();
+      }
+    } catch (_) {}
+    if (Date.now() - started > (timeoutMs || 60000)) {
+      clearInterval(waasPollTimer); waasPollTimer = null;
+      var statusEl = document.getElementById('waas-upgrade-status');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⏰ 等待支付超时，请确认已支付后重试</span>';
+    }
+  }, 4000);
 }
 
 
