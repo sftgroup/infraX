@@ -27,7 +27,7 @@ const pools: Record<string, Pool> = {
   waas:    new Pool({ connectionString: process.env.WAAS_DB    || `${BASE}/pocketx_waas`,    max: 3 }),
   dc:      new Pool({ connectionString: process.env.DC_DB      || `${BASE}/pocketx_dc`,      max: 3 }),
   vault:   new Pool({ connectionString: process.env.VAULT_DB   || `${BASE}/pocketx_vault`,   max: 3 }),
-  payment: new Pool({ connectionString: process.env.PAYMENT_DB || `${BASE}/pocketx_payment`, max: 3 }),
+  payments: new Pool({ connectionString: process.env.PAYMENTS_DB || `${BASE}/pocketx_payments`, max: 3 }),
   collector: new Pool({ connectionString: process.env.COLLECTOR_DB || `${BASE}/pocketx_collector`, max: 3 }),
 };
 
@@ -85,7 +85,7 @@ app.get('/api/v2/admin/dashboard', requireAdmin, asyncHandler(async (_req: any, 
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM users").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM tenants WHERE status='active'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
     pools.collector.query("SELECT COUNT(*)::int as cnt FROM events").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
-    pools.payment.query("SELECT COUNT(*)::int as cnt FROM payment_orders WHERE status='confirmed'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
+    pools.payments.query("SELECT COUNT(*)::int as cnt FROM payment_intents WHERE status='paid'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
   ]);
   res.json(apiResponse({ totalUsers, activeTenants, totalEvents, totalRevenue }));
 }));
@@ -96,7 +96,7 @@ app.get('/api/v2/admin/revenue', requireAdmin, asyncHandler(async (_req: any, re
     pools.waas.query("SELECT COUNT(*)::int as cnt FROM tenants WHERE status='active'").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
     pools.dc.query("SELECT COUNT(*)::int as cnt FROM dc_subscriptions").then(r => r.rows[0]?.cnt || 0).catch(() => 0),
     pools.waas.query("SELECT plan_name, billing_cycle, COUNT(*)::int as cnt FROM subscriptions GROUP BY plan_name, billing_cycle ORDER BY cnt DESC").then(r => r.rows).catch(() => []),
-    pools.payment.query("SELECT status, COUNT(*)::int as cnt FROM payment_orders WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY status").then(r => r.rows).catch(() => []),
+    pools.payments.query("SELECT status, COUNT(*)::int as cnt FROM payment_intents WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY status").then(r => r.rows).catch(() => []),
   ]);
   res.json(apiResponse({
     activeTenants, dcSubscribers,
@@ -143,7 +143,7 @@ app.get('/api/v2/admin/status', requireAdmin, asyncHandler(async (_req: any, res
     { name: 'dc',         port: parseInt(process.env.DC_PORT         || '9102', 10) },
     { name: 'vault',      port: parseInt(process.env.VAULT_PORT      || '9107', 10) },
     { name: 'mpc',        port: parseInt(process.env.MPC_PORT        || '9104', 10) },
-    { name: 'payment',    port: parseInt(process.env.PAYMENT_PORT    || '9106', 10) },
+    { name: 'payments',   port: parseInt(process.env.PAYMENTS_PORT   || '9132', 10) },
     { name: 'admin',      port: parseInt(process.env.ADMIN_PORT      || '9100', 10) },
     { name: 'web',        port: parseInt(process.env.WEB_PORT        || '9111', 10) },
     { name: 'wallet-mcp', port: parseInt(process.env.WALLET_MCP_PORT || '9110', 10) },

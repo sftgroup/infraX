@@ -14,7 +14,8 @@ export default function Revenue() {
   if (!data) return <div className="empty">No data</div>;
 
   const totalSubs = data.subscriptions?.reduce((s: number, i: any) => s + parseInt(i.cnt), 0) || 0;
-  const revenue = data.payments?.filter((p: any) => p.status === 'paid').reduce((s: number, p: any) => s + parseFloat(p.total_usd), 0) || 0;
+  // 支付引擎按 intent 计数（跨货币金额不可直接加总；30d Revenue 反映 paid 意图笔数）
+  const revenue = data.payments?.filter((p: any) => p.status === 'paid').reduce((s: number, p: any) => s + parseInt(p.cnt), 0) || 0;
 
   return (
     <div>
@@ -61,13 +62,12 @@ export default function Revenue() {
       <div className="card" style={{ marginTop: 16 }}>
         <h3>💳 Payments (30d)</h3>
         <table>
-          <thead><tr><th>Status</th><th>Count</th><th>Total USD</th></tr></thead>
+          <thead><tr><th>Status</th><th>Count</th></tr></thead>
           <tbody>
             {data.payments?.map((p: any, i: number) => (
               <tr key={i}>
                 <td><span className={`badge ${p.status === 'paid' ? 'green' : p.status === 'pending' ? 'yellow' : 'red'}`}>{p.status}</span></td>
                 <td>{p.cnt}</td>
-                <td>${parseFloat(p.total_usd).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
