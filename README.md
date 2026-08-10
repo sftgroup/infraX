@@ -53,7 +53,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | DC 链上数据中心 | 9102 | 经 web 代理 `/api/v2/data` | 数据面 x-dc-api-key；订阅面 x-wallet-address（超限 429） | [dc.md](./docs/services/dc.md) |
 | MPC 多方计算钱包 | 9104 | 经 web 代理 `/api/v2/mpc` | 统一 key（MPC_API_KEY / mp_ key）；plans 公开（欠费 402） | [mpc.md](./docs/services/mpc.md) |
 | Vault Safe 多签 | 9107 | 经 web 代理 `/api/vault` | 统一 key（VAULT_API_KEY / vx_ key） | [vault.md](./docs/services/vault.md) |
-| WAAS 钱包即服务 | 9109 | 经 web 代理 `/api/v2/wallet`、`/api/v2/saas`、`/api/v2/subscription` | 钱包签名 / tenant key；plans 公开 | [waas.md](./docs/services/waas.md) |
+| WAAS 钱包即服务 | 9109 | 经 web 代理 `/api/v2/wallet`、`/api/v2/saas`、`/api/v2/subscription` | 平台托管签名（类 CEX，外部零链上签名）；API 身份认证 EIP-191 24h / tenant key；plans 公开 | [waas.md](./docs/services/waas.md) |
 | Web 代理层 | 9111 | **公网入口**（nginx 80/443 → 9111） | 代理自动注入 X-Service-Key | [web.md](./docs/services/web.md) |
 | Data 数据中心 | 9112 | 经 nginx `/api/data/*` | 统一 key（DATA_API_KEY / dx_ key）；/health /docs 公开 | [data.md](./docs/services/data.md) |
 | Knowledge Injector | 9113 | 仅内网 | INJECTOR_API_KEY | [knowledge-injector.md](./docs/services/knowledge-injector.md) |

@@ -108,6 +108,8 @@ const infrax = new InfraX({
 > ```
 >
 > 未配置 `walletAddress`/`walletSign` 时 `wallet.*` 方法明确抛错（fail-closed），不会用 `x-api-key` 打需要签名的端点。`health()` 无需签名。
+>
+> **定位澄清（2026-08-11）**：此 `walletSign` 是 **API 身份认证**（证明请求来自该地址所有者），**不是钱包操作签名**——服务端按地址缓存 24h，同一地址 24h 内只需签一次。WAAS 定位为类 CEX 托管模型：链上签名全部在**平台内部**（托管私钥签名广播），B 端 / C 端用户零链上签名；提币授权 = `paymentPassword`（资金密码）+ B 端业务审批。详见 [services/waas.md §1.1](docs/services/waas.md)。
 
 ### 2.4 示例
 

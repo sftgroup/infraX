@@ -700,7 +700,15 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 需求 | 说明 | 状态 |
 |:---:|------|------|:---:|
-| 6.0 | **AI 生态 Skills 插件（对齐 onchainos-skills）** | 现有 wallet/dc/vault/mpc 四个 MCP 服务器为底座（✅ 已具备），补齐生态发布层：为 Claude Code（`.claude-plugin`）/ Cursor（`.cursor-plugin`）/ OpenCode（`.opencode`）/ Codex（`.codex-plugin`）/ OpenClaw（`.openclaw`）提供官方 Skills 插件，覆盖 wallet/dc/vault/mpc/data/payment/session-key 全能力（含 session-key 签名代理与零签名模式）；发布物对齐 OKX onchainos-skills（GitHub 3449 commits、多 IDE 插件市场 + SKILL.md） | 🔲 新需求待排期 |
+| 6.0 | **AI 生态 Skills 插件（对齐 onchainos-skills）** | 现有 wallet/dc/vault/mpc 四个 MCP 服务器为底座（✅ 已具备），补齐生态发布层：为 Claude Code（`.claude-plugin`）/ Cursor（`.cursor-plugin`）/ OpenCode（`.opencode`）/ Codex（`.codex-plugin`）/ OpenClaw（`.openclaw`）提供官方 Skills 插件，覆盖 wallet/dc/vault/mpc/data/payment/session-key 全能力（含 session-key 签名代理与零签名模式）；发布物对齐 OKX onchainos-skills（GitHub 3449 commits、多 IDE 插件市场 + SKILL.md） | 🔲 待排期（子任务 6.1~6.3） |
+
+**需求 6.0 实现子任务（2026-08-11 拆解）**
+
+| # | 任务 | 说明 | 状态 |
+|:---:|------|------|:---:|
+| 6.1 | Skills 插件仓库脚手架 | 新建 `ai-skills/` 仓库：SKILL.md 模板 + 7 组 skill（wallet/dc/vault/mpc/data/payment/session-key），基于 4 个 MCP 服务器现有工具清单生成 | 🔲 |
+| 6.2 | 多 IDE 发布物 | Claude Code `.claude-plugin` / Cursor / OpenCode / Codex / OpenClaw 五市场配置 | 🔲 |
+| 6.3 | 文档与示例 | 每个 skill 附 Quick Start 样例（含 vault MPC 验证码确认 / session-key 零签名模式） | 🔲 |
 
 **Phase 1: DC 数据强化（1 周）**
 
@@ -1255,6 +1263,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - 新 L1 目标：统一"**平台签名通道**"——C 端用户用 MPC 钱包（邮箱验证码解锁）或 session-key（EIP-712 一次性授权）作为 Safe owner，vault confirm 由平台签名通道完成，用户签名从"每笔 EIP-712"收敛为"一次授权 / 验证码解锁"
 - 实施前需完成 A-3（MPC 作为 Safe owner 的契约评估）；session-key Adapter 扩展（signMessage/signTypedData）评估后决定是否仍需要
 
+**W-4.1 vault 增强方案（A-2/A-3 结论，2026-08-11 定稿）**
+
+> A-3 可行性核实（源码级）：vault `confirm` 验签 = `ethers.verifyMessage(toUtf8Bytes(safeTxHash))`，即 **EIP-191 personal_sign**（非 Safe 标准 EIP-712）——[multiSigService.ts](projects/vault/src/services/multiSigService.ts) L597；MPC `sign-message` = EIP-191 personal_sign（TSS 2-of-2，`ethers.hashMessage` 摘要）——[server.ts](projects/mpc/server.ts) L863-868 → **签名格式完全匹配，vault/mpc 均零改造**。Safe owner 只是普通 EOA 地址，MPC 派生地址可直接作为 owner（链上无差别）。
+
+**推荐路径（MPC 现成可用，优先）**：
+
+1. 用户注册 MPC 钱包（邮箱验证码）→ 派生地址作为 Safe owner（`createSafe` 的 owners 传入）
+2. 确认交易：前端/集成方携带 MPC session token（`session/unlock` 验证码解锁，30min 有效）→ vault 调 MPC `sign-message(safeTxHash)` → 得签名 → `confirm({signature})` → 达阈值自动执行
+3. 体验：用户每笔确认输入邮箱验证码（30min 会话内免输），**无需 EIP-712 钱包签名**——对齐 CEX/OKX 的"验证码授权"体验
+
+**⚠️ 集成点（必须处理）**：vault `executeTransaction` 打包签名依赖 vault DB `wallets` 表（`signer_id`→`address`）映射 owner 地址——MPC 钱包地址须登记进 vault `wallets` 表，否则 ownerSigs 打包为空；加固建议改为由 `safe_signatures.signer_id` 直接关联 owner 地址（或 confirm 时记录签名者 owner 地址），不再依赖 wallets 表。
+
+**备选路径（session-key，需扩展）**：session-key 现有 `signAndBroadcast` 不返回签名，需新增 `signMessage` 方法后才可用于 confirm——作为并存选项，与 MPC 路径共用"平台签名通道"。
+
 **W-5 体验对齐结论（对标 OKX OnchainOS，2026-08-11）**
 
 - **广度三项延后（用户决策）**：swap/DEX 聚合执行、钱包多链广度（20+/60+ 链）、多链矩阵扩展 —— 不排期
@@ -1265,10 +1287,11 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | 🔲 | P1 |
-| A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4）；含 Adapter signMessage/signTypedData 扩展评估 | 🔲 | P2 |
-| A-3 | MPC 作为 Safe owner 接入评估 | 用户用 MPC 钱包（邮箱验证码）作为 vault Safe owner 的可行性/契约设计（W-2/W-3 衔接） | 🔲 | P2 |
+| A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | ✅（2026-08-11 完成） | P1 |
+| A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4.1 定稿）：**MPC 路径优先（现成可用）+ session-key 扩展备选** | ✅（2026-08-11 方案定稿） | P2 |
+| A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
 | A-4 | Paymaster 对接 | 等对方合约地址+服务 URL → 验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 打通 `/v1/paymaster`（**阻塞：外部信息**） | 🔲 挂起 | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
-| A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记） | 🔲 | P2 |
+| A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
+| A-8 | vault 增强实施（待排期） | 按 W-4.1：vault 支持 MPC session confirm（`wallets` 表登记 / executeTransaction 加固）+ SDK 透传 + 文档样例 | 🔲 | P2 |
