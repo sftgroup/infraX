@@ -1,8 +1,8 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-08-11 | 版本 `v0.6.2-20260811`
+> 最后更新: 2026-08-11 | 版本 `v0.7.0-20260811`
 
-> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**25 个 systemd 服务 + 1 个清理 timer**）。
+> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**24 个 systemd 服务 + 1 个清理 timer**）。
 > **本文档覆盖区块链服务栈（9100-9111）与平台服务（9130-9132）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
 > 旧服务器 ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 均已弃用。
 
@@ -34,7 +34,7 @@ ssh ubuntu@43.163.105.172
 | Collector | 9101 | pocketx_collector | `systemctl start infrax-collector` | 🟢 |
 | DC | 9102 | pocketx_dc + pocketx_collector | `systemctl start infrax-dc` | 🟢 |
 | MPC | 9104 | pocketx_mpc | `systemctl start infrax-mpc` | 🟢 |
-| Payment（旧支付，历史残留） | 9106 | pocketx_payment | `systemctl start infrax-payment` | 🟢 |
+| ~~Payment（旧支付）~~ | ~~9106~~ | pocketx_payment（历史残留） | ~~infrax-payment~~ 已删除 | 🔴 已下线（MQ-15 T-7，代码保留 git 历史） |
 | Vault | 9107 | pocketx_vault | `systemctl start infrax-vault` | 🟢 |
 | WAAS | 9109 | pocketx_waas | `systemctl start infrax-waas` | 🟢 |
 | Web | 9111 | — | `systemctl start infrax-web` | 🟢 |
@@ -76,7 +76,7 @@ ssh ubuntu@43.163.105.172
 |------|------|------|------|------|
 | Cleanup | — | 每日清理 5 天前数据 | `systemctl start infrax-cleanup` | 🟢 (timer) |
 
-> 对照：`sudo systemctl --no-pager list-units 'infrax-*' --all`（25 服务 + timer）；`sudo ss -tlnp` 应看到 3002/3008/3011/3012/3500/9100-9113/9130-9132/9200-9201/9721 共 25 个监听端口。
+> 对照：`sudo systemctl --no-pager list-units 'infrax-*' --all`（24 服务 + timer）；`sudo ss -tlnp` 应看到 3002/3008/3011/3012/3500/9100-9105/9107-9113/9130-9132/9200-9201/9721 共 24 个监听端口（9106 旧支付已下线）。
 
 ## 目录结构
 
@@ -87,7 +87,7 @@ ssh ubuntu@43.163.105.172
 ├── dc/                 → DC :9102  (数据中心 API)
 ├── mcp-server/         → 7 个 MCP 入口 (dc/mpc/vault/wallet/rpc/session-key/hub-index)
 ├── mpc/                → MPC :9104  (多方计算钱包)
-├── payment/            → Payment :9106 (旧支付，历史残留)
+├── payment/            → Payment :9106 (旧支付，🔴 已下线，代码保留 git 历史)
 ├── sdk/                → infrax-dk npm 包 (TypeScript SDK，非运行时服务)
 ├── vault/              → Vault :9107  (Safe 多签)
 ├── waas/               → WAAS :9109  (钱包即服务)
@@ -155,6 +155,7 @@ ssh ubuntu@43.163.105.172
 | **9100** | Admin 面板 | **建议开放** |
 | 9103/9105/9108/9110 | MCP 服务 | 外部 AI Agent 调用时开放 |
 | 9101/9102/9104/9107/9109 | 后端 API | 仅内部调用 |
+| 9130-9132（chain-rpc/aa-relay/payments 引擎） | 平台服务 | 仅内部调用（外部 key 经业务服务/nginx 进入） |
 
 ## 支持的区块链
 
@@ -193,7 +194,7 @@ sudo journalctl -u infrax-collector --since '5 min ago'
 ### 全部重启
 ```bash
 for s in \
-  infrax-admin infrax-admin-legacy infrax-collector infrax-dc infrax-mpc infrax-payment infrax-vault infrax-waas infrax-web \
+  infrax-admin infrax-admin-legacy infrax-collector infrax-dc infrax-mpc infrax-vault infrax-waas infrax-web \
   infrax-chain-rpc infrax-aa-relay infrax-payments infrax-session-key infrax-mpc-signer infrax-mpc-tss-signer \
   infrax-data infrax-knowledge-injector infrax-ragservicer \
   infrax-dc-mcp infrax-mpc-mcp infrax-vault-mcp infrax-wallet-mcp infrax-hub-index infrax-session-key-mcp infrax-rpc-mcp; do
@@ -220,13 +221,16 @@ localhost:5432, postgres:postgres
 
 | 数据库 | 表数 | 说明 |
 |--------|------|------|
-| pocketx_collector | 10+ | 事件 + checkpoint + OKX + Binance |
-| pocketx_waas | 17 | 钱包/用户/交易/SaaS |
-| pocketx_vault | 4 | Safe 多签 |
-| pocketx_dc | 2 | 订阅 |
-| pocketx_mpc | 2 | MPC 钱包 |
-| pocketx_payment | 3 | 支付 |
-| pocketx_admin | 3 | 管理 |
+| pocketx_payments | 11 | **通用支付引擎 ledger**（余额/转账/邀请/批次/意图/授权，MQ-14/16 能力全量） |
+| pocketx_chainrpc | 3 | **Chain RPC 对外套餐**（rpc_keys/rpc_usage/rpc_usage_daily，MQ-16 T-3） |
+| pocketx_collector | 18 | 事件 + checkpoint + OKX + Binance + Market 套餐（market_usage，MQ-16 T-2） |
+| pocketx_waas | 18 | 钱包/用户/交易/SaaS/订阅 |
+| pocketx_dc | 4 | 订阅 + api_usage/api_usage_daily 配额（MQ-16 T-1） |
+| pocketx_mpc | 5 | MPC 钱包/会话/验证码 + 订阅（MQ-16 T-4） |
+| pocketx_vault | 5 | Safe 多签 |
+| pocketx_payment | 3 | 旧支付（🔴 已下线，历史残留） |
+| pocketx_admin | 0 | 管理（数据跨库查询，本库无表） |
+| session_key_engine | 2 | Session Key :3500 会话密钥 |
 
 ## 数据盘挂载
 
@@ -367,6 +371,9 @@ DC_API_URL=http://localhost:9102
 MPC_URL=http://localhost:9104
 ```
 
+### MQ-16 套餐服务（dc/collector/chain-rpc/mpc/payments）
+各服务套餐/计费配置通过 systemd drop-in 注入（`PAYMENTS_URL` / `PAYMENTS_API_KEY` / `PAYMENTS_WEBHOOK_SECRET` / `PAYMENTS_DEFAULT_RAIL` / `PAYMENTS_CHAIN` / `PAYMENTS_PLAN_ID_MAP`），完整清单与部署步骤见上文「MQ-16 对外套餐服务」章节。
+
 ## 部署流程
 
 ```
@@ -383,6 +390,56 @@ for d in admin collector dc mcp-server mpc vault waas web; do
 done
 # 重启变更的服务
 sudo systemctl restart infrax-admin
+```
+
+## MQ-16 对外套餐服务（2026-08-11 部署完成）
+
+> 计费矩阵：**业务服务管"权益激活"、支付引擎管"钱"**——业务服务复制 waas 订阅模式（plans / checkout / payment-check / payment-callback / verify / usage），支付引擎统一记账（ledger balance/transfer + chain/fiat/x402 收款 + period 周期授权）。五任务全部完成并部署（T-1~T-5，验收详见 [docs/infrax_tasklist.md §9.8.9](./docs/infrax_tasklist.md)）。
+
+### 服务矩阵与生产 drop-in
+
+| 服务 | 端口 | 套餐/能力 | 生产 drop-in | 验证（生产 api） |
+|---|---|---|---|---|
+| DC（数据中心） | 9102 | 三档订阅 + 配额真实扣减（超限 **429**） | `infrax-dc.service.d/dc-payments.conf` | `mq16_verify.sh` 18/18 |
+| Market/行情（collector） | 9101 | market_free/pro/enterprise（超限 **503**） | `infrax-collector.service.d/payments.conf` | `mq16_t2_verify.sh` 16/16 |
+| Chain RPC | 9130 | rpc_free/pro/enterprise + `rx_` key（超限 **503**） | `infrax-chain-rpc.service.d/payments.conf` | `mq16_t3_verify.sh` 18/18 |
+| MPC Agent Wallet | 9104 | 按量计费：签名 **0.0001** / 写链 **0.001** ETH（欠费 **402**） | `infrax-mpc.service.d/payments.conf` | `mq16_t4_verify.sh` 20/20 |
+| Payments 引擎 | 9132 | invite/transfer/batch 对外开放 + x402 全量 | `infrax-payments.service.d/`（capability + open-external + webhook-forward） | `mq16_t5_verify.sh` 24/24 |
+
+各业务服务 drop-in 通用配置（`/etc/systemd/system/infrax-<svc>.service.d/*.conf`）：
+
+```ini
+[Service]
+Environment="PAYMENTS_URL=http://127.0.0.1:9132"     # 引擎地址
+Environment="PAYMENTS_API_KEY=<引擎 bridge key>"       # 引擎鉴权（记费用）
+Environment="PAYMENTS_WEBHOOK_SECRET=<HMAC 验签密钥>"   # webhook 回调验签
+Environment="PAYMENTS_DEFAULT_RAIL=chain"              # 默认收款轨（chain 免 webhook，轮询 payment-check）
+Environment="PAYMENTS_CHAIN=oxachain"
+Environment="PAYMENTS_PLAN_ID_MAP={...}"               # 套餐 → 引擎 period 套餐映射
+```
+
+### 引擎（:9132）对外能力（T-5）
+
+- **x402 收款**：链上转账至**平台钱包 `0x52Ec58173042E8d0C9be0BdA81e95a8CbB5B8e06`**（oxachain），`POST /payments/verify` 验 tx 入账——MPC 充值闭环同路径；`open-external.conf` 启 `X402_ENABLED=true` + `X402_PAY_TO`/`X402_PRICE_WEI=1e15`/`X402_CHAIN=oxachain`
+- **外部 key 契约**：data 签发 `px_` key（scope=payment，`POST {DATA_URL}/admin/api-keys`，Bearer ADMIN_API_KEY）；引擎三 header 任一命中即放行（Authorization: Bearer / X-API-Key / X-Service-Key），实时调 `POST {DATA_URL}/api-keys/verify` 校验；scope 映射 `data→dx_` / `mcp→mx_` / `payment→px_` / `vault→vx_` / `mpc→mp_`
+- **能力探测**：`GET /payments/capabilities` 返回全部 rail enabled/endpoints/config，未启用能力端点 **503**；现全量：`chain, x402, a2a, batch, period, invite, transfer`
+- **Agent 三场景**：invite 自动收费邀请 / transfer 账本内原子划转（reference 幂等）/ batch 批量收款——端到端调用文档见 [projects/payments/CALLER_SETUP.md §6](./projects/payments/CALLER_SETUP.md)
+
+### 部署步骤（任一服务）
+
+```bash
+# 1. 代码同步
+git pull origin master
+# 2. 写 drop-in 配置（路径见上表）
+sudo tee /etc/systemd/system/infrax-<svc>.service.d/payments.conf << 'EOF'
+[Service]
+Environment="PAYMENTS_URL=http://127.0.0.1:9132"
+Environment="PAYMENTS_API_KEY=..."
+EOF
+# 3. 生效
+sudo systemctl daemon-reload && sudo systemctl restart infrax-<svc>
+# 4. 验证（生产执行）
+bash projects/web/scripts/mq16_t5_verify.sh api
 ```
 
 ## 修复备忘
