@@ -637,17 +637,20 @@ app.get('/api/v2/data/events', requireDcApiKey, dcQuotaEnforce, asyncHandler(asy
   res.json(apiResponse({ data: rows, next_page_token: next_token }));
 }));
 
+// 注意：events 表 150GB+/1 亿+ 行，COUNT(*) / GROUP BY 全表聚合会卡死 pg-pool（曾拖垮 dc 服务，
+// 见 B-10-3 生产事故）。统一改用 event_checkpoints.event_count——由 collector block_scanner
+// 每批插入后增量维护（scanner.ts incrementEventCount），O(1) 读取、量级准确。
 app.get('/api/v2/data/stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (_req: any, res: any) => {
   const [stats, total] = await Promise.all([
-    eventsPool.query('SELECT chain, COUNT(*)::int as event_count, MAX(block_number)::bigint as latestBlock, COUNT(DISTINCT tx_hash)::int as uniqueTx FROM events GROUP BY chain ORDER BY event_count DESC'),
-    eventsPool.query('SELECT COUNT(*)::int as cnt FROM events'),
+    eventsPool.query("SELECT chain, COALESCE(event_count,0)::int AS event_count, last_block::bigint AS latestBlock FROM event_checkpoints WHERE collector_name = 'block_scanner' ORDER BY event_count DESC"),
+    eventsPool.query("SELECT COALESCE(SUM(event_count),0)::bigint AS cnt FROM event_checkpoints WHERE collector_name = 'block_scanner'"),
   ]);
   res.json(apiResponse({ chains: stats.rows, totalRows: total.rows[0].cnt }));
 }));
 
 app.get('/api/v2/data/health', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (_req: any, res: any) => {
   const [total, cp] = await Promise.all([
-    eventsPool.query('SELECT COUNT(*)::int as cnt FROM events'),
+    eventsPool.query("SELECT COALESCE(SUM(event_count),0)::bigint AS cnt FROM event_checkpoints WHERE collector_name = 'block_scanner'"),
     eventsPool.query('SELECT chain, collector_name, last_block, status, last_fetch_at FROM event_checkpoints ORDER BY chain'),
   ]);
   res.json(apiResponse({ status: 'ok', totalEvents: total.rows[0].cnt, checkpoints: cp.rows }));
