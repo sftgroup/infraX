@@ -1295,3 +1295,29 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
 | A-8 | vault 增强实施（待排期） | 按 W-4.1：vault 支持 MPC session confirm（`wallets` 表登记 / executeTransaction 加固）+ SDK 透传 + 文档样例 | 🔲 | P2 |
+
+**9.11 PocketX → InfraX 交接更新（2026-08-11）**
+
+**接收确认（commit 47568ca / e95564e，sftgroup/pocketx-wallet main）**
+
+- `vendor/aa-contracts/`：OxaChain（19505）ERC-4337 合约栈上游源码（EntryPoint v0.7.0 / Kernel v3.1 + Factory + ECDSAValidator / Alto simulations，含 commit 溯源与 solady/OZ 最小依赖）；`scripts/deploy-oxachain.mjs` 可复现（Kernel/Factory 尾部替换构造参数法，EntryPoint runtime 17,690 B 与链上一致，dry-run 3/3）
+- `docs/INFRAX_SDK_BUILD.md`：workspaces 拓扑 / `--legacy-peer-deps` / 7 包构建顺序 / wallet-base VITE env / 白标步骤
+- `docs/INFRAX_HANDOVER.md` v1.4：职责边界确认
+- **职责边界（InfraX 接收）**：链上合约栈 + 新链部署 / `@infrax/aa-sdk` 白标 SDK / Bundler（Alto 实例 + SafeValidator 补丁）→ InfraX 维护；PocketX-Wallet 产品层仅依赖 SDK 构建，零链上维护
+
+**白标调整决策（2026-08-11，用户裁定）**
+
+- aa-sdk **不独立发布**（@infrax/aa-sdk 保持 private），**合并进 session-key 包体系发布**
+- 实施：aa-sdk 全部源码（2584 行 / 21 文件）并入 `@0xinfrax/session-key-core` **v0.2.0**（已发布 ✅，60.1 kB）
+  - 以 **`Aa` 命名空间**导出（72 项：BundlerClient / PaymasterClient / MpcSigner / SessionKeySigner / KernelV3SessionDataBuilder / CHAIN_ALIASES 含 oxachain 等），规避与 core 现有 Chain/ChainId/Signer 命名冲突
+  - 依赖收敛：仅 peerDeps `viem>=2.0.0`（permissionless 已被 aa-sdk 绕开，源码中仅注释引用）
+  - 用法：`import { Aa } from '@0xinfrax/session-key-core'`
+- `projects/aa-sdk` 定位更新：作为合并源归档，功能以 core 0.2.0 为准，避免双份维护
+
+**跟进事项**
+
+| # | 事项 | 状态 | 优先级 |
+|---|---|---|---|
+| B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | 🔲 | P1 |
+| B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 | P1 |
+| B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | 🔲 | P2 |
