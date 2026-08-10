@@ -122,12 +122,14 @@ api() {
   [ "$(echo "$r" | jget data.subscription.status)" = "active" ] && ok "回归：再次订阅 free → active" || bad "回归失败: $r"
   curl -sf "$ADMIN_BASE/health" >/dev/null 2>&1 && ok "admin /health" || bad "admin /health 失败"
 
-  section "api 日志残留（部署 T-6 后复核）"
-  local n_web n_adm
-  n_web=$(journalctl -u infrax-web --since "24 hours ago" 2>/dev/null | grep -c ":9106" || true)
-  n_adm=$(journalctl -u infrax-admin --since "24 hours ago" 2>/dev/null | grep -c ":9106" || true)
-  echo "  web 日志 :9106 命中: $n_web（T-6 部署后应恒为 0）"
-  echo "  admin 日志 :9106 命中: $n_adm（T-6 部署后应恒为 0）"
+  section "api 日志残留（自服务重启后）"
+  local n_web n_adm since_web since_adm
+  since_web=$(systemctl show -p ActiveEnterTimestamp --value infrax-web 2>/dev/null)
+  since_adm=$(systemctl show -p ActiveEnterTimestamp --value infrax-admin 2>/dev/null)
+  n_web=$(journalctl -u infrax-web --since "$since_web" 2>/dev/null | grep -c ":9106" || true)
+  n_adm=$(journalctl -u infrax-admin --since "$since_adm" 2>/dev/null | grep -c ":9106" || true)
+  [ "$n_web" = "0" ] && ok "web 日志自重启后 :9106 命中 0" || bad "web 日志自重启后 :9106 命中 $n_web（应恒为 0）"
+  [ "$n_adm" = "0" ] && ok "admin 日志自重启后 :9106 命中 0" || bad "admin 日志自重启后 :9106 命中 $n_adm（应恒为 0）"
 
   section "api 清理测试数据"
   local uid
