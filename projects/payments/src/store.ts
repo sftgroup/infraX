@@ -627,17 +627,22 @@ export class PgInviteStore implements InviteStore {
 
   async listInvites(address: string, query: InviteListQuery): Promise<PaymentInvite[]> {
     const col = query.role === 'payee' ? 'payee' : 'payer'
-    const statusClause = !query.status || query.status === 'open'
-      ? "AND status IN ('created','sent')"
-      : 'AND status = $3'
-    const values: unknown[] = [address.toLowerCase(), col]
-    if (statusClause.includes('$3')) values.push(query.status)
+    if (!query.status || query.status === 'open') {
+      const { rows } = await this.pool.query(
+        `SELECT * FROM payment_invites
+         WHERE ${col} = $1 AND status IN ('created','sent')
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [address.toLowerCase(), query.limit ?? 50]
+      )
+      return rows.map(mapInvite)
+    }
     const { rows } = await this.pool.query(
       `SELECT * FROM payment_invites
-       WHERE ${col} = $1 ${statusClause}
+       WHERE ${col} = $1 AND status = $2
        ORDER BY created_at DESC
-       LIMIT $${values.length + 1}`,
-      [...values, query.limit ?? 50]
+       LIMIT $3`,
+      [address.toLowerCase(), query.status, query.limit ?? 50]
     )
     return rows.map(mapInvite)
   }
@@ -663,7 +668,7 @@ export class PgInviteStore implements InviteStore {
   }
 
   async expireDue(inviteId?: string): Promise<number> {
-    const scope = inviteId ? 'AND invite_id = $2' : ''
+    const scope = inviteId ? 'AND invite_id = $1' : ''
     const values: unknown[] = inviteId ? [inviteId.toLowerCase()] : []
     const res = await this.pool.query(
       `UPDATE payment_invites
