@@ -1219,3 +1219,56 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `prd/PRD.md` | MCP & Skill 产品需求（v1.1） | §9.6 + §9.7 | ⚠️ 待审阅（2026-08-08 更新：§4 加架构决策注记 TEE 降级 P3、新增 §4.5 MPC 独立 SDK 需求 → tasklist MQ-10 补充 E-5） |
 | `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：SDK 发布记录已修正 0.3.0；2026-08-08 更新 SDK 0.5.0 `chainRpc` + MCP `rpc-index` 4 工具；SDK 0.5.1 `walletAddress`+`walletSign` 钱包签名鉴权 + MCP 7 服务入站 `inboundAuth` 闭环） |
 | `docs/DEPLOYMENT.md` / `docs/PROJECT_STATUS.md` 等 | 区块链栈部署/状态（旧布局） | §9.8 | ⚠️ 引用已随改名更新 |
+
+**9.10 微服务定位纠正与体验对齐（2026-08-11 商业评审，对标 OKX OnchainOS）**
+
+> 背景：本轮评审纠正了此前对 waas/vault/mpc 的**定位偏差**（曾把 waas 的 API 身份认证误当"钱包操作签名"、把 vault 用户签名误当"集成方负担"）。以下为**纠正后的正确模型**，作为后续功能/文档/任务基准；相关文档（services/waas.md、vault.md、mpc.md、SDK_INTEGRATION.md、README 对比表）的偏差表述按任务 A-1 统一修正。
+
+**W-1 WAAS = 类 CEX 托管模型（签名全部在平台内部，外部零链上签名）**
+
+- 私钥：平台托管（`custodial_wallets` + `address_pool` 地址池），B 端与 C 端用户**均不持私钥**
+- 充值：C 端用户打币到分配地址 → 平台链上监控确认入账
+- 提币：C 端发起请求 → B 端业务审批（风控策略 / 后台审核）→ **平台托管私钥签名广播**
+- EIP-191 `walletSign` = **API 身份认证**（服务端按地址 24h sessionCache，仅身份识别），**非**钱包操作签名
+- 提币授权 = `paymentPassword`（资金密码）+ B 端审批；**B 端 / C 端全程零链上签名**
+- 对 L1 影响：waas **不在零签名差距内**（天然平台签名，无需签名代理）
+
+**W-2 Vault = 用户自托管多签（签名方 = 用户本人，不可消除）**
+
+- 用户建 Safe 多签合约、确认交易均**用户自己 EIP-712 签名**（自托管本质，属于产品特性而非负担）
+- 可增强方向：用户以平台 **MPC 钱包 / session-key 作为 Safe owner** → confirm 签名收敛到平台签名通道（邮箱验证码解锁 / 一次性授权），但用户授权动作保留
+
+**W-3 MPC = 邮箱验证码 + TSS 2-of-2 的 Agent 钱包（:9104）**
+
+- 身份：**email 主 id**（小写唯一）+ `walletId` 子钱包（1 邮箱 N 钱包，UUID 定位）；支持按 `walletAddress`/`connected_wallet_address` 查询归属
+- 验证码：6 位随机 / 5min 有效 / 5 次尝试上限 / 哈希存储 / 一次性；SMTP 真实发信（未配置回退日志）
+- 会话：`session/unlock` 返回 `mpc_<hex>` token（默认 30min，DB 只存哈希，可 lock/status；重启不失效）
+- 签名：M3 TSS 2-of-2（Node 持片1 AES + tss_signer 持片2 RecoveryKey，上下文分离，完整私钥永不重建）；`sign-message`/`sign-typed-data`/`sign-digest`（raw 32B，供 ERC-4337 userOpHash）
+- 执行：`send-transaction`/`contract-write`/`contract-read`/`balance`/`gas-estimate`；限额（原生 0.1 ETH / ERC20 1000 / 合约·approve·transfer 白名单）
+- 计费：MQ-16 T-4 按量（sign 0.0001 ETH / tx 0.001 ETH，引擎 ledger 扣费，402 余额不足）
+- 链：sepolia/eth/bsc/base/oxa(19505)；审计 `mpc_agent_logs`
+- SDK：`@0xinfrax/mpc-sdk` **0.3.0 已发布 ✅**（16 方法，npm = 本地）+ infrax-dk `infra.mpc.*` 15 方法
+
+**W-4 L1（session-key 签名代理）方案修正**
+
+- 原方案范围"waas+vault 零签名" → **修正为 vault 增强**（waas 无需代理，见 W-1）
+- 新 L1 目标：统一"**平台签名通道**"——C 端用户用 MPC 钱包（邮箱验证码解锁）或 session-key（EIP-712 一次性授权）作为 Safe owner，vault confirm 由平台签名通道完成，用户签名从"每笔 EIP-712"收敛为"一次授权 / 验证码解锁"
+- 实施前需完成 A-3（MPC 作为 Safe owner 的契约评估）；session-key Adapter 扩展（signMessage/signTypedData）评估后决定是否仍需要
+
+**W-5 体验对齐结论（对标 OKX OnchainOS，2026-08-11）**
+
+- **广度三项延后（用户决策）**：swap/DEX 聚合执行、钱包多链广度（20+/60+ 链）、多链矩阵扩展 —— 不排期
+- **AI 生态 Skills 插件**：已登记 §9.6 需求 6.0（🔲 待排期）
+- **Paymaster**：自建方案 + 用户自充可选模式；OxaChain 已有 AA 栈（EntryPoint/Kernel/Bundler 已部署）；**阻塞 = 等对方项目 Paymaster 合约地址 + 服务 URL** → 配置 `AA_OXACHAIN_PAYMASTER_URL` 打通 aa-relay `/v1/paymaster`
+
+**任务拆解（2026-08-11 登记）**
+
+| 编号 | 任务 | 说明 | 状态 | 优先级 |
+|---|---|---|---|---|
+| A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | 🔲 | P1 |
+| A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4）；含 Adapter signMessage/signTypedData 扩展评估 | 🔲 | P2 |
+| A-3 | MPC 作为 Safe owner 接入评估 | 用户用 MPC 钱包（邮箱验证码）作为 vault Safe owner 的可行性/契约设计（W-2/W-3 衔接） | 🔲 | P2 |
+| A-4 | Paymaster 对接 | 等对方合约地址+服务 URL → 验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 打通 `/v1/paymaster`（**阻塞：外部信息**） | 🔲 挂起 | P1 |
+| A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
+| A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
+| A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记） | 🔲 | P2 |
