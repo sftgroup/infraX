@@ -11,7 +11,7 @@
 - **B 端 7 项全量回归通过（2026-08-06 晚，生产实测）**：P0-1 BTC/ETH 1D count **1096**（≥3y 达标）；P0-2 ticker 已回显 market_type（swap/spot 可区分，C2 切换依赖）；P1-3 EUR/USD 200、SPY ts=2026-08-05 16:00 UTC（最新美股收盘）；P1-4 `EUR/USD→EURUSD=X`；P2-5 docs/redoc/openapi.json **免 key 公开**（`/api/data/docs`、`/api/data/openapi.json` 200，commit 33a9b9e）；P2-6 401 统一格式；**nginx `/api/v1/` 兼容段已实际插入并 reload**（此前声称已加但未生效，实测补上）。⚠️ 唯一遗留：P2-7 公网域名 `/api/*` 502（Cloudflare 面板回源配置待修，origin 直连全 200）
 - 统一鉴权契约 app_auth（Bearer/X-API-Key/X-Service-Key）；admin 面板 **API Keys** 页统一管理 `dx_`/`mx_`/`lr_` 三类 key；MCP 入站强制鉴权（mx_ key）
 - JS SDK `@0xinfrax/infrax-dk@0.3.0` 已发布 npm；集成文档 INTEGRATION_PLATFORM / INTEGRATION_DATA_SERVICE / INTEGRATION_LIGHTRAG
-- 9.7 差距项 G-1~G-9 全部实现（PyPI 发布待 token）
+- 9.7 差距项 G-1~G-9 全部实现（PyPI 已发布：lightrag-client 2.0.0 + infra-data-client 0.2.0，2026-08-11）
 
 **区块链栈（盘点结论，任务见 tasklist §9.8，P0 已完成）**
 - ✅ P0 安全修复已部署生产并 E2E 通过（`148cc42`）：payment/vault/mpc 三服务接入统一鉴权契约（`px_`/`vx_`/`mp_` scope key），mpc 验证码 `888888` → `crypto.randomInt`；共享中间件 `projects/shared/auth-express.ts`

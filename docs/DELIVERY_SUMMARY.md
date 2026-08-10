@@ -3,7 +3,7 @@
 - **日期**：2026-08-06
 - **范围**：数据栈四服务（data :9112 / knowledge-injector :9113 / ragservicer :9721 / ml-service :9120）的集成面能力补齐 + 9.7 差距项闭环
 - **生产环境**：主栈 43.163.105.172（前三服务 + hub-index :3008），独立 43.156.25.197（ml-service）
-- **状态**：9.7 差距项 G-1~G-9 全部处理完毕（G-9 仅 PyPI 发布一项排期）
+- **状态**：9.7 差距项 G-1~G-9 全部处理完毕（G-9 中 PyPI 已发布 2026-08-11：lightrag-client 2.0.0 + infra-data-client 0.2.0）
 
 ---
 
@@ -38,7 +38,7 @@
 | G-6 | 四服务 /metrics | `shared/metrics.py` 统一 Prometheus 指标（http_requests_total / duration 直方图 / 进程） | ✅ 生产验证 |
 | G-7 | 独立只读监控 key | app_auth `method`+`monitor_key`，四服务接入 `MONITOR_API_KEY`（GET 放行 / POST 拒绝） | ✅ 生产启用 |
 | G-8 | 结构化审计日志 | ragservicer `audit_logs` 表 + audit_log_middleware 落库 | ✅ 生产验证 |
-| G-9 | SDK 发布 + Flask OpenAPI | npm `@0xinfrax/infrax-dk@0.3.0` 已发布；injector/ragservicer `/openapi.json`（10/15 paths）上线；PyPI 待 token | ✅（PyPI 排期） |
+| G-9 | SDK 发布 + Flask OpenAPI | npm `@0xinfrax/infrax-dk@0.3.0` 已发布；injector/ragservicer `/openapi.json`（10/15 paths）上线；**PyPI 已发布 lightrag-client 2.0.0 + infra-data-client 0.2.0（2026-08-11）** | ✅（全部闭环） |
 
 ### C. 前置后端管理功能（本轮之前交付）
 
@@ -67,7 +67,7 @@
 
 | # | 事项 | 说明 | 依赖 |
 |:---:|---|---|---|
-| 1 | **PyPI 发布 lightrag-client 2.0.0** | 包已构建 + twine check 通过（wheel/sdist 在 `projects/ragservicer/sdk/python/dist/`），`twine upload dist/*` 即可 | 需要 PyPI API token（~/.pypirc 或 env） |
+| 1 | ~~PyPI 发布 lightrag-client 2.0.0~~ | ✅ 已于 2026-08-11 发布（lightrag-client 2.0.0 + infra-data-client 0.2.0，pypi.org 安装验证通过） | — |
 | 2 | **9.6 排期项（独立 PRD）** | TEE 钱包（Phase 2.1-2.3）、hub-index 品牌化发布（Phase 3.2-3.5）、SKILL 目录注册 | 9.6 PRD 审阅排期 |
 | 3 | **yfinance 限流解除后恢复外汇** | 9.3 记录：外汇种子因 yfinance 限流暂停，恢复后重新回填 | yfinance 限流状态 |
 | 4 | **MONITOR_API_KEY 轮换提醒** | 生产四服务 `.env` 已配置同一只读 key，轮换时四处同步替换 + 重启 | 运维动作 |

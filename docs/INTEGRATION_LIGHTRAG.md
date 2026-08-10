@@ -1,6 +1,6 @@
 # InfraX LightRAG 知识库使用文档
 
-> 最后更新：2026-08-08 | 适用版本：lightrag-client 2.0.0（wheel 本地安装；PyPI 发布已延后，待 InfraX 提供 token 后公开）
+> 最后更新：2026-08-11 | 适用版本：lightrag-client 2.0.0（**PyPI 已发布，2026-08-11**）
 > 适用方：服务平台等需要**存放资料并做语义检索**（GraphRAG）的下游系统
 > 覆盖：ragservicer（:9721，知识库引擎）· knowledge-injector（:9113，自动注入）· Python SDK（lightrag-client）
 > 完整可运行样例：`projects/ragservicer/sdk/python/examples/lightrag_store_and_query.py`
@@ -107,11 +107,11 @@ curl -X POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/research/docum
 
 ### 5.2 Python SDK（推荐，lightrag-client 2.0.0）
 
-**包尚未发布 PyPI**（发布延后），从我们提供的 wheel 本地安装：
+**PyPI 已发布（2026-08-11）**，直接安装：
 
 ```bash
-# 方式 A：直接安装 wheel（由 InfraX 提供文件）
-pip install lightrag_client-2.0.0-py3-none-any.whl
+# 方式 A（推荐）：PyPI 官方发布
+pip install lightrag-client==2.0.0
 
 # 方式 B：从源码安装
 git clone <repo>

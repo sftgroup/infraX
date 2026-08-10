@@ -49,7 +49,7 @@ InfraX 目前对外提供两大能力集群，均可通过 **REST API / MCP / SD
 | 发布物 | 版本 | 获取方式 | 状态 |
 |---|---|---|---|
 | `@0xinfrax/infrax-dk`（JS SDK，含 `data` API） | 0.3.0 | `npm i @0xinfrax/infrax-dk` | ✅ 已发布 npm |
-| `lightrag-client`（Python SDK） | 2.0.0 | 本地 wheel 安装（PyPI 待发布） | ⚠️ 见 LightRAG 文档 §4 |
+| `lightrag-client`（Python SDK） | 2.0.0 | `pip install lightrag-client==2.0.0` | ✅ PyPI 已发布（2026-08-11） |
 | hub-index MCP server | 1.0.0 | 远程端点 `https://infrax.0xainet.top/mcp/message` | ✅ 运行中 |
 | 服务 OpenAPI | — | 各服务 `/openapi.json` | ✅ 在线 |
 

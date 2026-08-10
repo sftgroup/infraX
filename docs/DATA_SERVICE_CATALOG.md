@@ -165,7 +165,7 @@ curl "https://43.163.105.172/api/data/factors/history?symbol=BTC/USDT&timeframe=
 curl "https://43.163.105.172/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
 ```
 
-Python SDK：`infra_data_client`（本地 wheel v0.2.0，`get_ml_predictions` 等）用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
+Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get_ml_predictions` 等）用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
 
 ### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
 

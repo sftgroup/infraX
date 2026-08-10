@@ -10,7 +10,8 @@
 |---|---|---|---|
 | `@0xinfrax/infrax-dk`（npm） | **0.6.0** | ✅ 已发布（registry 已验证，2026-08-11） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
 | `@0xinfrax/mpc-sdk`（npm，独立轻量） | 0.1.0 | ✅ 已发布 + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC 钱包模块（sendCode/register/recover/status/createWallet）+ 会话模块（unlock/lock/status）；链上模块（7 方法）后续版本 |
-| `lightrag-client`（PyPI） | 2.0.0 | ⏳ 构建+twine check 通过，待 PyPI token 发布 | LightRAG（ragservicer） |
+| `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
+| `infra-data-client`（PyPI） | 0.2.0 | ✅ 已发布（pypi.org，2026-08-11） | DATA（data-service） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
 | 手写 OpenAPI 3.0（injector :9113 / ragservicer :9721） | 3.0 | ✅ 生产免 key 可访问 | LightRAG |
@@ -214,10 +215,10 @@ const mpc = new MpcClient({
 
 ## 3. Python SDK：`lightrag-client`（LightRAG 图谱）
 
-> 仓库位置 `projects/ragservicer/sdk/python`（包名 `lightrag-client==2.0.0`）。PyPI 发布待 token，现可从仓库源码安装。
+> 仓库位置 `projects/ragservicer/sdk/python`（包名 `lightrag-client==2.0.0`）。已发布 PyPI（2026-08-11），直接 `pip install` 即可。
 
 ```bash
-pip install projects/ragservicer/sdk/python    # 或 pip install lightrag-client==2.0.0（发布后）
+pip install lightrag-client==2.0.0    # PyPI 官方发布（2026-08-11）；源码方式：pip install projects/ragservicer/sdk/python
 ```
 
 ```python
@@ -316,4 +317,4 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 - `session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）
 - SDK 未含 ragservicer 图谱方法（走 `lightrag-client` / `ragservicer-sdk`）
 - WAAS 统一鉴权接入后需同步更新 SDK 示例（B-12-1）
-- PyPI 发布待 token（G-9）
+- ~~PyPI 发布待 token（G-9）~~ ✅ 已闭环（lightrag-client 2.0.0 + infra-data-client 0.2.0 已发布，2026-08-11）

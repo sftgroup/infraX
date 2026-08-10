@@ -1,7 +1,7 @@
 # InfraX 数据栈 — 待办事项执行计划甘特图
 
 - **生成日期**：2026-08-06
-- **基线假设**：9.6 PRD 于 2026-08-07 审阅通过，实施自 2026-08-10（周一）启动；外部阻塞项（PyPI token / yfinance 限流 / Tushare 积分）以「待解锁」标注，解锁后按前置顺序插入
+- **基线假设**：9.6 PRD 于 2026-08-07 审阅通过，实施自 2026-08-10（周一）启动；外部阻塞项（yfinance 限流 / Tushare 积分）以「待解锁」标注，解锁后按前置顺序插入（PyPI token 已于 2026-08-11 解锁，T1 完成）
 - **来源**：`docs/DELIVERY_SUMMARY.md` §三 待办事项 + `docs/infrax_tasklist.md` §9.6 排期
 
 ---
@@ -10,7 +10,7 @@
 
 | # | 待办 | 预估工期 | 前置条件 | 阻塞 | 责任人建议 |
 |:---:|---|---|---|---|---|
-| T1 | PyPI 发布 lightrag-client 2.0.0 | 1d（0.5 打包已完） | 包已构建 + twine check 通过 | **PyPI API token** | 后端 |
+| T1 | ~~PyPI 发布 lightrag-client 2.0.0~~ | ✅ 已完成 | ✅ 2026-08-11 发布（lightrag-client 2.0.0 + infra-data-client 0.2.0，pypi.org 验证通过） | ~~PyPI API token~~ 已解锁 | 后端 |
 | T2 | 9.6 排期实施（Phase 1/2/3 剩余） | 21d（PRD 基线） | PRD 审阅通过；Phase 2 需 TEE 环境 | TEE 环境审批（2.1） | 后端 + 安全 |
 | T3 | yfinance 限流解除后恢复外汇 | 1.5d | 数据源恢复 | **yfinance 限流** | 数据 |
 | T4 | MONITOR_API_KEY 轮换 | 0.2d | 无 | 无（按需） | 运维 |
@@ -34,9 +34,8 @@ gantt
     T5 data 限流配额调整     :t5, 2026-08-10, 0.2d
     T7 SDK DataAPI 封装      :t7, 2026-08-10, 1d
 
-    section T1 PyPI 发布（待 token）
-    PyPI token 获取         :p1, 2026-08-10, 0.5d
-    twine upload + 验证     :p2, after p1, 0.5d
+    section T1 PyPI 发布（✅ 已完成 2026-08-11）
+    PyPI 发布（lightrag-client + infra-data-client） :p1, done, 2026-08-11, 0d
 
     section T2 Phase1 DC 数据强化
     event_categories 表     :d1, after prd, 1d
@@ -117,5 +116,5 @@ T6 Tushare  ◌  ——待积分审核——（9 月起）
 ## 五、风险与提示
 
 1. **TEE 环境审批**（P2.1）是 9.6 关键路径上唯一外部依赖，建议立即发起环境申请与 PRD 审阅并行
-2. **PyPI token / yfinance / Tushare 积分**三个外部阻塞可随时解锁插入；T1 打包产物已就绪（`twine upload dist/*` 一行命令）
+2. **yfinance / Tushare 积分**两个外部阻塞可随时解锁插入（T1 PyPI 已于 2026-08-11 完成发布：lightrag-client 2.0.0 + infra-data-client 0.2.0）
 3. 若 T2 整体排期推迟，T4/T5 运维项（各 0.2d）可先行消化，不影响主路径
