@@ -1290,7 +1290,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | ✅（2026-08-11 完成） | P1 |
 | A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4.1 定稿）：**MPC 路径优先（现成可用）+ session-key 扩展备选** | ✅（2026-08-11 方案定稿） | P2 |
 | A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
-| A-4 | Paymaster 对接 | 等对方合约地址+服务 URL → 验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 打通 `/v1/paymaster`（**阻塞：外部信息**） | 🔲 挂起 | P1 |
+| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md，待发送 PocketX）→ 收到后验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（**阻塞：外部物料**；aa-relay `/v1/paymaster` 端点已实现，08-11 重启生效） | 🔲 挂起 | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | 🔲 | P2 |
