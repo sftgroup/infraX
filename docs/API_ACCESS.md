@@ -1,6 +1,6 @@
 # InfraX 接入文档 — API / MCP / SDK
 
-> 版本 `v0.5.0-20260801` | 最后更新 2026-08-01 | GitHub: [sftgroup/infraX](https://github.com/sftgroup/infraX)
+> 版本 `v0.7.0-20260811` | 最后更新 2026-08-11 | GitHub: [sftgroup/infraX](https://github.com/sftgroup/infraX)
 
 ## 概述
 
@@ -22,14 +22,14 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
         │ Web :80 │         │ MCP Servers                     │
         │ (proxy) │         │ :9103 DC / :9105 MPC            │
         └────┬────┘         │ :9108 Vault / :9110 Wallet      │
-             │              │ :9111 Session Key                │
+             │              │ :3011 Session Key / :3012 RPC   │
+             │              │ :3013 Market                    │
              │              └─────┬──────────────────────────┘
              │                    │
     ┌────────┼────────┬───────────┼──────────┬──────────────┐
     ▼        ▼        ▼           ▼          ▼              ▼
-  WAAS    Vault     DC          MPC      Collector    Session Key
+  WAAS    Vault     DC          MPC      Collector   Session Key
   :9109   :9107    :9102        :9104     :9101         :3500
-  (17表)  (2表)    (4表)       (1表)     (4表)        (2表)
 ```
 
 ## 服务端口总览
@@ -39,17 +39,36 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 | `:80` | Web Proxy | — | Nginx 反向代理，统一入口 |
 | `:3500` | Session Key Engine | session_key_engine | 跨项目自动化授权代签 |
 | `:6003` | MPC 内部 | pocketx_mpc | Agent Wallet 托管 |
-| `:9101` | Collector | pocketx_collector | 5 链区块扫描器 |
-| `:9102` | DC (数据中心) | pocketx_dc | 链上数据查询 |
-| `:9106` | Payment | pocketx_payment | x402 支付引擎 |
+| `:9101` | Collector | pocketx_collector | 5 链区块扫描器 + **Market 套餐订阅面（MQ-16 T-2）** |
+| `:9102` | DC (数据中心) | pocketx_dc | 链上数据查询 + **数据订阅（MQ-16 T-1）** |
+| `:9104` | MPC | pocketx_mpc | 钱包托管 + **按量计费（MQ-16 T-4）** |
 | `:9107` | Vault | pocketx_vault | Safe 多签保险库 |
 | `:9109` | WAAS | pocketx_waas | B2B 钱包即服务 |
+| `:9130` | Chain RPC | — | 链 RPC 网关 + **RPC 套餐订阅（MQ-16 T-3）** |
+| `:9132` | **Payments（通用支付引擎）** | pocketx_payments | chain/fiat/x402/MPP + **batch/invite/transfer（MQ-16 T-5）** |
 | `:9103` | DC MCP | — | AI Agent 数据 |
 | `:9105` | MPC MCP | — | AI Agent 钱包 |
 | `:9108` | Vault MCP | — | AI Agent 多签 |
-| `:9110` | Wallet MCP | — | AI Agent WAAS |
-| `:9111` | Session Key MCP | — | AI Agent 授权 |
-| `:3007` | Market MCP | — | AI Agent 行情分析 |
+| `:9110` | Wallet MCP | — | AI Agent WAAS + 支付 |
+| `:3011` | Session Key MCP | — | AI Agent 授权 |
+| `:3012` | RPC MCP | — | AI Agent 链网关 |
+| `:3013` | Market MCP | — | AI Agent 行情 + 订阅 |
+
+> ~~`:9106` Payment（旧支付）~~ 已下线（MQ-15 T-7，代码保留 git 历史）；~~`:9111` Session Key MCP~~ 实际为 Web :9111（session-key MCP 现为 :3011）。
+
+### Web Proxy 路由（`server.js`）
+
+```
+/api/v2/admin    → :9100 (Admin)
+/api/v2/data     → :9102 (DC)
+/api/v2/market   → :9101 (Collector)   ← MQ-16 新增（2026-08-11）
+/api/v2/mpc      → :9104 (MPC)
+/api/v2/wallet   → :9109 (WAAS)
+/api/v2/waas     → :9109 (WAAS)
+/api/v2/saas     → :9109 (WAAS)
+/api/v2/vault    → :9107 (Vault)
+/api/vault       → :9107 (Vault)
+```
 
 ---
 
@@ -161,7 +180,44 @@ Base URL:  https://api.infrax.io
 | `GET` | `/api/v2/data/tokens` | 代币列表 |
 | `GET` | `/api/v2/data/chains` | 链列表 |
 | `GET` | `/api/v2/data/balance` | 跨链余额 |
-| `POST` | `/api/v2/data/subscribe` | 订阅 |
+
+#### DC 数据订阅（MQ-16 T-1，`x-wallet-address` 鉴权）
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `GET` | `/api/v2/data/plans` | 套餐目录（公开） |
+| `POST` | `/api/v2/data/subscribe` | 订阅（body `{planId, rail}`；免费直接激活返回 dcApiKey，付费返回 pending） |
+| `POST` | `/api/v2/data/payment-check` | 轮询支付状态 |
+| `POST` | `/api/v2/data/verify` | x402 确认（`{txHash}`，payer 匹配钱包） |
+| `GET` | `/api/v2/data/usage` | 订阅用量（plan/quota/日聚合） |
+| `POST` | `/api/v2/data/payment-callback` | 支付回调 webhook（HMAC 验签） |
+
+### 📈 Market 行情订阅（Collector `:9101`，MQ-16 T-2）
+
+经 Web Proxy `/api/v2/market/*` 路由（2026-08-11 新增）。数据面 `/api/v2/data/market/*` 见 §1.6。
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `GET` | `/api/v2/market/plans` | 套餐目录（公开） |
+| `POST` | `/api/v2/market/checkout` | 订阅（body `{plan_id, rail, subscriber?}`；X-API-Key 识别 keyId） |
+| `POST` | `/api/v2/market/payment-check` | 轮询支付状态 |
+| `POST` | `/api/v2/market/verify` | x402 确认（`{txHash}`） |
+| `GET` | `/api/v2/market/usage` | 订阅用量 |
+
+> 超限返回 **503**；`x-api-key` 为签发 key。
+
+### 🔑 Chain RPC 套餐订阅（`:9130`，MQ-16 T-3）
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `GET` | `/v1/subscription/plans` | 套餐目录（公开） |
+| `POST` | `/v1/subscription/issue-key` | 签发 `rx_` 读 key（管理操作，X-Service-Key） |
+| `POST` | `/v1/subscription/checkout` | 订阅（body `{plan_id, rail, subscriber?}`；`rx_` key 鉴权） |
+| `POST` | `/v1/subscription/payment-check` | 轮询支付状态 |
+| `POST` | `/v1/subscription/verify` | x402 确认（`{txHash}`） |
+| `GET` | `/v1/subscription/usage` | 订阅用量 |
+
+> 信封 `{code, message, data}`；超限返回 **503**。`rx_` key 由 issue-key 签发，读/广播分级。
 
 ---
 
@@ -169,7 +225,7 @@ Base URL:  https://api.infrax.io
 
 > **接入方式（2026-08-11 决策）**：通用支付 = **独立实例 + 自配凭证**。每个 B 端（调用方）自行部署/嵌入 `@0xinfrax/payments`（npm 已发布），在**自己的实例**里配置自己的收款凭证（chain `SubscriptionManager` 合约 / `STRIPE_SECRET_KEY` / `X402_PAY_TO` / `MPP_PAYEE`）——**一个实例 = 一套收款**，钱进 B 端自己的账户（x402 打到你的钱包、Stripe 进你的账号）。平台 `:9132` 仅为**平台自用实例**（配平台自身凭证，服务 waas/dc 订阅激活），不代 B 端收钱。完整接入模板（收款配置全景 / 嵌入式 / 独立服务 / 自检清单）见 `projects/payments/CALLER_SETUP.md`；以下 SDK 用法面向平台实例的消费方。
 
-SDK 用法：`ix.payment.checkout() / a2a() / a2aSettle() / verify() / balance() / capabilities() / price()`（需配置 `paymentsUrl` + `paymentsApiKey`）。
+SDK 用法：`ix.payment.checkout() / a2a() / a2aSettle() / verify() / balance() / capabilities() / price()`（需配置 `paymentsUrl` + `paymentsApiKey`）。**响应为裸 JSON**（非信封）。
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -181,9 +237,38 @@ SDK 用法：`ix.payment.checkout() / a2a() / a2aSettle() / verify() / balance()
 | `GET` | `/payments/capabilities` | 引擎能力探测 |
 | `GET` | `/payments/price?planId=` | 链上套餐定价 |
 | `POST` | `/payments/period/charge` | 订阅周期扣费（period 能力） |
-| `POST` | `/payments/invites` | agent 自动收费邀请（invite 能力） |
-| `POST` | `/payments/transfers` | 账本内转账（transfer 能力） |
-| `POST` | `/payments/batch` | 批量收款（batch 能力） |
+
+#### batch 批量收款（MQ-16，batch 能力）
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `POST` | `/payments/batch` | 创建批量收款意图（一次多 payee） |
+| `POST` | `/payments/batch/settle` | 结算单笔 item（提交链上 txHash） |
+| `GET` | `/payments/batch?batchId=` | 查询 batch 状态 |
+| `POST` | `/payments/batch/cancel` | 取消 batch（未支付 items） |
+
+#### invites 账单邀请（MQ-16，invite 能力）
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `POST` | `/payments/invites` | 创建账单邀请（payer → payee） |
+| `GET` | `/payments/invites?address=&role=` | 列出邀请（role: payer\|payee） |
+| `GET` | `/payments/invites/:inviteId` | 邀请详情 |
+| `POST` | `/payments/invites/:inviteId/cancel` | 取消未结算邀请 |
+| `POST` | `/payments/invites/:inviteId/settle` | 链上结算（提交 payer txHash） |
+| `POST` | `/payments/invites/:inviteId/pay` | 账本支付（payer ledger 扣款） |
+
+#### transfers 账本内部转账（MQ-16，transfer 能力）
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| `POST` | `/payments/transfers` | 发起账本转账 |
+| `POST` | `/payments/transfers/:transferId/confirm` | 确认并执行（原子入账） |
+| `GET` | `/payments/transfers?address=&role=` | 列出转账（role: from\|to） |
+| `GET` | `/payments/transfers/:transferId` | 转账详情 |
+| `POST` | `/payments/transfers/:transferId/cancel` | 取消未执行转账 |
+
+> SDK 0.6.0：`batchCreate/batchSettle/batchGet/batchCancel`、`inviteCreate/inviteList/inviteGet/inviteCancel/inviteSettle/invitePay`、`transferCreate/transferList/transferGet/transferConfirm/transferCancel`。
 
 ---
 
@@ -317,18 +402,20 @@ curl -H "x-api-key: YOUR_KEY" \
 
 ## 二、MCP Server
 
-6 个 MCP Server，每个独立进程。
+8 个 MCP Server，每个独立进程。
 
 ### 服务地址
 
 | MCP Server | 端口 | 工具数 | 传输 |
 |------------|------|--------|------|
-| Wallet MCP | `:9110` | 10 | SSE |
-| DC MCP | `:9103` | 7 | HTTP Streamable |
-| Market MCP | `:3007` | 13 | HTTP Streamable |
-| Vault MCP | `:9108` | 14 | SSE |
-| MPC MCP | `:9105` | 15 | SSE |
-| Session Key MCP | `:9111` | 7 | HTTP Streamable |
+| Wallet MCP | `:9110` | 34 | SSE |
+| DC MCP | `:9103` | 11 | HTTP Streamable |
+| Market MCP | `:3013` | 18 | HTTP Streamable |
+| Vault MCP | `:9108` | 13 | SSE |
+| MPC MCP | `:9105` | 17 | SSE |
+| Session Key MCP | `:3011` | 7 | HTTP Streamable |
+| Chain RPC MCP | `:3012` | 10 | SSE + HTTP |
+| Hub Index | `:3008` | 13 | HTTP Streamable |
 
 ### 配置（Claude Desktop / OpenClaw）
 
@@ -339,14 +426,18 @@ curl -H "x-api-key: YOUR_KEY" \
     "infrax-dc": { "url": "http://<host>:9103/mcp/message" },
     "infrax-vault": { "url": "http://<host>:9108/mcp/sse" },
     "infrax-mpc": { "url": "http://<host>:9105/mcp/sse" },
-    "infrax-session-key": { "url": "http://<host>:9111/mcp/message" }
+    "infrax-session-key": { "url": "http://<host>:3011/mcp/message" },
+    "infrax-market": { "url": "http://<host>:3013/mcp/message" },
+    "infrax-rpc": { "url": "http://<host>:3012/mcp/message" }
   }
 }
 ```
 
+> 入站鉴权：所有 HTTP MCP 统一 `MCP_API_KEY` 白名单或 `mx_` key（`Authorization: Bearer` / `X-API-Key` / `X-Service-Key` 三选一），豁免 `/health` `/`。工具全量清单见 [docs/MCP_USAGE.md](./MCP_USAGE.md)。
+
 ### 工具速查
 
-#### Wallet MCP (`:9110`) — 18 tools
+#### Wallet MCP (`:9110`) — 34 tools（MQ-16 新增 15 个 batch/invite/transfer 支付工具）
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -363,13 +454,29 @@ curl -H "x-api-key: YOUR_KEY" \
 | `payment_price` | 链上套餐价格 | planId |
 | `payment_balance` | 模块账本余额 | address |
 | `payment_access` | 订阅访问控制 | subscriber, resource |
+| `payment_batch_create` | **MQ-16** 批量收款意图 | items, chain, clientReference |
+| `payment_batch_settle` | **MQ-16** 结算单笔 | batchId, itemId, txHash |
+| `payment_batch_get` | **MQ-16** 查询 batch | batchId |
+| `payment_batch_cancel` | **MQ-16** 取消 batch | batchId |
+| `payment_invite_create` | **MQ-16** 创建账单邀请 | payer, payee, amountWei |
+| `payment_invite_list` | **MQ-16** 列出邀请 | address, role |
+| `payment_invite_get` | **MQ-16** 邀请详情 | inviteId |
+| `payment_invite_cancel` | **MQ-16** 取消邀请 | inviteId |
+| `payment_invite_settle` | **MQ-16** 链上结算邀请 | inviteId, txHash |
+| `payment_invite_pay` | **MQ-16** 账本支付邀请 | inviteId |
+| `payment_transfer_create` | **MQ-16** 发起账本转账 | from, to, amountWei |
+| `payment_transfer_list` | **MQ-16** 列出转账 | address, role |
+| `payment_transfer_get` | **MQ-16** 转账详情 | transferId |
+| `payment_transfer_confirm` | **MQ-16** 确认执行转账 | transferId |
+| `payment_transfer_cancel` | **MQ-16** 取消转账 | transferId |
 | `mpp_open` | 打开 MPP 状态通道 | payer, depositWei, salt, txHash |
 | `mpp_voucher` | EIP-712 累计 voucher | channelId, cumulativeAmount, signature |
 | `mpp_topup` | 通道追加充值 | channelId, txHash, additionalWei |
 | `mpp_settle` | 通道批量扣减 | channelId |
 | `mpp_close` | 关闭通道 | channelId |
+| `mpp_session` | 通道当前状态 | channelId |
 
-#### DC MCP (`:9103`) — 7 tools
+#### DC MCP (`:9103`) — 11 tools（MQ-16 订阅 4 个，x-wallet-address 鉴权）
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -380,8 +487,12 @@ curl -H "x-api-key: YOUR_KEY" \
 | `dc_tokens` | 代币列表 | chain |
 | `dc_chains` | 链列表 | — |
 | `dc_price` | 实时价格 | symbol (ETH, BTC) |
+| `dc_subscription_subscribe` | **MQ-16** 订阅数据套餐 | planId, rail, walletAddress |
+| `dc_subscription_payment_check` | **MQ-16** 轮询支付状态 | walletAddress |
+| `dc_subscription_verify` | **MQ-16** x402 确认 | txHash, walletAddress |
+| `dc_subscription_usage` | **MQ-16** 订阅用量 | walletAddress |
 
-#### Vault MCP (`:9108`) — 14 tools
+#### Vault MCP (`:9108`) — 13 tools
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -395,7 +506,7 @@ curl -H "x-api-key: YOUR_KEY" \
 | `vault_sync` | 同步 | safeAddress |
 | `vault_risk_check` | 风控 | to, amount |
 
-#### MPC MCP (`:9105`) — 15 tools
+#### MPC MCP (`:9105`) — 17 tools（MQ-16 计费 2 个）
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -414,8 +525,10 @@ curl -H "x-api-key: YOUR_KEY" \
 | `mpc_contract_read` | 合约只读 | contractAddress, abi, method |
 | `mpc_contract_write` | 合约写 | token, contractAddress, abi, method |
 | `mpc_gas_estimate` | Gas 估算 | to, value, data, chain |
+| `mpc_plans` | **MQ-16** 套餐价目 | — |
+| `mpc_ledger_balance` | **MQ-16** 账本余额 | token |
 
-#### Session Key MCP (`:9111`) — 7 tools (v0.1.0 新增)
+#### Session Key MCP (`:3011`) — 7 tools (v0.1.0 新增)
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -555,11 +668,13 @@ if (r.code === 0) {
 | `.wallet` | WAAS :9109 | 7 |
 | `.saas` | WAAS :9109 | 13 |
 | `.sub` | WAAS :9109 | 4 |
-| `.vault` / `.safe` | Vault :9107 | 12 |
-| `.dc` | DC :9102 | 6 |
-| `.payment` | Payment :9106 | 4 |
-| `.mpc` | MPC :9104/6003 | 12 |
-| `.market` | Collector :9101 | 16 |
+| `.vault` / `.safe` | Vault :9107 | 12 + 7 |
+| `.dc` | DC :9102 | **10**（数据 6 + MQ-16 订阅 4） |
+| `.payment` | **Payments :9132** | **25**（基础 10 + MQ-16 batch/invite/transfer 15） |
+| `.mpc` | MPC :9104 | **16**（钱包/链上 14 + MQ-16 计费 2） |
+| `.market` | Collector :9101 | **21**（数据面 16 + MQ-16 订阅 5） |
+| `.chainRpc` | Chain RPC :9130 | **10**（读/广播/状态 4 + MQ-16 订阅 6） |
+| `.data` / `.ml` | Data :9112 / ml :9120 | 9 + 9 |
 | `SessionKeyClient` | Session Key :3500 | 7 |
 
 ---

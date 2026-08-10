@@ -1,7 +1,7 @@
 # InfraX MCP 使用文档（MCP Usage Guide）
 
-> 面向 AI Agent / MCP 客户端的接入指南。覆盖 **8 个 MCP 服务**：hub-index（统一入口，:3008）、vault-mcp（:9108）、mpc-mcp（:9105）、session-key-mcp（:3011）、dc-mcp（:9103）、wallet-mcp（:9110）、chain-rpc-mcp（:3012）、LightRAG STDIO MCP（5 工具）。
-> 数据来源：生产代码盘点 + 生产实测（2026-08-06 / 2026-08-08，`43.163.105.172`）。
+> 面向 AI Agent / MCP 客户端的接入指南。覆盖 **8 个 HTTP MCP 服务**：hub-index（统一入口，:3008）、vault-mcp（:9108）、mpc-mcp（:9105）、session-key-mcp（:3011）、dc-mcp（:9103）、wallet-mcp（:9110）、chain-rpc-mcp（:3012）、market-mcp（:3013）+ LightRAG STDIO MCP（5 工具）。
+> 数据来源：生产代码盘点 + 生产实测（2026-08-06 / 2026-08-08 / 2026-08-11，`43.163.105.172`）。
 
 ---
 
@@ -11,14 +11,17 @@
 |---|---|---|---|---|---|
 | **hub-index（统一入口）** | 3008 | Streamable HTTP | `infrax-hub-index` | 13 | data :9112 / injector :9113 / ragservicer :9721 |
 | vault-mcp | 9108 | JSON-RPC over HTTP | `infrax-vault-mcp` | 13 | vault :9107 |
-| mpc-mcp | 9105 | JSON-RPC over HTTP | `infrax-mpc-mcp` | 15 | mpc :9104 |
+| mpc-mcp | 9105 | JSON-RPC over HTTP | `infrax-mpc-mcp` | **17** | mpc :9104 |
 | session-key-mcp | 3011 | Streamable HTTP | `infrax-session-key-mcp` | 7 | session-key :3500 |
-| dc-mcp | 9103 | Streamable HTTP | `infrax-dc-mcp` | 7 | dc :9102 |
-| wallet-mcp | 9110 | SSE + JSON-RPC over HTTP | `infrax-wallet-mcp` | 10 | waas :9109 |
-| **chain-rpc-mcp** | 3012 | SSE + JSON-RPC over HTTP | `infrax-rpc-mcp` | 4 | chain-rpc :9130 |
+| dc-mcp | 9103 | Streamable HTTP | `infrax-dc-mcp` | **11** | dc :9102 |
+| wallet-mcp | 9110 | SSE + JSON-RPC over HTTP | `infrax-wallet-mcp` | **34** | waas :9109 + payments :9132 |
+| **chain-rpc-mcp** | 3012 | SSE + JSON-RPC over HTTP | `infrax-rpc-mcp` | **10** | chain-rpc :9130 |
+| **market-mcp** | 3013 | Streamable HTTP | `infrax-market-mcp` | **18** | collector :9101 |
 | LightRAG STDIO | — | stdio | — | 5 | ragservicer :9721 |
 
-**对外暴露**：仅 hub-index 经 nginx 以 `/mcp/*` 对外；其余 5 个 HTTP MCP 端口监听 `0.0.0.0` 且未经 nginx 代理（受信方直连）。
+> **MQ-16（2026-08-11）**：dc-mcp +4（订阅）、market-mcp +5（订阅）、rpc-mcp +6（订阅）、mpc-mcp +2（计费）、wallet-mcp +15（payments batch/invite/transfer），共 **+32 个套餐工具**；market-mcp 新增独立 unit `infrax-market-mcp.service`（:3013，此前代码存在未部署）。
+
+**对外暴露**：hub-index 经 nginx 以 `/mcp/*` 对外；其余 HTTP MCP 端口监听 `0.0.0.0` 且未经 nginx 代理（受信方直连）。
 
 ---
 
@@ -133,9 +136,9 @@ Safe 多签保险库：创建/提案/确认/执行链上闭环 + owner 管理 + 
 
 ---
 
-## 5. mpc-mcp（:9105，15 工具）
+## 5. mpc-mcp（:9105，17 工具）
 
-邮箱验证码 MPC 钱包：注册/恢复 + 会话解锁 + 签名/交易/合约。
+邮箱验证码 MPC 钱包：注册/恢复 + 会话解锁 + 签名/交易/合约 + **MQ-16 按量计费（T-4）**。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -154,6 +157,8 @@ Safe 多签保险库：创建/提案/确认/执行链上闭环 + owner 管理 + 
 | `mpc_contract_read` | contract*, method*, args, chain | 合约读 |
 | `mpc_contract_write` | token*, contract*, method*, args, chain | 合约写 |
 | `mpc_gas_estimate` | from*, to*, amount, chain | gas 预估 |
+| `mpc_plans` | — | **MQ-16**：套餐价目（公开，pay-per-use 费率表 + 平台钱包）→ `GET /api/v2/mpc/plans` |
+| `mpc_ledger_balance` | token* | **MQ-16**：引擎账本余额（address/balanceWei/fees/topupHint）→ `POST /api/v2/mpc/ledger-balance` |
 
 ---
 
@@ -173,9 +178,9 @@ EIP-712 会话密钥：授权签名 → 托管 → 白名单额度内代执行�
 
 ---
 
-## 7. dc-mcp（:9103，7 工具）
+## 7. dc-mcp（:9103，11 工具）
 
-链上数据中心：事件/统计/检查点/套餐/代币/链/价格。
+链上数据中心：事件/统计/检查点/套餐/代币/链/价格 + **MQ-16 订阅面（T-1，x-wallet-address 鉴权）**。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -186,12 +191,18 @@ EIP-712 会话密钥：授权签名 → 托管 → 白名单额度内代执行�
 | `dc_tokens` | chain | 支持代币列表 ⚠️ **已知必失败**（端点调 dc `/api/v2/data/tokens` 不存在，B-10-3） |
 | `dc_chains` | — | 支持链列表 |
 | `dc_price` | symbol* | 实时价格（Binance 公共 API，USDT 对） |
+| `dc_subscription_subscribe` | planId*, rail, walletAddress* | **MQ-16**：订阅数据套餐（免费直接激活返回 dcApiKey，付费返回 pending）→ `POST /api/v2/data/subscribe` |
+| `dc_subscription_payment_check` | walletAddress* | **MQ-16**：轮询支付状态 → `POST /api/v2/data/payment-check` |
+| `dc_subscription_verify` | txHash*, walletAddress* | **MQ-16**：x402 确认（payer 匹配钱包后激活）→ `POST /api/v2/data/verify` |
+| `dc_subscription_usage` | walletAddress* | **MQ-16**：订阅用量（plan/dcApiKey/quota/日聚合）→ `GET /api/v2/data/usage` |
+
+> ⚠️ 4 个订阅工具走 `x-wallet-address` 鉴权（非 dc_api_key），钱包地址由调用方显式传入。
 
 ---
 
-## 8. wallet-mcp（:9110，18 工具）
+## 8. wallet-mcp（:9110，34 工具）
 
-WAAS 代理（钱包 7 个：余额/发送/模拟/RPC/健康/归集/状态）+ 通用支付引擎 :9132 通道（11 个：支付意图/fiat checkout/x402 验付/价格/账本/访问控制 + MPP 状态通道）。
+WAAS 代理（钱包 7 个：余额/发送/模拟/RPC/健康/归集/状态）+ 通用支付引擎 :9132 通道（27 个：支付意图/fiat checkout/x402 验付/价格/账本/访问控制 + MPP 状态通道 + **MQ-16 batch/invite/transfer**）。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -208,19 +219,35 @@ WAAS 代理（钱包 7 个：余额/发送/模拟/RPC/健康/归集/状态）+ �
 | `payment_price` | planId*, chain | 链上套餐价格 → `GET /payments/price` |
 | `payment_balance` | address*, asset | 模块账本余额 → `GET /payments/balance` |
 | `payment_access` | subscriber*, resource*, chain | 订阅访问控制检查 → `POST /payments/access` |
+| `payment_batch_create` | items*, chain, clientReference | **MQ-16**：创建批量收款意图 → `POST /payments/batch` |
+| `payment_batch_settle` | batchId*, itemId*, txHash*, chain | **MQ-16**：结算 batch 中单笔（x402 验收入账）→ `POST /payments/batch/settle` |
+| `payment_batch_get` | batchId* | **MQ-16**：查询 batch 状态 → `GET /payments/batch` |
+| `payment_batch_cancel` | batchId* | **MQ-16**：取消 batch（未支付 items）→ `POST /payments/batch/cancel` |
+| `payment_invite_create` | payer*, payee*, amountWei*, rail, chain, clientReference | **MQ-16**：创建账单邀请 → `POST /payments/invites` |
+| `payment_invite_list` | address*, role*, status | **MQ-16**：列出邀请 → `GET /payments/invites` |
+| `payment_invite_get` | inviteId* | **MQ-16**：邀请详情 → `GET /payments/invites/:id` |
+| `payment_invite_cancel` | inviteId* | **MQ-16**：取消未结算邀请 → `POST /payments/invites/:id/cancel` |
+| `payment_invite_settle` | inviteId*, txHash*, chain | **MQ-16**：链上结算邀请 → `POST /payments/invites/:id/settle` |
+| `payment_invite_pay` | inviteId* | **MQ-16**：账本支付（payer ledger 扣款）→ `POST /payments/invites/:id/pay` |
+| `payment_transfer_create` | from*, to*, amountWei*, asset | **MQ-16**：发起账本转账 → `POST /payments/transfers` |
+| `payment_transfer_list` | address*, role* | **MQ-16**：列出转账 → `GET /payments/transfers` |
+| `payment_transfer_get` | transferId* | **MQ-16**：转账详情 → `GET /payments/transfers/:id` |
+| `payment_transfer_confirm` | transferId* | **MQ-16**：确认并执行（原子入账）→ `POST /payments/transfers/:id/confirm` |
+| `payment_transfer_cancel` | transferId* | **MQ-16**：取消未执行转账 → `POST /payments/transfers/:id/cancel` |
 | `mpp_open` | payer*, depositWei*, salt*, txHash*, chain | 打开 MPP 状态通道（验存款 tx + 建会话）→ `POST /payments/mpp/open` |
 | `mpp_voucher` | channelId*, cumulativeAmount*, signature* | 提交 EIP-712 累计 voucher 消费通道余额 → `POST /payments/mpp/voucher` |
 | `mpp_topup` | channelId*, txHash*, additionalWei* | 通道追加充值 → `POST /payments/mpp/topup` |
 | `mpp_settle` | channelId* | 通道未结算消费批量扣减 → `POST /payments/mpp/settle` |
 | `mpp_close` | channelId* | 关闭通道（先结算尾部，冻结会话）→ `POST /payments/mpp/close` |
+| `mpp_session` | channelId* | 通道当前状态（status/cumulative/spent/deposit）→ `GET /payments/mpp/session` |
 
-> 支付/通道 11 个工具统一转发通用支付引擎 :9132（`PAYMENTS_URL`+`PAYMENTS_API_KEY` 已生产注入，2026-08-11 闭环；x402_pay/payment_status 旧工具已移除）。
+> 支付/通道 26 个工具统一转发通用支付引擎 :9132（`PAYMENTS_URL`+`PAYMENTS_API_KEY` 已生产注入；MQ-16 batch/invite/transfer 15 个工具 2026-08-11 新增）。x402_pay/payment_status 旧工具已移除。
 
 ---
 
-## 8.5 chain-rpc-mcp（:3012，4 工具）
+## 8.5 chain-rpc-mcp（:3012，10 工具）
 
-chain-rpc 网关（:9130）的 MCP 封装：通用链上读 + 已签名交易广播，供 AI Agent 直接查询链上状态 / 提交交易。
+chain-rpc 网关（:9130）的 MCP 封装：通用链上读 + 已签名交易广播 + **MQ-16 订阅面（T-3）**，供 AI Agent 直接查询链上状态 / 提交交易 / 管理套餐。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -228,8 +255,14 @@ chain-rpc 网关（:9130）的 MCP 封装：通用链上读 + 已签名交易广
 | `chain_rpc_broadcast` | chain, rawTransaction*, wait | 广播已签名交易（EVM `eth_sendRawTransaction` / Solana `sendTransaction`；经网关 `POST /v1/broadcast/:chain`，**广播 key**；wait=true 附回执） |
 | `chain_rpc_status` | — | 网关池状态（各链健康 / 活跃端点数，URL 脱敏） |
 | `chain_rpc_health` | — | 网关健康（无需 key） |
+| `chain_rpc_subscription_plans` | — | **MQ-16**：套餐目录（公开）→ `GET /v1/subscription/plans` |
+| `chain_rpc_subscription_issue_key` | label | **MQ-16**：签发 `rx_` 读 key（管理操作，X-Service-Key）→ `POST /v1/subscription/issue-key` |
+| `chain_rpc_subscription_checkout` | plan_id*, rail, subscriber | **MQ-16**：发起订阅支付（rx_ key 鉴权）→ `POST /v1/subscription/checkout` |
+| `chain_rpc_subscription_payment_check` | subscriber | **MQ-16**：轮询支付状态 → `POST /v1/subscription/payment-check` |
+| `chain_rpc_subscription_verify` | txHash* | **MQ-16**：x402 确认激活 → `POST /v1/subscription/verify` |
+| `chain_rpc_subscription_usage` | — | **MQ-16**：订阅用量 → `GET /v1/subscription/usage` |
 
-> **分级 key（MQ-10 补充 B）**：读工具走 `CHAIN_RPC_READ_KEY`，广播工具走 `CHAIN_RPC_BROADCAST_KEY`（服务端签发、读端点拒绝）；服务端未配置广播 key 时 `chain_rpc_broadcast` 返回明确错误（fail-closed）。
+> **分级 key（MQ-10 补充 B）**：读工具走 `CHAIN_RPC_READ_KEY`，广播工具走 `CHAIN_RPC_BROADCAST_KEY`（服务端签发、读端点拒绝）；订阅工具 issue-key 走 `X-Service-Key`（bridge key），其余走 `rx_` key（X-RPC-Key）。服务端未配置广播 key 时 `chain_rpc_broadcast` 返回明确错误（fail-closed）。
 
 **示例**（入站需 `X-Service-Key: <MCP_KEY>`，与 hub-index 同套 `MCP_API_KEY` 白名单）：
 
@@ -238,6 +271,33 @@ curl -s -X POST http://localhost:3012/mcp/message \
   -H 'Content-Type: application/json' -H 'X-Service-Key: <MCP_KEY>' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chain_rpc_read","arguments":{"chain":"sepolia","method":"eth_blockNumber","params":[]}}}'
 ```
+
+---
+
+## 8.6 market-mcp（:3013，18 工具）
+
+行情/分析数据 + **MQ-16 订阅面（T-2）**：数据面经 collector :9101 `/api/v2/data/market/*`（OKX ChainOS v6），订阅面经 `/api/v2/market/*`。X-API-Key 识别 keyId。生产独立 unit `infrax-market-mcp.service`（2026-08-11 新增部署，此前代码存在未运行）。
+
+| 工具 | 参数 | 说明 |
+|---|---|---|
+| `market_search` | keyword*, chainIndex, limit | 代币搜索 |
+| `market_hot` | chainIndex*, limit, rankingType, rankingTimeFrame, rankBy, riskFilter, protocolId | 热门代币（30+ 过滤参数） |
+| `market_candles` | chainIndex*, tokenAddress*, period, limit | K 线（OHLCV） |
+| `market_price` | chainIndex*, tokenAddress* | 实时 DEX 价格 |
+| `market_balances` | address*, chains | 钱包余额（免费） |
+| `market_transactions` | address*, chains, limit | 交易历史（免费） |
+| `market_mempump` | chainIndex*, protocol, sortBy, limit | Meme 币列表（honeypot/bundle 检测） |
+| `market_mempump_detail` | chainIndex*, tokenAddress* | Meme 币详情 |
+| `market_signals` | chainIndex*, signalType, limit | 聪明钱/鲸鱼信号 |
+| `market_leaderboard` | chainIndex*, leaderboardType, limit | 交易者排行 |
+| `track_token` | chain*, tokenAddress*, label | 加入监控列表 |
+| `list_tracked` | chain | 监控列表 |
+| `register_event` | chain*, topicHash*, eventType*, eventName, abi | 注册自定义事件签名 |
+| `market_subscription_plans` | — | **MQ-16**：套餐目录（公开）→ `GET /api/v2/market/plans` |
+| `market_subscription_checkout` | plan_id*, rail, subscriber | **MQ-16**：发起订阅（免费直接激活；付费返回 pending）→ `POST /api/v2/market/checkout` |
+| `market_subscription_payment_check` | subscriber | **MQ-16**：轮询支付状态 → `POST /api/v2/market/payment-check` |
+| `market_subscription_verify` | txHash* | **MQ-16**：x402 确认激活 → `POST /api/v2/market/verify` |
+| `market_subscription_usage` | — | **MQ-16**：订阅用量 → `GET /api/v2/market/usage` |
 
 ---
 
@@ -291,8 +351,8 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 
 - **MCP 入站鉴权**（B-12）：2026-08-08 起全部 6 个 HTTP MCP 服务（vault/mpc/session-key/dc/wallet/chain-rpc）均挂 `mcp-auth.ts` `inboundAuth`；⚠️ 各服务生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，wallet-mcp 曾遇，已修）
 - **dc_tokens 必失败（B-10-3，✅ 2026-08-10 已修）**：dc-mcp `dc_tokens` 调用 dc `/api/v2/data/tokens` 401——根因生产 dc-mcp 缺 `DC_API_KEY`（默认发 test-key）。已注入生产 `infrax-dc-mcp.service.d/dc-api-key.conf`（租户 dc_api_key）+ 代码 fail-fast（2026-08-11，dc_tokens 返回真实数据）
-- **支付工具 404（B-10-5，✅ 2026-08-11 已闭环）**：wallet-mcp 旧 `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes——现 payment/mpp 11 个工具已迁移通用支付引擎 :9132，生产 `infrax-wallet-mcp.service.d/payments.conf` 注入 `PAYMENTS_URL`+`PAYMENTS_API_KEY`，`payment_price` 实测返回真实套餐数据
-- **market-index 未部署**：市场指数 MCP 服务代码存在但生产未运行
+- **支付工具 404（B-10-5，✅ 2026-08-11 已闭环）**：wallet-mcp 旧 `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes——现 payment/mpp 26 个工具已迁移通用支付引擎 :9132，生产 `infrax-wallet-mcp.service.d/payments.conf` 注入 `PAYMENTS_URL`+`PAYMENTS_API_KEY`，`payment_price` 实测返回真实套餐数据
+- **market-index 已部署（✅ 2026-08-11）**：市场指数 MCP 服务此前代码存在但生产未运行——现新增 `infrax-market-mcp.service`（:3013，DC_URL=collector :9101 + 生产 DC_API_KEY），18 工具全量可用
 - **hub-index 注释过时**：nginx 注释称"端点无入站鉴权"，实际 hub-index 已有鉴权，建议更新注释
 
 ---
@@ -303,11 +363,12 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 # 健康检查
 curl -s http://127.0.0.1:3008/health   # hub-index
 curl -s http://127.0.0.1:9108/health   # vault-mcp
-curl -s http://127.0.0.1:9105/health   # mpc-mcp
+curl -s http://127.0.0.1:9105/health   # mpc-mcp（tools=17）
 curl -s http://127.0.0.1:3011/health   # session-key-mcp
-curl -s http://127.0.0.1:9103/health   # dc-mcp
-curl -s http://127.0.0.1:9110/health   # wallet-mcp
-curl -s http://127.0.0.1:3012/health   # chain-rpc-mcp（返回 tools 数=4）
+curl -s http://127.0.0.1:9103/health   # dc-mcp（tools=11）
+curl -s http://127.0.0.1:9110/health   # wallet-mcp（tools=34）
+curl -s http://127.0.0.1:3012/health   # chain-rpc-mcp（tools=10）
+curl -s http://127.0.0.1:3013/health   # market-mcp（tools=18）
 
 # 工具清单
 curl -s -X POST http://127.0.0.1:3008/mcp/message \

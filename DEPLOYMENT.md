@@ -2,7 +2,7 @@
 
 > 最后更新: 2026-08-11 | 版本 `v0.7.0-20260811`
 
-> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**24 个 systemd 服务 + 1 个清理 timer**）。
+> 📌 **生产环境为单机 `43.163.105.172`**（新加坡·腾讯云）：区块链栈（9100-9111）+ 数据栈（9112/9113/9721）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/3013/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）全部同机部署（**25 个 systemd 服务 + 1 个清理 timer**，含 2026-08-11 新增 `infrax-market-mcp`）。
 > **本文档覆盖区块链服务栈（9100-9111）与平台服务（9130-9132）**；数据栈详细部署见 [docs/infrax_tasklist.md](./docs/infrax_tasklist.md)。
 > 旧服务器 ~~43.156.46.187 / 43.156.99.215 / 129.226.203.60~~ 均已弃用。
 
@@ -14,7 +14,7 @@
 | User | ubuntu |
 | SSH | 直连 |
 | 代码路径 | `/home/ubuntu/infraX-1` |
-| 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721；平台服务 9130-9132/9200-9201/3500；MCP 3008/3011/3012/9103/9105/9108/9110；nginx 80/443 |
+| 服务端口 | 区块链栈 9100-9111；数据栈 9112/9113/9721；平台服务 9130-9132/9200-9201/3500；MCP 3008/3011/3012/3013/9103/9105/9108/9110；nginx 80/443 |
 | 公网入口 | 统一经 nginx（80 → 301 → 443）；域名 `infrax.0xainet.top`（DNS→Cloudflare，当前 `/api/*` 502 待修，见 [infrax_tasklist §2.1](./docs/infrax_tasklist.md)） |
 | ml-service | 独立服务器 **43.156.25.197**:9120（不在本机） |
 
@@ -23,7 +23,7 @@
 ssh ubuntu@43.163.105.172
 ```
 
-## 当前运行服务（24 个 systemd + 1 timer）
+## 当前运行服务（25 个 systemd + 1 timer）
 
 ### 区块链栈（9100-9111）
 
@@ -58,13 +58,14 @@ ssh ubuntu@43.163.105.172
 | Knowledge Injector | 9113 | — | `systemctl start infrax-knowledge-injector` | 🟢 |
 | RAGservicer | 9721 | — | `systemctl start infrax-ragservicer` | 🟢 |
 
-### MCP Server（3008/3011/3012 + 区块链栈内 9103/9105/9108/9110）
+### MCP Server（3008/3011/3012/3013 + 区块链栈内 9103/9105/9108/9110）
 
 | 服务 | 端口 | 说明 | 启动 | 状态 |
 |------|------|------|------|------|
 | Hub Index MCP | 3008 | mcp-server 入口（hub-index.ts） | `systemctl start infrax-hub-index` | 🟢 |
 | Session-Key MCP | 3011 | mcp-server 入口 | `systemctl start infrax-session-key-mcp` | 🟢 |
-| RPC MCP | 3012 | mcp-server 入口 | `systemctl start infrax-rpc-mcp` | 🟢 |
+| RPC MCP | 3012 | mcp-server 入口（rpc-index.ts，10 tools） | `systemctl start infrax-rpc-mcp` | 🟢 |
+| **Market MCP** | **3013** | **mcp-server 入口（market-index.ts，18 tools，MQ-16 T-2；2026-08-11 新增）** | `systemctl start infrax-market-mcp` | 🟢 |
 | DC MCP | 9103 | — | `systemctl start infrax-dc-mcp` | 🟢 |
 | MPC MCP | 9105 | — | `systemctl start infrax-mpc-mcp` | 🟢 |
 | Vault MCP | 9108 | — | `systemctl start infrax-vault-mcp` | 🟢 |
@@ -76,7 +77,7 @@ ssh ubuntu@43.163.105.172
 |------|------|------|------|------|
 | Cleanup | — | 每日清理 5 天前数据 | `systemctl start infrax-cleanup` | 🟢 (timer) |
 
-> 对照：`sudo systemctl --no-pager list-units 'infrax-*' --all`（24 服务 + timer）；`sudo ss -tlnp` 应看到 3002/3008/3011/3012/3500/9100-9105/9107-9113/9130-9132/9200-9201/9721 共 24 个监听端口（9106 旧支付已下线）。
+> 对照：`sudo systemctl --no-pager list-units 'infrax-*' --all`（25 服务 + timer）；`sudo ss -tlnp` 应看到 3002/3008/3011/3012/3013/3500/9100-9105/9107-9113/9130-9132/9200-9201/9721 共 25 个监听端口（9106 旧支付已下线）。
 
 ## 目录结构
 
@@ -85,7 +86,7 @@ ssh ubuntu@43.163.105.172
 ├── admin/              → Admin :9100 + Admin Legacy :3002  (Express 5 SPA + REST API)
 ├── collector/          → Collector :9101  (5 链区块扫描)
 ├── dc/                 → DC :9102  (数据中心 API)
-├── mcp-server/         → 7 个 MCP 入口 (dc/mpc/vault/wallet/rpc/session-key/hub-index)
+├── mcp-server/         → 8 个 MCP 入口 (dc/mpc/vault/wallet/rpc/session-key/hub-index/market)
 ├── mpc/                → MPC :9104  (多方计算钱包)
 ├── payment/            → Payment :9106 (旧支付，🔴 已下线，代码保留 git 历史)
 ├── sdk/                → infrax-dk npm 包 (TypeScript SDK，非运行时服务)
@@ -123,6 +124,7 @@ ssh ubuntu@43.163.105.172
 
 ```
 /api/v2/data    → :9102 (DC)
+/api/v2/market   → :9101 (Collector)   ← MQ-16 新增（2026-08-11）
 /api/v2/mpc     → :9104
 /api/v2/wallet  → :9109
 /api/v2/waas    → :9109
@@ -153,7 +155,7 @@ ssh ubuntu@43.163.105.172
 |------|------|------|
 | **9111** | Web / Landing Page | **必须开放** |
 | **9100** | Admin 面板 | **建议开放** |
-| 9103/9105/9108/9110 | MCP 服务 | 外部 AI Agent 调用时开放 |
+| 9103/9105/9108/9110/3011/3012/3013 | MCP 服务 | 外部 AI Agent 调用时开放 |
 | 9101/9102/9104/9107/9109 | 后端 API | 仅内部调用 |
 | 9130-9132（chain-rpc/aa-relay/payments 引擎） | 平台服务 | 仅内部调用（外部 key 经业务服务/nginx 进入） |
 
@@ -197,7 +199,7 @@ for s in \
   infrax-admin infrax-admin-legacy infrax-collector infrax-dc infrax-mpc infrax-vault infrax-waas infrax-web \
   infrax-chain-rpc infrax-aa-relay infrax-payments infrax-session-key infrax-mpc-signer infrax-mpc-tss-signer \
   infrax-data infrax-knowledge-injector infrax-ragservicer \
-  infrax-dc-mcp infrax-mpc-mcp infrax-vault-mcp infrax-wallet-mcp infrax-hub-index infrax-session-key-mcp infrax-rpc-mcp; do
+  infrax-dc-mcp infrax-mpc-mcp infrax-vault-mcp infrax-wallet-mcp infrax-hub-index infrax-session-key-mcp infrax-rpc-mcp infrax-market-mcp; do
   sudo systemctl restart $s
 done
 ```

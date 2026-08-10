@@ -1,6 +1,6 @@
 # InfraX SDK 集成文档（SDK Integration Guide）
 
-> 面向外部集成方的 SDK 使用指南。覆盖 **JS/TS SDK**（`@0xinfrax/infrax-dk`）、**Python SDK**（`lightrag-client`）、**OpenAPI 契约** 三类集成方式，对接 VAULT / MPC / WAAS / DATA / LightRAG / Session Key 六大微服务。
+> 面向外部集成方的 SDK 使用指南。覆盖 **JS/TS SDK**（`@0xinfrax/infrax-dk`）、**Python SDK**（`lightrag-client`）、**OpenAPI 契约** 三类集成方式，对接 VAULT / MPC / WAAS / DATA / LightRAG / Session Key / Payments / Chain RPC 微服务。
 
 ---
 
@@ -8,7 +8,7 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | 0.5.1 | ✅ 已发布（registry 已验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** |
+| `@0xinfrax/infrax-dk`（npm） | **0.6.0** | ✅ 已发布（registry 已验证，2026-08-11） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
 | `@0xinfrax/mpc-sdk`（npm，独立轻量） | 0.1.0 | ✅ 已发布 + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC 钱包模块（sendCode/register/recover/status/createWallet）+ 会话模块（unlock/lock/status）；链上模块（7 方法）后续版本 |
 | `lightrag-client`（PyPI） | 2.0.0 | ⏳ 构建+twine check 通过，待 PyPI token 发布 | LightRAG（ragservicer） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
@@ -68,11 +68,12 @@ const infrax = new InfraX({
 | **DATA 行情/因子** | `data.bars()`、`data.ticker()`、`data.factorsCurrent()`、`data.factorsHistory()`、`data.snapshots()`、`data.symbolSearch()`、`data.symbolResolve()`、`data.mlPredictions()`、`data.stats()` | `/api/data/*`（9112） |
 | **ML 实时推理** | `ml.treePredictions()`、`ml.volatility()`、`ml.bolt()`、`ml.moirai()`、`ml.timesfm()`、`ml.consensus()`、`ml.sentiment()`、`ml.macroFeatures()`、`ml.cacheStats()`（免鉴权） | ml-service :9120 `/ml/*`（统一 dict+聚合；**缓存 miss 时 `data=null` 属预期**，配合 `/ml/cache/stats` 判断就绪） |
 | **VAULT 多签** | `vault.safes()`、`vault.safeDetail()`、`vault.createSafe()`、`vault.proposeTx()`、`vault.confirmTx()`、`vault.executeTx()`、`vault.createTx()` | `/api/vault/*`（9107） |
-| **MPC 钱包** | `mpc.sendCode()`、`mpc.register()`、`mpc.status()`、`mpc.signMessage()`、`mpc.signTypedData()`、`mpc.sendTransaction()` | `/api/v2/mpc/*`（9104） |
+| **MPC 钱包** | `mpc.sendCode()`、`mpc.register()`、`mpc.status()`、`mpc.signMessage()`、`mpc.signTypedData()`、`mpc.sendTransaction()`；**MQ-16 计费**：`mpc.plans()`、`mpc.ledgerBalance(token)` | `/api/v2/mpc/*`（9104） |
 | **WAAS 钱包/支付/SaaS** | `wallet.balance()`、`wallet.send()`、`wallet.simulate()`、`wallet.rpc()`；`payment.create()`、`payment.status()`、`x402.pay()`；`saas.createTenant()`、`saas.listTenants()`、`saas.rotateApiKey()` | `/api/v2/*`（9109） |
-| **DC 链上数据** | `dc.events()`、`dc.stats()`、`dc.tokens()`、`dc.chains()`、`dc.price()` | DC :9102 |
-| **OKX ChainOS 市场** | `market.tokenInfo()`、`market.candles()`、`market.balance()`、`market.txHistory()`、`market.smartMoneySignals()`、`market.leaderboard()` 等 | DC :9102 |
-| **chain-rpc 网关** | `chainRpc.call()`（读）、`chainRpc.broadcast()`（广播，需 `chainRpcBroadcastKey`）、`chainRpc.status()`、`chainRpc.health()` | chain-rpc :9130 `/v1/rpc/:chain`、`/v1/broadcast/:chain` |
+| **DC 链上数据** | `dc.events()`、`dc.stats()`、`dc.tokens()`、`dc.chains()`、`dc.price()`；**MQ-16 订阅**：`dc.subscribe(params, walletAddress)`、`dc.paymentCheck(walletAddress)`、`dc.verify(txHash, walletAddress)`、`dc.usage(walletAddress)` | DC :9102 |
+| **OKX ChainOS 市场** | `market.tokenInfo()`、`market.candles()`、`market.balance()`、`market.txHistory()`、`market.smartMoneySignals()`、`market.leaderboard()` 等；**MQ-16 订阅**：`market.plans()`、`market.checkout(params)`、`market.paymentCheck()`、`market.verify(txHash)`、`market.usage()` | DC :9102（数据面）/ Collector :9101（订阅面 `/api/v2/market/*`） |
+| **chain-rpc 网关** | `chainRpc.call()`（读）、`chainRpc.broadcast()`（广播，需 `chainRpcBroadcastKey`）、`chainRpc.status()`、`chainRpc.health()`；**MQ-16 订阅**：`chainRpc.subscriptionPlans()`、`chainRpc.issueRpcKey(label?)`、`chainRpc.subscriptionCheckout(params)`、`chainRpc.subscriptionPaymentCheck()`、`chainRpc.subscriptionVerify(txHash)`、`chainRpc.subscriptionUsage()` | chain-rpc :9130 `/v1/rpc/:chain`、`/v1/broadcast/:chain`、`/v1/subscription/*` |
+| **payments 通用支付引擎** | `payment.checkout()`、`payment.a2a()`、`payment.a2aSettle()`、`payment.verify()`、`payment.balance()`、`payment.price()`；**MQ-16**：`payment.batchCreate()`/`batchSettle()`/`batchGet()`/`batchCancel()`、`payment.inviteCreate()`/`inviteList()`/`inviteGet()`/`inviteCancel()`/`inviteSettle()`/`invitePay()`、`payment.transferCreate()`/`transferList()`/`transferGet()`/`transferConfirm()`/`transferCancel()` | payments :9132 `/payments/*`（裸 JSON） |
 
 > `data.*` 对应参数以 SDK 导出类型为准（`DataBarsParams`/`DataTickerParams`/`DataFactorCurrentParams`…，见 `src/index.ts`）。
 >
@@ -123,6 +124,43 @@ const tx = await infrax.vault.proposeTx({
 
 // MPC：签名
 const sig = await infrax.mpc.signTypedData({ walletId: '...', typedData });
+```
+
+### 2.4A MQ-16 套餐订阅示例（v0.6.0，2026-08-11）
+
+> 计费矩阵：**业务服务管"权益激活"、支付引擎管"钱"**。免费套餐 `subscribe`/`checkout` 直接激活并返回 key；付费套餐返回 `pending` 支付意图，在所选 rail（chain/fiat/x402）完成后激活。`{code, message, data}` 信封统一由 SDK 解包。
+
+```ts
+// ── DC 数据套餐（x-wallet-address 鉴权）──
+const walletAddress = '0x2bA20a76af1297D4Ef9BD242866F690aceaAb9f1';
+const sub = await infrax.dc.subscribe({ planId: 'data_pro', rail: 'x402' }, walletAddress);
+if (sub.data.marketSubStatus === 'pending') {
+  // 付费套餐：用户钱包按 sub.data.payment 的 payTo 支付 → 提交 txHash 确认
+  const ok = await infrax.dc.verify(txHash, walletAddress);
+}
+const usage = await infrax.dc.usage(walletAddress);        // plan / dcApiKey / quota / used
+
+// ── Market 行情套餐（X-API-Key 识别 keyId，订阅面 /api/v2/market/*）──
+const plans = await infrax.market.plans();                  // 套餐目录（公开）
+const m = await infrax.market.checkout({ plan_id: 'market_pro', rail: 'chain' });
+const mUsage = await infrax.market.usage();                 // 月度配额 / 实际用量
+
+// ── Chain RPC 套餐（rx_ key 鉴权）──
+const rpcKey = await infrax.chainRpc.issueRpcKey('my-agent');  // 管理操作：签发 rx_ 读 key
+const r = await infrax.chainRpc.subscriptionCheckout({ plan_id: 'rpc_pro', rail: 'x402' });
+const rUsage = await infrax.chainRpc.subscriptionUsage();
+
+// ── MPC 按量计费（T-4）──
+const mpcPlans = await infrax.mpc.plans();                  // 费率表（签名 0.0001 / 写链 0.001 ETH）
+const balance = await infrax.mpc.ledgerBalance(sessionToken); // 引擎账本余额（fees/topupHint）
+
+// ── payments 引擎：batch / invite / transfer（裸 JSON）──
+const batch = await infrax.payment.batchCreate({ items: [{ payee: '0x...', amountWei: '1000000000000000', rail: 'x402' }] });
+await infrax.payment.batchSettle({ batchId: batch.batchId, itemId: 0, txHash });
+const inv = await infrax.payment.inviteCreate({ payer: '0x...', payee: '0x...', amountWei: '500000000000000000', rail: 'chain' });
+await infrax.payment.inviteSettle(inv.inviteId, txHash);    // 或 invitePay() 账本扣款
+const tr = await infrax.payment.transferCreate({ from: '0xA', to: '0xB', amountWei: '1000000000000000', asset: 'native' });
+await infrax.payment.transferConfirm(tr.transferId);        // 原子入账
 ```
 
 ---

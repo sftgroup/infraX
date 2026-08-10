@@ -207,9 +207,119 @@
 | `/api/v2/saas/*` | tenants / apikeys CRUD / hot-wallet / tokens | 租户管理 | ✅ requireTenantApiKey（部分） |
 | `/api/v2/subscription/*` | GET plans / POST upgrade | 套餐 | ⚠️ 无 |
 | `/api/v2/data/*` | GET plans / POST subscribe / GET usage/key/docs | **数据订阅（发 DC key）** | ⚠️ 无 |
-| `paymentRoutes` / `mpcRoutes` | — | **已定义未挂载（B-10-5）** | — |
+| `paymentRoutes` / `mpcRoutes` | — | 已迁移通用支付引擎 :9132（B-10-5 ✅ 2026-08-11 闭环，见 §7.5） | — |
 
 **MCP**：无专属 MCP（`infrax-wallet-mcp` 代理 waas，需 `WAAS_API_KEY`，见 MCP 文档）。
+
+---
+
+## 7.5 Payments 通用支付引擎（:9132，`@0xinfrax/payments`，MQ-14/16）
+
+> **接入方式（2026-08-11 决策）**：通用支付 = **独立实例 + 自配凭证**。每个 B 端（调用方）自行部署/嵌入 `@0xinfrax/payments`，在**自己的实例**里配置自己的收款凭证——**一个实例 = 一套收款**，钱进 B 端自己的账户。平台 `:9132` 仅为**平台自用实例**（配平台自身凭证，服务 waas/dc/collector/chain-rpc 订阅激活），不代 B 端收钱。完整接入模板见 `projects/payments/CALLER_SETUP.md`。
+> **鉴权**：平台实例出站统一 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key` 三选一（`PAYMENTS_API_KEY`）。**响应为裸 JSON**（非 `{code,message,data}` 信封），SDK 用 `postRaw/getRaw` 对接。
+
+### 7.5.1 收款/结算（checkout / a2a / verify / balance / price / period）
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/payments/info` | GET | 通道发现（rails/价格/pay-to） |
+| `/payments/price` | GET | 链上套餐定价（planId） |
+| `/payments/checkout` | POST | Stripe fiat checkout（创建支付会话，返回 sessionUrl） |
+| `/payments/a2a` | POST | a2a 收款意图（返回 paymentId，链上/账本支付） |
+| `/payments/a2a/settle` | POST | 提交链上 txHash 结算（x402 验证 + 记账） |
+| `/payments/verify` | POST | 链上支付验证（txHash → 是否打到平台收款地址） |
+| `/payments/webhook` | POST | Stripe 等 webhook 回调 |
+| `/payments/balance` | GET | 账本余额（address 维度） |
+| `/payments/access` | POST | 订阅访问控制检查 |
+| `/payments/period/charge` | POST | 订阅周期扣费（period 能力） |
+| `/payments/period/authorization` | GET | 周期授权查询 |
+| `/payments/chain-info/:chain` | GET | 链配置（收款地址等） |
+| `/payments/subscription/:chain/:subscriber/:resourceId` | GET | 订阅状态查询 |
+| `/payments/mpp/open` `/voucher` `/topup` `/settle` `/close` `/session` | POST/GET | MPP 状态通道全生命周期 |
+| `/payments/capabilities` | GET | 引擎能力探测 |
+
+### 7.5.2 batch 批量收款（MQ-16，batch 能力）
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/payments/batch` | POST | 创建批量收款意图（一次多 payee，body: `{items:[{payee, amountWei, asset?, rail?}], chain?, clientReference?}`） |
+| `/payments/batch/settle` | POST | 结算 batch 中单个 item（提交该笔链上 txHash，x402 校验入账） |
+| `/payments/batch?batchId=` | GET | 查询 batch 状态 |
+| `/payments/batch/cancel` | POST | 取消 batch（仅未支付 items） |
+
+### 7.5.3 invites 账单邀请（MQ-16，invite 能力）
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/payments/invites` | POST | 创建账单邀请（payer → payee，body: `{payer, payee, amountWei, asset?, rail?, chain?, clientReference?}`） |
+| `/payments/invites?address=&role=` | GET | 列出邀请（role: payer\|payee，可选 status） |
+| `/payments/invites/:inviteId` | GET | 单个邀请详情 |
+| `/payments/invites/:inviteId/cancel` | POST | 取消未结算邀请 |
+| `/payments/invites/:inviteId/settle` | POST | 链上结算（提交 payer 的 txHash） |
+| `/payments/invites/:inviteId/pay` | POST | 账本支付（从 payer ledger 余额扣款结算） |
+
+### 7.5.4 transfers 账本内部转账（MQ-16，transfer 能力）
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/payments/transfers` | POST | 发起账本转账（body: `{from, to, amountWei, asset?}`；需余额充足） |
+| `/payments/transfers/:transferId/confirm` | POST | 确认并执行转账（原子入账） |
+| `/payments/transfers?address=&role=` | GET | 列出转账（role: from\|to） |
+| `/payments/transfers/:transferId` | GET | 单个转账详情 |
+| `/payments/transfers/:transferId/cancel` | POST | 取消未执行转账 |
+
+> **SDK 对接**：`ix.payment.batchCreate()/batchSettle()/batchGet()/batchCancel()`、`inviteCreate()/inviteList()/inviteGet()/inviteCancel()/inviteSettle()/invitePay()`、`transferCreate()/transferList()/transferGet()/transferConfirm()/transferCancel()`（`@0xinfrax/infrax-dk` v0.6.0+，全部 `postRaw/getRaw` 裸 JSON）。
+
+---
+
+## 7.6 MQ-16 对外套餐订阅端点（DC :9102 / Collector :9101 / Chain RPC :9130 / MPC :9104）
+
+> 五任务 T-1~T-5 全部完成并生产部署（2026-08-11）。计费矩阵：**业务服务管"权益激活"、支付引擎管"钱"**。完整验收见 [docs/infrax_tasklist.md §9.8.9](./infrax_tasklist.md)。
+
+### 7.6.1 DC 数据订阅（:9102，T-1）— `x-wallet-address` 鉴权，信封响应
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/api/v2/data/plans` | GET | 套餐目录（公开） |
+| `/api/v2/data/subscribe` | POST | 订阅（body: `{planId, rail}`；免费直接激活返回 dcApiKey，付费返回 pending） |
+| `/api/v2/data/payment-check` | POST | 轮询支付状态（chain rail 链上确认） |
+| `/api/v2/data/verify` | POST | x402 确认（`{txHash}`，payer 需匹配 x-wallet-address） |
+| `/api/v2/data/usage` | GET | 订阅用量（plan/quota/日聚合） |
+| `/api/v2/data/payment-callback` | POST | 支付回调 webhook（HMAC 验签） |
+
+### 7.6.2 Market 行情订阅（collector :9101，T-2）— `X-API-Key` 鉴权，信封响应，超限 **503**
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/api/v2/market/plans` | GET | 套餐目录（公开） |
+| `/api/v2/market/checkout` | POST | 订阅（body: `{plan_id, rail, subscriber?}`；免费直接激活，付费返回 pending + payment） |
+| `/api/v2/market/payment-check` | POST | 轮询支付状态 |
+| `/api/v2/market/verify` | POST | x402 确认（`{txHash}`） |
+| `/api/v2/market/usage` | GET | 订阅用量 |
+| `/api/v2/market/payment-callback` | POST | 支付回调 webhook（HMAC 验签） |
+
+> **公网代理**：web :9111 已补 `'/api/v2/market' → collector :9101` 路由（2026-08-11，生产实测 `/api/v2/market/plans` 200）。
+
+### 7.6.3 Chain RPC 订阅（:9130，T-3）— `rx_` key 鉴权，信封 `{code,message,data}`，超限 **503**
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/v1/subscription/plans` | GET | 套餐目录（公开） |
+| `/v1/subscription/issue-key` | POST | 签发 `rx_` 读 key（管理操作，X-Service-Key） |
+| `/v1/subscription/checkout` | POST | 订阅（body: `{plan_id, rail, subscriber?}`；`rx_` key 鉴权） |
+| `/v1/subscription/payment-check` | POST | 轮询支付状态 |
+| `/v1/subscription/payment-callback` | POST | 支付回调 webhook |
+| `/v1/subscription/verify` | POST | x402 确认（`{txHash}`） |
+| `/v1/subscription/usage` | GET | 订阅用量 |
+
+### 7.6.4 MPC 按量计费（:9104，T-4）— session 鉴权，信封响应，欠费 **402**
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/api/v2/mpc/plans` | GET | 套餐价目（公开：mode/billing/configured/platformAddress/fees/topup） |
+| `/api/v2/mpc/ledger-balance` | POST | ledger 余额查询（body: `{token}`，返回 address/balanceWei/fees/topupHint） |
+
+> 计费触发：签名 0.0001 ETH / 写链 0.001 ETH（pay-per-use），余额不足 402 `insufficient_balance`。
 
 ---
 
@@ -262,9 +372,12 @@
 | infrax-knowledge-injector | 9113 | — | — | — |
 | infrax-ragservicer | 9721 | `/api/rag/*` | ✅ lightrag-client / ragservicer-sdk | ✅ STDIO 5 工具 |
 | infrax-vault | 9107 | — | ✅ infrax-dk | ✅ :9108 13 工具 |
-| infrax-mpc | 9104 | — | ✅ infrax-dk | ✅ :9105 15 工具 |
-| infrax-waas | 9109 | — | ✅ infrax-dk | ✅ wallet-mcp 10 工具 |
+| infrax-mpc | 9104 | — | ✅ infrax-dk（含 plans/ledger-balance） | ✅ :9105 17 工具 |
+| infrax-waas | 9109 | — | ✅ infrax-dk | ✅ wallet-mcp 34 工具（含 payments 代理） |
+| infrax-collector | 9101 | — | ✅ infrax-dk market.*（订阅面） | ✅ market-mcp :3013 18 工具 |
+| infrax-chain-rpc | 9130 | — | ✅ infrax-dk chainRpc.*（含订阅面） | ✅ :3012 10 工具 |
+| infrax-payments | 9132 | — | ✅ infrax-dk payment.*（裸 JSON） | ✅ wallet-mcp payment_* 代理 |
 | infrax-session-key | 3500 | — | ⚠️ 未覆盖 | ✅ :3011 7 工具 |
-| hub-index（统一入口） | 3008 | — | — | ✅ 13 工具 |
+| hub-index（统一入口） | 3008 | `/mcp/*` | — | ✅ 13 工具 |
 
-**遗留项**：WAAS 统一鉴权（B-12-1）、waas paymentRoutes/mpcRoutes 挂载（B-10-5）、SDK 补 session 方法（B-12-2）、market-index 未部署。
+**遗留项**：WAAS 统一鉴权（B-12-1）、SDK 补 session 方法（B-12-2）。~~market-index 未部署~~ → **market-mcp 已部署（:3013，2026-08-11）**。

@@ -1,6 +1,6 @@
 # InfraX — Web3 基础设施平台
 
-> Monorepo | 16 模块 | Version `v0.6.2-20260811` | 生产（单机）`43.163.105.172`
+> Monorepo | 16 模块 | Version `v0.7.0-20260811` | 生产（单机）`43.163.105.172`
 
 ## 项目介绍
 
@@ -15,8 +15,8 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **DC** | 链上事件查询（5 链）、订阅计划、API Key 管理 | 9102 |
 | **MPC** | 邮件验证码、密钥分片注册/恢复、Agent Wallet（会话/签名/合约/转账） | 9104 |
 | **Payment（旧）** | 旧支付服务（历史残留，订阅已迁移至 WAAS + Payments） | 9106 |
-| **Payments** | 通用支付引擎 @0xinfrax/payments：chain/fiat/x402/MPP + period/invite/transfer/batch 能力 | 9132 |
-| **Chain RPC** | 链 RPC 网关（统一路由 + 读/广播鉴权分级） | 9130 |
+| **Payments** | 通用支付引擎 @0xinfrax/payments：chain/fiat/x402/MPP + period/invite/transfer/batch 能力（MQ-16 T-5） | 9132 |
+| **Chain RPC** | 链 RPC 网关（统一路由 + 读/广播鉴权分级）+ **RPC 套餐订阅（MQ-16 T-3）** | 9130 |
 | **AA Relay** | Account Abstraction 交易中继 | 9131 |
 | **Session Key** | 会话密钥授权服务（Bundler + Paymaster） | 3500 |
 | **Collector** | 全链事件扫描（全量日志→本地分类）+ OKX ChainOS v6 行情（40+端点/K线/Meme/信号）+ Binance 期货 | 9101 |
@@ -26,7 +26,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | **Data** | 统一行情/K 线/因子/快照数据服务（AItrader data-service 迁入） | 9112 |
 | **Knowledge Injector** | 知识图谱注入：拉取快照 → 解析 → 注入 RAGservicer 构建图谱 | 9113 |
 | **RAGservicer** | LightRAG 知识库微服务（文档管理 + 图谱检索 + MCP） | 9721 |
-| **MCP × 7** | AI Agent 接入：DC/MPC/Vault/Wallet/RPC/Session-Key/Hub-Index 共 58+ tools | 9103/9105/9108/9110/3012/3011/3008 |
+| **MCP × 8** | AI Agent 接入：DC/MPC/Vault/Wallet/RPC/Session-Key/Market/Hub-Index 共 **123 tools**（MQ-16 新增 32 个套餐工具） | 9103/9105/9108/9110/3012/3011/3013/3008 |
 
 ### 三种接入方式
 
@@ -34,10 +34,11 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 |------|----------|-----|--------|
 | WAAS/Wallet | ✅ | ✅ | ✅ |
 | Safe/Vault | ✅ | ✅ | ✅ |
-| Payments（支付引擎） | ✅ | — | ✅ |
-| Data Center | ✅ | ✅ (7 tools) | ✅ |
-| Market (行情+分析) | ✅ (39 endpoints) | ✅ (13 tools) | ✅ (16 methods) |
-| MPC | ✅ | ✅ (15 tools) | ✅ |
+| Payments（支付引擎） | ✅ | ✅（wallet-mcp payment_* 代理） | ✅（v0.6.0：基础 10 + batch/invite/transfer 15） |
+| Data Center | ✅ | ✅ (11 tools，含 MQ-16 订阅 4) | ✅（v0.6.0：数据 6 + 订阅 4） |
+| Market (行情+分析) | ✅ (39 endpoints) | ✅ (18 tools，含 MQ-16 订阅 5) | ✅ (21 methods，含订阅 5) |
+| MPC | ✅ | ✅ (17 tools，含计费 2) | ✅（v0.6.0：16 methods） |
+| Chain RPC | ✅ | ✅ (10 tools，含订阅 6) | ✅（v0.6.0：10 methods，含订阅 6） |
 | Admin | ✅ | — | — |
 
 > 三种接入方式通过相同后端 API 端点，API 合约完全一致，仅接入层不同。详见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)
@@ -187,12 +188,16 @@ infraX/
 │   ├── dc/            # Express TS, :9102 — 数据中心（双 PG pool）
 │   │   ├── index.ts         ← 9 个 REST 端点（events/stats/plans/balance/...）
 │   │   └── services/        ← 事件查询引擎（5 链跨链聚合）
-│   ├── mcp-server/    # 4 个 MCP Server（独立进程）
+│   ├── mcp-server/    # 8 个 MCP Server 入口（独立进程）
 │   │   └── src/
-│   │       ├── index.ts        ← Wallet MCP :9110 (10 tools)
-│   │       ├── dc-index.ts     ← DC MCP :9103 (7 tools)
+│   │       ├── index.ts        ← Wallet MCP :9110 (34 tools)
+│   │       ├── dc-index.ts     ← DC MCP :9103 (11 tools)
 │   │       ├── vault-index.ts  ← Vault MCP :9108 (13 tools)
-│   │       └── mpc-index.ts    ← MPC MCP :9105 (15 tools)
+│   │       ├── mpc-index.ts    ← MPC MCP :9105 (17 tools)
+│   │       ├── market-index.ts ← Market MCP :3013 (18 tools)
+│   │       ├── rpc-index.ts    ← Chain RPC MCP :3012 (10 tools)
+│   │       ├── session-key-index.ts ← Session Key MCP :3011
+│   │       └── hub-index.ts    ← Hub Index :3008 (13 tools)
 │   ├── mpc/           # Express TS, :9104 — MPC 密钥分片 + Agent Wallet
 │   │   ├── server.ts        ← 验证码、注册、恢复、Session Token
 │   │   └── services/        ← EIP-191/712 签名、转账、合约调用
@@ -220,8 +225,8 @@ infraX/
 │   │       ├── safe.js      ← Safe/Vault 模块（多签管理）
 │   │       ├── exports.js   ← 导出模块
 │   │       └── infrax.css   ← 统一样式
-│   └── sdk/           # JS SDK v0.2 (TypeScript)
-│       └── src/             ← px.mpc / px.wallet / px.vault / px.dc / px.payment
+│   └── sdk/           # JS SDK v0.6.0 (TypeScript，@0xinfrax/infrax-dk)
+│       └── src/             ← ix.mpc / ix.wallet / ix.vault / ix.dc / ix.payment / ix.market / ix.chainRpc
 ├── docs/
 │   ├── API_ACCESS.md     # 三合一接入文档（REST/MCP/SDK）
 │   └── MCP_REQUIREMENTS.md
@@ -244,10 +249,12 @@ infraX/
 
 ```
 /api/v2/data/*    → :9102 (DC)
+/api/v2/market/*  → :9101 (Collector)   ← MQ-16 新增（2026-08-11）
 /api/v2/mpc/*     → :9104 (MPC)
 /api/v2/wallet/*  → :9109 (WAAS)
 /api/v2/waas/*    → :9109 (WAAS)
 /api/v2/saas/*    → :9109 (WAAS)
+/api/v2/subscription/* → :9109 (WAAS)
 /api/vault/*      → :9107 (Vault)
 /api/v2/vault/*   → :9107 (Vault)
 /api/v2/admin/*   → :9100 (Admin)
@@ -277,17 +284,21 @@ infraX/
 | 服务 | 端口 | DB | 状态 |
 |------|------|-----|------|
 | **Admin** | 9100 | pocketx_admin + 跨 7 DB | 🟢 SPA + REST |
-| **Collector** | 9101 | pocketx_collector (10+ 表) | 🟢 5 链扫描 |
-| **DC** | 9102 | pocketx_dc + pocketx_collector | 🟢 |
-| **DC MCP** | 9103 | — | 🟢 7 tools |
-| **MPC** | 9104 | pocketx_mpc (2 表) | 🟢 |
-| **MPC MCP** | 9105 | — | 🟢 15 tools |
-| **Payment** | 9106 | pocketx_payment (3 表) | 🟢 |
+| **Collector** | 9101 | pocketx_collector (10+ 表) | 🟢 5 链扫描 + Market 订阅 |
+| **DC** | 9102 | pocketx_dc + pocketx_collector | 🟢 数据订阅（MQ-16 T-1） |
+| **DC MCP** | 9103 | — | 🟢 11 tools |
+| **MPC** | 9104 | pocketx_mpc (2 表) | 🟢 按量计费（MQ-16 T-4） |
+| **MPC MCP** | 9105 | — | 🟢 17 tools |
+| ~~**Payment**~~ | ~~9106~~ | ~~pocketx_payment (3 表)~~ | 🔴 已下线（MQ-15 T-7） |
 | **Vault** | 9107 | pocketx_vault (4 表) | 🟢 |
 | **Vault MCP** | 9108 | — | 🟢 13 tools |
 | **WAAS** | 9109 | pocketx_waas (17 表) | 🟢 |
-| **Wallet MCP** | 9110 | — | 🟢 10 tools |
+| **Wallet MCP** | 9110 | — | 🟢 34 tools（含 payments batch/invite/transfer） |
 | **Web** | 9111 | — | 🟢 Node proxy + 静态 |
+| **Chain RPC** | 9130 | pocketx_chainrpc (3 表) | 🟢 RPC 套餐订阅（MQ-16 T-3） |
+| **Payments 引擎** | 9132 | pocketx_payments (11 表) | 🟢 通用支付（MQ-16 T-5） |
+| **RPC MCP** | 3012 | — | 🟢 10 tools |
+| **Market MCP** | 3013 | — | 🟢 18 tools（MQ-16 T-2） |
 
 ## E2E 测试 (v0.3.2)
 
@@ -334,6 +345,7 @@ infraX/
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| **v0.7.0** | 2026-08-11 | **MQ-16 套餐消费面全量补齐**：infrax-dk v0.6.0（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments batch/invite/transfer 15 = 27 方法）；MCP +32 tools（dc 11 / market 18 / rpc 10 / mpc 17 / wallet 34 = 123 total）；market-mcp 生产部署（:3013）；web 代理补 `/api/v2/market` → collector :9101；文档全量更新（SDK_INTEGRATION / SERVICE_API_REFERENCE / MCP_USAGE / API_ACCESS） |
 | v0.5.1 | 2026-08-04 | AItrader 合并：data-service → projects/data (:9112)、knowledge-injector (:9113)、可配置解析层（YAML 规则驱动）、DC/Collector raw 注入 RAGservicer 构建图谱 |
 | v0.3.2 | 2026-07-18 | 生产 E2E 测试：端口 9100-9111、Web Proxy /health+安全头、Admin API 修复、MPC 前端验证码流程、DB 建表补全、MCP 环境变量+端口修复、浏览器钱包注入 19/19 通过、MCP 45 tools 可用 |
 | v0.3.1 | 2026-07-17 | 新服务器部署、Express 5 迁移、BSC RPC 池三层合并、依赖补全 |
