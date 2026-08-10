@@ -189,9 +189,9 @@ EIP-712 会话密钥：授权签名 → 托管 → 白名单额度内代执行�
 
 ---
 
-## 8. wallet-mcp（:9110，10 工具）
+## 8. wallet-mcp（:9110，18 工具）
 
-WAAS 代理：钱包余额/发送/模拟 + 支付（x402）。
+WAAS 代理（钱包 7 个：余额/发送/模拟/RPC/健康/归集/状态）+ 通用支付引擎 :9132 通道（11 个：支付意图/fiat checkout/x402 验付/价格/账本/访问控制 + MPP 状态通道）。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -202,9 +202,19 @@ WAAS 代理：钱包余额/发送/模拟 + 支付（x402）。
 | `wallet_health` | — | WAAS 后端健康 |
 | `wallet_sweep` | chain | 托管资金归集（admin） |
 | `wallet_status` | txHash*, chain | 交易上链状态 |
-| `payment_create` | planId*, amount*, method, currency | 创建支付单 ⚠️ 依赖 waas paymentRoutes 挂载（B-10-5 未挂载） |
-| `payment_status` | paymentId* | 支付单状态 ⚠️ 同上 |
-| `x402_pay` | recipient*, amount*, token, chain, description | HTTP 402 支付流程 ⚠️ 同上 |
+| `payment_info` | — | 通道发现：价格/pay-to 钱包/网络/rails 启用状态 → `GET /payments/info` |
+| `payment_create` | subscriber*, planId, amountCents, period, currency, chain, metadata, clientReference | 创建支付意图（fiat → Stripe Checkout 会话）→ `POST /payments/checkout` |
+| `payment_verify` | txHash*, chain | x402/stablecoin 链上验付 + 幂等入账 → `POST /payments/verify` |
+| `payment_price` | planId*, chain | 链上套餐价格 → `GET /payments/price` |
+| `payment_balance` | address*, asset | 模块账本余额 → `GET /payments/balance` |
+| `payment_access` | subscriber*, resource*, chain | 订阅访问控制检查 → `POST /payments/access` |
+| `mpp_open` | payer*, depositWei*, salt*, txHash*, chain | 打开 MPP 状态通道（验存款 tx + 建会话）→ `POST /payments/mpp/open` |
+| `mpp_voucher` | channelId*, cumulativeAmount*, signature* | 提交 EIP-712 累计 voucher 消费通道余额 → `POST /payments/mpp/voucher` |
+| `mpp_topup` | channelId*, txHash*, additionalWei* | 通道追加充值 → `POST /payments/mpp/topup` |
+| `mpp_settle` | channelId* | 通道未结算消费批量扣减 → `POST /payments/mpp/settle` |
+| `mpp_close` | channelId* | 关闭通道（先结算尾部，冻结会话）→ `POST /payments/mpp/close` |
+
+> 支付/通道 11 个工具统一转发通用支付引擎 :9132（`PAYMENTS_URL`+`PAYMENTS_API_KEY` 已生产注入，2026-08-11 闭环；x402_pay/payment_status 旧工具已移除）。
 
 ---
 
@@ -280,8 +290,8 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 ### 10.2 已知缺口（B-10 待办）
 
 - **MCP 入站鉴权**（B-12）：2026-08-08 起全部 6 个 HTTP MCP 服务（vault/mpc/session-key/dc/wallet/chain-rpc）均挂 `mcp-auth.ts` `inboundAuth`；⚠️ 各服务生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，wallet-mcp 曾遇，已修）
-- **dc_tokens 必失败**（B-10-3）：dc-mcp `dc_tokens` 调用 dc `/api/v2/data/tokens` 不存在
-- **支付工具 404**（B-10-5）：wallet-mcp `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes，尚未挂载
+- **dc_tokens 必失败（B-10-3，✅ 2026-08-10 已修）**：dc-mcp `dc_tokens` 调用 dc `/api/v2/data/tokens` 401——根因生产 dc-mcp 缺 `DC_API_KEY`（默认发 test-key）。已注入生产 `infrax-dc-mcp.service.d/dc-api-key.conf`（租户 dc_api_key）+ 代码 fail-fast（2026-08-11，dc_tokens 返回真实数据）
+- **支付工具 404（B-10-5，✅ 2026-08-11 已闭环）**：wallet-mcp 旧 `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes——现 payment/mpp 11 个工具已迁移通用支付引擎 :9132，生产 `infrax-wallet-mcp.service.d/payments.conf` 注入 `PAYMENTS_URL`+`PAYMENTS_API_KEY`，`payment_price` 实测返回真实套餐数据
 - **market-index 未部署**：市场指数 MCP 服务代码存在但生产未运行
 - **hub-index 注释过时**：nginx 注释称"端点无入站鉴权"，实际 hub-index 已有鉴权，建议更新注释
 

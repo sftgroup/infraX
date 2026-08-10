@@ -27,6 +27,7 @@
 | **MPP** | **你指定的 payee 收款地址** | `payee` + `domain` + `chain` | `mpp.payee` / `mpp.domain` / `mpp.chain` | `MPP_PAYEE` / `MPP_DOMAIN` / `MPP_CHAIN` | 实例级 |
 | **invite** | 账本内结算（payee 的 `payment_balances`） | store seam + `INVITE_ENABLED` | `invites`（`InviteStore`） | `INVITE_ENABLED=true`（需 `PgInviteStore`） | 实例级 |
 | **transfer** | 账本内划转（from→to 的 `payment_balances`） | store seam + `TRANSFER_ENABLED` | `transfers`（`TransferStore`） | `TRANSFER_ENABLED=true`（需 `PgTransferStore` + `transaction` runner） | 实例级 |
+| **batch** | 一次建 N 个 a2a 收款意图，逐项链上验 tx 入账到各自收款钱包 | **依赖收款③ x402 + 收款① chain**（settle 复用 `a2aSettle` 验 tx）+ `BATCH_ENABLED` | `batch`（`BatchStore`）+ 上述 x402/chains | `BATCH_ENABLED=true`（需 `PgBatchStore` + x402/chain 配置齐全） | 实例级 |
 
 > 收款隔离规则：**一个实例 = 一套收款**。需要多租户收款隔离时，请每租户部署一个独立实例；不要试图在同一个实例里轮换收款。
 
@@ -149,7 +150,7 @@ app.listen(3000)
 
 ## 3. 形态 B：独立服务（infrax-payments）接入模板
 
-调用方以微服务形态运行官方入口 `server.ts`（tsx 直跑），**收款全走环境变量**。部署步骤见 [`DEPLOY.md`](./DEPLOY.md) 与 [`deploy/systemd/infrax-payments.service`](../../deploy/systemd/infrax-payments.service)，这里给收款相关的完整 env 清单：
+调用方以微服务形态运行官方入口 `server.ts`（tsx 直跑），**收款全走环境变量**。部署步骤见 [`DEPLOY.md`](./DEPLOY.md) 与 [`deploy/systemd/infrax-payments.service`](../../deploy/systemd/infrax-payments.service)；**env 模板见 [`env.b-instance.example`](./env.b-instance.example)**（复制为 `.env`，填好必填项即可启动），这里给收款相关的完整 env 清单：
 
 ```ini
 # ── 基础 ────────────────────────────────────────────────
@@ -183,6 +184,7 @@ MPP_CHAIN=oxachain
 # ── 账本内结算能力（可选；未启用端点 503） ───────────────
 INVITE_ENABLED=true    # invite 收费邀请（agent 自动向 payer 发账单）
 TRANSFER_ENABLED=true  # transfer 账本内原子划转（需内置 transaction runner）
+BATCH_ENABLED=true     # batch 一次性建 N 个 a2a 收款意图；⚠️ 依赖收款③ x402（settle 复用 a2aSettle 链上验 tx）+ 收款① chain，缺任一则 capabilities 显示 batch disabled（503）
 
 # ── 可选：事件出站转发（业务方回调端点） ────────────────
 WEBHOOK_FORWARD_URL=https://your-service.example.com/payments/events

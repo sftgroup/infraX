@@ -167,6 +167,8 @@ Base URL:  https://api.infrax.io
 
 ### 💳 Payment — 通用支付引擎 @0xinfrax/payments (`:9132`，MQ-15 T-8 迁移；旧 `:9106 /api/v2/payment/*` 已下线)
 
+> **接入方式（2026-08-11 决策）**：通用支付 = **独立实例 + 自配凭证**。每个 B 端（调用方）自行部署/嵌入 `@0xinfrax/payments`（npm 已发布），在**自己的实例**里配置自己的收款凭证（chain `SubscriptionManager` 合约 / `STRIPE_SECRET_KEY` / `X402_PAY_TO` / `MPP_PAYEE`）——**一个实例 = 一套收款**，钱进 B 端自己的账户（x402 打到你的钱包、Stripe 进你的账号）。平台 `:9132` 仅为**平台自用实例**（配平台自身凭证，服务 waas/dc 订阅激活），不代 B 端收钱。完整接入模板（收款配置全景 / 嵌入式 / 独立服务 / 自检清单）见 `projects/payments/CALLER_SETUP.md`；以下 SDK 用法面向平台实例的消费方。
+
 SDK 用法：`ix.payment.checkout() / a2a() / a2aSettle() / verify() / balance() / capabilities() / price()`（需配置 `paymentsUrl` + `paymentsApiKey`）。
 
 | 方法 | 端点 | 描述 |
@@ -344,7 +346,7 @@ curl -H "x-api-key: YOUR_KEY" \
 
 ### 工具速查
 
-#### Wallet MCP (`:9110`) — 10 tools
+#### Wallet MCP (`:9110`) — 18 tools
 
 | Tool | 描述 | 参数 |
 |------|------|------|
@@ -355,9 +357,17 @@ curl -H "x-api-key: YOUR_KEY" \
 | `wallet_health` | 健康检查 | — |
 | `wallet_sweep` | 归集资金 | chain |
 | `wallet_status` | 交易状态 | txHash, chain |
-| `payment_create` | 创建支付 | planId, amount |
-| `payment_status` | 支付状态 | paymentId |
-| `x402_pay` | x402 自动付 | recipient, amount |
+| `payment_info` | 通道发现（rails/价格/pay-to） | — |
+| `payment_create` | 创建支付意图（fiat→Stripe Checkout） | subscriber, planId, amountCents |
+| `payment_verify` | x402/stablecoin 链上验付+入账 | txHash |
+| `payment_price` | 链上套餐价格 | planId |
+| `payment_balance` | 模块账本余额 | address |
+| `payment_access` | 订阅访问控制 | subscriber, resource |
+| `mpp_open` | 打开 MPP 状态通道 | payer, depositWei, salt, txHash |
+| `mpp_voucher` | EIP-712 累计 voucher | channelId, cumulativeAmount, signature |
+| `mpp_topup` | 通道追加充值 | channelId, txHash, additionalWei |
+| `mpp_settle` | 通道批量扣减 | channelId |
+| `mpp_close` | 关闭通道 | channelId |
 
 #### DC MCP (`:9103`) — 7 tools
 
