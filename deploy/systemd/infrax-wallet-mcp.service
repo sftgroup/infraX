@@ -11,6 +11,9 @@ Environment="MPC_ENCRYPTION_SECRET=2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a24
 Environment="ADMIN_PASS=a87cefd6e1ce487334a67b0c"
 Environment="ADMIN_USER=admin"
 Environment="WALLET_API_URL=http://localhost:9109"
+# 通用支付通道（@0xinfrax/payments standalone :9132，/payments 前缀）
+Environment="PAYMENTS_URL=http://localhost:9132"
+Environment="PAYMENTS_API_KEY=CHANGE_ME_PAYMENTS_API_KEY"
 ExecStart=/opt/infraX/projects/mcp-server/node_modules/.bin/tsx src/index.ts
 Restart=on-failure
 RestartSec=5

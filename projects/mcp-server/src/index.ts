@@ -1,6 +1,7 @@
 // InfraX MCP Server — Wallet (Phase 1)
-// Standalone MCP process bridging AI ↔ WAAS internal API
+// Standalone MCP process bridging AI ↔ WAAS internal API + generic payment channel
 // Wallet: balance / send / simulate / rpc / sweep / tx status / health
+// Payments: generic channel tools → @0xinfrax/payments standalone (:9132)
 // Safe → MCP Vault (:3006) only
 
 import express from 'express';
@@ -15,6 +16,10 @@ app.use(inboundAuth);
 
 const WAAS = process.env.WAAS_URL || process.env.WALLET_API_URL || 'http://localhost:9109';
 const API_KEY = process.env.WAAS_KEY || process.env.WAAS_API_KEY || 'dev-cwallet-key';
+// Generic payment channel (@0xinfrax/payments standalone :9132, prefix /payments).
+// Auth: unified platform contract — X-API-Key (same PAYMENTS_API_KEY as the service).
+const PAYMENTS_URL = process.env.PAYMENTS_URL || 'http://localhost:9132';
+const PAYMENTS_KEY = process.env.PAYMENTS_API_KEY || API_KEY;
 const PORT = parseInt(process.env.PORT || '3004', 10);
 
 async function waas(path: string, opts?: { method?: string; body?: any }) {
@@ -24,7 +29,9 @@ async function waas(path: string, opts?: { method?: string; body?: any }) {
 }
 
 async function pay(path: string, opts?: { method?: string; body?: any }) {
-  return waas(path, opts);
+  const headers: any = { 'Content-Type': 'application/json', 'X-API-Key': PAYMENTS_KEY };
+  const r = await fetch(PAYMENTS_URL + path, { method: opts?.method || 'GET', headers, body: opts?.body ? JSON.stringify(opts.body) : undefined });
+  return r.json();
 }
 
 const tools: Record<string, any> = {};
@@ -145,38 +152,124 @@ reg({
   return waas(`/api/v2/internal/transaction-status?txHash=${encodeURIComponent(args.txHash)}&chain=${args.chain || 'sepolia'}`);
 });
 
-// ─── Payment (x402) ───
+// ─── Generic payment channel (→ @0xinfrax/payments standalone :9132 /payments) ───
+
+reg({
+  name: 'payment_info',
+  description: 'Discover the generic payment channel: price, pay-to wallet, network, and which rails are enabled (x402 / stablecoin / MPP).',
+  inputSchema: { type: 'object', properties: {}, required: [] },
+}, async () => pay('/payments/info'));
 
 reg({
   name: 'payment_create',
-  description: 'Create a payment order for subscription plans.',
+  description: 'Create a payment intent via the generic fiat channel: returns a Stripe Checkout session URL. Business context (order id, plan id) goes in metadata / clientReference and is passed through untouched.',
   inputSchema: { type: 'object', properties: {
-    planId: { type: 'string', description: 'Subscription plan ID' },
-    amount: { type: 'string', description: 'Payment amount' },
-    method: { type: 'string', description: 'Payment method: crypto, stripe' },
-    currency: { type: 'string', description: 'Currency: USDT, ETH, etc.' },
-  }, required: ['planId', 'amount'] },
-}, async (args: any) => pay('/api/v2/payment/create', { method: 'POST', body: args }));
+    subscriber: { type: 'string', description: 'Payer identifier (wallet address or user id)' },
+    amountCents: { type: 'number', description: 'Amount in USD cents (omit to auto-price from the on-chain plan)' },
+    planId: { type: 'number', description: 'On-chain plan id — auto-prices when amountCents is omitted' },
+    period: { type: 'string', description: 'Billing period: day | week | month | year' },
+    currency: { type: 'string', description: 'ISO currency code (default USD)' },
+    chain: { type: 'string', description: 'Chain slot used for plan pricing (default oxachain)' },
+    metadata: { type: 'object', description: 'Business context stored verbatim, e.g. {"agentId":1,"orderId":"o1"}' },
+    clientReference: { type: 'string', description: 'Opaque reference echoed back in webhook events' },
+  }, required: ['subscriber'] },
+}, async (args: any) => pay('/payments/checkout', { method: 'POST', body: args }));
 
 reg({
-  name: 'payment_status',
-  description: 'Check payment order status: pending, confirmed, expired, or refunded.',
+  name: 'payment_verify',
+  description: 'Verify an on-chain payment on the generic x402/stablecoin channel: checks the tx is a valid payment to the platform wallet and credits it idempotently.',
   inputSchema: { type: 'object', properties: {
-    paymentId: { type: 'string', description: 'Payment order ID' },
-  }, required: ['paymentId'] },
-}, async (args: any) => pay('/api/v2/payment/status?paymentId=' + encodeURIComponent(args.paymentId)));
+    txHash: { type: 'string', description: 'On-chain transaction hash (0x...)' },
+    chain: { type: 'string', description: 'Chain slot (default oxachain)' },
+  }, required: ['txHash'] },
+}, async (args: any) => pay('/payments/verify', { method: 'POST', body: args }));
 
 reg({
-  name: 'x402_pay',
-  description: 'Handle HTTP 402 Payment flow. Auto-approve ERC20 transfer for paid API access.',
+  name: 'payment_price',
+  description: 'Read on-chain plan pricing (price, billing period, active status).',
   inputSchema: { type: 'object', properties: {
-    recipient: { type: 'string', description: 'Recipient from 402 Payment header' },
-    amount: { type: 'string', description: 'Amount due (e.g. "10" for 10 USDC)' },
-    token: { type: 'string', description: 'Token address (default: USDC on Base)' },
-    chain: { type: 'string', description: 'Chain (default: base)' },
-    description: { type: 'string', description: 'What this payment is for' },
-  }, required: ['recipient', 'amount'] },
-}, async (args: any) => pay('/api/v2/payment/x402/pay', { method: 'POST', body: args }));
+    planId: { type: 'number', description: 'On-chain plan id' },
+    chain: { type: 'string', description: 'Chain slot (default oxachain)' },
+  }, required: ['planId'] },
+}, async (args: any) => pay('/payments/price?chain=' + encodeURIComponent(args.chain || 'oxachain') + '&planId=' + encodeURIComponent(args.planId)));
+
+reg({
+  name: 'payment_balance',
+  description: 'Read the module ledger balance of an address.',
+  inputSchema: { type: 'object', properties: {
+    address: { type: 'string', description: 'Wallet address (0x...)' },
+    asset: { type: 'string', description: 'Asset identifier (optional)' },
+  }, required: ['address'] },
+}, async (args: any) => pay('/payments/balance?address=' + encodeURIComponent(args.address) + (args.asset ? '&asset=' + encodeURIComponent(args.asset) : '')));
+
+reg({
+  name: 'payment_access',
+  description: 'Unified access check for a subscriber against a resource (delegates to the injected store).',
+  inputSchema: { type: 'object', properties: {
+    subscriber: { type: 'string', description: 'Subscriber identifier' },
+    resource: { type: 'object', description: 'Resource descriptor, e.g. {"agentId":1}' },
+    chain: { type: 'string', description: 'Chain slot (optional)' },
+  }, required: ['subscriber', 'resource'] },
+}, async (args: any) => pay('/payments/access', { method: 'POST', body: args }));
+
+// ─── MPP payment channel ops ───
+
+reg({
+  name: 'mpp_open',
+  description: 'Open an MPP payment channel: verifies the deposit tx and creates the channel session.',
+  inputSchema: { type: 'object', properties: {
+    payer: { type: 'string', description: 'Channel payer address (0x...)' },
+    depositWei: { type: 'string', description: 'Deposit amount in wei' },
+    salt: { type: 'string', description: 'Channel salt (contributes to the deterministic channelId)' },
+    txHash: { type: 'string', description: 'Deposit transaction hash (0x...)' },
+    chain: { type: 'string', description: 'Chain slot (default oxachain)' },
+    metadata: { type: 'object', description: 'Business context' },
+  }, required: ['payer', 'depositWei', 'salt', 'txHash'] },
+}, async (args: any) => pay('/payments/mpp/open', { method: 'POST', body: args }));
+
+reg({
+  name: 'mpp_voucher',
+  description: 'Submit a cumulative MPP voucher (EIP-712 signature) to consume channel balance.',
+  inputSchema: { type: 'object', properties: {
+    channelId: { type: 'string', description: 'Channel id (keccak256 of payer/payee/asset/salt/chainId)' },
+    cumulativeAmount: { type: 'string', description: 'Cumulative amount in wei' },
+    signature: { type: 'string', description: 'EIP-712 voucher signature (0x...)' },
+  }, required: ['channelId', 'cumulativeAmount', 'signature'] },
+}, async (args: any) => pay('/payments/mpp/voucher', { method: 'POST', body: args }));
+
+reg({
+  name: 'mpp_topup',
+  description: 'Top up an MPP channel with an additional on-chain deposit.',
+  inputSchema: { type: 'object', properties: {
+    channelId: { type: 'string', description: 'Channel id' },
+    txHash: { type: 'string', description: 'Top-up deposit transaction hash (0x...)' },
+    additionalWei: { type: 'string', description: 'Additional deposit amount in wei' },
+  }, required: ['channelId', 'txHash', 'additionalWei'] },
+}, async (args: any) => pay('/payments/mpp/topup', { method: 'POST', body: args }));
+
+reg({
+  name: 'mpp_settle',
+  description: 'Batch-deduct un-settled consumption of an MPP channel (auto-settle may also trigger this).',
+  inputSchema: { type: 'object', properties: {
+    channelId: { type: 'string', description: 'Channel id' },
+  }, required: ['channelId'] },
+}, async (args: any) => pay('/payments/mpp/settle', { method: 'POST', body: args }));
+
+reg({
+  name: 'mpp_close',
+  description: 'Close an MPP channel (settles the tail first, freezes the session).',
+  inputSchema: { type: 'object', properties: {
+    channelId: { type: 'string', description: 'Channel id' },
+  }, required: ['channelId'] },
+}, async (args: any) => pay('/payments/mpp/close', { method: 'POST', body: args }));
+
+reg({
+  name: 'mpp_session',
+  description: 'Current state of an MPP channel (status, cumulative, spent, deposit).',
+  inputSchema: { type: 'object', properties: {
+    channelId: { type: 'string', description: 'Channel id' },
+  }, required: ['channelId'] },
+}, async (args: any) => pay('/payments/mpp/session?channelId=' + encodeURIComponent(args.channelId)));
 
 // ═══════════════════════════════════════
 // MCP JSON-RPC handler
