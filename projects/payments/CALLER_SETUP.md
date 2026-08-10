@@ -276,8 +276,9 @@ curl -s -X POST -H "X-API-Key: $PX" -H 'Content-Type: application/json' \
 curl -s -X POST -H "X-API-Key: $PX" $BASE/invites/inv_…/pay
 # → { "inviteId":"inv_…", "settled":true, "transferId":"…" }
 
-# 3. 查询：按地址 + 角色（payer|payee）列出邀请，status=created|sent|settled|expired|cancelled
-curl -s -H "X-API-Key: $PX" "$BASE/invites?address=0x…payer&role=payer"
+# 3. 查询：按地址 + 角色（payer|payee）列出邀请；默认仅返回未结算（created/sent），
+#    查已结算需显式 status=settled
+curl -s -H "X-API-Key: $PX" "$BASE/invites?address=0x…payer&role=payer&status=settled"
 ```
 
 状态机：`created → sent → settled | expired（读时惰性过期）| cancelled`。链上结算路径：payer 链上向 payee 转账后 `POST /invites/:inviteId/settle {txHash}`（引擎校验 `tx.to == payee`，需 x402；仅余额支付路径不依赖 x402）。

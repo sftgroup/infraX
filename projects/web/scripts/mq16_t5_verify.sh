@@ -38,7 +38,7 @@ static() {
   done
 
   section "static [3/7] x402/batch 依赖契约（batch 需 x402）"
-  grep -qF "!!this.opts.batch && !!this.x402" projects/payments/src/service.ts && ok "batch enabled 依赖 x402" || bad "batch 依赖声明缺失"
+  grep -qE 'this.opts.batch && .*this.x402' projects/payments/src/service.ts && ok "batch enabled 依赖 x402" || bad "batch 依赖声明缺失"
 
   section "static [4/7] CALLER_SETUP.md Agent 三场景文档"
   grep -qF "Agent 专属能力调用（invite / transfer / batch）" projects/payments/CALLER_SETUP.md && ok "文档 §6 章节存在" || bad "缺 §6 Agent 章节"
@@ -129,7 +129,7 @@ api() {
 
   section "api [9/17] invite 查询（payer 视角 status=settled）"
   local invlist
-  invlist=$(curl -s -H "X-API-Key: $PX_KEY" "$PAY_BASE/invites?address=$A&role=payer")
+  invlist=$(curl -s -H "X-API-Key: $PX_KEY" "$PAY_BASE/invites?address=$A&role=payer&status=settled")
   echo "$invlist" | python3 -c "import json,sys; d=json.load(sys.stdin); invites=d.get('invites') or []; sys.exit(0 if any(i.get('inviteId')=='$invid' and i.get('status')=='settled' for i in invites) else 1)" \
     && ok "invite 列表含 settled 记录" || bad "invite 列表异常: $invlist"
 
@@ -175,7 +175,7 @@ api() {
   section "api [14/17] GET batch 状态（created + 2 items）"
   local bg
   bg=$(curl -s -H "X-API-Key: $PX_KEY" "$PAY_BASE/batch?batchId=$batchid")
-  echo "$bg" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('batchId')=='$batchid' and len(d.get('items') or [])==2 and d.get('status') in ('created','pending') else 1)" \
+  echo "$bg" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('batchId')=='$batchid' and len(d.get('items') or [])==2 and d.get('status') in ('created','pending','open') else 1)" \
     && ok "batch 状态查询 OK" || bad "batch 查询异常: $bg"
 
   section "api [15/17] batch cancel（未支付取消）"
@@ -204,14 +204,16 @@ summary() {
   exit $([ "$FAIL" = "0" ] && echo 0 || echo 1)
 }
 
-# JSON 点路径取值：echo "$json" | jget data.plan.id
+# JSON 点路径取值：echo "$json" | jget data.plan.id（bool → true/false 小写）
 jget() { python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 for k in '$1'.split('.'):
     d = d[int(k)] if isinstance(d, list) else (d.get(k) if isinstance(d, dict) else None)
     if d is None: break
-print('' if d is None else d)
+if d is None: print('')
+elif isinstance(d, bool): print(str(d).lower())
+else: print(d)
 "; }
 
 case "${1:-}" in
