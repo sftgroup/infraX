@@ -1,0 +1,9 @@
+[Service]
+# MQ-16 T-1: DC 付费套餐走通用支付引擎（chain/fiat/x402 三 rail）
+#   - PAYMENTS_DEFAULT_RAIL=chain（生产启用状态，同 waas）
+#   - PAYMENTS_PLAN_ID_MAP：链上套餐 planId → DC data 套餐（SubscriptionManager.getPlan id）
+#   - fiat/x402 启用后（依赖引擎 key）需扩展引擎 webhook 多目标转发（当前单目标指向 waas）
+Environment="PAYMENTS_URL=http://127.0.0.1:9132"
+Environment="PAYMENTS_DEFAULT_RAIL=chain"
+Environment="PAYMENTS_CHAIN=oxachain"
+Environment="PAYMENTS_PLAN_ID_MAP={\"data_pro\":1,\"data_enterprise\":2}"
