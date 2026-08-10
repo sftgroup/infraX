@@ -41,9 +41,12 @@ app.use(express.json({ verify: (req, _res, buf) => { (req as any).rawBody = buf 
 // Unified platform auth (Bearer / X-API-Key / X-Service-Key). /health /metrics
 // are exempt by default; the webhook route is exempt too (verified by signature
 // inside the engine, so Stripe callbacks carry no platform key).
+// External callers authenticate with a data-issued key of scope `payment`
+// (px_ prefix — see data/app/api_keys.py PREFIX_BY_SCOPE); the scope name must
+// stay aligned with that map, otherwise px_ keys fall back to mcp and 401.
 const authMw = createAuthMiddleware({
   envKeys: process.env.PAYMENTS_API_KEY,
-  scope: 'payments',
+  scope: 'payment',
   verifyUrl: process.env.DATA_URL,
   verifyKey: process.env.DATA_API_KEY,
   exempt: ['/payments/webhook'],
