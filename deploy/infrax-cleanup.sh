@@ -11,8 +11,9 @@ DELETED=$(sudo -u postgres psql -d pocketx_collector -t -A -c \
 
 echo "[$(date)] Deleted $DELETED events older than 5 days" >> "$LOG"
 
-# Payment events cleanup (uses created_at)
-PAY_DELETED=$(sudo -u postgres psql -d pocketx_collector -t -A -c \
+# Payment events cleanup (uses created_at) — payment_events lives in the
+# payment engine db (pocketx_payments, migration 004), not the collector db.
+PAY_DELETED=$(sudo -u postgres psql -d pocketx_payments -t -A -c \
   "WITH deleted AS (DELETE FROM payment_events WHERE created_at < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $PAY_DELETED payment_events older than 5 days" >> "$LOG"
