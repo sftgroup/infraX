@@ -384,7 +384,7 @@ export async function initDatabase(): Promise<void> {
     // admin 面板经 /api/v2/admin/plans 读写（admin 直连本库），waas /plans 端点读本表。
     await client.query(`
       CREATE TABLE IF NOT EXISTS billing_plans (
-        id UUID PRIMARY KEY,
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         service VARCHAR(30) NOT NULL,           -- waas-subscription | waas-data
         plan_id VARCHAR(50) NOT NULL,           -- free / pro / enterprise / data_free / ...
         name VARCHAR(100) NOT NULL,

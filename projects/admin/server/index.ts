@@ -248,8 +248,9 @@ app.get('/api/v2/admin/plans', requireAdmin, asyncHandler(async (_req: any, res:
     for (const service of key === 'waas' ? ['waas-subscription', 'waas-data'] : ['dc-data']) {
       const { rows } = await pool.query(
         `SELECT id, service, plan_id, name, price, billing_cycle, features, enabled, created_at, updated_at
-         FROM billing_plans WHERE service = $1 ORDER BY created_at`
-      ).catch(() => ({ rows: [] }));
+         FROM billing_plans WHERE service = $1 ORDER BY created_at`,
+        [service]
+      ).catch((e: any) => { console.error(`[admin] GET /plans db=${key} service=${service} error:`, e.message); return { rows: [] }; });
       groups.push({ db: key, service, overrides: rows.map((r: any) => ({
         id: r.id, planId: r.plan_id, name: r.name,
         price: Number(r.price ?? 0), billingCycle: r.billing_cycle,
@@ -321,14 +322,14 @@ app.get('/api/v2/admin/users', requireAdmin, asyncHandler(async (req: any, res: 
            (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id = u.id AND s.status = 'active') as active_subs
     FROM users u
     WHERE LOWER(COALESCE(u.email,'')) LIKE $1
-    ORDER BY u.created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+    ORDER BY u.created_at DESC LIMIT $2`, [like, limit]).then(r => r.rows).catch(() => []);
   // dc users（钱包地址用户 + 关联租户数）
   const dc = await pools.dc.query(`
     SELECT u.id, u.wallet_address, u.role, u.created_at,
            (SELECT COUNT(*) FROM tenants t WHERE t.owner_user_id = u.id) as tenants
     FROM users u
     WHERE LOWER(COALESCE(u.wallet_address,'')) LIKE $1
-    ORDER BY u.created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+    ORDER BY u.created_at DESC LIMIT $2`, [like, limit]).then(r => r.rows).catch(() => []);
   // mpc wallets 按 email 聚合（单邮箱多子钱包，E-4 待放开 1:1）
   const mpc = await pools.mpc.query(`
     SELECT email, COUNT(*)::int as wallets,
@@ -336,7 +337,7 @@ app.get('/api/v2/admin/users', requireAdmin, asyncHandler(async (req: any, res: 
            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END)::int as active_wallets
     FROM mpc_wallets
     WHERE LOWER(COALESCE(email,'')) LIKE $1
-    GROUP BY email ORDER BY created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+    GROUP BY email ORDER BY created_at DESC LIMIT $2`, [like, limit]).then(r => r.rows).catch(() => []);
   res.json(apiResponse({ waas, dc, mpc }));
 }));
 
