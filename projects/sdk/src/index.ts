@@ -549,6 +549,8 @@ export class SubAPI {
 export class DCAPI {
   constructor(private http: HttpClient) {}
   async events(params: DCEventsParams = {}) { const q = new URLSearchParams(); if (params.chain) q.set('chain', params.chain); if (params.address) q.set('address', params.address); if (params.contract) q.set('contract', params.contract); if (params.eventType) q.set('event_type', params.eventType); if (params.fromBlock) q.set('from_block', params.fromBlock); if (params.limit) q.set('page_size', String(params.limit)); return this.http.get<any>('/api/v2/data/events?' + q.toString()); }
+  /** 跨链余额查询（address 必填，chain 可选过滤；返回 chainBalances + total，2026-08-12 补封装） */
+  async balance(params: { address: string; chain?: string }) { const q = new URLSearchParams(); q.set('address', params.address); if (params.chain) q.set('chain', params.chain); return this.http.get<any>('/api/v2/data/balance?' + q.toString()); }
   async stats() { return this.http.get<DCStatsResult>('/api/v2/data/stats'); }
   async checkpoints(chain?: string) { return this.http.get<any>('/api/v2/data/checkpoints' + (chain ? '?chain=' + chain : '')); }
   async plans() { return this.http.get<any>('/api/v2/data/plans'); }
