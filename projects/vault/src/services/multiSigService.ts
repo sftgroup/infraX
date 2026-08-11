@@ -15,6 +15,8 @@ import { config } from '../config';
 import { getHDMnemonic, getPrivateKey } from './hdWalletService';
 // A-10: gas 自付计费（按实际 gas 结算，GAS_POOL 仅广播不垫付）
 import { vaultChargeConfigured, estimateGasCostWei, chargeGas, settleGas, VaultChargeError } from './vaultBilling';
+// B-10-6: 链上访问统一收敛 chain-rpc 网关（读 /v1/rpc + 广播 /v1/broadcast）
+import { GatewayProvider } from './gatewayProvider';
 
 /** A-10: 计费 subscriber（ledger 通用字符串；钱包地址/用户 id 原样，默认 'vault'） */
 function billingSubscriber(userId: string): string {
@@ -238,30 +240,36 @@ export function encodeOwnerOp(op: OwnerOp): Hex {
 const CHAIN_CONFIG: Record<string, {
   chain: any;
   rpcUrl: string;
+  /** B-10-6: chain-rpc 网关别名（sepolia/eth/bsc/base/oxa） */
+  alias: string;
   safeSingleton: Address;
   safeProxyFactory: Address;
 }> = {
   '11155111': {
     chain: sepolia,
     rpcUrl: config.chainRpc.sepolia,
+    alias: 'sepolia',
     safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x29fcb43b46531bc0030c8fc6d5e1d063e48a7bc7') as Address,
     safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xfc7fa546b24477e8a2ce3a8d39869b122017ea2b') as Address,
   },
   '1': {
     chain: mainnet,
     rpcUrl: config.chainRpc.eth,
+    alias: 'eth',
     safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
     safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
   },
   '56': {
     chain: bsc,
     rpcUrl: config.chainRpc.bsc,
+    alias: 'bsc',
     safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
     safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
   },
   '8453': {
     chain: base,
     rpcUrl: config.chainRpc.base,
+    alias: 'base',
     safeSingleton: (process.env.SAFE_SINGLETON_ADDRESS || '0x41675C099F32341bf84BFc5382aF534df5C7461a') as Address,
     safeProxyFactory: (process.env.SAFE_PROXY_FACTORY_ADDRESS || '0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2') as Address,
   },
@@ -273,20 +281,46 @@ function getChainCfg(chainId: string) {
   return cfg;
 }
 
+/** B-10-6: 配置 CHAIN_RPC_URL 后强制走网关；未配置回退 chainRpc 直连（开发环境） */
+function gatewayEnabled(): boolean {
+  return Boolean(config.chainRpcGateway.baseUrl);
+}
+
+function gatewayOpts() {
+  return {
+    gateway: config.chainRpcGateway.baseUrl,
+    readKey: config.chainRpcGateway.readKey,
+    broadcastKey: config.chainRpcGateway.broadcastKey,
+  };
+}
+
 /** Get a wallet client for the deployer (Gas Pool) account */
 function getDeployerSigner(chainId: string) {
   const cfg = getChainCfg(chainId);
   const pk = config.gasPool.privateKey || process.env.GAS_POOL_PRIVATE_KEY || '';
   if (!pk) throw Errors.internal('GAS_POOL_PRIVATE_KEY not configured');
-  const provider = new ethers.JsonRpcProvider(cfg.rpcUrl);
+  const provider = gatewayEnabled()
+    ? new GatewayProvider(cfg.alias, Number(chainId), gatewayOpts())
+    : new ethers.JsonRpcProvider(cfg.rpcUrl);
   return new ethers.Wallet(pk, provider);
 }
 
 function getPublicClient(chainId: string) {
   const cfg = getChainCfg(chainId);
+  // B-10-6: 走网关 raw JSON-RPC 透传（X-Json-Rpc: raw），读 key 鉴权
+  const transport = gatewayEnabled()
+    ? http(`${config.chainRpcGateway.baseUrl.replace(/\/+$/, '')}/v1/rpc/${cfg.alias}`, {
+        fetchOptions: {
+          headers: {
+            'X-Json-Rpc': 'raw',
+            'X-Service-Key': config.chainRpcGateway.readKey,
+          },
+        },
+      })
+    : http(cfg.rpcUrl);
   return createPublicClient({
     chain: cfg.chain,
-    transport: http(cfg.rpcUrl),
+    transport,
   });
 }
 

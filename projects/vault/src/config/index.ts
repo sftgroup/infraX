@@ -113,6 +113,13 @@ export const config = {
     base: process.env.BASE_RPC_URL || '',
     bsc: process.env.BSC_RPC_URL || '',
   },
+  // B-10-6: 链上访问统一收敛 chain-rpc 网关（读 /v1/rpc + 广播 /v1/broadcast）；
+  // 配置 CHAIN_RPC_URL 后强制走网关（禁止直连），未配置回退 chainRpc 直连（开发环境向后兼容）。
+  chainRpcGateway: {
+    baseUrl: process.env.CHAIN_RPC_URL || '',
+    readKey: process.env.CHAIN_RPC_READ_KEY || '',
+    broadcastKey: process.env.CHAIN_RPC_BROADCAST_KEY || '',
+  },
   // SEPOLIA_RPC_URL (legacy compat)
   sepoliaRpcUrl: process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia',
   ethRpcUrl: process.env.ETH_RPC_URL || '',

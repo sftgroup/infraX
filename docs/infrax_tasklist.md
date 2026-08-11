@@ -939,9 +939,23 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | ✅ 已消除（MQ-12 T-6 关停伪支付路径；MQ-13 a2a 真实两阶段链上验 tx 入账；wallet-mcp payment 工具已迁移 :9132）；🔲 生产 x402 rail 由各 B 端实例**自配凭证**启用（D-2，2026-08-11 决策：平台只提供通道与工具，不代 B 端配凭证） | P1 |
 | B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens` → 必失败 | ✅ 双修：① MQ-3 dc 已补 `GET /api/v2/data/tokens`（okx_token_snapshots 最新快照，见 §9.8 MQ-3）；② 根因 `DC_API_KEY` 未配置时静默回退 `test-key` → DC 按 `requireDcApiKey` 必 401——dc-index/market-index 改 fail-fast 明确报错，生产 `infrax-dc-mcp.service.d/dc-api-key.conf` 注入真实租户 key，模板 `deploy/overrides/templates/dc-mcp-key.conf.template`；本地 E2E：无 key → 明确 isError，有 key → 正常请求 | P1 |
 | B-10-3b | dc `events/stats/health` 对 152GB events 表全表 COUNT/GROUP BY 卡死 pg-pool（曾拖垮 dc 服务） | ✅ 生产修复（`4417ba9`）：stats/health 改读 `event_checkpoints.event_count`（collector 每批增量维护，O(1)，实测 0.1s/0.02s 秒回，uniqueTx 停用）；`idx_events_block_number` 已加 migration + 生产 CONCURRENTLY 构建（被 64min VACUUM 阻塞，完成后无过滤 `ORDER BY block_number DESC` 走索引） | P1 |
-| B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | 🔲（⚠️ 缺失） | P1 |
-| B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | 🔲 | P1 |
-| B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | 🔲 | P2 |
+| B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | ✅ **chain-rpc 网关已承担**（B-10-6 盘点确认）：读 `/v1/rpc/:chain`（白名单 + raw JSON-RPC 透传，viem/ethers 可直连）+ 广播 `/v1/broadcast/:chain`（广播 key 隔离）；dc/waas/mpc/collector/vault 已全部收敛 | P1 |
+| B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | ✅ 已解决：遗留 `routes/paymentRoutes.ts` / `routes/mpcRoutes.ts` / `services/mpcService.ts` **已删除**，支付功能移交 payments 引擎、MPC 为独立服务（waas/index.ts L26 注明） | P1 |
+| B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | ✅（2026-08-11 盘点 + vault 收口，commit `xxx`）——见下方「B-10-6 广播链路盘点结论」 | P2 |
+
+**B-10-6 广播链路盘点结论（2026-08-11）**
+
+全站链上访问已统一收敛 **chain-rpc 网关（:9130）为唯一入口**（读 `/v1/rpc/:chain` + 广播 `/v1/broadcast/:chain`，读/广播独立 key 隔离，网关不可用直接抛错）：
+
+| 服务 | 读路径 | 广播路径 | 状态 |
+|---|---|---|---|
+| waas :9109 | `GatewayProvider` → `/v1/rpc/:chain`（读 key） | `GatewayProvider` → `/v1/broadcast/:chain`（广播 key，`/internal/send-tx` Gas Pool 交易） | ✅ |
+| mpc :9104 | `GatewayProvider` → `/v1/rpc/:chain` | `GatewayProvider` → `/v1/broadcast/:chain`（TSS 签名后广播） | ✅ |
+| dc :9102 | `rpcCall()` → `/v1/rpc/:chain`（余额 eth_getBalance 等） | —（只读） | ✅ |
+| collector :9101 | — | `relayer.ts` → `/v1/broadcast/:chain`（`POST /api/v1/relay`，唯一广播入口） | ✅ |
+| vault :9107 | **2026-08-11 收口**：`GatewayProvider`（ethers）+ viem `http(…/v1/rpc/:alias)` raw 头（读）；广播走 `GatewayProvider` `/v1/broadcast/:chain`；未配置 `CHAIN_RPC_URL` 回退直连（开发环境） | ✅ 本次收口 |
+
+关键约定：① **禁止直连上游 RPC**（仅未配置网关的开发环境回退）；② 广播必须走 `/v1/broadcast`（读 key 永远无法触达）；③ 网关 key 由服务端签发（`CHAIN_RPC_READ_KEY` / `CHAIN_RPC_BROADCAST_KEY`），不入 git。
 
 **9.8.3 需求 11：用户端套餐/apikey 界面 + 管理后台查看与配置**
 
@@ -1321,8 +1335,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | # | 事项 | 状态 | 优先级 |
 |---|---|---|---|
 | B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | 🔲 | P1 |
-| B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 | P1 |
-| B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | 🔲 | P2 |
+| B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 **运营动作**（2026-08-11 标注）：链上资金操作，需运营/用户执行——从部署钱包/金库向 executor 地址转入 OXA（建议 ≥ 1 OXA，覆盖多批 UserOp gas），随后 aa-relay 生产 E2E 验证；代码侧无待办 | P1 |
+| B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | ✅ 规范已归档 `docs/AA_NEW_CHAIN_DEPLOYMENT.md`（流程/前置/验证清单/注意事项）；BSC/ETH/BASE 实际部署需在生产机 vendor 目录执行（本地无 vendor），见规范 | P2 |
 
 ---
 
