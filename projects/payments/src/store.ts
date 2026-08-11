@@ -41,6 +41,22 @@ export type PaymentIntentStatus = 'created' | 'paid' | 'failed' | 'closed'
 
 export const PAYMENT_INTENT_STATUSES: readonly PaymentIntentStatus[] = ['created', 'paid', 'failed', 'closed']
 
+/** A persisted payment-intent row (read-back for admin/ops consoles). */
+export interface PaymentIntentRow {
+  intentId: string
+  method: string
+  subscriber: string | null
+  asset: string | null
+  /** Atomic units, string to stay exact at any magnitude. */
+  amountWei: string | null
+  currency: string | null
+  chain: string | null
+  status: PaymentIntentStatus
+  metadata: Record<string, unknown> | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 /** A unified payment-intent row (audit trail across all rails). */
 export interface PaymentIntentInput {
   paymentId: string
@@ -73,6 +89,11 @@ export interface PaymentStore {
    * Module convention: `created → paid | failed | closed`; `paid → closed`.
    */
   updateIntentStatus?(paymentId: string, status: PaymentIntentStatus): Promise<void>
+  /**
+   * Read back payment intents (admin/ops audit view). Optional — hosts may
+   * skip; callers then get an empty list. Newest-first, paginated.
+   */
+  listIntents?(params: { limit?: number; offset?: number; status?: string; subscriber?: string }): Promise<PaymentIntentRow[]>
   /**
    * Append an outbound lifecycle event (see `PaymentEvent`). Optional — hosts
    * that consume lifecycle via callbacks (onWebhookEvent / onCredit) may skip.
@@ -151,6 +172,43 @@ export class PgPaymentStore implements PaymentStore {
       'UPDATE payment_intents SET status = $2, updated_at = NOW() WHERE intent_id = $1',
       [paymentId.toLowerCase(), status]
     )
+  }
+
+  async listIntents(params: { limit?: number; offset?: number; status?: string; subscriber?: string } = {}): Promise<PaymentIntentRow[]> {
+    const where: string[] = []
+    const values: unknown[] = []
+    if (params.status) {
+      values.push(String(params.status))
+      where.push(`status = $${values.length}`)
+    }
+    if (params.subscriber) {
+      values.push(String(params.subscriber).toLowerCase())
+      where.push(`subscriber = $${values.length}`)
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    const limit = Math.min(Math.max(Number(params.limit) || 50, 1), 200)
+    const offset = Math.max(Number(params.offset) || 0, 0)
+    values.push(limit, offset)
+    const { rows } = await this.pool.query(
+      `SELECT intent_id, method, subscriber, asset, amount_wei, currency, chain, status, metadata, created_at, updated_at
+       FROM payment_intents ${whereSql}
+       ORDER BY created_at DESC
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values
+    )
+    return rows.map((r) => ({
+      intentId: r.intent_id,
+      method: r.method,
+      subscriber: r.subscriber,
+      asset: r.asset,
+      amountWei: r.amount_wei !== null && r.amount_wei !== undefined ? String(r.amount_wei) : null,
+      currency: r.currency,
+      chain: r.chain,
+      status: r.status,
+      metadata: r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
   }
 
   async deduct(address: string, amount: bigint, asset: string = NATIVE_ASSET): Promise<boolean> {

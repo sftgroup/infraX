@@ -11,6 +11,7 @@
 //   POST /verify      verify an on-chain payment (x402 rail)
 //   POST /webhook     Stripe webhook (signature verified in-engine)
 //   GET  /balance     current ledger balance of an address
+//   GET  /orders      payment intent audit trail (admin/ops read-back)
 //   POST /access      unified access check (delegates to the injected store)
 //   GET  /capabilities pluggable rail discovery
 //   POST /a2a         two-phase a2a intent (phase 1)
@@ -226,6 +227,24 @@ export function createPaymentsRouter(payments: PaymentsService): Router {
       res,
       next,
       () => res.json({ received: true })
+    )
+  })
+
+  // GET /orders — payment intent audit trail (admin/ops read-back)
+  // query: limit, offset, status, subscriber — newest first
+  router.get('/orders', (req: Request, res: Response, next: NextFunction) => {
+    const { limit, offset, status, subscriber } = req.query
+    handle(
+      () =>
+        payments.listIntents({
+          limit: limit !== undefined ? Number(limit) : undefined,
+          offset: offset !== undefined ? Number(offset) : undefined,
+          status: status !== undefined ? String(status) : undefined,
+          subscriber: subscriber !== undefined ? String(subscriber) : undefined,
+        }),
+      res,
+      next,
+      (orders) => res.json({ orders })
     )
   })
 

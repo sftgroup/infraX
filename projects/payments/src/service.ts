@@ -24,6 +24,7 @@ import type {
   MPPSessionRow,
   MPPSessionStore,
   PaymentAuthorization,
+  PaymentIntentRow,
   PaymentInvite,
   PaymentStore,
   PaymentTransfer,
@@ -173,6 +174,15 @@ export class PaymentsService {
   }
 
   // ── Create payment ─────────────────────────────────────────────────────
+
+  /**
+   * Read back payment intents (admin/ops audit view). Delegates to the
+   * injected store; empty when the host does not implement `listIntents`.
+   */
+  async listIntents(params: { limit?: number; offset?: number; status?: string; subscriber?: string } = {}): Promise<PaymentIntentRow[]> {
+    if (!this.opts.store.listIntents) return []
+    return this.opts.store.listIntents(params)
+  }
 
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
     switch (input.method) {

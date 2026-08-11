@@ -1,6 +1,6 @@
 import { Routes, Route, useNavigate, useLocation, Navigate, Outlet } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext } from 'react';
-import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings, BarChart3, ShoppingCart } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import WaasPanel from './pages/WaasPanel';
 import DcPanel from './pages/DcPanel';
@@ -10,6 +10,7 @@ import DataPipeline from './pages/DataPipeline';
 import DataStack from './pages/DataStack';
 import ApiKeys from './pages/ApiKeys';
 import Revenue from './pages/Revenue';
+import Orders from './pages/Orders';
 import SettingsPage from './pages/SettingsPage';
 import Audit from './pages/Audit';
 import Login from './Login';
@@ -29,6 +30,7 @@ const NAV = [
   { path: '/data', label: 'Data Stack', icon: BarChart3 },
   { path: '/api-keys', label: 'API Keys', icon: Key },
   { path: '/revenue', label: 'Revenue', icon: DollarSign },
+  { path: '/orders', label: 'Orders', icon: ShoppingCart },
   { path: '/settings', label: 'Settings', icon: Settings },
   { path: '/audit', label: 'Audit', icon: FileText },
 ];
@@ -90,6 +92,7 @@ function AuthedLayout() {
           <Route path="/data" element={<DataStack />} />
           <Route path="/api-keys" element={<ApiKeys />} />
           <Route path="/revenue" element={<Revenue />} />
+          <Route path="/orders" element={<Orders />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="*" element={<Navigate to="/" replace />} />

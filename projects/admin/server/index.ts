@@ -117,6 +117,27 @@ app.get('/api/v2/admin/revenue', requireAdmin, asyncHandler(async (_req: any, re
   }));
 }));
 
+// ─── Payment Orders (payments.payment_intents audit trail) ───
+app.get('/api/v2/admin/orders', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { status, subscriber, limit, offset } = req.query as any;
+  const conditions: string[] = [];
+  const vals: any[] = [];
+  let idx = 1;
+  if (status) { conditions.push(`status = $${idx++}`); vals.push(status); }
+  if (subscriber) { conditions.push(`subscriber = $${idx++}`); vals.push(String(subscriber).toLowerCase()); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const pageSize = Math.min(parseInt(limit) || 50, 200);
+  const pageOffset = parseInt(offset) || 0;
+  const [{ rows }, { rows: cntRows }] = await Promise.all([
+    pools.payments.query(
+      `SELECT intent_id, method, subscriber, asset, amount_wei, currency, chain, status, metadata, created_at, updated_at
+       FROM payment_intents ${where} ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...vals, pageSize, pageOffset]),
+    pools.payments.query(`SELECT COUNT(*)::int as total FROM payment_intents ${where}`, vals),
+  ]);
+  res.json(apiResponse({ data: rows, total: cntRows[0].total }));
+}));
+
 // ─── API Usage ───
 app.get('/api/v2/admin/api-usage', requireAdmin, asyncHandler(async (_req: any, res: any) => {
   // api_usage_daily 实际位于 pocketx_dc（此前误查 waas 库导致恒为空）
