@@ -941,7 +941,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-10-3b | dc `events/stats/health` 对 152GB events 表全表 COUNT/GROUP BY 卡死 pg-pool（曾拖垮 dc 服务） | ✅ 生产修复（`4417ba9`）：stats/health 改读 `event_checkpoints.event_count`（collector 每批增量维护，O(1)，实测 0.1s/0.02s 秒回，uniqueTx 停用）；`idx_events_block_number` 已加 migration + 生产 CONCURRENTLY 构建（被 64min VACUUM 阻塞，完成后无过滤 `ORDER BY block_number DESC` 走索引） | P1 |
 | B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | ✅ **chain-rpc 网关已承担**（B-10-6 盘点确认）：读 `/v1/rpc/:chain`（白名单 + raw JSON-RPC 透传，viem/ethers 可直连）+ 广播 `/v1/broadcast/:chain`（广播 key 隔离）；dc/waas/mpc/collector/vault 已全部收敛 | P1 |
 | B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | ✅ 已解决：遗留 `routes/paymentRoutes.ts` / `routes/mpcRoutes.ts` / `services/mpcService.ts` **已删除**，支付功能移交 payments 引擎、MPC 为独立服务（waas/index.ts L26 注明） | P1 |
-| B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | ✅（2026-08-11 盘点 + vault 收口，commit `xxx`）——见下方「B-10-6 广播链路盘点结论」 | P2 |
+| B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | ✅（2026-08-11 盘点 + vault 收口，commit `e3dd19c`）——见下方「B-10-6 广播链路盘点结论」 | P2 |
 
 **B-10-6 广播链路盘点结论（2026-08-11）**
 
