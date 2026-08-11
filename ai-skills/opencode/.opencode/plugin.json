@@ -1,0 +1,25 @@
+{
+  "name": "infrax-skills",
+  "version": "1.0.0",
+  "description": "InfraX AI skills for OpenCode: wallet, payment, vault, mpc, data, dc, session-key (backed by InfraX MCP servers).",
+  "author": "InfraX",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "skills",
+      "description": "List InfraX AI skills and the MCP tools they cover."
+    },
+    {
+      "name": "infrax-quickstart",
+      "description": "Show the InfraX AI Skills quick start (MCP config + auth + first call)."
+    }
+  ],
+  "mcp": [
+    { "name": "infrax-wallet-mcp", "url": "http://localhost:9110/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    { "name": "infrax-vault-mcp", "url": "http://localhost:9108/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    { "name": "infrax-mpc-mcp", "url": "http://localhost:9105/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    { "name": "infrax-dc-mcp", "url": "http://localhost:9103/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    { "name": "infrax-hub-index", "url": "http://localhost:3008/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    { "name": "infrax-session-key-mcp", "url": "http://localhost:3011/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } }
+  ]
+}

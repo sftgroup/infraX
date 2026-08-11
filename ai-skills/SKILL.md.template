@@ -1,0 +1,43 @@
+---
+# 模板说明：复制到 skills/<name>/SKILL.md，替换 `{{ }}` 占位符后使用。
+# frontmatter 要求：name / description / version 为必填；metadata.infrax 供发布流水线读取。
+name: {{skill-name}}
+description: |
+  {{一句话说明该 skill 解决什么问题、何时该调用。格式：When to use ... }}
+  {{示例: Use this skill when the user needs to check wallet balances, send tokens, or estimate gas on supported chains.}}
+version: 1.0.0
+license: MIT
+metadata:
+  infrax:
+    # 对应的 MCP server（与 shared/mcp-config.json 中 server 名一致）
+    mcp: {{infrax-<name>-mcp}}
+    # 该 skill 覆盖的 MCP 工具清单（发布流水线与 IDE 插件据此生成 tools 列表）
+    tools:
+      - {{tool_1}}
+      - {{tool_2}}
+---
+
+# {{Skill 名}} — InfraX AI Skill
+
+## 能力概览
+
+| 工具 | 说明 | 关键参数 |
+|------|------|----------|
+| `{{tool_1}}` | {{一句话说明}} | `{{param}}`（必填）… |
+| `{{tool_2}}` | {{一句话说明}} | … |
+
+## 接入方式
+
+- MCP server：`{{infrax-<name>-mcp}}`（HTTP Streamable 传输）
+- 开发默认端口 `:{{port}}`，生产 systemd unit：`{{unit}}.service`
+- 鉴权：{{Bearer / X-API-Key 等说明 + 所需环境变量}}
+
+## Quick Start
+
+### 场景 1：{{场景名}}
+
+{{调用序列，伪代码/JSON-RPC 示例}}
+
+## 约束与注意事项
+
+- {{安全/限额/幂等等注意事项}}

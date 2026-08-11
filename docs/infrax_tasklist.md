@@ -700,15 +700,15 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 需求 | 说明 | 状态 |
 |:---:|------|------|:---:|
-| 6.0 | **AI 生态 Skills 插件（对齐 onchainos-skills）** | 现有 wallet/dc/vault/mpc 四个 MCP 服务器为底座（✅ 已具备），补齐生态发布层：为 Claude Code（`.claude-plugin`）/ Cursor（`.cursor-plugin`）/ OpenCode（`.opencode`）/ Codex（`.codex-plugin`）/ OpenClaw（`.openclaw`）提供官方 Skills 插件，覆盖 wallet/dc/vault/mpc/data/payment/session-key 全能力（含 session-key 签名代理与零签名模式）；发布物对齐 OKX onchainos-skills（GitHub 3449 commits、多 IDE 插件市场 + SKILL.md） | 🔲 待排期（子任务 6.1~6.3） |
+| 6.0 | **AI 生态 Skills 插件（对齐 onchainos-skills）** | 现有 wallet/dc/vault/mpc 四个 MCP 服务器为底座（✅ 已具备），补齐生态发布层：为 Claude Code（`.claude-plugin`）/ Cursor（`.cursor-plugin`）/ OpenCode（`.opencode`）/ Codex（`.codex-plugin`）/ OpenClaw（`.openclaw`）提供官方 Skills 插件，覆盖 wallet/dc/vault/mpc/data/payment/session-key 全能力（含 session-key 签名代理与零签名模式）；发布物对齐 OKX onchainos-skills（GitHub 3449 commits、多 IDE 插件市场 + SKILL.md） | ✅ 代码完成（ai-skills/ 仓库，6.1~6.3 全绿） |
 
 **需求 6.0 实现子任务（2026-08-11 拆解）**
 
 | # | 任务 | 说明 | 状态 |
 |:---:|------|------|:---:|
-| 6.1 | Skills 插件仓库脚手架 | 新建 `ai-skills/` 仓库：SKILL.md 模板 + 7 组 skill（wallet/dc/vault/mpc/data/payment/session-key），基于 4 个 MCP 服务器现有工具清单生成 | 🔲 |
-| 6.2 | 多 IDE 发布物 | Claude Code `.claude-plugin` / Cursor / OpenCode / Codex / OpenClaw 五市场配置 | 🔲 |
-| 6.3 | 文档与示例 | 每个 skill 附 Quick Start 样例（含 vault MPC 验证码确认 / session-key 零签名模式） | 🔲 |
+| 6.1 | Skills 插件仓库脚手架 | 新建 `ai-skills/` 仓库：SKILL.md 模板 + 7 组 skill（wallet/dc/vault/mpc/data/payment/session-key），基于 4 个 MCP 服务器现有工具清单生成 | ✅ `ai-skills/SKILL.md.template` + `skills/{wallet,payment,vault,mpc,data,dc,session-key}/SKILL.md` + `shared/mcp-config.json`（6 server 统一注册） |
+| 6.2 | 多 IDE 发布物 | Claude Code `.claude-plugin` / Cursor / OpenCode / Codex / OpenClaw 五市场配置 | ✅ `.claude-plugin`、`cursor/.cursor-plugin`、`opencode/.opencode`、`codex/.codex-plugin`、`openclaw/.openclaw` 各含 plugin.json + README |
+| 6.3 | 文档与示例 | 每个 skill 附 Quick Start 样例（含 vault MPC 验证码确认 / session-key 零签名模式） | ✅ `ai-skills/docs/QUICKSTART.md`（7 场景 + vault MPC SDK confirmMpc 示例 + session-key 零签名模式） |
 
 **Phase 1: DC 数据强化（1 周）**
 

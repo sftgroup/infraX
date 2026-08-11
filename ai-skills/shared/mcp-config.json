@@ -1,0 +1,32 @@
+{
+  "//": "InfraX MCP servers — HTTP Streamable 传输统一注册片段。",
+  "//2": "各 IDE 插件（.claude-plugin / .cursor / .opencode / .codex / .openclaw）均从本文件生成 mcp 配置。",
+  "//3": "服务端地址按部署环境替换：dev 用 localhost:port，生产按 systemd 实际端口（见各 SKILL.md 接入方式）。",
+  "//4": "鉴权键：MCP_API_KEY（逗号分隔白名单）或 mx_ 前缀 scope=mcp 的签发 key，见 projects/mcp-server/src/mcp-auth.ts。",
+  "mcpServers": {
+    "infrax-wallet-mcp": {
+      "url": "http://localhost:9110/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    },
+    "infrax-vault-mcp": {
+      "url": "http://localhost:9108/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    },
+    "infrax-mpc-mcp": {
+      "url": "http://localhost:9105/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    },
+    "infrax-dc-mcp": {
+      "url": "http://localhost:9103/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    },
+    "infrax-hub-index": {
+      "url": "http://localhost:3008/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    },
+    "infrax-session-key-mcp": {
+      "url": "http://localhost:3011/mcp/message",
+      "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" }
+    }
+  }
+}

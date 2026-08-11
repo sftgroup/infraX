@@ -1,0 +1,25 @@
+{
+  "name": "infrax-skills",
+  "version": "1.0.0",
+  "description": "InfraX AI skills for OpenClaw: wallet, payment, vault, mpc, data, dc, session-key (backed by InfraX MCP servers).",
+  "author": "InfraX",
+  "license": "MIT",
+  "repository": "https://github.com/sftgroup/infraX",
+  "skills": [
+    { "name": "wallet", "path": "../skills/wallet/SKILL.md" },
+    { "name": "payment", "path": "../skills/payment/SKILL.md" },
+    { "name": "vault", "path": "../skills/vault/SKILL.md" },
+    { "name": "mpc", "path": "../skills/mpc/SKILL.md" },
+    { "name": "data", "path": "../skills/data/SKILL.md" },
+    { "name": "dc", "path": "../skills/dc/SKILL.md" },
+    { "name": "session-key", "path": "../skills/session-key/SKILL.md" }
+  ],
+  "mcp": {
+    "infrax-wallet-mcp": { "url": "http://localhost:9110/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    "infrax-vault-mcp": { "url": "http://localhost:9108/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    "infrax-mpc-mcp": { "url": "http://localhost:9105/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    "infrax-dc-mcp": { "url": "http://localhost:9103/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    "infrax-hub-index": { "url": "http://localhost:3008/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } },
+    "infrax-session-key-mcp": { "url": "http://localhost:3011/mcp/message", "headers": { "Authorization": "Bearer ${INFRAX_MCP_API_KEY}" } }
+  }
+}
