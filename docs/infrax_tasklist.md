@@ -1,6 +1,6 @@
 # InfraX 统一任务清单（infrax_tasklist）
 
-> 最后更新: 2026-08-11 | 适用版本 `v0.7.0-20260811`
+> 最后更新: 2026-08-12 | 适用版本 `v0.7.0-20260811`
 >
 > MQ-10 收敛与优化 DC-1~DC-10 已全部完成并在生产验证（2026-08-08），见 §9.7 MQ-10 方案段。
 > **Agent 钱包架构决策（MQ-10 补充 E，2026-08-08）**：以 aa-sdk（Kernel v3 ERC-4337）为主主线，aa-sdk 三缺口（Paymaster/多链/aa-relay）已排期（MQ-10 补充 E-1，🔲）。
@@ -963,9 +963,9 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 |---|---|---|:---:|
 | B-11-1 | web `server.js` 代理表补 `/api/v2/subscription`（waasUpgradePlan 点击无响应） | ✅ `414248c`（API_ROUTES 新增 `/api/v2/subscription` → waas:9109；生产 `/api/v2/subscription/plans` 200 返回 waas 真实套餐 JSON） | P1 |
 | B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | ✅ **MQ-12 T-5（2026-08-10）**：[waas.js](projects/web/modules/waas.js) `waasUpgradePlan`——free 直通 / chain escrow 轮询 / fiat sessionUrl / x402 verify，三 rail UI 走通 | P1 |
-| B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | 🔲（⚠️ 现状无；admin 侧 [ApiKeys.tsx](projects/admin/src/pages/ApiKeys.tsx) 已覆盖 dx_/mx_/lr_ 三套签发管理；用户端 web 侧待办） | P1 |
-| B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | 🔲（需先定用户模型/数据源） | P1 |
-| B-11-5 | admin 套餐管理（CRUD）页 | 🔲（需各服务 plans CRUD 端点，现仅 GET 订阅/套餐） | P1 |
+| B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | ✅（2026-08-12 生产部署 + E2E：web「🗝️ My Keys」面板 [datacenter.js](projects/web/modules/datacenter.js) + data `/api/v2/data/my-keys` 钱包签名鉴权 [wallet_auth.py](projects/data/app/wallet_auth.py)——create/list/rotate/owner 删除/重放语义闭环，测试数据已清理） | P1 |
+| B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | ✅（2026-08-12 生产部署 + 验证：[Users.tsx](projects/admin/src/pages/Users.tsx) 聚合 waas/dc/mpc 用户，`GET /api/v2/admin/users`） | P1 |
+| B-11-5 | admin 套餐管理（CRUD）页 | ✅（2026-08-12 生产部署 + 验证：[Plans.tsx](projects/admin/src/pages/Plans.tsx) + `GET/POST/PATCH/DELETE /api/v2/admin/plans`，waas/dc billing_plans 覆盖表 CRUD，测试数据已清理） | P1 |
 | B-11-6 | admin 订单 / 支付管理页 | ✅ **MQ-12 T-8（8544feb）**：[Orders.tsx](projects/admin/src/pages/Orders.tsx) + `GET /api/v2/admin/orders`（listIntents 分页/status/subscriber 过滤） | P1 |
 | B-11-7 | admin 孤儿页面（Tenants/Transactions/Webhooks/Sweeps/RpcPool/System）挂进导航或清理 | ✅ 全部挂载：`App.tsx` NAV+Route 新增 6 页；[System.tsx](projects/admin/src/pages/System.tsx) 改为消费 `/admin/status` 服务健康矩阵（原 `/admin/system` 端点不存在）；[RpcPool.tsx](projects/admin/src/pages/RpcPool.tsx) 适配现有 `/admin/rpc`（admin_rpc_config CRUD），server 补 `DELETE /api/v2/admin/rpc/:id` | P2 |
 
@@ -1304,7 +1304,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | ✅（2026-08-11 完成） | P1 |
 | A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4.1 定稿）：**MPC 路径优先（现成可用）+ session-key 扩展备选** | ✅（2026-08-11 方案定稿） | P2 |
 | A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
-| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md，待发送 PocketX）→ 收到后验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（**阻塞：外部物料**；aa-relay `/v1/paymaster` 端点已实现，08-11 重启生效）。**多调用者通用化设计已补入文档 §7**：成本归属（payments ledger 对账）/ 策略隔离（policyId）/ 多服务商容灾 / relay 配额 | 🔲 挂起 | P1 |
+| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并确认发送（2026-08-12，§9.11 B-1 ⚠️）——发送渠道待用户执行，收到回传后立即：验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（aa-relay `/v1/paymaster` 端点已实现，08-11 重启生效）。**多调用者通用化设计已补入文档 §7**：成本归属（payments ledger 对账）/ 策略隔离（policyId）/ 多服务商容灾 / relay 配额 | 🔲 挂起 | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | ✅ `743ede1`：ai-skills 仓库（7 组 skill + 5 IDE 发布物 + QUICKSTART 文档） | P2 |
@@ -1334,7 +1334,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 事项 | 状态 | 优先级 |
 |---|---|---|---|
-| B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | 🔲 | P1 |
+| B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | ⚠️（2026-08-12 物料清单 [PAYMASTER_PROVISION_REQUEST.md](docs/PAYMASTER_PROVISION_REQUEST.md) 定稿、用户确认发送；发送渠道待用户执行，收到物料后即闭环 A-4） | P1 |
 | B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 **运营动作**（2026-08-11 标注）：链上资金操作，需运营/用户执行——从部署钱包/金库向 executor 地址转入 OXA（建议 ≥ 1 OXA，覆盖多批 UserOp gas），随后 aa-relay 生产 E2E 验证；代码侧无待办 | P1 |
 | B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | ✅ 规范已归档 `docs/AA_NEW_CHAIN_DEPLOYMENT.md`（流程/前置/验证清单/注意事项）；BSC/ETH/BASE 实际部署需在生产机 vendor 目录执行（本地无 vendor），见规范 | P2 |
 

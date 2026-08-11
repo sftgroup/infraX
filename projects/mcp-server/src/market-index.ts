@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { z } from "zod";
+import { inboundAuth } from "./mcp-auth.js";
 
 // B-10-3 修复：同 dc-index，DC_API_KEY 缺失时 fail-fast，禁止静默发送占位 key（test-key）→ 必然 401。
 const DC_URL = process.env.DC_URL || process.env.DC_API_URL || "http://localhost:9102";
@@ -332,6 +333,8 @@ const PORT = parseInt(process.env.PORT || "3007", 10);
 
 const app = express();
 app.use(express.json());
+// 2026-08-12 补挂：与其他 7 个 HTTP MCP 一致，/health 与 / 豁免，其余入站校验
+app.use(inboundAuth);
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "infrax-market-mcp", uptime: process.uptime() }));
 

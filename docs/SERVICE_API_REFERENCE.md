@@ -58,6 +58,10 @@
 | `/api/data/admin/api-keys` | CRUD | 多租户 key 签发 | ✅ admin |
 | `/api/data/admin/api-keys/{id}/rotate` | POST | key 轮换 | ✅ admin |
 | `/api/data/api-keys/verify` | POST | 校验外部服务 key（scope 匹配） | ✅ bridge |
+| `/api/data/macro/history` | GET | FRED 宏观历史（外挂 data_config，未入 CATALOG） | ✅ |
+| `/api/v2/data/my-keys` | GET/POST | **用户级 key 自助管理（B-11-3）**——钱包签名鉴权（`x-wallet-address`/`x-wallet-signature`/`x-wallet-timestamp`，EIP-191 `InfraX auth: <ts>`，24h TTL） | ✅ 钱包签名 |
+| `/api/v2/data/my-keys/{id}/rotate` | POST | 轮换用户级 key | ✅ 钱包签名 |
+| `/api/v2/data/my-keys/{id}` | DELETE | 吊销用户级 key（owner 专属） | ✅ 钱包签名 |
 
 ---
 
@@ -185,28 +189,30 @@
 | `/api/v2/mpc/contract-read` | POST | 合约读 |
 | `/api/v2/mpc/contract-write` | POST | 合约写 |
 | `/api/v2/mpc/gas-estimate` | POST | gas 预估 |
+| `/api/v2/mpc/wallets` | GET | 钱包列表（邮箱下全部钱包） |
+| `/api/v2/mpc/sign-digest` | POST | **raw 32-byte digest 签名（E-1d）**：body `{token, digest}`，digest 为 32 字节 hex（可带 0x）；TSS 或单钥路径 |
 
-**MCP**：`infrax-mpc-mcp`（:9105）15 工具，见 `docs/MCP_USAGE.md`。
+**MCP**：`infrax-mpc-mcp`（:9105）17 工具，见 `docs/MCP_USAGE.md`。
 
 ---
 
 ## 7. WAAS 钱包即服务（:9109）
 
 **功能**：SaaS 多租户钱包基础设施（认证/钱包/交易/风控/事件回调/套餐/数据订阅/apikey）。
-**鉴权**：⚠️ **未接入平台统一契约**。自有体系：租户 `x-api-key`（`requireTenantApiKey`，saas 部分路由）+ `x-api-key` 内部 key（`requireApiKey`，internal/event 部分路由）+ admin JWT。**wallet/tx/risk/subscription/dashboard/dataSubscription/payment 大部分端点无鉴权中间件**（生产实测 `/api/v2/data/plans` 无 key 200）。
+**鉴权**：✅ **已接入平台统一契约（B-12-1，2026-08-12）**。路由按组挂 `authenticate`（EIP-191 钱包签名：`x-wallet-address`/`x-wallet-signature`/`x-wallet-timestamp`）或 `requireTenantApiKey`/`requireApiKey`/admin JWT；公开豁免仅：`/api/v2/auth/login`、`/api/v2/subscription/plans`、`/api/v2/subscription/payment-callback`、`/api/v2/data/plans`、`/health`。注意：**无 `register` 端点**（MPC 邮箱注册是 mpc :9104 服务面）。
 
 | 路由组 | 端点示例 | 功能 | 鉴权 |
 |---|---|---|---|
-| `/api/v2/auth/*` | POST register/login | 邮箱认证（MPC 注册入口） | ⚠️ 无 |
-| `/api/v2/wallet/*` | POST create / GET list / balance | 托管钱包 | ⚠️ 无 |
-| `/api/v2/tx/*` | POST create / send / GET list | 交易 | ⚠️ 无 |
-| `/api/v2/risk/*` | GET/POST rules | 风控 | ⚠️ 无 |
-| `/api/v2/events/*` / `/api/v2/webhooks/*` | POST register / GET list | 事件回调 | 部分 ✅ |
-| `/api/v2/dashboard/*` | GET overview / stats | 总览 | ⚠️ 无 |
+| `/api/v2/auth/*` | POST login / set-payment-password / payment-password-status | 登录（fail-closed）+ 支付密码 | login 公开；其余 authenticate |
+| `/api/v2/wallet/*` | POST create / import / rpc / custom-token / GET balance / transactions / nfts / :chainId | 托管钱包（send/simulate 在 `/api/v2/tx/*`） | ✅ authenticate |
+| `/api/v2/tx/*` | POST send / estimate-gas / sweep / batch / :id confirm·reject / GET status / pending | 交易 | ✅ authenticate（batch 加 requireAdmin） |
+| `/api/v2/risk/*` | GET/POST rules / blacklist | 风控 | ✅ authenticate |
+| `/api/v2/events/*` / `/api/v2/webhooks/*` | POST register / GET list | 事件回调 | ✅（部分公开） |
+| `/api/v2/dashboard/*` | GET overview / stats | 总览 | ✅ authenticate+requireAdmin |
 | `/api/v2/internal/*` | POST / GET / PUT | 内部管理（CWallet 回调等） | ✅ requireApiKey |
-| `/api/v2/saas/*` | tenants / apikeys CRUD / hot-wallet / tokens | 租户管理 | ✅ requireTenantApiKey（部分） |
-| `/api/v2/subscription/*` | GET plans / POST subscribe / me / check / verify / cancel | 套餐（MQ-12 支付意图化，见 §7.1） | 登录（plans/payment-callback 公开） |
-| `/api/v2/data/*` | GET plans / POST subscribe / GET usage/key/docs | **数据订阅（发 DC key）** | ⚠️ 无 |
+| `/api/v2/saas/*` | tenants / apikeys CRUD / withdraw / hot-wallet / tokens / addresses | 租户管理（27 路由） | ✅ requireTenantApiKey（tenants/my、activate、withdrawals 公开） |
+| `/api/v2/subscription/*` | GET plans / POST subscribe / me / check / verify / cancel | 套餐（MQ-12 支付意图化，见 §7.1） | plans/payment-callback 公开；其余登录 |
+| `/api/v2/data/*` | GET plans / POST subscribe / GET usage/key/docs | **数据订阅（发 DC key）** | ✅ authenticate |
 | `paymentRoutes` / `mpcRoutes` | — | 已迁移通用支付引擎 :9132（B-10-5 ✅ 2026-08-11 闭环，见 §7.5） | — |
 
 ### 7.1 WAAS 套餐订阅（MQ-12，支付意图化）
@@ -281,6 +287,7 @@ cancel ───────────────────────▶ 
 | `/payments/subscription/:chain/:subscriber/:resourceId` | GET | 订阅状态查询 |
 | `/payments/mpp/open` `/voucher` `/topup` `/settle` `/close` `/session` | POST/GET | MPP 状态通道全生命周期 |
 | `/payments/capabilities` | GET | 引擎能力探测 |
+| `/payments/orders` | GET | 支付意图审计列表（intent 状态机，admin 审计用） |
 
 ### 7.5.2 batch 批量收款（MQ-16，batch 能力）
 
@@ -330,6 +337,10 @@ cancel ───────────────────────▶ 
 | `/api/v2/data/verify` | POST | x402 确认（`{txHash}`，payer 需匹配 x-wallet-address） |
 | `/api/v2/data/usage` | GET | 订阅用量（plan/quota/日聚合） |
 | `/api/v2/data/payment-callback` | POST | 支付回调 webhook（HMAC 验签） |
+| `/api/v2/data/balance` | GET | **跨链余额（DC 数据面）**：`?address=`（x-dc-api-key 鉴权），chain 可选，返回 chainBalances/nativeTotal |
+| `/api/v2/data/key` | GET | 当前订阅 dcApiKey |
+| `/api/v2/data/raw-receipt` | GET | 原始交易回执查询 |
+| `/api/v2/data/docs` | GET | 订阅契约文档（x-dc-api-key） |
 
 ### 7.6.2 Market 行情订阅（collector :9101，T-2）— `X-API-Key` 鉴权，信封响应，超限 **503**
 
@@ -342,9 +353,23 @@ cancel ───────────────────────▶ 
 | `/api/v2/market/usage` | GET | 订阅用量 |
 | `/api/v2/market/payment-callback` | POST | 支付回调 webhook（HMAC 验签） |
 
+> **行情数据面（39 端点）**挂载 `/api/v2/data/market/*`（`X-API-Key` 鉴权 + 配额 503），完整端点矩阵见 `docs/API_ACCESS.md §1.6`；2026-08-12 补录端点：`supported-chains`、`index-price-history`、`signal-chains`、`leaderboard-chains`、`cluster-list`、`cluster-top-holders`、`mempump/apedwallets`、`tracked-tokens`、`custom-sigs`。
+
 > **公网代理**：web :9111 已补 `'/api/v2/market' → collector :9101` 路由（2026-08-11，生产实测 `/api/v2/market/plans` 200）。
 
-### 7.6.3 Chain RPC 订阅（:9130，T-3）— `rx_` key 鉴权，信封 `{code,message,data}`，超限 **503**
+### 7.6.3 Chain RPC 基础端点（:9130，2026-08-12 补录）
+
+> 读 key（`rx_`）/ 广播 key（`cr_`）双鉴权；`/health` 豁免。
+
+| 端点 | 方法 | 功能 | 鉴权 |
+|---|---|---|---|
+| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（batch 支持，`X-Json-Rpc: raw` 透传） | ✅ 读 key |
+| `/v1/broadcast/{chain}` | POST | 广播交易（读 key 无法触达） | ✅ 广播 key |
+| `/v1/status` | GET | 链状态/同步信息 | ✅ 读 key |
+| `/v1/ws` | WS | WebSocket（仅 eth_subscribe/unsubscribe） | ✅ 读 key |
+| `/v1/subscription/*` | 见 §7.6.3 | 套餐订阅面 | ✅ `rx_` key |
+
+### 7.6.4 Chain RPC 订阅（:9130，T-3）— `rx_` key 鉴权，信封 `{code,message,data}`，超限 **503**
 
 | 端点 | 方法 | 功能 |
 |---|---|---|
@@ -356,7 +381,7 @@ cancel ───────────────────────▶ 
 | `/v1/subscription/verify` | POST | x402 确认（`{txHash}`） |
 | `/v1/subscription/usage` | GET | 订阅用量 |
 
-### 7.6.4 MPC 按量计费（:9104，T-4）— session 鉴权，信封响应，欠费 **402**
+### 7.6.5 MPC 按量计费（:9104，T-4）— session 鉴权，信封响应，欠费 **402**
 
 | 端点 | 方法 | 功能 |
 |---|---|---|
@@ -364,6 +389,37 @@ cancel ───────────────────────▶ 
 | `/api/v2/mpc/ledger-balance` | POST | ledger 余额查询（body: `{token}`，返回 address/balanceWei/fees/topupHint） |
 
 > 计费触发：签名 0.0001 ETH / 写链 0.001 ETH（pay-per-use），余额不足 402 `insufficient_balance`。
+
+---
+
+## 7.7 aa-relay 智能账户中继（:9131，`@0xinfrax/aa-sdk`，2026-08-12 补录）
+
+**功能**：ERC-4337 UserOp 中继（Kernel v3）+ 链上 session 管理 + Paymaster 代理 + AA 套餐计费。
+**鉴权**：✅ `AA_RELAY_API_KEY`（Bearer/X-API-Key/X-Service-Key）；公开豁免 `/health`、`GET /v1/plans`。
+
+| 端点 | 方法 | 功能 |
+|---|---|---|
+| `/health` | GET | 健康（豁免） |
+| `/v1/userops` | POST | 提交 UserOp 到 Bundler（eth_sendUserOperation） |
+| `/v1/userops/:hash` | GET | 查询 UserOp 状态 |
+| `/v1/estimate` | POST | gas 预估 |
+| `/v1/paymaster` | POST | Paymaster 代理（body `{chain, method, params}`；apikey 服务端注入，前端零密钥；未配 Paymaster URL → 503） |
+| `/v1/session` | POST/GET | 创建/查询链上 session |
+| `/v1/session/disable` | POST | 禁用 session（enable 模式 → default 模式） |
+| `/v1/session/validate` | POST | 校验 session 有效性 |
+| `/v1/plans` | GET | AA 套餐价目（公开） |
+| `/v1/ledger-balance` | POST | 统一账本余额（body `{token}`） |
+
+**调用样例**（2026-08-12 补）：
+
+```bash
+# UserOp 提交（AA_OXACHAIN_* 环境；deployer=gas 来源 + handleOps 发起方）
+curl -X POST http://127.0.0.1:9131/v1/userops \
+  -H "Authorization: Bearer aa_..." -H "Content-Type: application/json" \
+  -d '{"chain":"oxachain","userOp":{...},"sender":"0x...","paymaster":{"sponsor":false}}'
+```
+
+> E2E：`projects/aa-relay/scripts/aa-session-e2e.ts`（env：`AA_OXACHAIN_*` + `OXACHAIN_DEPLOYER_PRIVATE_KEY`）12/12 全绿。
 
 ---
 
@@ -405,6 +461,19 @@ cancel ───────────────────────▶ 
 | `/admin/config` | GET/PUT | key 热配置（admin） |
 | `/openapi.json` | GET | OpenAPI 3.0（10 paths，豁免） |
 
+**调用样例**（2026-08-12 补）：
+
+```bash
+# 按数据源触发注入（source ∈ snapshot/injector 清单）
+curl -X POST http://127.0.0.1:9113/inject/snapshot \
+  -H "Authorization: Bearer lr_..." -H "Content-Type: application/json"
+
+# 注入统计
+curl http://127.0.0.1:9113/stats -H "Authorization: Bearer lr_..."
+```
+
+> 注：injector 无独立 SDK（2026-08-12 审核确认）——调用方可经 OpenAPI（`/openapi.json`）或 hub-index MCP 的 `injector_trigger` 工具驱动。
+
 ---
 
 ## 9. 端口与服务总览
@@ -421,7 +490,8 @@ cancel ───────────────────────▶ 
 | infrax-collector | 9101 | — | ✅ infrax-dk market.*（订阅面） | ✅ market-mcp :3013 18 工具 |
 | infrax-chain-rpc | 9130 | — | ✅ infrax-dk chainRpc.*（含订阅面） | ✅ :3012 10 工具 |
 | infrax-payments | 9132 | — | ✅ infrax-dk payment.*（裸 JSON） | ✅ wallet-mcp payment_* 代理 |
-| infrax-session-key | 3500 | — | ⚠️ 未覆盖 | ✅ :3011 7 工具 |
+| infrax-session-key | 3500 | — | ✅ @0xinfrax/session-key-client（独立包） | ✅ :3011 7 工具 |
+| infrax-aa-relay | 9131 | — | ✅ @0xinfrax/aa-sdk | —（agent 经 aa-sdk） |
 | hub-index（统一入口） | 3008 | `/mcp/*` | — | ✅ 13 工具 |
 
-**遗留项**：WAAS 统一鉴权（B-12-1）、SDK 补 session 方法（B-12-2）。~~market-index 未部署~~ → **market-mcp 已部署（:3013，2026-08-11）**。
+> **遗留项**：全部清理（2026-08-12）——WAAS 统一鉴权（B-12-1）✅、SDK 补 session 方法（B-12-2）✅、market-mcp 已部署（:3013，18 工具，**2026-08-12 已补入站鉴权**）。

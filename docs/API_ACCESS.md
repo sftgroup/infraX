@@ -129,6 +129,7 @@ Base URL:  https://api.infrax.io
 | `POST` | `/api/v2/mpc/contract-read` | 合约只读调用 |
 | `POST` | `/api/v2/mpc/contract-write` | 合约写（模拟 → 签名 → 广播） |
 | `POST` | `/api/v2/mpc/gas-estimate` | Gas 估算 |
+| `POST` | `/api/v2/mpc/sign-digest` | raw 32-byte digest 签名（2026-08-12 补录，body `{token, digest}`） |
 
 ---
 

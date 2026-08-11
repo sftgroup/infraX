@@ -238,24 +238,6 @@ router.get(
   })
 );
 
-/**
- * GET /api/v2/wallet/:chainId
- * Get HD wallet details + tokens for a specific chain
- */
-router.get(
-  "/:chainId",
-  authenticate,
-  asyncHandler(async (req, res) => {
-    const userId = req.user!.id;
-    const { chainId } = req.params;
-    const wallet = await walletService.getWalletDetail(userId, chainId);
-    if (!wallet) {
-      return res.status(404).json(apiResponse(null, "Wallet not found", 1404));
-    }
-    res.json(apiResponse(wallet, "Success"));
-  })
-);
-
 export default router;
 
 // ── Custom Token CRUD (merged into same router) ──
@@ -317,4 +299,23 @@ router.delete(
       res.json(apiResponse({ removed: true }, 'OK'));
     } catch (e: any) { next(e); }
   }
+);
+
+/**
+ * GET /api/v2/wallet/:chainId
+ * Get HD wallet details + tokens for a specific chain
+ * 2026-08-12：移至文件末尾，避免遮蔽上方具体路径（GET /custom-tokens）
+ */
+router.get(
+  "/:chainId",
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { chainId } = req.params;
+    const wallet = await walletService.getWalletDetail(userId, chainId);
+    if (!wallet) {
+      return res.status(404).json(apiResponse(null, "Wallet not found", 1404));
+    }
+    res.json(apiResponse(wallet, "Success"));
+  })
 );

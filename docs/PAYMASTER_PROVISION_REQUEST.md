@@ -1,6 +1,6 @@
 # PocketX → InfraX 物料索取 — OxaChain Paymaster 对接清单
 
-> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：📤 待发送 / 待对方回传物料
+> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：📤 待发送（2026-08-12 用户确认发送，渠道待执行）/ 待对方回传物料
 
 ## 背景
 

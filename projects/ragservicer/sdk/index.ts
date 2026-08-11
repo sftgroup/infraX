@@ -184,6 +184,15 @@ export class RagServicerClient {
     return this.request(`/api/v1/keys/${keyId}/revoke`, { method: 'POST' });
   }
 
+  // ── Instances & Tasks（2026-08-12 补封装）──────────
+  async listInstances(): Promise<{ instances: Array<Record<string, any>> }> {
+    return this.request('/api/v1/instances');
+  }
+
+  async getTask(namespace: string, taskId: string): Promise<Record<string, any>> {
+    return this.request(`/api/v1/namespaces/${namespace}/tasks/${encodeURIComponent(taskId)}`);
+  }
+
   // ── Health ────────────────────────────────────────
 
   async health(): Promise<{ status: string; instances: number }> {

@@ -276,7 +276,7 @@ curl -s -X POST http://localhost:3012/mcp/message \
 
 ## 8.6 market-mcp（:3013，18 工具）
 
-行情/分析数据 + **MQ-16 订阅面（T-2）**：数据面经 collector :9101 `/api/v2/data/market/*`（OKX ChainOS v6），订阅面经 `/api/v2/market/*`。X-API-Key 识别 keyId。生产独立 unit `infrax-market-mcp.service`（2026-08-11 新增部署，此前代码存在未运行）。
+行情/分析数据 + **MQ-16 订阅面（T-2）**：数据面经 collector :9101 `/api/v2/data/market/*`（OKX ChainOS v6），订阅面经 `/api/v2/market/*`。X-API-Key 识别 keyId。生产独立 unit `infrax-market-mcp.service`（2026-08-11 新增部署，此前代码存在未运行）。**入站鉴权：2026-08-12 已挂 `inboundAuth`**（与其他 7 个 HTTP MCP 一致）。
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
@@ -345,6 +345,7 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 | session-key-mcp | ✅（复用 `inboundAuth`） | SESSION_KEY_API_KEY | 已闭环 |
 | dc-mcp | ✅（复用 `inboundAuth`） | DC_API_KEY | 已闭环 |
 | wallet-mcp | ✅（复用 `inboundAuth`，生产曾因未注入 MCP_API_KEY 而 fail-closed 误锁，2026-08-08 修复） | WAAS_API_KEY | 已闭环 |
+| market-mcp | ✅（2026-08-12 补挂 `inboundAuth`，此前为唯一裸奔 MCP） | DC_API_KEY（出站 collector :9101） | ✅ 已闭环 |
 | LightRAG STDIO | ✅ 本地进程（自带 env key） | RAG_API_KEY | 已闭环 |
 
 ### 10.2 已知缺口（B-10 待办）

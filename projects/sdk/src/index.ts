@@ -128,7 +128,6 @@ export interface TransferCancelResult { cancelled: boolean; transferId: string; 
 export interface TenantCreateParams { name: string; planId?: string; metadata?: Record<string, any>; }
 export interface TenantCreateResult { tenantId: string; name: string; apiKey: string; }
 export interface ApiKeyRotateResult { apiKey: string; }
-export interface SaaSStats { totalTenants: number; totalUsers: number; revenue: number; }
 
 // DC
 export interface DCEventsParams { chain?: string; address?: string; contract?: string; eventType?: string; fromBlock?: string; limit?: number; }
@@ -147,7 +146,7 @@ export interface DCUsageResult { planId: string; planName: string; dcApiKey?: st
 // Vault
 export interface VaultSafeParams { chain?: string; status?: 'active' | 'pending' | 'closed'; }
 export interface VaultSafe { id: string; name: string; address: string; chain: string; threshold: number; signers: string[]; status: string; }
-export interface VaultCreateSafeParams { name?: string; signers: string[]; threshold: number; chain: string; }
+export interface VaultCreateSafeParams { chainId: string; owners: string[]; threshold: number; name?: string; userId?: string; }
 export interface VaultTransactionParams { safeId?: string; status?: string; limit?: number; }
 export interface VaultTransaction { id: string; safeId: string; to: string; amount: string; status: string; confirmations: number; threshold: number; }
 export interface VaultCreateTxParams { safeId: string; to: string; amount: string; tokenAddress?: string; data?: string; }
@@ -168,6 +167,8 @@ export interface MPCBalanceResult { address: string; chain: string; nativeBalanc
 export interface MPCSignMessageParams { token: string; message: string; }
 export interface MPCSignResult { signature: string; address: string; }
 export interface MPCSignTypedDataParams { token: string; domain: Record<string, any>; types: Record<string, any>; value: Record<string, any>; }
+/** raw 32-byte digest 签名（E-1d；digest 为 32 字节 hex，可带 0x 前缀） */
+export interface MPCSignDigestParams { token: string; digest: string; }
 export interface MPCSendTransactionParams { token: string; to: string; amount: string; chain?: string; tokenAddress?: string; }
 export interface MPCSendTransactionResult { txHash: string; from: string; to: string; amount: string; chain: string; token: string; blockNumber?: number; gasUsed?: string; }
 // MPC — MQ-16 计费面（/api/v2/mpc/*）
@@ -531,11 +532,6 @@ export class SaaSAPI {
   async createApiKey(tenantId: string) { return this.http.post<any>('/api/v2/saas/tenants/' + tenantId + '/apikey', {}); }
   async rotateApiKey(tenantId: string) { return this.http.post<ApiKeyRotateResult>('/api/v2/saas/tenants/' + tenantId + '/apikey/rotate', {}); }
   async deleteApiKey(tenantId: string) { return this.http.del<any>('/api/v2/saas/tenants/' + tenantId + '/apikey'); }
-  async getUsage(tenantId: string) { return this.http.get<any>('/api/v2/saas/tenants/' + tenantId + '/usage'); }
-  async stats() { return this.http.get<SaaSStats>('/api/v2/saas/stats'); }
-  async audit() { return this.http.get<any>('/api/v2/saas/audit'); }
-  async users() { return this.http.get<any>('/api/v2/saas/users'); }
-  async hotWallets() { return this.http.get<any>('/api/v2/saas/hot-wallets'); }
 }
 
 // ═══════════════ Subscription — plans, subscribe, cancel ═══════════════
@@ -543,7 +539,7 @@ export class SaaSAPI {
 export class SubAPI {
   constructor(private http: HttpClient) {}
   async plans() { return this.http.get<any>('/api/v2/subscription/plans'); }
-  async current() { return this.http.get<any>('/api/v2/subscription/current'); }
+  async current() { return this.http.get<any>('/api/v2/subscription/me'); }
   async subscribe(planId: string) { return this.http.post<any>('/api/v2/subscription/subscribe', { planId }); }
   async cancel() { return this.http.post<any>('/api/v2/subscription/cancel'); }
 }
@@ -577,7 +573,6 @@ export class VaultAPI {
   async safes(params: VaultSafeParams = {}) { const q = new URLSearchParams(); if (params.chain) q.set('chain', params.chain); if (params.status) q.set('status', params.status); return this.http.get<VaultSafe[]>('/api/vault/safe/list?' + q.toString()); }
   async safeInfo(safeId: string) { return this.http.get<VaultSafe>('/api/vault/safe/' + encodeURIComponent(safeId)); }
   async createSafe(params: VaultCreateSafeParams) { return this.http.post<VaultSafe>('/api/vault/safe/create', params); }
-  async transactions(params: VaultTransactionParams = {}) { const q = new URLSearchParams(); if (params.safeId) q.set('safe_id', params.safeId); if (params.status) q.set('status', params.status); if (params.limit) q.set('limit', String(params.limit)); return this.http.get<VaultTransaction[]>('/api/vault/safe/list?' + q.toString()); }
   async createTransaction(params: VaultCreateTxParams) { return this.http.post<VaultTransaction>('/api/vault/safe/propose', params); }
   async riskCheck(params: { to: string; amount?: string; chain?: string }) { return this.http.post<any>('/api/vault/risk/check', params); }
 }
@@ -614,6 +609,8 @@ export class MPCAPI {
   async plans() { return this.http.get<MpcPlansResult>('/api/v2/mpc/plans'); }
   /** ledger 余额查询（引擎统一账本；区别于链上 /balance） */
   async ledgerBalance(token: string) { return this.http.post<MpcLedgerBalanceResult>('/api/v2/mpc/ledger-balance', { token }); }
+  /** raw 32-byte digest 签名（E-1d；TSS 或单钥路径，2026-08-12 补封装） */
+  async signDigest(params: MPCSignDigestParams) { return this.http.post<MPCSignResult>('/api/v2/mpc/sign-digest', params); }
 }
 
 // ═══════════════ Market — OKX ChainOS v6 DEX Market ═══════════════

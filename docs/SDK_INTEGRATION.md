@@ -8,7 +8,7 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | **0.6.0** | ✅ 已发布（registry 已验证，2026-08-11） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
+| `@0xinfrax/infrax-dk`（npm） | **0.7.0** | ⚠️ 0.7.0 代码就绪待发布（2026-08-12 核对：`projects/sdk/package.json` 已 0.7.0；0.6.0 已发布 registry 验证） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
 | `@0xinfrax/mpc-sdk`（npm，独立轻量） | **0.3.0** | ✅ 已发布（npm registry 已验证，2026-08） + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC **16 方法**：钱包模块 6（sendCode/register/recover/status/listWallets/createWallet）+ 会话模块 3（unlock/lock/status）+ **链上模块 7（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，E-5d 已随 0.3.0 发布）** |
 | `@0xinfrax/session-key-core` / `-client` / `-evm` / `-server`（npm，独立 4 包） | **0.2.0** / 0.1.0 / 0.1.1 / 0.1.1 | ✅ 已发布（2026-07-31 ~ 08-07） | Session Key 引擎（EIP-712 授权 + 受限代执行）；**core 0.2.0 并入 aa-sdk（`Aa` 命名空间：BundlerClient / PaymasterClient / SessionKeySigner / MpcSigner / KernelV3SessionDataBuilder，含 oxachain:19505）** |
 | `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
@@ -289,12 +289,15 @@ client = LightRAGClient(
     api_key="<lr_...>",                            # 租户签发 key
 )
 
-# 注入文档（异步）
-task = client.insert(namespace="market", text="...")
-# 查询（entities + relations + chunks）
-result = client.query(namespace="market", mode="mix", query="BTC 近况")
-# 删除文档 / 列出实例
-client.delete(doc_id="..."); client.list_instances()
+# 注入文档（异步；doc_id 必填，服务端幂等）
+task = client.insert(namespace="market", text="...", doc_id="doc-1")
+# 查询（entities + relations + chunks；参数顺序 namespace, query, mode）
+result = client.query("market", "BTC 近况", mode="mix")
+# 删除文档（需 namespace + doc_id）
+client.delete(namespace="market", doc_id="doc-1")
+# 列出实例 / 轮询注入任务（2026-08-12 补封装）
+client.list_instances()
+client.get_task(namespace="market", task_id="<task_id>")
 ```
 
 **TS 替代**：`@0xinfrax/ragservicer-sdk`（2.0.0，`projects/ragservicer/sdk` 内 TS 类型），方法与上对应（insert/query/delete/list_instances/retrieve）。
@@ -374,7 +377,7 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 
 ## 6. 覆盖缺口（B-12-* 待办）
 
-- ~~`session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）~~ ✅ 已闭环：Session Key 为**独立 4 包**（不在 infrax-dk）——`@0xinfrax/session-key-client` 0.1.0 / `-core` 0.1.0 / `-evm` 0.1.1 / `-server` 0.1.1 已发布 npm（2026-07-31 ~ 08-07），接入示例见 [docs/services/session-key.md](./services/session-key.md) Quick Start
+- ~~`session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）~~ ✅ 已闭环：Session Key 为**独立 4 包**（不在 infrax-dk）——`@0xinfrax/session-key-client` 0.1.0 / `-core` **0.2.0** / `-evm` 0.1.1 / `-server` 0.1.1 已发布 npm（2026-07-31 ~ 08-07；core 0.2.0 并入 aa-sdk `Aa` 命名空间），接入示例见 [docs/services/session-key.md](./services/session-key.md) Quick Start
 - SDK 未含 ragservicer 图谱方法（走 `lightrag-client` / `ragservicer-sdk`）
 - WAAS 统一鉴权接入后需同步更新 SDK 示例（B-12-1）
 - ~~PyPI 发布待 token（G-9）~~ ✅ 已闭环（lightrag-client 2.0.0 + infra-data-client 0.2.0 已发布，2026-08-11）

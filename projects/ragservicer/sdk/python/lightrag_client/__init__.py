@@ -179,6 +179,19 @@ class LightRAGClient:
             payload["embedding"] = embedding
         return self._request("PUT", "/api/v1/admin/config", json=payload)
 
+    # ── Instances & Tasks（2026-08-12 补封装）──────────
+
+    def list_instances(self) -> dict:
+        """List active RAG instances (needs admin key)."""
+        return self._request("GET", "/api/v1/instances")
+
+    def get_task(self, namespace: str, task_id: str) -> dict:
+        """Poll ingestion task status by task_id."""
+        return self._request(
+            "GET",
+            f"/api/v1/namespaces/{namespace}/tasks/{urllib.parse.quote(task_id, safe='')}",
+        )
+
     # ── Health ────────────────────────────────────────
 
     def health(self) -> dict:
