@@ -962,21 +962,21 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
 | B-11-1 | web `server.js` 代理表补 `/api/v2/subscription`（waasUpgradePlan 点击无响应） | ✅ `414248c`（API_ROUTES 新增 `/api/v2/subscription` → waas:9109；生产 `/api/v2/subscription/plans` 200 返回 waas 真实套餐 JSON） | P1 |
-| B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | 🔲 **由 MQ-12 承接（2026-08-10 登记，plans 服务端下发已实现，剩余支付流程见 MQ-12 T-5）** | P1 |
-| B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | 🔲（⚠️ 现状无；web 仅有 waas/dc 租户 apikey） | P1 |
-| B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | 🔲 | P1 |
-| B-11-5 | admin 套餐管理（CRUD）页 | 🔲 | P1 |
-| B-11-6 | admin 订单 / 支付管理页 | 🔲 | P1 |
-| B-11-7 | admin 孤儿页面（Tenants/Transactions/Webhooks/Sweeps/RpcPool/System）挂进导航或清理 | 🔲（⚠️ 存在未挂载） | P2 |
+| B-11-2 | 用户端套餐购买页：套餐硬编码 HTML → 服务端下发（waas/dc plans） | ✅ **MQ-12 T-5（2026-08-10）**：[waas.js](projects/web/modules/waas.js) `waasUpgradePlan`——free 直通 / chain escrow 轮询 / fiat sessionUrl / x402 verify，三 rail UI 走通 | P1 |
+| B-11-3 | 用户端展示/获取 `dx_`/`mx_`/`lr_` key 界面（打通 data 与区块链两套 key 体系） | 🔲（⚠️ 现状无；admin 侧 [ApiKeys.tsx](projects/admin/src/pages/ApiKeys.tsx) 已覆盖 dx_/mx_/lr_ 三套签发管理；用户端 web 侧待办） | P1 |
+| B-11-4 | admin 用户管理页（当前无传统注册/登录体系，仅钱包 connect + MPC 邮箱注册） | 🔲（需先定用户模型/数据源） | P1 |
+| B-11-5 | admin 套餐管理（CRUD）页 | 🔲（需各服务 plans CRUD 端点，现仅 GET 订阅/套餐） | P1 |
+| B-11-6 | admin 订单 / 支付管理页 | ✅ **MQ-12 T-8（8544feb）**：[Orders.tsx](projects/admin/src/pages/Orders.tsx) + `GET /api/v2/admin/orders`（listIntents 分页/status/subscriber 过滤） | P1 |
+| B-11-7 | admin 孤儿页面（Tenants/Transactions/Webhooks/Sweeps/RpcPool/System）挂进导航或清理 | ✅ 全部挂载：`App.tsx` NAV+Route 新增 6 页；[System.tsx](projects/admin/src/pages/System.tsx) 改为消费 `/admin/status` 服务健康矩阵（原 `/admin/system` 端点不存在）；[RpcPool.tsx](projects/admin/src/pages/RpcPool.tsx) 适配现有 `/admin/rpc`（admin_rpc_config CRUD），server 补 `DELETE /api/v2/admin/rpc/:id` | P2 |
 
 **9.8.4 SDK / MCP / 文档（前置：P0/P1 完成后，B 端需求"更新 SDK/MCP 且发布文档"）**
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
-| B-12-1 | 区块链服务统一鉴权 + admin 面板统一签发管理（key 前缀按服务；当前 data `dx_`/mcp `mx_`/rag `lr_` 已统一，区块链栈未接入） | 🔲 | P1 |
-| B-12-2 | SDK 扩展 waas/dc/vault/session 方法并发布（`@0xinfrax/infrax-dk` 当前 0.3.0 仅 data） | 🔲（⚠️ 未含区块链栈） | P2 |
-| B-12-3 | MCP 工具更新（hub-index 聚合 + dc_tokens 修复 + mpc/sk 工具鉴权） | 🔲（mpc/sk 工具鉴权部分 ✅ 已随 MQ-10 补充 D 完成：7 个 HTTP MCP 入站统一 `inboundAuth`；剩余 hub-index 聚合与 dc_tokens 修复） | P2 |
-| B-12-4 | 文档发布：`docs/API_ACCESS.md` 更新为真实生产端口/状态（当前为 v0.5.0 旧布局），各区块链服务接入文档 | 🔲（⚠️ 过时） | P2 |
+| B-12-1 | 区块链服务统一鉴权 + admin 面板统一签发管理（key 前缀按服务；当前 data `dx_`/mcp `mx_`/rag `lr_` 已统一，区块链栈未接入） | 🔲（服务端鉴权已收口 ✅ C-1~C-5；剩余 admin 侧统一签发管理界面，需与 B-11-3 联动设计） | P1 |
+| B-12-2 | SDK 扩展 waas/dc/vault/session 方法并发布（`@0xinfrax/infrax-dk` 当前 0.3.0 仅 data） | ✅ **D-1/D-2（7a0e333）**：infrax-dk 0.7.0 14 类全导出 + 7 独立包（waas/vault/dc/market/chain-rpc/payments/data-sdk） | P2 |
+| B-12-3 | MCP 工具更新（hub-index 聚合 + dc_tokens 修复 + mpc/sk 工具鉴权） | ✅ 三部分全完成：hub-index 聚合（:3008 13 工具，`infrax-hub-index.service`）✅；dc_tokens 修复 ✅ MQ-3；mpc/sk 入站鉴权 ✅ MQ-10 补充 D（`inboundAuth` 7 HTTP MCP） | P2 |
+| B-12-4 | 文档发布：`docs/API_ACCESS.md` 更新为真实生产端口/状态（当前为 v0.5.0 旧布局），各区块链服务接入文档 | ✅ [API_ACCESS.md](docs/API_ACCESS.md) v0.7.0-20260811：真实生产端口矩阵（9101~9132 + MCP 3008/3011/3012/3013）+ 全服务 REST 端点 + MCP 工具速查 + SDK 模块覆盖 + curl 测试 | P2 |
 
 **9.8.5 调研补充（2026-08-07，B 端三问对照：RPC / okxchainos / TEE·MPC·Session）**
 

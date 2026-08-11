@@ -1,76 +1,80 @@
 import { useState, useEffect } from 'react';
-import { Server, Database, HardDrive, Cpu } from 'lucide-react';
+import { Server, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { api } from '../lib';
 
-interface SystemInfo { node: string; uptime: number; memory: any; pid: number; db: { connections: number; size: string }; }
+interface ServiceStatus {
+  name: string;
+  port: number;
+  status: 'up' | 'error' | 'down';
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  up: '● Up',
+  error: '◑ Error',
+  down: '○ Down',
+};
+const STATUS_CLASS: Record<string, string> = {
+  up: 'green',
+  error: 'yellow',
+  down: 'red',
+};
 
 export default function System() {
-  const [info, setInfo] = useState<SystemInfo | null>(null);
+  const [services, setServices] = useState<ServiceStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api('/admin/system').then((d: any) => setInfo(d)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    try {
+      const d = await api('/admin/status');
+      setServices(Array.isArray(d) ? d : []);
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
 
   if (loading) return <div className="loading"><span className="spin" />Loading...</div>;
-  if (!info) return <div className="empty">Failed to load system info</div>;
 
-  const { memory } = info;
-  const heapMB = (memory.heapUsed / 1024 / 1024).toFixed(1);
-  const rssMB = (memory.rss / 1024 / 1024).toFixed(1);
-  const uptimeHours = Math.floor(info.uptime / 3600);
-  const uptimeMins = Math.floor((info.uptime % 3600) / 60);
+  const counts = services.reduce((acc, s) => { acc[s.status] = (acc[s.status] || 0) + 1; return acc; }, {} as Record<string, number>);
 
   return (
     <div>
       <div className="flex-between mb-2">
-        <h1 className="page-title">System</h1>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-label"><Server size={14} style={{verticalAlign:'middle',marginRight:4}} /> Node.js</div>
-          <div className="stat-value" style={{fontSize:20,color:'var(--accent)'}}>{info.node}</div>
-          <div className="stat-sub">PID {info.pid}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label"><Cpu size={14} style={{verticalAlign:'middle',marginRight:4}} /> Uptime</div>
-          <div className="stat-value" style={{fontSize:20,color:'var(--green)'}}>{uptimeHours}h {uptimeMins}m</div>
-          <div className="stat-sub">{Math.floor(info.uptime)}s</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label"><HardDrive size={14} style={{verticalAlign:'middle',marginRight:4}} /> Memory</div>
-          <div className="stat-value" style={{fontSize:20,color:'var(--yellow)'}}>{heapMB}MB</div>
-          <div className="stat-sub">RSS {rssMB}MB</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label"><Database size={14} style={{verticalAlign:'middle',marginRight:4}} /> Database</div>
-          <div className="stat-value" style={{fontSize:20,color:'var(--purple)'}}>{info.db.connections}</div>
-          <div className="stat-sub">{info.db.size} connections</div>
+        <div>
+          <h1 className="page-title" style={{ marginBottom: 4 }}>System</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle size={12} color="var(--green)" /> {counts.up || 0} up
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12} color="var(--yellow)" /> {counts.error || 0} error
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <XCircle size={12} color="var(--red)" /> {counts.down || 0} down
+            </span>
+            <span className="text-dim">15s refresh · GET /health per service</span>
+          </div>
         </div>
       </div>
 
-      <div className="card" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
-        <div>
-          <div className="card-title" style={{marginBottom:8}}>Process Memory</div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            <div className="flex-between"><span className="tooltip">Heap Used</span><span className="mono">{heapMB} MB</span></div>
-            <div style={{width:'100%',height:6,background:'var(--border)',borderRadius:3,overflow:'hidden'}}>
-              <div style={{width:`${(memory.heapUsed/memory.heapTotal*100).toFixed(0)}%`,height:'100%',background:'var(--accent)',borderRadius:3}} />
-            </div>
-            <div className="flex-between"><span className="tooltip">Heap Total</span><span className="mono">{(memory.heapTotal/1024/1024).toFixed(1)} MB</span></div>
-            <div className="flex-between mt-2"><span className="tooltip">RSS</span><span className="mono">{rssMB} MB</span></div>
-            <div className="flex-between"><span className="tooltip">External</span><span className="mono">{(memory.external/1024/1024).toFixed(1)} MB</span></div>
-          </div>
-        </div>
-        <div>
-          <div className="card-title" style={{marginBottom:8}}>Database</div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            <div className="flex-between"><span className="tooltip">Active Connections</span><span className="mono">{info.db.connections}</span></div>
-            <div className="flex-between"><span className="tooltip">Database Size</span><span className="mono">{info.db.size}</span></div>
-            <div className="flex-between mt-2"><span className="tooltip">Node Version</span><span className="mono">{info.node}</span></div>
-            <div className="flex-between"><span className="tooltip">Process ID</span><span className="mono">{info.pid}</span></div>
-          </div>
+      <div className="card">
+        <div className="card-title">Service Health</div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Service</th><th>Port</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {services.length === 0 ? <tr><td colSpan={3} className="empty">No services reported</td></tr> :
+                services.map((s, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}><Server size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} />{s.name}</td>
+                    <td className="mono">:{s.port}</td>
+                    <td><span className={`badge ${STATUS_CLASS[s.status] || 'yellow'}`}>{STATUS_LABEL[s.status] || s.status}</span></td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

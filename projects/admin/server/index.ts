@@ -170,6 +170,12 @@ app.patch('/api/v2/admin/rpc/:id', requireAdmin, asyncHandler(async (req: any, r
   res.json(apiResponse(null, 'Updated'));
 }));
 
+app.delete('/api/v2/admin/rpc/:id', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  await pools.admin.query('DELETE FROM admin_rpc_config WHERE id = $1', [id]);
+  res.json(apiResponse({ deleted: true }));
+}));
+
 // ─── Service Status (check all module health endpoints) ───
 app.get('/api/v2/admin/status', requireAdmin, asyncHandler(async (_req: any, res: any) => {
   const services = [
