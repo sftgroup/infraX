@@ -368,8 +368,8 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 ## 5. 鉴权集成要点
 
 1. **统一三选一**：所有服务请求带任一 header——`Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`。
-2. **key 获取**：admin 面板 `GET /admin/api-keys` 签发（`dx_` 等前缀）；区块链服务另支持各服务 `.env` bridge key（`VAULT_API_KEY`/`MPC_API_KEY`/…）。
-3. **WAAS 注意**：未接统一契约，租户调用用 `x-api-key: <tenant key>`（saas 路由），其余端点当前无鉴权（B-12-1 修复中）。
+2. **key 获取（B-12-1 统一 key 签发）**：data `POST /admin/api-keys`（body `{scope, label}`，需 `ADMIN_API_KEY`；平台方操作）签发，按 scope 前缀区分：`dx_`（data）/`mx_`（MCP 入站）/`px_`（payment）/`vx_`（vault）/`mp_`（mpc）/`cr_`（chain-rpc）/`wa_`（waas）；chain-rpc 订阅面另签发 `rx_` 读 key。区块链服务另支持各服务 `.env` bridge key（`VAULT_API_KEY`/`MPC_API_KEY`/`WAAS_API_KEY`/…）作为等价凭据。
+3. **WAAS 已接统一鉴权（B-12-1 已闭环）**：所有端点 `authenticate`（非 saas 租户路由）。写操作（`/api/v2/wallet/*`、`/api/v2/tx/*`）额外要求**钱包签名鉴权（B-11-3）**——三头 `x-wallet-address` / `x-wallet-signature` / `x-wallet-timestamp`（EIP-191，消息 `InfraX auth: <ts>`，毫秒 UTC，24h TTL，服务端按地址缓存 24h）。SDK 0.5.1+ 通过 `walletAddress`+`walletSign` 回调自动生成；未配置时 `wallet.*` 明确抛错（fail-closed）。
 4. **HTTP 层**：域名 `infrax.0xainet.top` 证书生效前，直连 `https://43.163.105.172` 需 `-k`/`verifyTls:false`；`/api/*` 域名 502 为 Cloudflare 回源待配置（见部署文档 §2.1）。
 5. **时间戳**：毫秒 UTC（unix ms）。
 
@@ -379,5 +379,5 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 
 - ~~`session-key` 方法未入 SDK（`infrax.session.*` 待加，B-12-2）~~ ✅ 已闭环：Session Key 为**独立 4 包**（不在 infrax-dk）——`@0xinfrax/session-key-client` 0.1.0 / `-core` **0.2.0** / `-evm` 0.1.1 / `-server` 0.1.1 已发布 npm（2026-07-31 ~ 08-07；core 0.2.0 并入 aa-sdk `Aa` 命名空间），接入示例见 [docs/services/session-key.md](./services/session-key.md) Quick Start
 - SDK 未含 ragservicer 图谱方法（走 `lightrag-client` / `ragservicer-sdk`）
-- WAAS 统一鉴权接入后需同步更新 SDK 示例（B-12-1）
+- ~~WAAS 统一鉴权接入后需同步更新 SDK 示例（B-12-1）~~ ✅ 已闭环：B-12-1 全端点 authenticate + B-11-3 钱包签名，SDK 0.5.1+ `walletAddress`+`walletSign` 已支持（见 §2.3 / §5）
 - ~~PyPI 发布待 token（G-9）~~ ✅ 已闭环（lightrag-client 2.0.0 + infra-data-client 0.2.0 已发布，2026-08-11）

@@ -82,12 +82,34 @@ Base URL:  https://api.infrax.io
 
 ### 认证
 
+#### 统一 Key 体系（B-12-1，2026-08-08 起）
+
+平台签发 key 按 scope 前缀区分，`data POST /admin/api-keys` 签发（body `{scope, label}`，需 `ADMIN_API_KEY`；`GET /admin/api-keys` 列表/`POST /admin/api-keys/{id}/rotate` 轮换/`DELETE` 删除；`POST /api-keys/verify` 验证）：
+
+| 前缀 | scope | 用途 |
+|---|---|---|
+| `dx_` | data | data 业务端点（行情/因子/ML） |
+| `mx_` | mcp | MCP 入站（8 个 HTTP MCP 通用） |
+| `px_` | payment | payments 通用支付引擎 |
+| `vx_` | vault | vault 服务 |
+| `mp_` | mpc | mpc 服务 |
+| `cr_` | chain-rpc | chain-rpc 网关（读/广播） |
+| `wa_` | waas | waas 服务 |
+
+> `rx_` 读 key 由 chain-rpc 订阅面 `POST /v1/subscription/issue-key` 自行签发（X-Service-Key 管理操作）。各服务另支持 `.env` bridge key（`VAULT_API_KEY`/`MPC_API_KEY`/`WAAS_API_KEY`/…）作为服务间调用等价凭据。
+
+#### Header 约定
+
 | Header | 用途 | 模块 |
 |--------|------|------|
-| `x-wallet-address` | 钱包地址，只读查询自动发送 | 全部 |
-| `x-api-key` | WaaS/SaaS 租户 API Key | WAAS |
+| `x-api-key` / `Authorization: Bearer <key>` / `X-Service-Key: <key>` | **三选一**统一鉴权（平台签发 key 或 bridge key） | 全部 |
+| `x-wallet-address` | 钱包地址（只读查询自动发送） | 全部 |
+| `x-wallet-signature` | EIP-191 签名（消息 `InfraX auth: <ts>`） | WAAS 写操作 |
+| `x-wallet-timestamp` | 签名时间戳（毫秒 UTC，24h TTL） | WAAS 写操作 |
 | `x-dc-api-key` | DC 数据订阅 API Key | DC |
-| `Authorization: Bearer <token>` | Session Key Engine API Key | Session Key |
+| `x-rpc-key` | chain-rpc `rx_` 读 key | chain-rpc |
+
+> **WAAS 钱包签名鉴权（B-11-3）**：`/api/v2/wallet/*`、`/api/v2/tx/*` 需三头齐备（`x-wallet-address`/`x-wallet-signature`/`x-wallet-timestamp`），服务端按地址缓存 24h（同地址 24h 内仅需签一次）；缺任一返回 401。SDK 自 0.5.1 支持 `walletAddress`+`walletSign` 自动生成（见 SDK_INTEGRATION §2.3）。
 
 ### 响应格式
 

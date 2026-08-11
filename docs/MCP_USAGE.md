@@ -348,6 +348,8 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 | market-mcp | ✅（2026-08-12 补挂 `inboundAuth`，此前为唯一裸奔 MCP） | DC_API_KEY（出站 collector :9101） | ✅ 已闭环 |
 | LightRAG STDIO | ✅ 本地进程（自带 env key） | RAG_API_KEY | 已闭环 |
 
+> **应用方如何获取 MCP key**：由平台方调用 data 服务 `POST /admin/api-keys`（body `{scope:"mcp", label}`，需 `ADMIN_API_KEY`）签发；签发 key 以 **`mx_`** 开头（见 API_ACCESS §认证 统一 Key 体系；`POST /api-keys/verify` 可验证）。拿到后任一 MCP 端点请求头三选一：`Authorization: Bearer <mx_...>` / `X-API-Key: <mx_...>` / `X-Service-Key: <mx_...>`。
+
 ### 10.2 已知缺口（B-10 待办）
 
 - **MCP 入站鉴权**（B-12）：2026-08-08 起全部 6 个 HTTP MCP 服务（vault/mpc/session-key/dc/wallet/chain-rpc）均挂 `mcp-auth.ts` `inboundAuth`；⚠️ 各服务生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，wallet-mcp 曾遇，已修）
