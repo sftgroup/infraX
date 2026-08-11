@@ -662,16 +662,101 @@ app.get('/api/v2/data/events', requireDcApiKey, dcQuotaEnforce, asyncHandler(asy
   if (req.query.address)   { conditions.push(`(from_address = $${idx} OR to_address = $${idx})`); values.push(req.query.address.toLowerCase()); idx++; }
   if (req.query.contract)  { conditions.push(`contract_address = $${idx++}`); values.push(req.query.contract.toLowerCase()); }
   if (req.query.event_type){ conditions.push(`event_type = $${idx++}`); values.push(req.query.event_type); }
+  if (req.query.category)  { conditions.push(`category_id = $${idx++}`); values.push(req.query.category); }
+  if (req.query.label)     { conditions.push(`label_id = $${idx++}`); values.push(req.query.label); }
   if (req.query.from_block){ conditions.push(`block_number >= $${idx++}`); values.push(parseInt(req.query.from_block)); }
   if (req.query.to_block)  { conditions.push(`block_number <= $${idx++}`); values.push(parseInt(req.query.to_block)); }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   // raw 字段导出（高级租户自解析）：topic_hash（topic0 签名哈希）、amount_raw（原始精度金额）、event_data（原始日志元数据 jsonb）
-  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
+  // 9.6 Phase 1.1: category_id / label_id 业务分类列随查询导出
+  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, category_id, label_id, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
   const result = await eventsPool.query(q, values.concat(pageSize + 1));
   const rows = result.rows;
   let next_token: string | null = null;
   if (rows.length > pageSize) { rows.pop(); const last = rows[rows.length - 1]; next_token = Buffer.from(JSON.stringify({ block_number: parseInt(last.block_number), event_id: last.event_id })).toString('base64'); }
   res.json(apiResponse({ data: rows, next_page_token: next_token }));
+}));
+
+// ── 9.6 Phase 1.5: DC 事件分类端点（event-categories / event-stats）──
+
+// 业务分类目录（event_categories 表；DB 优先 → 回退代码常量）
+app.get('/api/v2/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (_req: any, res: any) => {
+  const CATEGORIES = [
+    ['asset_transfer', 'native_transfer', '原生代币转账', 'ETH/BNB/SOL 等原生代币转移'],
+    ['asset_transfer', 'erc20_transfer', 'ERC-20 转账', 'ERC-20 代币转账'],
+    ['asset_transfer', 'nft_transfer', 'NFT 转账', 'ERC-721 / ERC-1155 NFT 转移'],
+    ['authorization', 'approval', '代币授权', 'ERC-20 Allowance 授权变更'],
+    ['dex_trading', 'swap', 'DEX 交易', 'UniswapV2 / UniswapV3 代币兑换'],
+    ['wrapping', 'deposit', '封装入金', 'WETH / wNative deposit'],
+    ['wrapping', 'withdrawal', '解封出金', 'WETH / wNative withdrawal'],
+    ['supply', 'mint', '代币铸造', 'ERC-20 mint'],
+    ['supply', 'burn', '代币销毁', 'ERC-20 burn'],
+    ['unclassified', 'raw_event', '未分类事件', '未识别 topic 的原始日志'],
+  ];
+  try {
+    const r = await eventsPool.query(
+      'SELECT category_id, label_id, name, description FROM event_categories ORDER BY category_id, label_id'
+    );
+    if (r.rows.length > 0) return res.json(apiResponse(r.rows));
+  } catch { /* 表不存在 → 回退常量 */ }
+  res.json(apiResponse(CATEGORIES.map(([category_id, label_id, name, description]) => ({ category_id, label_id, name, description }))));
+}));
+
+// 分类统计（按 category_id 聚合事件量；events 1 亿+ 行禁止全表 COUNT，只聚合最近 24h）
+app.get('/api/v2/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (req.query.chain) { conditions.push(`chain = $${idx++}`); values.push(req.query.chain.toLowerCase()); }
+  // 24h 窗口（hypertable/分片友好）；可经 hours 调整
+  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 7);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')} AND collected_at >= NOW() - INTERVAL '${hours} hours'` : `WHERE collected_at >= NOW() - INTERVAL '${hours} hours'`;
+  const q = `SELECT category_id, COUNT(*)::int AS count FROM events ${where} GROUP BY category_id ORDER BY count DESC`;
+  const r = await eventsPool.query(q, values);
+  res.json(apiResponse({ window_hours: hours, categories: r.rows }));
+}));
+
+// ── 9.6 Phase 1.5: DC API v3（/api/v3/data/* 分类强化面）──
+// v3 = v2 事件查询的超集：增加 category/label 过滤 + 分类目录 + 分类统计。
+// 查询列与 v2 一致（含 category_id/label_id）。
+
+app.get('/api/v3/data/events', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
+  const pageSize = Math.min(parseInt(req.query.page_size) || 100, 500);
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (req.query.chain)     { conditions.push(`chain = $${idx++}`); values.push(req.query.chain.toLowerCase()); }
+  if (req.query.address)   { conditions.push(`(from_address = $${idx} OR to_address = $${idx})`); values.push(req.query.address.toLowerCase()); idx++; }
+  if (req.query.contract)  { conditions.push(`contract_address = $${idx++}`); values.push(req.query.contract.toLowerCase()); }
+  if (req.query.event_type){ conditions.push(`event_type = $${idx++}`); values.push(req.query.event_type); }
+  if (req.query.category)  { conditions.push(`category_id = $${idx++}`); values.push(req.query.category); }
+  if (req.query.label)     { conditions.push(`label_id = $${idx++}`); values.push(req.query.label); }
+  if (req.query.from_block){ conditions.push(`block_number >= $${idx++}`); values.push(parseInt(req.query.from_block)); }
+  if (req.query.to_block)  { conditions.push(`block_number <= $${idx++}`); values.push(parseInt(req.query.to_block)); }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, category_id, label_id, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
+  const result = await eventsPool.query(q, values.concat(pageSize + 1));
+  const rows = result.rows;
+  let next_token: string | null = null;
+  if (rows.length > pageSize) { rows.pop(); const last = rows[rows.length - 1]; next_token = Buffer.from(JSON.stringify({ block_number: parseInt(last.block_number), event_id: last.event_id })).toString('base64'); }
+  res.json(apiResponse({ data: rows, next_page_token: next_token }));
+}));
+
+app.get('/api/v3/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (_req: any, res: any) => {
+  const r = await eventsPool.query('SELECT category_id, label_id, name, description FROM event_categories ORDER BY category_id, label_id');
+  res.json(apiResponse(r.rows));
+}));
+
+app.get('/api/v3/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
+  const conditions: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+  if (req.query.chain) { conditions.push(`chain = $${idx++}`); values.push(req.query.chain.toLowerCase()); }
+  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 7);
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')} AND collected_at >= NOW() - INTERVAL '${hours} hours'` : `WHERE collected_at >= NOW() - INTERVAL '${hours} hours'`;
+  const q = `SELECT category_id, COUNT(*)::int AS count FROM events ${where} GROUP BY category_id ORDER BY count DESC`;
+  const r = await eventsPool.query(q, values);
+  res.json(apiResponse({ window_hours: hours, categories: r.rows }));
 }));
 
 // 注意：events 表 150GB+/1 亿+ 行，COUNT(*) / GROUP BY 全表聚合会卡死 pg-pool（曾拖垮 dc 服务，

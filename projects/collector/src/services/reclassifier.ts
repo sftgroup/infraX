@@ -3,6 +3,7 @@ import { pool } from '../database';
 import { logger } from '../logger';
 import { config } from '../config';
 import { classifyLog, type LogData } from './normalizer';
+import { classifyEvent } from './classify';
 
 interface CustomSig {
   topic_hash: string;
@@ -46,7 +47,7 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
 
     if (result.rows.length === 0) return { processed: 0, classified: 0, custom: 0 };
 
-    // [event_id, collected_at, event_type, from, to, token, symbol, tokenId, amount, amountRaw, eventDataJson, topicHash]
+    // [event_id, collected_at, event_type, from, to, token, symbol, tokenId, amount, amountRaw, eventDataJson, topicHash, categoryId, labelId]
     const classifiedRows: any[][] = [];
     // [eventDataJson, event_id, collected_at]
     const markedRows: any[][] = [];
@@ -74,6 +75,13 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
       const builtinResult = classifyLog(logData, row.block_number, blockTimestamp, row.chain);
 
       if (builtinResult && builtinResult.event_type !== 'raw_event') {
+        // 9.6 Phase 1.3: 内置签名命中同样落分类（与 insertEvents classifyEvent 同源映射；
+        // contract_address 取日志发射合约 = raw.address，与 normalizer 语义一致）
+        const cls = classifyEvent({
+          event_type: builtinResult.event_type,
+          standard: (builtinResult.event_data as any)?.standard,
+          contract_address: raw.address,
+        });
         classifiedRows.push([
           row.event_id,
           row.collected_at,
@@ -87,6 +95,8 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
           builtinResult.amount_raw || '0',
           JSON.stringify({ ...builtinResult.event_data, _classified: true }),
           builtinResult.topic_hash,
+          cls.category_id,
+          cls.label_id,
         ]);
         classified++;
         continue;
@@ -97,6 +107,11 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
       if (customSig) {
         const customEvent = buildCustomEvent(logData, row.chain, row.block_number, blockTimestamp, customSig);
         if (customEvent) {
+          const cls = classifyEvent({
+            event_type: customEvent.event_type,
+            standard: (customEvent.event_data as any)?.standard,
+            contract_address: customEvent.contract_address,
+          });
           classifiedRows.push([
             row.event_id,
             row.collected_at,
@@ -110,6 +125,8 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
             customEvent.amount_raw || '0',
             JSON.stringify({ ...customEvent.event_data, _classified: true, _custom_sig: customSig.event_name || customSig.event_type }),
             customEvent.topic_hash,
+            cls.category_id,
+            cls.label_id,
           ]);
           custom++;
           continue;
@@ -151,6 +168,8 @@ const VARCHAR_MAX: Record<number, number> = {
   7: 100,  // token_id
   9: 100,  // amount_raw
   11: 100, // topic_hash
+  13: 50,  // category_id
+  14: 50,  // label_id
 };
 
 function fitParam(v: any, idx: number): any {
@@ -168,8 +187,8 @@ async function batchUpdateClassified(client: any, rows: any[][]): Promise<void> 
 
     const values = chunk
       .map((_, r) => {
-        const b = r * 12;
-        return `($${b + 1}::varchar, $${b + 2}::timestamp, $${b + 3}::varchar, $${b + 4}::varchar, $${b + 5}::varchar, $${b + 6}::varchar, $${b + 7}::varchar, $${b + 8}::varchar, $${b + 9}::numeric, $${b + 10}::varchar, $${b + 11}::jsonb, $${b + 12}::varchar)`;
+        const b = r * 14;
+        return `($${b + 1}::varchar, $${b + 2}::timestamp, $${b + 3}::varchar, $${b + 4}::varchar, $${b + 5}::varchar, $${b + 6}::varchar, $${b + 7}::varchar, $${b + 8}::varchar, $${b + 9}::numeric, $${b + 10}::varchar, $${b + 11}::jsonb, $${b + 12}::varchar, $${b + 13}::varchar, $${b + 14}::varchar)`;
       })
       .join(', ');
 
@@ -184,12 +203,14 @@ async function batchUpdateClassified(client: any, rows: any[][]): Promise<void> 
          amount = v.amount,
          amount_raw = v.amount_raw,
          event_data = v.event_data,
-         topic_hash = v.topic_hash
+         topic_hash = v.topic_hash,
+         category_id = v.category_id,
+         label_id = v.label_id
        FROM (VALUES ${values})
          AS v(event_id, collected_at, event_type, from_address, to_address,
-              token_address, token_symbol, token_id, amount, amount_raw, event_data, topic_hash)
+              token_address, token_symbol, token_id, amount, amount_raw, event_data, topic_hash, category_id, label_id)
        WHERE e.event_id = v.event_id AND e.collected_at = v.collected_at`,
-      chunk.flat().map((v, i) => fitParam(v, i % 12))
+      chunk.flat().map((v, i) => fitParam(v, i % 14))
     );
   }
 }

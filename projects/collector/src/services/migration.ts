@@ -50,6 +50,28 @@ export async function migrateEventCollectorTables(): Promise<void> {
     `);
 
     // ============================================================
+    // event_categories — business classification catalog (9.6 Phase 1.1)
+    // category_id = 一级业务分类；label_id = 二级标签（event_type 粒度）
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS event_categories (
+        category_id VARCHAR(50) NOT NULL,
+        label_id VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (category_id, label_id)
+      );
+    `);
+
+    // ============================================================
+    // 9.6 Phase 1.2: events 加分类列（兼容既有表，IF NOT EXISTS 幂等）
+    // ============================================================
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS category_id VARCHAR(50) NOT NULL DEFAULT 'unclassified';`);
+    await client.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS label_id VARCHAR(50) NOT NULL DEFAULT 'raw_event';`);
+
+    // ============================================================
     // Core indexes (high-frequency query paths)
     // ============================================================
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_block ON events (chain, block_number DESC);`);
@@ -62,6 +84,9 @@ export async function migrateEventCollectorTables(): Promise<void> {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_type ON events (event_type);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_tx_hash ON events (tx_hash);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_collected_at ON events (collected_at);`);
+    // 9.6 Phase 1.1: 分类列查询索引（按分类过滤 + 时间倒序）
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_category_block ON events (category_id, block_number DESC);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_events_label_block ON events (label_id, block_number DESC);`);
     // 精简索引：idx_events_event_id（17G）与 idx_events_dedup(event_id, collected_at) 前缀重复，不再创建
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events (event_id, collected_at);`);
 
@@ -453,9 +478,33 @@ export async function migrateEventCollectorTables(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_custom_sigs_chain ON custom_event_sigs (chain, enabled);
     `);
 
+    // ============================================================
+    // 9.6 Phase 1.1: 分类目录种子数据（业务分类 + 标签）
+    // ============================================================
+    const CATEGORIES = [
+      ['asset_transfer', 'native_transfer', '原生代币转账', 'ETH/BNB/SOL 等原生代币转移'],
+      ['asset_transfer', 'erc20_transfer', 'ERC-20 转账', 'ERC-20 代币转账（含 ERC-721 退化情形）'],
+      ['asset_transfer', 'nft_transfer', 'NFT 转账', 'ERC-721 / ERC-1155 NFT 转移'],
+      ['authorization', 'approval', '代币授权', 'ERC-20 Allowance 授权变更'],
+      ['dex_trading', 'swap', 'DEX 交易', 'UniswapV2 / UniswapV3 代币兑换'],
+      ['wrapping', 'deposit', '封装入金', 'WETH / wNative deposit'],
+      ['wrapping', 'withdrawal', '解封出金', 'WETH / wNative withdrawal'],
+      ['supply', 'mint', '代币铸造', 'ERC-20 mint'],
+      ['supply', 'burn', '代币销毁', 'ERC-20 burn'],
+      ['unclassified', 'raw_event', '未分类事件', '未识别 topic 的原始日志'],
+    ];
+    for (const [categoryId, labelId, name, description] of CATEGORIES) {
+      await client.query(
+        `INSERT INTO event_categories (category_id, label_id, name, description)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (category_id, label_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description`,
+        [categoryId, labelId, name, description]
+      );
+    }
+
     await client.query('COMMIT');
     logger.info('[migration] All tables created', {
-      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'tracked_tokens', 'custom_event_sigs'],
+      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'tracked_tokens', 'custom_event_sigs', 'event_categories'],
     });
   } catch (err: any) {
     await client.query('ROLLBACK');

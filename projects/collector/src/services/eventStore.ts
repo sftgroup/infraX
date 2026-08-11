@@ -3,6 +3,7 @@ import { pool } from '../database';
 import { logger } from '../logger';
 import { broadcastEvent } from './eventBus';
 import type { NormalizedEvent } from './normalizer';
+import { classifyEvent } from './classify';
 
 /**
  * Insert normalized events into the database (idempotent on event_id).
@@ -20,17 +21,23 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
     for (const evt of events) {
       try {
         await client.query('SAVEPOINT sp');
+        // 9.6 Phase 1.3: 业务分类（category_id / label_id）随插入落库
+        const { category_id, label_id } = classifyEvent({
+          event_type: evt.event_type,
+          standard: (evt.event_data as any)?.standard,
+          contract_address: evt.contract_address,
+        });
         await client.query(
           `INSERT INTO events (
             id, event_id, event_type, source, chain, block_number, tx_hash, log_index,
             contract_address, from_address, to_address, token_address, token_symbol,
             token_id, amount, amount_raw, event_data, topic_hash, status, confirmations,
-            collected_at, created_at
+            category_id, label_id, collected_at, created_at
           ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8,
             $9, $10, $11, $12, $13,
             $14, $15, $16, $17, $18, $19, $20,
-            NOW(), NOW()
+            $21, $22, NOW(), NOW()
           )
           ON CONFLICT (event_id, collected_at) DO NOTHING`,
           [
@@ -56,6 +63,8 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
             evt.topic_hash,
             evt.status,
             evt.confirmations,
+            category_id,
+            label_id,
           ]
         );
         await client.query('RELEASE SAVEPOINT sp');

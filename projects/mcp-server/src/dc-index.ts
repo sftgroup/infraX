@@ -49,7 +49,7 @@ async function dcSub(path: string, walletAddress: string, options: RequestInit =
 
 const server = new McpServer({
   name: "infrax-dc-mcp",
-  version: "1.2.0",
+  version: "1.3.0", // 9.6 Phase 1.4: dc_events +category 过滤，+dc_event_categories/dc_event_stats
 });
 
 // dc_events
@@ -60,6 +60,7 @@ server.tool(
     chain: z.string().optional().describe("Chain name (ethereum, bsc, arbitrum, base, optimism, polygon)"),
     address: z.string().optional().describe("Contract address to filter events"),
     event_type: z.string().optional().describe("Event type (Transfer, Swap, Approval, etc.)"),
+    category: z.string().optional().describe("Business category (asset_transfer, authorization, dex_trading, wrapping, supply, unclassified)"),
     from_block: z.string().optional().describe("Starting block number"),
     to_block: z.string().optional().describe("Ending block number"),
     limit: z.string().optional().describe("Max events to return (default 100, max 500)"),
@@ -69,6 +70,7 @@ server.tool(
     if (params.chain) query.set("chain", params.chain);
     if (params.address) query.set("address", params.address);
     if (params.event_type) query.set("event_type", params.event_type);
+    if (params.category) query.set("category", params.category);
     if (params.from_block) query.set("from_block", params.from_block);
     if (params.to_block) query.set("to_block", params.to_block);
     if (params.limit) query.set("limit", params.limit);
@@ -130,6 +132,31 @@ server.tool(
   {},
   async () => {
     const data = await dc("/api/v2/data/chains");
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── 9.6 Phase 1.4: DC 事件分类（dc-index v2，+2 tools）──
+
+// dc_event_categories
+server.tool(
+  "dc_event_categories",
+  "List the business classification catalog for on-chain events (category_id + label_id with names/descriptions)",
+  {},
+  async () => {
+    const data = await dc("/api/v2/data/event-categories");
+    return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// dc_event_stats
+server.tool(
+  "dc_event_stats",
+  "Event counts aggregated by business category (per chain) — understand what is flowing through the pipeline",
+  { chain: z.string().optional().describe("Filter by chain name") },
+  async ({ chain }) => {
+    const q = chain ? `?chain=${chain}` : "";
+    const data = await dc(`/api/v2/data/event-stats${q}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
   }
 );
