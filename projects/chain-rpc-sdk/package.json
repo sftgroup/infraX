@@ -25,6 +25,7 @@
     "broadcast",
     "subscription"
   ],
+  "publishConfig": { "access": "public" },
   "license": "MIT",
   "author": "InfraX",
   "devDependencies": {

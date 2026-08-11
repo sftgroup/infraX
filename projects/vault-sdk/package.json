@@ -23,6 +23,7 @@
     "multisig",
     "safe"
   ],
+  "publishConfig": { "access": "public" },
   "license": "MIT",
   "author": "InfraX",
   "devDependencies": {

@@ -165,7 +165,7 @@ ragservicer 租户鉴权为三层（`api/auth.py`）：bridge key（`RAGSERVICER
 | 注入吞吐/积压 | `GET :9721/api/v1/admin/tasks`（admin key） | `stats`、`tasks` 状态分布 |
 | RAG 实例 | `GET :9721/api/v1/instances`（admin key） | `instances` 数 |
 
-> **缺口（待 §9.7 7.4 补）**：当前无 Prometheus `/metrics` 或 OpenTelemetry 暴露，第三方监控需以 HTTP 端点轮询为准。
+> **监控现状（tasklist §9.7 7.4 已 ✅）**：data :9112 已暴露 `/metrics`（Prometheus 格式，见 DELIVERY_SUMMARY data 行）；其余服务第三方监控以 HTTP 端点轮询为准，Prometheus/OTel 全量接入待排期。
 
 ## 9. 管理 Agent 接入清单
 
