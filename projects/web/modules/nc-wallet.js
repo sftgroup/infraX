@@ -59,19 +59,61 @@ async function ncDash() {
         dcPlanName = dcResp.planName || "Data Free";
         setDashRow("dc", "active", dcPlanName,
           (dcResp.currentUsage || 0) + "/" + (dcResp.monthlyQuota || 0) + " calls");
-
-        document.getElementById("dash-usage").innerHTML =
-          '<table class="data-table"><thead><tr><th>Service</th><th>Plan</th><th>Used</th><th>Quota</th></tr></thead><tbody>' +
-          '<tr><td>📡 Data Center</td><td>' + dcPlanName + '</td><td>' + (dcResp.currentUsage || 0) + '</td><td>' + (dcResp.monthlyQuota || 0) + '</td></tr>' +
-          '<tr><td>🔑 MPC</td><td>Free</td><td>1 wallet</td><td>5 wallets</td></tr>' +
-          '<tr><td>🏦 WaaS</td><td>' + waasPlan + '</td><td>1 tenant</td><td>—</td></tr>' +
-          '</tbody></table>';
       } else {
         setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
       }
     } catch (e) {
       setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
     }
+
+    // A-9: 统一租户用量视图——聚合各产品线真实配额/余额（计费仍 per-product 分离，仅展示聚合）
+    var usageRows = [];
+
+    // 1) Data Center — 订阅用量（plan/quota/used）
+    try {
+      var dcU = await afetch("/api/v2/data/usage", { auth: "none" });
+      usageRows.push(dcU && dcU.planId
+        ? ['📡 Data Center', dcU.planName || 'Data Free', (dcU.currentUsage || 0) + '', (dcU.monthlyQuota || 0) + ' calls']
+        : ['📡 Data Center', '—', '—', '未订阅']);
+    } catch (e) { usageRows.push(['📡 Data Center', '—', '—', '不可用']); }
+
+    // 2) MPC — 价目公开（ledger 余额需会话 token，面板不持 token 故只展示模式）
+    try {
+      var mpcP = await afetch("/api/v2/mpc/plans", { auth: "none" });
+      usageRows.push(['🔐 MPC Wallet', mpcP && mpcP.mode === 'metered' ? '按量计费' : 'Free',
+        '—', (mpcP && mpcP.configured) ? 'ledger 按量' : '免费']);
+    } catch (e) { usageRows.push(['🔐 MPC Wallet', 'Free', '—', '—']); }
+
+    // 3) WaaS — 订阅套餐
+    var waasPlanName = (me.waas && me.waas.status === "active") ? (me.waas.planName || "Starter") : "—";
+    usageRows.push(['🏦 WaaS', waasPlanName, '—', (me.waas && me.waas.status === "active") ? 'API Key 计费' : '未激活']);
+
+    // 4) Safe Vault — gas 自付 ledger 余额（subscriber = 钱包地址）
+    try {
+      var vPlans = await afetch("/api/vault/plans", { auth: "none" });
+      var vBal = null;
+      try { vBal = await afetch("/api/vault/ledger-balance", { method: "POST", auth: "none", body: { userId: walletAddr } }); } catch (e) {}
+      usageRows.push(['🛡️ Safe Vault', 'gas 自付',
+        vBal && vBal.balance ? vBal.balance + ' ETH' : '—',
+        (vPlans && vPlans.configured) ? '实际 gas 结算' : '免费']);
+    } catch (e) { usageRows.push(['🛡️ Safe Vault', '—', '—', '不可用']); }
+
+    // 5) AA/Session — UserOp 次数费 + paymaster gas 代付（ledger 余额 = 智能账户）
+    try {
+      var aaP = await afetch("/v1/plans", { auth: "none" });
+      var aaBal = null;
+      try { aaBal = await afetch("/v1/ledger-balance", { method: "POST", auth: "none", body: { account: walletAddr } }); } catch (e) {}
+      usageRows.push(['⚡ AA Sessions', (aaP && aaP.mode) || '—',
+        aaBal && aaBal.balance ? aaBal.balance + ' ETH' : '—',
+        (aaP && aaP.configured) ? '次数 + gas 代付' : '免费']);
+    } catch (e) { usageRows.push(['⚡ AA Sessions', '—', '—', '不可用']); }
+
+    var rowsHtml = usageRows.map(function (r) {
+      return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>';
+    }).join('');
+    document.getElementById("dash-usage").innerHTML =
+      '<table class="data-table"><thead><tr><th>Service</th><th>Plan</th><th>Used / Balance</th><th>Quota / Billing</th></tr></thead><tbody>' +
+      rowsHtml + '</tbody></table>';
 
     // KPI cards
     document.getElementById("dash-active-count").textContent = activeCount + "/4";

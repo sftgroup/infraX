@@ -19,6 +19,8 @@ const ADMIN_HOST    = process.env.ADMIN_HOST || 'localhost';
 const ADMIN_PORT    = parseInt(process.env.ADMIN_PORT || '9100', 10);
 const COLLECTOR_HOST = process.env.COLLECTOR_HOST || 'localhost';
 const COLLECTOR_PORT = parseInt(process.env.COLLECTOR_PORT || '9101', 10);
+const AA_HOST = process.env.AA_HOST || 'localhost';
+const AA_PORT = parseInt(process.env.AA_PORT || '9131', 10);
 
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
@@ -33,6 +35,8 @@ const API_ROUTES = {
   '/api/vault':      { host: VAULT_HOST,   port: VAULT_PORT },
   '/api/v2/vault':   { host: VAULT_HOST,   port: VAULT_PORT },
   '/api/v2/subscription': { host: WAAS_HOST, port: WAAS_PORT },
+  // A-9: AA/session 线（aa-relay :9131）— plans / ledger-balance / userops
+  '/v1':             { host: AA_HOST,      port: AA_PORT },
 };
 
 const MIME = {
