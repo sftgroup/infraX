@@ -12,6 +12,9 @@ numpy>=1.24.0
 finnhub-python>=2.4.0
 akshare>=1.11.0
 
+# B-11-3 用户级 key（/api/v2/data/my-keys）：钱包签名鉴权（EIP-191 personal_sign 恢复地址）
+eth-account>=0.10.0
+
 # ── ML 推理已拆分到独立 ml-service（projects/ml-service/）────
 # 本服务仅通过 HTTP 调用 ml-service（/ml/tree_predictions、/ml/sentiment），
 # 无需安装 lightgbm / transformers / torch 等模型依赖。

@@ -379,6 +379,25 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
+    // 4.7 Billing plans 覆盖表（B-11-5 admin 套餐 CRUD）
+    // 代码常量 PLANS/DATA_PLANS 为默认；此表非空时同名 plan_id 覆盖（DB 优先）。
+    // admin 面板经 /api/v2/admin/plans 读写（admin 直连本库），waas /plans 端点读本表。
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS billing_plans (
+        id UUID PRIMARY KEY,
+        service VARCHAR(30) NOT NULL,           -- waas-subscription | waas-data
+        plan_id VARCHAR(50) NOT NULL,           -- free / pro / enterprise / data_free / ...
+        name VARCHAR(100) NOT NULL,
+        price NUMERIC(18, 2) NOT NULL DEFAULT 0,
+        billing_cycle VARCHAR(20) DEFAULT 'monthly',
+        features JSONB NOT NULL DEFAULT '{}',
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (service, plan_id)
+      );
+    `);
+
     // Indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_user_id ON token_blacklist(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires_at ON token_blacklist(expires_at);`);

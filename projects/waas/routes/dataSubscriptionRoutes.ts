@@ -19,7 +19,31 @@ function generateDcApiKey(): string { return 'infrax_dc_' + crypto.randomBytes(2
 function obscureKey(key: string): string { return key && key.length > 16 ? key.slice(0, 14) + '…' + key.slice(-8) : key; }
 
 // ─── Public plans catalog (no sensitive data) ───
-router.get('/plans', asyncHandler(async (_req, res) => { res.json(apiResponse(DATA_PLANS)); }));
+// B-11-5：DB 优先（billing_plans 表 service='waas-data'，admin 可 CRUD）→ 回退代码常量
+router.get('/plans', asyncHandler(async (_req, res) => {
+  let plans = DATA_PLANS;
+  try {
+    const { rows } = await pool.query(
+      `SELECT plan_id, name, price, billing_cycle, features, enabled
+       FROM billing_plans WHERE service = 'waas-data' ORDER BY created_at`
+    );
+    if (rows.length > 0) {
+      const enabled = rows.filter((r: any) => r.enabled);
+      plans = DATA_PLANS.map(p => {
+        const row = enabled.find((r: any) => r.plan_id === p.id);
+        if (!row) return p;
+        return {
+          id: row.plan_id,
+          name: row.name,
+          price: Number(row.price ?? p.price),
+          billingCycle: row.billing_cycle || p.billingCycle,
+          features: { ...p.features, ...(row.features || {}) },
+        };
+      });
+    }
+  } catch { /* 表不存在 → 默认常量 */ }
+  res.json(apiResponse(plans));
+}));
 
 // ─── Subscribe (wallet signature required — MQ-10 补充 D 修复) ───
 router.post('/subscribe', authenticate, asyncHandler(async (req, res) => {

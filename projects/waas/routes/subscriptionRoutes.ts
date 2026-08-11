@@ -30,6 +30,65 @@ const PLANS: Record<string, { name: string; price: number }> = {
   enterprise: { name: 'Enterprise', price: 199 },
 };
 
+// B-11-5：默认套餐（代码常量兜底）；billing_plans 表（service='waas-subscription'）
+// 有同名 plan_id 记录时 DB 覆盖（admin 面板 CRUD）。
+const DEFAULT_PLANS = [
+  {
+    id: 'free',
+    name: 'Starter',
+    price: 0,
+    billingCycle: 'monthly',
+    features: {
+      mpcWallets: 3,
+      safeWallets: 3,
+      sweepAddresses: 100,
+      apiKeys: 1,
+      apiCallsPerMonth: 10000,
+      sweepIntervalHours: 24,
+      sweepFeePercent: 0.5,
+      support: 'community',
+      sla: null,
+      whitelabel: false,
+    },
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price: 49,
+    billingCycle: 'monthly',
+    features: {
+      mpcWallets: 20,
+      safeWallets: 10,
+      sweepAddresses: 10000,
+      apiKeys: 5,
+      apiCallsPerMonth: 100000,
+      sweepIntervalHours: 1,
+      sweepFeePercent: 0.3,
+      support: 'email',
+      sla: '99.5%',
+      whitelabel: false,
+    },
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    price: 199,
+    billingCycle: 'monthly',
+    features: {
+      mpcWallets: 100,
+      safeWallets: 50,
+      sweepAddresses: 100000,
+      apiKeys: 20,
+      apiCallsPerMonth: 1000000,
+      sweepIntervalHours: 0,
+      sweepFeePercent: 0.1,
+      support: 'dedicated',
+      sla: '99.9%',
+      whitelabel: true,
+    },
+  },
+];
+
 function mapSubscription(row: any) {
   return {
     id: row.id,
@@ -72,62 +131,31 @@ async function activateSubscription(subscriptionId: string): Promise<void> {
 router.get(
   '/plans',
   asyncHandler(async (req, res) => {
-    const plans = [
-      {
-        id: 'free',
-        name: 'Starter',
-        price: 0,
-        billingCycle: 'monthly',
-        features: {
-          mpcWallets: 3,
-          safeWallets: 3,
-          sweepAddresses: 100,
-          apiKeys: 1,
-          apiCallsPerMonth: 10000,
-          sweepIntervalHours: 24,
-          sweepFeePercent: 0.5,
-          support: 'community',
-          sla: null,
-          whitelabel: false,
-        },
-      },
-      {
-        id: 'pro',
-        name: 'Pro',
-        price: 49,
-        billingCycle: 'monthly',
-        features: {
-          mpcWallets: 20,
-          safeWallets: 10,
-          sweepAddresses: 10000,
-          apiKeys: 5,
-          apiCallsPerMonth: 100000,
-          sweepIntervalHours: 1,
-          sweepFeePercent: 0.3,
-          support: 'email',
-          sla: '99.5%',
-          whitelabel: false,
-        },
-      },
-      {
-        id: 'enterprise',
-        name: 'Enterprise',
-        price: 199,
-        billingCycle: 'monthly',
-        features: {
-          mpcWallets: 100,
-          safeWallets: 50,
-          sweepAddresses: 100000,
-          apiKeys: 20,
-          apiCallsPerMonth: 1000000,
-          sweepIntervalHours: 0,
-          sweepFeePercent: 0.1,
-          support: 'dedicated',
-          sla: '99.9%',
-          whitelabel: true,
-        },
-      },
-    ];
+    // B-11-5：DB 优先（billing_plans 表 admin 可 CRUD）→ 回退代码常量 DEFAULT_PLANS
+    let plans = DEFAULT_PLANS;
+    try {
+      const { rows } = await pool.query(
+        `SELECT plan_id, name, price, billing_cycle, features, enabled
+         FROM billing_plans WHERE service = 'waas-subscription' ORDER BY created_at`
+      );
+      if (rows.length > 0) {
+        const enabled = rows.filter((r: any) => r.enabled);
+        // 仅覆盖有 enabled 记录的套餐，其余保留默认
+        plans = DEFAULT_PLANS.map(p => {
+          const row = enabled.find((r: any) => r.plan_id === p.id);
+          if (!row) return p;
+          return {
+            id: row.plan_id,
+            name: row.name,
+            price: Number(row.price ?? p.price),
+            billingCycle: row.billing_cycle || p.billingCycle,
+            features: { ...p.features, ...(row.features || {}) },
+          };
+        });
+      }
+    } catch {
+      // billing_plans 表不存在等 → 保持默认常量
+    }
     res.json(apiResponse(plans));
   })
 );

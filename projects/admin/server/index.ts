@@ -240,6 +240,106 @@ app.patch('/api/v2/admin/tenants/:id', requireAdmin, asyncHandler(async (req: an
   res.json(apiResponse({ updated: true }));
 }));
 
+// ─── Plans (B-11-5 admin 套餐 CRUD：waas-subscription / waas-data / dc-data 覆盖) ───
+// 各服务 /plans 端点 DB 优先（billing_plans 表）→ 回退代码常量；此处管理覆盖配置。
+app.get('/api/v2/admin/plans', requireAdmin, asyncHandler(async (_req: any, res: any) => {
+  const groups: any[] = [];
+  for (const [key, pool] of [['waas', pools.waas], ['dc', pools.dc]] as const) {
+    for (const service of key === 'waas' ? ['waas-subscription', 'waas-data'] : ['dc-data']) {
+      const { rows } = await pool.query(
+        `SELECT id, service, plan_id, name, price, billing_cycle, features, enabled, created_at, updated_at
+         FROM billing_plans WHERE service = $1 ORDER BY created_at`
+      ).catch(() => ({ rows: [] }));
+      groups.push({ db: key, service, overrides: rows.map((r: any) => ({
+        id: r.id, planId: r.plan_id, name: r.name,
+        price: Number(r.price ?? 0), billingCycle: r.billing_cycle,
+        features: r.features || {}, enabled: !!r.enabled,
+        createdAt: r.created_at, updatedAt: r.updated_at,
+      })) });
+    }
+  }
+  res.json(apiResponse(groups));
+}));
+
+app.post('/api/v2/admin/plans', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { db, service, planId, name, price, billingCycle, features, enabled } = req.body || {};
+  if (!['waas', 'dc'].includes(db)) return res.status(400).json(apiResponse(null, 'db must be waas|dc'));
+  const allowed = db === 'waas' ? ['waas-subscription', 'waas-data'] : ['dc-data'];
+  if (!allowed.includes(service)) return res.status(400).json(apiResponse(null, `service must be one of ${allowed.join(',')}`));
+  if (!planId || !name) return res.status(400).json(apiResponse(null, 'planId and name required'));
+  const target = db === 'waas' ? pools.waas : pools.dc;
+  const { rows } = await target.query(
+    `INSERT INTO billing_plans (service, plan_id, name, price, billing_cycle, features, enabled)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (service, plan_id) DO UPDATE SET
+       name = EXCLUDED.name, price = EXCLUDED.price,
+       billing_cycle = EXCLUDED.billing_cycle, features = EXCLUDED.features,
+       enabled = EXCLUDED.enabled, updated_at = NOW()
+     RETURNING id, plan_id, name, price, billing_cycle, features, enabled`,
+    [service, planId, name, price ?? 0, billingCycle || 'monthly', JSON.stringify(features || {}), enabled !== false]
+  );
+  res.json(apiResponse(rows[0]));
+}));
+
+app.patch('/api/v2/admin/plans/:id', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { db, name, price, billingCycle, features, enabled } = req.body || {};
+  const target = db === 'dc' ? pools.dc : pools.waas;
+  const sets: string[] = [];
+  const vals: any[] = [];
+  let i = 1;
+  if (name !== undefined) { sets.push(`name = $${i++}`); vals.push(name); }
+  if (price !== undefined) { sets.push(`price = $${i++}`); vals.push(price); }
+  if (billingCycle !== undefined) { sets.push(`billing_cycle = $${i++}`); vals.push(billingCycle); }
+  if (features !== undefined) { sets.push(`features = $${i++}`); vals.push(JSON.stringify(features)); }
+  if (enabled !== undefined) { sets.push(`enabled = $${i++}`); vals.push(!!enabled); }
+  if (!sets.length) return res.json(apiResponse(null, 'nothing to update'));
+  sets.push('updated_at = NOW()');
+  vals.push(req.params.id);
+  const r = await target.query(`UPDATE billing_plans SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+  if (!r.rowCount) return res.status(404).json(apiResponse(null, 'plan override not found'));
+  res.json(apiResponse({ updated: true }));
+}));
+
+app.delete('/api/v2/admin/plans/:id', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { db } = req.query as any;
+  const target = db === 'dc' ? pools.dc : pools.waas;
+  const r = await target.query('DELETE FROM billing_plans WHERE id = $1', [req.params.id]);
+  if (!r.rowCount) return res.status(404).json(apiResponse(null, 'plan override not found'));
+  res.json(apiResponse({ deleted: true }));
+}));
+
+// ─── Users (B-11-4 用户管理页：聚合 waas/dc/mpc 各库用户) ───
+app.get('/api/v2/admin/users', requireAdmin, asyncHandler(async (req: any, res: any) => {
+  const { q } = req.query as any;
+  const like = q ? `%${String(q).toLowerCase()}%` : '%';
+  const limit = Math.min(parseInt(req.query.limit as any) || 100, 500);
+  // waas users（C 端邮箱用户 + 钱包数/交易数/订阅数）
+  const waas = await pools.waas.query(`
+    SELECT u.id, u.email, u.role, u.created_at,
+           (SELECT COUNT(*) FROM custodial_wallets cw WHERE cw.user_id = u.id) as wallets,
+           (SELECT COUNT(*) FROM transactions tx WHERE tx.wallet_id IN (SELECT id FROM custodial_wallets WHERE user_id = u.id)) as txns,
+           (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id = u.id AND s.status = 'active') as active_subs
+    FROM users u
+    WHERE LOWER(COALESCE(u.email,'')) LIKE $1
+    ORDER BY u.created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+  // dc users（钱包地址用户 + 关联租户数）
+  const dc = await pools.dc.query(`
+    SELECT u.id, u.wallet_address, u.role, u.created_at,
+           (SELECT COUNT(*) FROM tenants t WHERE t.owner_user_id = u.id) as tenants
+    FROM users u
+    WHERE LOWER(COALESCE(u.wallet_address,'')) LIKE $1
+    ORDER BY u.created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+  // mpc wallets 按 email 聚合（单邮箱多子钱包，E-4 待放开 1:1）
+  const mpc = await pools.mpc.query(`
+    SELECT email, COUNT(*)::int as wallets,
+           MAX(created_at) as created_at,
+           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END)::int as active_wallets
+    FROM mpc_wallets
+    WHERE LOWER(COALESCE(email,'')) LIKE $1
+    GROUP BY email ORDER BY created_at DESC LIMIT $2`).then(r => r.rows).catch(() => []);
+  res.json(apiResponse({ waas, dc, mpc }));
+}));
+
 // ─── Transactions (WaaS) ───
 app.get('/api/v2/admin/transactions', requireAdmin, asyncHandler(async (req: any, res: any) => {
   const { status, limit, offset } = req.query as any;

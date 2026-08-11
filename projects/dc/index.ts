@@ -87,6 +87,22 @@ function apiResponse(data: any = null, message = 'success', code = 0) {
     await pool.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dc_payment_method VARCHAR(20);`);
     await pool.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dc_payment_ref VARCHAR(200);`);
     await pool.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dc_sub_updated_at TIMESTAMPTZ;`);
+    // B-11-5: 套餐覆盖表（admin 面板 CRUD，/plans 端点 DB 优先回退 DATA_PLANS 常量）
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS billing_plans (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        service VARCHAR(30) NOT NULL DEFAULT 'dc-data',
+        plan_id VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        price NUMERIC(18, 2) NOT NULL DEFAULT 0,
+        billing_cycle VARCHAR(20) DEFAULT 'monthly',
+        features JSONB NOT NULL DEFAULT '{}',
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (service, plan_id)
+      );
+    `);
     console.log('[DC] Tables initialized successfully');
   } catch (e: any) {
     console.error('[DC] Table init error:', e.message);
@@ -366,7 +382,28 @@ const SUPPORTED_CHAINS = [
 ];
 
 app.get('/api/v2/data/plans', asyncHandler(async (_req: any, res: any) => {
-  res.json(apiResponse(DATA_PLANS));
+  // B-11-5：DB 优先（billing_plans service='dc-data'，admin 可 CRUD）→ 回退代码常量
+  let plans = DATA_PLANS;
+  try {
+    const r = await pool.query(
+      `SELECT plan_id, name, price, billing_cycle, features, enabled
+       FROM billing_plans WHERE service = 'dc-data' ORDER BY created_at`
+    );
+    if (r.rows.length > 0) {
+      const enabled = r.rows.filter((x: any) => x.enabled);
+      plans = DATA_PLANS.map((p: any) => {
+        const row = enabled.find((x: any) => x.plan_id === p.id);
+        if (!row) return p;
+        return {
+          id: row.plan_id, name: row.name,
+          price: Number(row.price ?? p.price),
+          billingCycle: row.billing_cycle || p.billingCycle,
+          features: { ...p.features, ...(row.features || {}) },
+        };
+      });
+    }
+  } catch { /* 表不存在 → 默认常量 */ }
+  res.json(apiResponse(plans));
 }));
 
 app.get('/api/v2/data/chains', asyncHandler(async (_req: any, res: any) => {

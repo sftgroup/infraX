@@ -973,7 +973,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
-| B-12-1 | 区块链服务统一鉴权 + admin 面板统一签发管理（key 前缀按服务；当前 data `dx_`/mcp `mx_`/rag `lr_` 已统一，区块链栈未接入） | 🔲（服务端鉴权已收口 ✅ C-1~C-5；剩余 admin 侧统一签发管理界面，需与 B-11-3 联动设计） | P1 |
+| B-12-1 | 区块链服务统一鉴权 + admin 面板统一签发管理（key 前缀按服务；当前 data `dx_`/mcp `mx_`/rag `lr_` 已统一，区块链栈未接入） | ✅ 服务端鉴权收口（C-1~C-5）+ admin 统一签发：[ApiKeys.tsx](projects/admin/src/pages/ApiKeys.tsx) 签发表新增 5 链栈 option（payment `px_`/vault `vx_`/mpc `mp_`/chain-rpc `cr_`/waas `wa_`，CHAIN_SCOPE_META 前置表）；「区块链栈 keys」卡片：签发/启用/轮换/删除 | P1 |
 | B-12-2 | SDK 扩展 waas/dc/vault/session 方法并发布（`@0xinfrax/infrax-dk` 当前 0.3.0 仅 data） | ✅ **D-1/D-2（7a0e333）**：infrax-dk 0.7.0 14 类全导出 + 7 独立包（waas/vault/dc/market/chain-rpc/payments/data-sdk） | P2 |
 | B-12-3 | MCP 工具更新（hub-index 聚合 + dc_tokens 修复 + mpc/sk 工具鉴权） | ✅ 三部分全完成：hub-index 聚合（:3008 13 工具，`infrax-hub-index.service`）✅；dc_tokens 修复 ✅ MQ-3；mpc/sk 入站鉴权 ✅ MQ-10 补充 D（`inboundAuth` 7 HTTP MCP） | P2 |
 | B-12-4 | 文档发布：`docs/API_ACCESS.md` 更新为真实生产端口/状态（当前为 v0.5.0 旧布局），各区块链服务接入文档 | ✅ [API_ACCESS.md](docs/API_ACCESS.md) v0.7.0-20260811：真实生产端口矩阵（9101~9132 + MCP 3008/3011/3012/3013）+ 全服务 REST 端点 + MCP 工具速查 + SDK 模块覆盖 + curl 测试 | P2 |

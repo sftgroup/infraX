@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { KeyRound, RefreshCw, Plus, RotateCw, Trash2, Power, Copy, Check } from 'lucide-react';
 import { api } from '../lib';
 
+// 签发表单可选服务：data/mcp/链栈走 data 服务 api_keys（前缀互斥），rag 走 ragservicer 租户
+type IssueService = 'data' | 'mcp' | 'chain-rpc' | 'waas' | 'payment' | 'vault' | 'mpc' | 'rag';
+
 interface DataKey {
   id: number;
   label: string;
-  scope?: 'data' | 'mcp';
+  scope?: string;
   key_masked: string;
   rate_limit: number;
   enabled: number;
@@ -14,7 +17,7 @@ interface DataKey {
   request_count: number;
   created_at: number;
   updated_at: number;
-  service?: 'data' | 'mcp';
+  service?: string;
 }
 interface RagKey {
   id: string;
@@ -38,9 +41,20 @@ interface RagTenant {
 }
 interface KeysOverview {
   data: { ok: boolean; keys: DataKey[]; adminKeySet?: boolean; error?: string };
+  chain: { ok: boolean; keys: DataKey[]; adminKeySet?: boolean; error?: string };
   rag: { ok: boolean; tenants: RagTenant[]; adminKeySet?: boolean; error?: string };
   fetched_at: number;
 }
+
+// 链栈 scope → 前缀 / 服务名展示（与 data 服务 PREFIX_BY_SCOPE 对齐）
+const CHAIN_SCOPE_META: { scope: string; prefix: string; name: string }[] = [
+  { scope: 'payment', prefix: 'px_', name: 'Payment' },
+  { scope: 'vault', prefix: 'vx_', name: 'Vault' },
+  { scope: 'mpc', prefix: 'mp_', name: 'MPC' },
+  { scope: 'chain-rpc', prefix: 'cr_', name: 'Chain RPC' },
+  { scope: 'waas', prefix: 'wa_', name: 'WAAS' },
+];
+const chainMeta = (scope: string) => CHAIN_SCOPE_META.find(m => m.scope === scope);
 
 const fmtMs = (t?: number | string | null) => {
   if (!t) return '-';
@@ -61,7 +75,7 @@ export default function ApiKeys() {
   const [ts, setTs] = useState(new Date());
 
   // 签发表单
-  const [svc, setSvc] = useState<'data' | 'mcp' | 'rag'>('data');
+  const [svc, setSvc] = useState<IssueService>('data');
   const [label, setLabel] = useState('');
   const [rateLimit, setRateLimit] = useState('600');
   const [tenantId, setTenantId] = useState('');
@@ -91,7 +105,8 @@ export default function ApiKeys() {
     setMsg(null);
     setNewKey(null);
     const payload: any = { service: svc };
-    if (svc === 'data') {
+    if (svc !== 'rag') {
+      // data / mcp / 链栈（payment/vault/mpc/chain-rpc/waas）：统一走 data 服务 api_keys 签发（前缀互斥）
       if (!label.trim()) { setMsg({ ok: false, text: '请填写 label（如 aitrader）' }); return; }
       payload.label = label.trim();
       payload.rate_limit = Number(rateLimit) || undefined;
@@ -105,7 +120,8 @@ export default function ApiKeys() {
       const r = await api<any>('/data/keys', { method: 'POST', body: JSON.stringify(payload) });
       const key = r.service === 'rag' ? r.key : r.api_key;
       setNewKey({ label: r.service === 'rag' ? `${r.tenant_id}/${r.name}` : r.label, key });
-      setMsg({ ok: true, text: r.service === 'rag' ? '租户 key 已签发（仅显示一次）' : r.service === 'mcp' ? 'MCP key 已签发（仅显示一次）' : 'data key 已签发（仅显示一次）' });
+      const svcName = chainMeta(r.service)?.name || r.service;
+      setMsg({ ok: true, text: r.service === 'rag' ? '租户 key 已签发（仅显示一次）' : `${svcName} key 已签发（仅显示一次）` });
       setLabel(''); setTenantId('');
       fetchAll();
     } catch (e: any) {
@@ -126,6 +142,7 @@ export default function ApiKeys() {
 
   const dataKeys = (ov?.data.keys || []).filter(k => k.scope !== 'mcp');
   const mcpKeys = (ov?.data.keys || []).filter(k => k.scope === 'mcp');
+  const chainKeys = ov?.chain.keys || [];
   const tenants = ov?.rag.tenants || [];
 
   return (
@@ -140,18 +157,23 @@ export default function ApiKeys() {
       {/* 签发表单 */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title"><Plus size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> 签发 API Key（统一管理 data dx_ key 与 LightRAG lr_ key）</div>
+          <div className="card-title"><Plus size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> 签发 API Key（data / MCP / 区块链栈统一签发 + LightRAG lr_）</div>
         </div>
         <div className="form-row" style={{ marginBottom: 6 }}>
           <div>
             <label className="form-label">服务</label>
-            <select className="form-input" value={svc} onChange={e => setSvc(e.target.value as any)}>
-              <option value="data">Data Service（dx_ key · 行情/因子/快照）</option>
-              <option value="mcp">MCP Hub（mx_ key · AI Agent 入口）</option>
-              <option value="rag">LightRAG（lr_ key · 知识库租户）</option>
+            <select className="form-input" value={svc} onChange={e => setSvc(e.target.value as IssueService)}>
+              <option value="data">Data Service（dx_ · 行情/因子/快照）</option>
+              <option value="mcp">MCP Hub（mx_ · AI Agent 入口）</option>
+              <option value="payment">Payment（px_ · 支付引擎）</option>
+              <option value="vault">Vault（vx_ · 托管钱包）</option>
+              <option value="mpc">MPC（mp_ · 多方计算钱包）</option>
+              <option value="chain-rpc">Chain RPC（cr_ · 链上读/广播网关）</option>
+              <option value="waas">WAAS（wa_ · 钱包即服务）</option>
+              <option value="rag">LightRAG（lr_ · 知识库租户）</option>
             </select>
           </div>
-          {svc === 'data' || svc === 'mcp' ? (
+          {svc !== 'rag' ? (
             <>
               <div>
                 <label className="form-label">label（标识使用方，如 aitrader）</label>
@@ -279,6 +301,56 @@ export default function ApiKeys() {
                 </tr>
               ))}
               {!mcpKeys.length && <tr><td colSpan={7} className="tooltip" style={{ textAlign: 'center', padding: 12 }}>暂无 MCP key</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 区块链栈 keys（payment/vault/mpc/chain-rpc/waas） */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> 区块链栈 keys（px_ / vx_ / mp_ / cr_ / wa_）</div>
+          {!ov?.chain.adminKeySet && <span className="badge yellow">未配置 data admin key（链栈 key 与 data key 同表签发）</span>}
+          <span className="tooltip">B-12-1 统一签发：payment / vault / mpc / chain-rpc / waas 服务入站鉴权共用的 key 池</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>服务</th><th>label</th><th>key</th><th>状态</th><th>RPM</th><th>请求数</th><th>最后使用</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {chainKeys.map(k => {
+                const m = chainMeta(k.scope || '');
+                return (
+                  <tr key={k.id}>
+                    <td><span className="badge">{m ? `${m.name}（${m.prefix}）` : k.scope}</span></td>
+                    <td style={{ fontWeight: 600 }}>{k.label}</td>
+                    <td className="mono">{k.key_masked}</td>
+                    <td><span className={`badge ${k.enabled ? 'green' : 'red'}`}>{k.enabled ? '启用' : '禁用'}</span></td>
+                    <td className="mono">{k.rate_limit}/min</td>
+                    <td className="mono">{k.request_count}</td>
+                    <td className="mono">{fmtMs(k.last_used_at)}</td>
+                    <td>
+                      <span style={{ display: 'inline-flex', gap: 6 }}>
+                        <button className="btn btn-sm" title={k.enabled ? '禁用' : '启用'} onClick={() => act(() => api(`/data/keys/data/${k.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !k.enabled }) }), k.enabled ? '已禁用' : '已启用')}>
+                          <Power size={13} />
+                        </button>
+                        <button className="btn btn-sm" title="轮换（旧 key 立即失效）" onClick={() => act(async () => {
+                          const r = await api<any>(`/data/keys/data/${k.id}/rotate`, { method: 'POST' });
+                          setNewKey({ label: `${k.label}（轮换后新 key）`, key: r.api_key });
+                          setMsg({ ok: true, text: '已轮换（新 key 仅显示一次）' });
+                        }, '')}>
+                          <RotateCw size={13} />
+                        </button>
+                        <button className="btn btn-sm" title="删除" onClick={() => { if (confirm(`确认删除 ${k.label} 的 key？删除后立即失效`)) act(() => api(`/data/keys/data/${k.id}`, { method: 'DELETE' }), '已删除'); }}>
+                          <Trash2 size={13} style={{ color: 'var(--red)' }} />
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!chainKeys.length && <tr><td colSpan={8} className="tooltip" style={{ textAlign: 'center', padding: 12 }}>暂无链栈 key（可在上方表单为 payment / vault / mpc / chain-rpc / waas 签发）</td></tr>}
             </tbody>
           </table>
         </div>

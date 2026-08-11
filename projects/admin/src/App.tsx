@@ -1,6 +1,6 @@
 import { Routes, Route, useNavigate, useLocation, Navigate, Outlet } from 'react-router-dom';
 import { useState, useEffect, createContext, useContext } from 'react';
-import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings, BarChart3, ShoppingCart, Building2, ArrowLeftRight, Webhook, Repeat, Network, Server } from 'lucide-react';
+import { LayoutDashboard, Wallet, Database, Shield, Key, Activity, DollarSign, FileText, Settings, BarChart3, ShoppingCart, Building2, ArrowLeftRight, Webhook, Repeat, Network, Server, UsersRound } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import WaasPanel from './pages/WaasPanel';
 import DcPanel from './pages/DcPanel';
@@ -14,6 +14,8 @@ import Orders from './pages/Orders';
 import SettingsPage from './pages/SettingsPage';
 import Audit from './pages/Audit';
 import Tenants from './pages/Tenants';
+import Users from './pages/Users';
+import Plans from './pages/Plans';
 import Transactions from './pages/Transactions';
 import Webhooks from './pages/Webhooks';
 import Sweeps from './pages/Sweeps';
@@ -38,6 +40,7 @@ const NAV = [
   { path: '/revenue', label: 'Revenue', icon: DollarSign },
   { path: '/orders', label: 'Orders', icon: ShoppingCart },
   { path: '/tenants', label: 'Tenants', icon: Building2 },
+  { path: '/users', label: 'Users', icon: UsersRound },
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { path: '/webhooks', label: 'Webhooks', icon: Webhook },
   { path: '/sweeps', label: 'Sweeps', icon: Repeat },
@@ -106,6 +109,8 @@ function AuthedLayout() {
           <Route path="/revenue" element={<Revenue />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/tenants" element={<Tenants />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/plans" element={<Plans />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/webhooks" element={<Webhooks />} />
           <Route path="/sweeps" element={<Sweeps />} />

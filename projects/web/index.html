@@ -850,6 +850,28 @@ Body:
             <p style="color:var(--text-tertiary);font-size:12px;margin-top:8px">Independent Data Center API Key — generated per plan.</p>
           </div>
         </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">
+            <span style="margin-right:8px">🗝️</span> My Keys
+            <span style="margin-left:auto;color:var(--text-tertiary);font-size:12px" id="mykeys-hint"></span>
+          </div>
+          <div class="panel-body">
+            <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">钱包签名鉴权 · 自助签发/轮换/吊销（<code>dx_</code> data / <code>mx_</code> MCP 等统一 key 池）。</p>
+            <div class="form-row" style="margin-bottom:12px;gap:10px">
+              <input type="text" id="mykeys-label" class="input" style="max-width:280px" placeholder="label（如 my-agent）">
+              <button class="btn btn-primary" style="padding:8px 18px" onclick="myKeysCreate()">＋ 签发新 Key</button>
+            </div>
+            <div id="mykeys-msg" style="font-size:12px;min-height:18px;margin-bottom:8px"></div>
+            <div class="table-wrap" style="overflow:auto">
+              <table style="min-width:640px">
+                <thead><tr><th>label</th><th>scope</th><th>key</th><th>状态</th><th>RPM</th><th>请求数</th><th>最后使用</th><th>操作</th></tr></thead>
+                <tbody id="mykeys-tbody">
+                  <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="sub-panel" id="sub-dc-docs">
         <div class="panel">

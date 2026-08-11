@@ -29,13 +29,15 @@ logger = get_logger(__name__)
 
 KEY_PREFIX = "dx_"
 # scope → key 前缀（MCP 专用 key 用 mx_ 前缀，权限由调用方校验）
-# payment/vault/mpc 为区块链栈服务，前缀互斥（首字符 d/m/l/p/v 均不同）
+# payment/vault/mpc/chain-rpc/waas 为区块链栈服务，前缀互斥（首字符均不同）
 PREFIX_BY_SCOPE = {
     "data": "dx_",      # data 业务端点
     "mcp": "mx_",       # hub-index MCP 入站
     "payment": "px_",   # payment 服务
     "vault": "vx_",     # vault 服务
     "mpc": "mp_",       # mpc 服务
+    "chain-rpc": "cr_", # chain-rpc 网关（读/广播）
+    "waas": "wa_",      # waas 服务
 }
 _DEFAULT_PREFIX = "dx_"
 _DEFAULT_RATE_LIMIT = 100
@@ -52,6 +54,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     rate_limit   INTEGER NOT NULL DEFAULT 100,   -- RPM
     enabled      INTEGER NOT NULL DEFAULT 1,
     created_by   TEXT    NOT NULL DEFAULT '',
+    owner        TEXT    NOT NULL DEFAULT '',  -- 用户级 key：归属钱包地址（小写），'' = admin 签发
     last_used_at REAL,                      -- unix ms
     request_count INTEGER NOT NULL DEFAULT 0,
     created_at   REAL    NOT NULL,          -- unix ms
@@ -71,6 +74,8 @@ def _ensure_table() -> None:
         cols = {r["name"] for r in db.execute("PRAGMA table_info(api_keys)").fetchall()}
         if "scope" not in cols:
             db.execute("ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'data'")
+        if "owner" not in cols:
+            db.execute("ALTER TABLE api_keys ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
         db.commit()
 
 
@@ -148,17 +153,21 @@ def _track_usage(key_id: int) -> None:
         logger.warning("api_keys usage tracking failed: %s", e)
 
 
-def create_key(label: str, rate_limit: int | None = None, created_by: str = "admin", scope: str = "data") -> tuple[str, dict]:
-    """签发新 key。返回 (完整 key, 行记录)；完整 key 仅此一次可见。"""
+def create_key(label: str, rate_limit: int | None = None, created_by: str = "admin", scope: str = "data", owner: str = "") -> tuple[str, dict]:
+    """签发新 key。返回 (完整 key, 行记录)；完整 key 仅此一次可见。
+
+    owner 用于用户级 key（钱包地址，小写）：标识 key 归属，用户可经
+    /api/v2/data/my-keys 自助查看/轮换/删除。
+    """
     raw = generate_api_key(scope)
     now_ms = time.time() * 1000
     db = get_db()
     cur = db.execute(
         """INSERT INTO api_keys
-           (label, scope, key_hash, key_prefix, key_tail, rate_limit, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (label, scope, key_hash, key_prefix, key_tail, rate_limit, created_by, owner, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (label, scope, _hash(raw), raw[:8], raw[-4:], rate_limit or _DEFAULT_RATE_LIMIT,
-         created_by, now_ms, now_ms),
+         created_by, (owner or "").lower(), now_ms, now_ms),
     )
     db.commit()
     return raw, dict(_row_by_id(cur.lastrowid))
@@ -220,6 +229,33 @@ def delete_key(key_id: int) -> bool:
     cur = get_db().execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
     get_db().commit()
     return cur.rowcount > 0
+
+
+# ── 用户级 key（B-11-3：web 门户"我的 keys"自助管理）────────────
+# 用户经钱包签名（x-wallet-address + signature + timestamp，waas 同款
+# EIP-191 "InfraX auth: <ts>"）调用 /api/v2/data/my-keys：
+#   GET   列表（仅掩码）
+#   POST  自助签发 dx_ key（owner=钱包地址）
+#   POST  /:id/rotate 轮换（校验归属）
+#   DELETE /:id 删除（校验归属）
+
+def list_by_owner(owner: str, scope: str | None = None) -> list[dict]:
+    sql = """SELECT id, label, scope,
+                  key_prefix || '...' || key_tail AS key_masked,
+                  rate_limit, enabled, created_by, owner,
+                  last_used_at, request_count, created_at, updated_at
+             FROM api_keys WHERE owner = ?"""
+    args: list = [owner.lower()]
+    if scope:
+        sql += " AND scope = ?"
+        args.append(scope)
+    sql += " ORDER BY created_at DESC"
+    return [dict(r) for r in get_db().execute(sql, args).fetchall()]
+
+
+def get_owner_of(key_id: int) -> str:
+    row = get_db().execute("SELECT owner FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+    return (row["owner"] or "") if row else ""
 
 
 def _row_by_id(key_id: int):

@@ -186,7 +186,8 @@ async def _api_auth(request, call_next):
     if not app_auth.is_exempt(
         request.url.path,
         exact={"/health", "/metrics", "/docs", "/redoc", "/openapi.json"},
-        prefixes=("/admin/",),
+        # /admin/* 由 ADMIN_API_KEY 校验；/api/v2/data/my-keys* 由钱包签名自校验
+        prefixes=("/admin/", "/api/v2/data/my-keys"),
     ):
         status = _api_auth_status(request)
         if status == 401:
@@ -1001,6 +1002,76 @@ async def admin_delete_api_key(key_id: int, request: Request):
         raise HTTPException(status_code=404, detail="api key not found")
     logger.info("Admin api-key deleted: id=%s", key_id)
     return {"code": 0, "message": "ok", "data": {"deleted": True}}   # noqa: E501
+
+
+# ═══════════════════════════════════════════════════════════════
+#  B-11-3 用户级 key（/api/v2/data/my-keys）— web 门户"我的 keys"
+#  鉴权：钱包签名（x-wallet-address + x-wallet-signature +
+#  x-wallet-timestamp，EIP-191 "InfraX auth: <ts>"，24h TTL，waas 同款）。
+#  owner 归属校验：仅可管理本人签发的 key。
+# ═══════════════════════════════════════════════════════════════
+
+def _wallet_owner(request: Request) -> str:
+    from app import wallet_auth
+    address = wallet_auth.verify_wallet_signature(dict(request.headers))
+    if not address:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    return address
+
+
+@app.get("/api/v2/data/my-keys")
+async def my_keys_list(request: Request):
+    owner = _wallet_owner(request)
+    keys = api_keys.list_by_owner(owner)
+    return {"code": 0, "message": "ok", "data": {"owner": owner, "keys": keys}}
+
+
+@app.post("/api/v2/data/my-keys")
+async def my_keys_create(request: Request):
+    owner = _wallet_owner(request)
+    body = await request.json()
+    label = (body.get("label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="label required")
+    scope = str(body.get("scope") or "data").strip()
+    if scope not in api_keys.PREFIX_BY_SCOPE:
+        raise HTTPException(status_code=400, detail=f"scope must be one of {sorted(api_keys.PREFIX_BY_SCOPE)}")
+    rate_limit = body.get("rate_limit")
+    if rate_limit in (None, ""):
+        rate_limit = None
+    else:
+        try:
+            rate_limit = int(rate_limit)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="rate_limit must be an integer")
+    raw, row = api_keys.create_key(label=label, rate_limit=rate_limit, created_by=owner, scope=scope, owner=owner)
+    row["api_key"] = raw  # 完整 key 仅此一次可见
+    logger.info("User api-key created: owner=%s label=%s scope=%s", owner, label, scope)
+    return {"code": 0, "message": "ok", "data": row}
+
+
+@app.post("/api/v2/data/my-keys/{key_id}/rotate")
+async def my_keys_rotate(key_id: int, request: Request):
+    owner = _wallet_owner(request)
+    if api_keys.get_owner_of(key_id) != owner:
+        raise HTTPException(status_code=404, detail="api key not found")
+    raw = api_keys.rotate_key(key_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="api key not found")
+    logger.info("User api-key rotated: owner=%s id=%s", owner, key_id)
+    return {"code": 0, "message": "ok", "data": {"id": key_id, "api_key": raw}}
+
+
+@app.delete("/api/v2/data/my-keys/{key_id}")
+async def my_keys_delete(key_id: int, request: Request):
+    owner = _wallet_owner(request)
+    if api_keys.get_owner_of(key_id) != owner:
+        raise HTTPException(status_code=404, detail="api key not found")
+    ok = api_keys.delete_key(key_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="api key not found")
+    logger.info("User api-key deleted: owner=%s id=%s", owner, key_id)
+    return {"code": 0, "message": "ok", "data": {"deleted": True}}
 
 
 # ── Startup ────────────────────────────────────────────────────

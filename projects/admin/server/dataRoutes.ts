@@ -341,11 +341,17 @@ async function ragKeyReq<T = any>(method: 'GET' | 'POST' | 'DELETE', path: strin
   }
 }
 
-// ── 统一列表：data dx_ keys + ragservicer tenants（含各自 keys） ──
+// ── 统一列表：data dx_/mx_ keys + 区块链栈 keys（px_/vx_/mp_/cr_/wa_）+ ragservicer tenants ──
+// B-12-1：区块链栈（payment/vault/mpc/chain-rpc/waas）key 与 data/mcp 同表签发（前缀互斥），
+// 此处按 scope 拆分展示；service-keys 管理即统一签发管理面。
+const CHAIN_SCOPES = ['payment', 'vault', 'mpc', 'chain-rpc', 'waas'];
+
 router.get('/keys', async (_req: any, res: any) => {
   const dataR = await dataKeyReq<any>('GET', '/admin/api-keys');
   const dataOk = dataR.status === 200 && Array.isArray(dataR.data);
-  const dataKeys = dataOk ? (dataR.data as any[]).map(k => ({ ...k, service: 'data' })) : [];
+  const allKeys = dataOk ? (dataR.data as any[]) : [];
+  const dataKeys = allKeys.filter((k: any) => !CHAIN_SCOPES.includes(k.scope)).map((k: any) => ({ ...k, service: 'data' }));
+  const chainKeys = allKeys.filter((k: any) => CHAIN_SCOPES.includes(k.scope)).map((k: any) => ({ ...k, service: k.scope }));
 
   const ragR = await ragKeyReq<{ tenants: any[] }>('GET', '/tenants');
   const ragOk = ragR.status === 200 && !!ragR.data;
@@ -370,16 +376,19 @@ router.get('/keys', async (_req: any, res: any) => {
     code: 0, message: 'success',
     data: {
       data: { ok: dataOk, keys: dataKeys, adminKeySet: !!DATA_ADMIN_KEY, error: dataOk ? undefined : dataR.message },
+      chain: { ok: dataOk, keys: chainKeys, adminKeySet: !!DATA_ADMIN_KEY, error: dataOk ? undefined : dataR.message },
       rag: { ok: ragOk, tenants, adminKeySet: !!RAGSERVICER_ADMIN_KEY, error: ragOk ? undefined : ragR.message },
       fetched_at: Date.now(),
     },
   });
 });
 
-// ── 统一签发：{service:'data', label, rate_limit} | {service:'rag', tenant_id, name, expires_days} ──
+// ── 统一签发：{service:'data'|'mcp'|'chain-rpc'|'waas', label, rate_limit} | {service:'rag', tenant_id, name, expires_days} ──
+// B-12-1：区块链栈服务（payment/vault/mpc/chain-rpc/waas）与 data/mcp 同走 data 服务 api_keys 签发（前缀互斥）
 router.post('/keys', async (req: any, res: any) => {
   const { service } = req.body || {};
-  if (service === 'data' || service === 'mcp') {
+  if (service === 'data' || service === 'mcp' || service === 'chain-rpc' || service === 'waas' ||
+      service === 'payment' || service === 'vault' || service === 'mpc') {
     const label = String(req.body.label || '').trim();
     if (!label) return res.status(400).json({ code: -1, message: 'label required', data: null });
     const r = await dataKeyReq<any>('POST', '/admin/api-keys', { label, rate_limit: req.body.rate_limit, scope: service });

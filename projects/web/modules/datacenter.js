@@ -290,7 +290,104 @@ function dcSwitchTab(sub) {
   const panel = document.getElementById('sub-' + sub);
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.add('active');
+  if (sub === 'dc-apikey') myKeysLoad(); // B-11-3：进入 API Key 页加载用户级 keys
 }
+
+// ─── My Keys（B-11-3 用户级 key 自助管理，钱包签名鉴权）───────────────
+var myKeysNewKey = null;
+function myKeysMsg(text, ok) {
+  const el = document.getElementById('mykeys-msg');
+  if (!el) return;
+  if (myKeysNewKey) {
+    el.innerHTML = '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(14,203,129,0.06)">' +
+      '<div style="font-weight:700;margin-bottom:4px">新 key —— 仅此一次显示，请立即复制保存</div>' +
+      '<div class="mono" style="word-break:break-all;margin-bottom:6px">' + esc(myKeysNewKey) + '</div>' +
+      '<button class="btn btn-xs" onclick="myKeysCopyNew()">📋 复制</button></div>';
+    myKeysNewKey = null;
+    return;
+  }
+  el.textContent = text || '';
+  el.style.color = ok ? 'var(--green,#0ecb81)' : 'var(--binance-red,#F6465D)';
+}
+function myKeysCopyNew() {
+  const el = document.querySelector('#mykeys-msg .mono');
+  if (el) navigator.clipboard.writeText(el.textContent).then(function() { showToast('Copied', 'success'); });
+}
+function myKeysRender(resp) {
+  const tbody = document.getElementById('mykeys-tbody');
+  const hint = document.getElementById('mykeys-hint');
+  if (!tbody) return;
+  if (hint) hint.textContent = user().walletAddress ? ('owner: ' + user().walletAddress.slice(0, 6) + '…' + user().walletAddress.slice(-4)) : '未连接钱包';
+  const keys = (resp && resp.keys) || [];
+  if (!keys.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">暂无 key，在上方签发第一个</td></tr>';
+    return;
+  }
+  tbody.innerHTML = keys.map(function(k) {
+    var scopeBadge = k.scope === 'mcp' ? 'mx_' : k.scope === 'payment' ? 'px_' : k.scope === 'vault' ? 'vx_' : k.scope === 'mpc' ? 'mp_' : k.scope === 'chain-rpc' ? 'cr_' : k.scope === 'waas' ? 'wa_' : 'dx_';
+    return '<tr>' +
+      '<td style="font-weight:600">' + esc(k.label) + '</td>' +
+      '<td><span class="dc-chain-badge">' + esc(k.scope || 'data') + '（' + scopeBadge + '）</span></td>' +
+      '<td class="mono">' + esc(k.key_masked) + '</td>' +
+      '<td>' + (k.enabled ? '<span style="color:var(--green,#0ecb81)">启用</span>' : '<span style="color:var(--binance-red,#F6465D)">禁用</span>') + '</td>' +
+      '<td class="mono">' + k.rate_limit + '/min</td>' +
+      '<td class="mono">' + (k.request_count || 0) + '</td>' +
+      '<td class="mono">' + fmtTime(k.last_used_at) + '</td>' +
+      '<td><span style="display:inline-flex;gap:6px">' +
+        '<button class="btn btn-xs" title="轮换" onclick="myKeysRotate(' + k.id + ')">🔄</button>' +
+        '<button class="btn btn-xs" title="吊销" onclick="myKeysDelete(' + k.id + ')">🗑️</button>' +
+      '</span></td>' +
+    '</tr>';
+  }).join('');
+}
+async function myKeysLoad() {
+  if (!user().walletAddress) return;
+  try {
+    const resp = await afetch('/api/v2/data/my-keys', { auth: 'wallet' });
+    myKeysRender(resp || { keys: [] });
+    myKeysMsg('');
+  } catch (e) {
+    myKeysMsg('加载失败：' + e.message, false);
+  }
+}
+async function myKeysCreate() {
+  if (!user().walletAddress) { myKeysMsg('请先连接钱包', false); return; }
+  const labelEl = document.getElementById('mykeys-label');
+  const label = (labelEl && labelEl.value || '').trim();
+  if (!label) { myKeysMsg('请填写 label', false); return; }
+  myKeysNewKey = null;
+  try {
+    const resp = await afetch('/api/v2/data/my-keys', { method: 'POST', auth: 'wallet', body: { label: label, scope: 'data' } });
+    if (resp && resp.api_key) {
+      myKeysNewKey = resp.api_key;
+      myKeysMsg('签发成功（新 key 仅显示一次）', true);
+      if (labelEl) labelEl.value = '';
+      myKeysLoad();
+      showToast('New key issued — copy below', 'success');
+    } else {
+      myKeysMsg('签发失败：服务端未返回 key', false);
+    }
+  } catch (e) {
+    myKeysMsg('签发失败：' + e.message, false);
+  }
+}
+async function myKeysRotate(id) {
+  try {
+    const resp = await afetch('/api/v2/data/my-keys/' + id + '/rotate', { method: 'POST', auth: 'wallet' });
+    if (resp && resp.api_key) { myKeysNewKey = resp.api_key; myKeysMsg('已轮换（新 key 仅显示一次）', true); }
+    myKeysLoad();
+  } catch (e) { myKeysMsg('轮换失败：' + e.message, false); }
+}
+async function myKeysDelete(id) {
+  if (!confirm('确认吊销该 key？吊销后立即失效')) return;
+  try {
+    await afetch('/api/v2/data/my-keys/' + id, { method: 'DELETE', auth: 'wallet' });
+    myKeysMsg('已吊销', true);
+    myKeysLoad();
+  } catch (e) { myKeysMsg('吊销失败：' + e.message, false); }
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 function formatNumber(n) { return n == null ? '—' : Number(n).toLocaleString(); }
