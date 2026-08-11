@@ -13,6 +13,13 @@ import { logger } from '../utils/logger';
 import { Errors } from '../utils/errors';
 import { config } from '../config';
 import { getHDMnemonic, getPrivateKey } from './hdWalletService';
+// A-10: gas 自付计费（按实际 gas 结算，GAS_POOL 仅广播不垫付）
+import { vaultChargeConfigured, estimateGasCostWei, chargeGas, settleGas, VaultChargeError } from './vaultBilling';
+
+/** A-10: 计费 subscriber（ledger 通用字符串；钱包地址/用户 id 原样，默认 'vault'） */
+function billingSubscriber(userId: string): string {
+  return (userId || 'vault').toLowerCase();
+}
 
 /**
  * Multi-Sig Service (F-027~F-032)
@@ -430,12 +437,32 @@ export async function createSafe(params: {
       SAFE_PROXY_FACTORY_ABI,
       signer
     );
+
+    // A-10: gas 自付——部署前按预估成本预扣（含 5% 缓冲），GAS_POOL 仅广播不垫付
+    let chargeWei = 0n;
+    if (vaultChargeConfigured()) {
+      const txReq = await factory.createProxyWithNonce.populateTransaction(cfg.safeSingleton, initializer, saltNonce);
+      const estimated = await estimateGasCostWei(signer.provider as ethers.JsonRpcProvider, txReq);
+      chargeWei = (estimated * 105n) / 100n;
+      await chargeGas(billingSubscriber(userId), `vault:create:${safeId}`, chargeWei);
+    }
+
     const tx = await factory.createProxyWithNonce(
       cfg.safeSingleton, initializer, saltNonce,
       { gasLimit: 500000 }
     );
     const receipt = await tx.wait();
     const txHash = receipt.hash as Address;
+
+    // A-10: 收据后按实际 gas 结算退差（多退少补）；结算失败仅告警，不阻塞创建
+    if (chargeWei > 0n) {
+      try {
+        const actualWei = receipt.gasUsed * receipt.gasPrice;
+        await settleGas(billingSubscriber(userId), `vault:create:${safeId}`, chargeWei, actualWei);
+      } catch (bErr: any) {
+        logger.warn('Safe create gas settle failed', { safeId, error: bErr.message });
+      }
+    }
 
     // Parse ProxyCreation event from ethers receipt
     const iface = new ethers.Interface([
@@ -454,6 +481,8 @@ export async function createSafe(params: {
     status = 'active';
     logger.info('Safe proxy deployed', { safeId, safeAddress: actualAddress, txHash, owners, threshold });
   } catch (err: any) {
+    // A-10: 计费失败（402 余额不足 / 503 引擎故障）直接抛，不落入 pending
+    if (err instanceof VaultChargeError) throw err;
     logger.warn('Safe chain deployment failed, storing pending', {
       safeId, predictedAddress, error: err.message,
     });
@@ -820,30 +849,49 @@ export async function executeTransaction(params: {
   const txRow = tx.rows[0];
   let chainTxHash: string | null = null;
 
-  try {
-    const signer = getDeployerSigner(safe.chain_id);
+  // A-10: gas 自付——广播前按预估成本预扣（含 5% 缓冲）；GAS_POOL 仅广播不垫付。
+  // 计费失败（402 余额不足 / 503 引擎故障）在此抛出，交易尚未广播，不标 failed。
+  const signer = getDeployerSigner(safe.chain_id);
+  const signatures = '0x' + packedSigs;
+  const safeContract = new ethers.Contract(
+    safe.safe_address,
+    [
+      'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) public returns (bool)'
+    ],
+    signer
+  );
+  const execArgs = [
+    txRow.to_address,
+    ethers.parseEther(txRow.value || '0'),
+    txRow.data || '0x',
+    0, // Call
+    0, 0, 0,
+    '0x0000000000000000000000000000000000000000',
+    '0x0000000000000000000000000000000000000000',
+    signatures,
+  ];
+  let chargeWei = 0n;
+  if (vaultChargeConfigured()) {
+    const txReq = await safeContract.execTransaction.populateTransaction(...execArgs, { gasLimit: 500000 });
+    const estimated = await estimateGasCostWei(signer.provider as ethers.JsonRpcProvider, txReq);
+    chargeWei = (estimated * 105n) / 100n;
+    await chargeGas(billingSubscriber(userId), `vault:execute:${safeTxHash}`, chargeWei);
+  }
 
-    const signatures = '0x' + packedSigs;
-    const safeContract = new ethers.Contract(
-      safe.safe_address,
-      [
-        'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) public returns (bool)'
-      ],
-      signer
-    );
-    const tx = await safeContract.execTransaction(
-      txRow.to_address,
-      ethers.parseEther(txRow.value || '0'),
-      txRow.data || '0x',
-      0, // Call
-      0, 0, 0,
-      '0x0000000000000000000000000000000000000000',
-      '0x0000000000000000000000000000000000000000',
-      signatures,
-      { gasLimit: 500000 }
-    );
+  try {
+    const tx = await safeContract.execTransaction(...execArgs, { gasLimit: 500000 });
     const execReceipt = await tx.wait();
     chainTxHash = execReceipt.hash;
+
+    // A-10: 收据后按实际 gas 结算退差（多退少补）；结算失败仅告警，不阻塞执行
+    if (chargeWei > 0n) {
+      try {
+        const actualWei = execReceipt.gasUsed * execReceipt.gasPrice;
+        await settleGas(billingSubscriber(userId), `vault:execute:${safeTxHash}`, chargeWei, actualWei);
+      } catch (bErr: any) {
+        logger.warn('Safe tx gas settle failed', { safeTxHash, error: bErr.message });
+      }
+    }
 
     logger.info('Safe tx executed on-chain', {
       safeTxHash, chainTxHash, sigCount: sigs.rows.length,

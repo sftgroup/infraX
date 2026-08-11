@@ -6,6 +6,8 @@ import cors from 'cors';
 import crypto from 'crypto';
 import * as multiSigService from './src/services/multiSigService';
 import { createAuthMiddleware } from '../shared/auth-express';
+// A-10: gas 自付计费端点（plans / ledger-balance）
+import { vaultPlansInfo, vaultLedgerBalance, vaultChargeConfigured, VaultChargeError } from './src/services/vaultBilling';
 
 const app = express();
 app.use(express.json());
@@ -217,6 +219,39 @@ app.post('/api/vault/risk/check', asyncHandler(async (req: any, res: any) => {
   }
   res.json({ pass: true, rule: rule.name });
 }));
+
+// ═══ A-10: gas 自付计费（按实际 gas 结算，GAS_POOL 仅广播不垫付）═══
+
+// GET /api/vault/plans — 计费模式说明（价目公开）
+app.get('/api/vault/plans', (_req: any, res: any) => {
+  res.json(apiResponse(vaultPlansInfo(), 'Vault gas billing plans'));
+});
+
+// POST /api/vault/ledger-balance — 用户 ledger 余额（subscriber = userId 或钱包地址）
+app.post('/api/vault/ledger-balance', asyncHandler(async (req: any, res: any) => {
+  const { userId } = req.body || {};
+  const subscriber = (userId || req.headers['x-wallet-address'] || 'vault').toString().toLowerCase();
+  if (!vaultChargeConfigured()) {
+    return res.status(503).json(apiResponse(null, 'Vault gas billing is not configured (VAULT_PAYMENTS_URL/VAULT_PAYMENTS_API_KEY/VAULT_PLATFORM_ADDRESS)', 1007));
+  }
+  try {
+    const balance = await vaultLedgerBalance(subscriber);
+    res.json(apiResponse(balance, 'Ledger balance'));
+  } catch (e: any) {
+    res.status(e instanceof VaultChargeError ? e.status : 503)
+      .json(apiResponse(null, e?.message || 'ledger balance unavailable', 1007));
+  }
+}));
+
+// 统一错误处理：A-10 计费错误（402 余额不足 / 503 引擎故障）透出状态码；其余 500
+app.use((err: any, _req: any, res: any, _next: any) => {
+  const status = err instanceof VaultChargeError
+    ? err.status
+    : typeof err?.status === 'number' ? err.status : 500;
+  const message = err?.message || 'Internal server error';
+  if (status >= 500) console.error('[vault] Error:', err);
+  res.status(status).json(apiResponse(null, message.replace(/^\[402\]\s*/, ''), status === 402 ? 1001 : status >= 500 ? 1007 : 1001));
+});
 
 // ─── Start ───
 const PORT = parseInt(process.env.PORT || '6002', 10);

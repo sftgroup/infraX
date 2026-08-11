@@ -8,7 +8,7 @@
 import express from 'express';
 import { createClient, http, RpcError, toHex, type Address, type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import {
   BundlerClient,
@@ -26,6 +26,8 @@ import {
   type SessionPolicy,
 } from '../../aa-sdk/src/index.js';
 import { PostgresSessionStore } from './session-store.js';
+// A-10: session 订阅计费（UserOp 次数费 + paymaster gas 代付按实际结算）
+import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleUserOp, aaLedgerBalance, aaPlansInfo, AABillingError } from './billing.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -197,9 +199,32 @@ app.post('/v1/userops', asyncHandler(async (req: any, res: any) => {
   const cfg = getChain(chain);
   const userOp = normalizeOp(op);
 
+  // A-10: session 订阅计费——广播前预扣（固定次数费 + 预估 gas）；subscriber = 智能账户
+  const subscriber = userOp.sender.toLowerCase();
+  let chargeTotal = 0n;
+  let chargeRef = '';
+  if (aaChargeConfigured()) {
+    const fixed = BigInt(aaFees().userop.feeWei);
+    const gasEst = estimateUserOpGasWei(userOp);
+    chargeTotal = fixed + gasEst;
+    if (chargeTotal > 0n) {
+      chargeRef = `aa:userop:${randomUUID()}`;
+      await chargeUserOp(subscriber, chargeRef, chargeTotal); // 402/503 直接抛（asyncHandler → 错误处理器）
+    }
+  }
+
   if (wait === false) {
-    const { userOpHash, bundlerUrl } = await broadcast(cfg, userOp);
-    return res.json(apiResponse({ userOpHash, bundlerUrl, receipt: null }, 'UserOp broadcast'));
+    try {
+      const { userOpHash, bundlerUrl } = await broadcast(cfg, userOp);
+      return res.json(apiResponse({ userOpHash, bundlerUrl, receipt: null }, 'UserOp broadcast'));
+    } catch (e) {
+      // A-10: 广播失败 → 全额退还预扣
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] userop refund failed:', bErr.message); }
+      }
+      throw e;
+    }
   }
 
   const client = new BundlerClient(cfg);
@@ -208,6 +233,15 @@ app.post('/v1/userops', asyncHandler(async (req: any, res: any) => {
       waitTimeoutMs: 120_000,
       onBroadcast: (hash) => console.log(`[aa-relay] ${chain} userOpHash=${hash} accepted`),
     });
+    // A-10: 收据后按 actualGasCost 结算退差（多退少补）；结算失败仅告警
+    if (chargeTotal > 0n && result.receipt) {
+      try {
+        const fixed = BigInt(aaFees().userop.feeWei);
+        await settleUserOp(subscriber, chargeRef, chargeTotal, fixed + result.receipt.actualGasCost);
+      } catch (bErr: any) {
+        console.warn('[aa-relay] userop gas settle failed:', bErr.message);
+      }
+    }
     res.json(apiResponse({
       userOpHash: result.userOpHash,
       bundlerUrl: result.bundlerUrl,
@@ -215,6 +249,11 @@ app.post('/v1/userops', asyncHandler(async (req: any, res: any) => {
     }, 'UserOp sent'));
   } catch (e: any) {
     if (isBundlerBusinessError(e)) {
+      // A-10: bundler 业务拒绝（交易未执行）→ 全额退还预扣
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] userop refund failed:', bErr.message); }
+      }
       return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
     }
     throw e;
@@ -385,14 +424,39 @@ app.post('/v1/session/validate', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse({ ok: false, reason: result.reason }, `denied: ${result.reason}`, 1001));
 }));
 
+// ═══ A-10: session 订阅计费（UserOp 次数费 + paymaster gas 代付）═══
+
+// GET /v1/plans — 套餐价目（公开）
+app.get('/v1/plans', (_req: any, res: any) => {
+  res.json(apiResponse(aaPlansInfo(), 'AA session billing plans'));
+});
+
+// POST /v1/ledger-balance — 智能账户 ledger 余额
+app.post('/v1/ledger-balance', asyncHandler(async (req: any, res: any) => {
+  const { account } = req.body || {};
+  if (!account) return res.status(400).json(apiResponse(null, 'account required (smart account address)', 1001));
+  if (!aaChargeConfigured()) {
+    return res.status(503).json(apiResponse(null, 'AA session billing is not configured (AA_PAYMENTS_URL/AA_PAYMENTS_API_KEY/AA_PLATFORM_ADDRESS)', 1007));
+  }
+  try {
+    const balance = await aaLedgerBalance(String(account));
+    res.json(apiResponse(balance, 'Ledger balance'));
+  } catch (e: any) {
+    res.status(e instanceof AABillingError ? e.status : 503)
+      .json(apiResponse(null, e?.message || 'ledger balance unavailable', 1007));
+  }
+}));
+
 // 统一 JSON 错误处理器
 app.use((err: any, _req: any, res: any, _next: any) => {
-  const status = typeof err?.statusCode === 'number' ? err.statusCode
+  const status = err instanceof AABillingError
+    ? err.status
+    : typeof err?.statusCode === 'number' ? err.statusCode
     : typeof err?.status === 'number' ? err.status
     : 500;
   const message = err?.message || 'Internal server error';
   if (status >= 500) console.error('[aa-relay] Error:', err);
-  res.status(status).json(apiResponse(null, message, status >= 500 ? 1007 : 1001));
+  res.status(status).json(apiResponse(null, message.replace(/^\[402\]\s*/, ''), status === 402 ? 1001 : status >= 500 ? 1007 : 1001));
 });
 
 const PORT = parseInt(process.env.PORT || '9131', 10);
