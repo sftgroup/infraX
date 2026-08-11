@@ -205,9 +205,53 @@
 | `/api/v2/dashboard/*` | GET overview / stats | 总览 | ⚠️ 无 |
 | `/api/v2/internal/*` | POST / GET / PUT | 内部管理（CWallet 回调等） | ✅ requireApiKey |
 | `/api/v2/saas/*` | tenants / apikeys CRUD / hot-wallet / tokens | 租户管理 | ✅ requireTenantApiKey（部分） |
-| `/api/v2/subscription/*` | GET plans / POST upgrade | 套餐 | ⚠️ 无 |
+| `/api/v2/subscription/*` | GET plans / POST subscribe / me / check / verify / cancel | 套餐（MQ-12 支付意图化，见 §7.1） | 登录（plans/payment-callback 公开） |
 | `/api/v2/data/*` | GET plans / POST subscribe / GET usage/key/docs | **数据订阅（发 DC key）** | ⚠️ 无 |
 | `paymentRoutes` / `mpcRoutes` | — | 已迁移通用支付引擎 :9132（B-10-5 ✅ 2026-08-11 闭环，见 §7.5） | — |
+
+### 7.1 WAAS 套餐订阅（MQ-12，支付意图化）
+
+> **核心契约**：`subscriptions` 状态机 `free 直通 active` ｜ `付费 pending → active`。付费套餐不再"直接激活"——`subscribe` 只创建支付意图并返回 rail 支付信息，支付完成后经**回调 / 链上轮询 / verify 提交**三路之一激活。rail 失败 → `failed`；`cancel` → `cancelled`。
+> **鉴权**：`plans`/`payment-callback` 公开；`subscribe`/`me`/`check`/`verify`/`cancel` 需用户登录态（`authenticate`）。
+
+| 端点 | 方法 | 鉴权 | 功能 |
+|---|---|---|---|
+| `/api/v2/subscription/plans` | GET | 无 | 套餐目录（free/pro/enterprise） |
+| `/api/v2/subscription/subscribe` | POST | 登录 | 创建支付意图：free→201 active 直通；付费→201 pending + `payment`（按 rail） |
+| `/api/v2/subscription/me` | GET | 登录 | 当前 active 订阅（无则回退 free） |
+| `/api/v2/subscription/check` | POST | 登录 | 轮询支付状态（chain rail 链上 escrow 兜底 → active 则激活） |
+| `/api/v2/subscription/verify` | POST | 登录 | x402 rail 确认：提交 `txHash` → payments 验收入账 → 校验 payer==当前钱包 → 激活 pending |
+| `/api/v2/subscription/payment-callback` | POST | 签名 | 支付引擎出站回调（见下「回调契约」） |
+| `/api/v2/subscription/cancel` | POST | 登录 | 取消 active 订阅 |
+
+**状态机**：
+
+```
+subscribe(free) ───────────────▶ active（直通）
+subscribe(paid) ──▶ pending ──┬─▶ payment-callback（fiat webhook `sub:<id>` / x402 credit 按 payer 匹配）
+                              ├─▶ /check（chain：SubscriptionManager escrow active → 激活）
+                              ├─▶ /verify（x402：提交 txHash → 校验 payer → 激活）
+                              └─▶ rail 异常 ─▶ failed
+cancel ───────────────────────▶ cancelled
+```
+
+**rail 路由表**（`POST /subscribe` body `{planId, rail?}`，默认 rail 由 `DEFAULT_RAIL` 配置，平台自用实例 = chain）：
+
+| rail | subscribe 返回（`payment`） | 支付方式 | 激活路径 |
+|---|---|---|---|
+| `chain`（默认） | `price`/`period`/`payToken`/`trialDays`/`subscriptionManager`/`chainId` | 向链上 `SubscriptionManager` escrow 转账 | 前端 4s 轮询 `/check`（链上 `hasActiveSubscription` 兜底） |
+| `fiat` | `sessionUrl`/`paymentId` | Stripe checkout 跳转 | webhook 回调 `client_reference_id=sub:<id>` |
+| `x402` | `payTo`/`priceWei`/`network` | 向平台钱包转账 | 提交 `txHash` 调 `/verify`（或 credit 回调按 payer 匹配） |
+
+**回调契约**（`POST /payment-callback`，由 payments `WEBHOOK_FORWARD_URL` 转发指向）：
+- 验签：header `x-payments-signature` = HMAC-SHA256(紧凑 JSON body, `PAYMENTS_WEBHOOK_SECRET`)，`timingSafeEqual` 比对；签名缺失/不匹配 → 401
+- body：`{ type: 'webhook' | 'credit', eventId, event, forwardedAt }`
+  - `webhook`：`event.object.client_reference_id` 以 `sub:` 开头 → 激活对应订阅
+  - `credit`：`event.payer` 匹配最近 pending 的 x402 订阅（按用户 wallet_address）→ 激活；无法匹配仅记日志
+- 幂等：`activateSubscription` 对已 active 跳过
+- 响应：`{ received: true }`（200）
+
+**回滚预案（T-10）**：waas 侧恢复"直接订阅逻辑"（subscribe 直接 active，回退到 MQ-12 前的简化行为）+ payments rails 停用（不配置 `PAYMENTS_URL`/`DEFAULT_RAIL` 或 payments 服务下线）即整体回退——waas 与 payments 业务零耦合（仅 HTTP 调用），互不影响。
 
 **MCP**：无专属 MCP（`infrax-wallet-mcp` 代理 waas，需 `WAAS_API_KEY`，见 MCP 文档）。
 

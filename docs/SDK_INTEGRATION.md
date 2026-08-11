@@ -187,6 +187,30 @@ const tr = await infrax.payment.transferCreate({ from: '0xA', to: '0xB', amountW
 await infrax.payment.transferConfirm(tr.transferId);        // 原子入账
 ```
 
+### 2.4B WAAS 套餐订阅流程（MQ-12，`subscription.*`）
+
+> 状态机：`subscribe` → free 直通 `active`；付费返回 `pending` + rail 支付信息（chain/fiat/x402），支付完成后经 **回调 / /check 轮询 / /verify 提交** 三路之一激活。端点在 waas :9109 `/api/v2/subscription/*`（`plans`/`payment-callback` 公开，其余需登录态；SDK 已封装 `plans`/`subscribe`，`check`/`verify`/`cancel` 走 waas REST）。
+
+```ts
+const plans = await infrax.subscription.plans();            // free/pro/enterprise 目录
+
+// ① 创建支付意图（付费 → 201 pending + payment 信息）
+const sub = await infrax.subscription.subscribe('pro');
+if (sub.data.payment.rail === 'none') {
+  console.log('free plan activated', sub.data.subscription.status);   // active
+} else {
+  const pay = sub.data.payment;
+  // ② 按 rail 支付：
+  //   chain：向 pay.subscriptionManager（链上 escrow）转账 pay.price → 前端 4s 轮询 /check 兜底激活
+  //   fiat：浏览器跳转 pay.sessionUrl → Stripe 完成 → webhook 回调激活
+  //   x402：向 pay.payTo 转账 pay.priceWei → 提交 txHash 调 verify 激活
+  // ③ 轮询确认（REST，需登录态）：
+  //   POST /api/v2/subscription/check   → { status: 'active' | 'pending' | 'none' }
+  //   POST /api/v2/subscription/verify   body { txHash }  → x402 入账 + payer 校验 → 激活
+  //   POST /api/v2/subscription/cancel   → 取消 active
+}
+```
+
 ---
 
 ## 2A. 独立 MPC SDK：`@0xinfrax/mpc-sdk`（MQ-10 补充 E-5）
