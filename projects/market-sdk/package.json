@@ -1,0 +1,33 @@
+{
+  "name": "@0xinfrax/market-sdk",
+  "version": "0.1.0",
+  "description": "InfraX Market SDK — thin wrapper over @0xinfrax/infrax-dk exposing the Market service surface (OKX ChainOS DEX data + MQ-16 market plan subscriptions). Same-source, synced releases: re-exports only, no duplicated implementation.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@0xinfrax/infrax-dk": "^0.7.0"
+  },
+  "keywords": [
+    "infrax",
+    "market",
+    "okx",
+    "chainos",
+    "dex",
+    "subscription"
+  ],
+  "license": "MIT",
+  "author": "InfraX",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

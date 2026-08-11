@@ -250,7 +250,7 @@ export interface MlSentimentParams { articles: Array<Record<string, any>>; }
 
 // ═══════════════ HTTP ═══════════════
 
-class HttpClient {
+export class HttpClient {
   private baseUrl: string;
   private headers: Record<string, string>;
   private timeout: number;
@@ -316,7 +316,7 @@ class HttpClient {
 
 // ═══════════════ Wallet — balances, send, simulate, RPC ═══════════════
 
-class WalletAPI {
+export class WalletAPI {
   private readonly address: string;
   private readonly sign: ((message: string) => Promise<string>) | undefined;
 
@@ -347,7 +347,7 @@ class WalletAPI {
 
 // ═══════════════ Safe — multi-sig on-chain operations ═══════════════
 
-class SafeAPI {
+export class SafeAPI {
   constructor(private http: HttpClient) {}
   async propose(params: SafeProposeParams) { return this.http.post<SafeProposeResult>('/api/vault/safe/propose', params); }
   async confirm(params: SafeConfirmParams) { return this.http.post<SafeConfirmResult>('/api/vault/safe/confirm', params); }
@@ -370,7 +370,7 @@ class SafeAPI {
 // 旧 :9106 /api/v2/payment/* 已下线；以下全部对接通用支付引擎 :9132 /payments/*。
 // 鉴权：X-API-Key（= PAYMENTS_API_KEY）。引擎响应为裸 JSON，非 InfraXResponse 包装。
 
-class PaymentAPI {
+export class PaymentAPI {
   constructor(private http: HttpClient) {}
 
   /** fiat checkout（Stripe）——创建支付会话，返回跳转 URL */
@@ -521,7 +521,7 @@ class PaymentAPI {
 
 // ═══════════════ SaaS — tenant management, billing, apikeys ═══════════════
 
-class SaaSAPI {
+export class SaaSAPI {
   constructor(private http: HttpClient) {}
   async createTenant(params: TenantCreateParams) { return this.http.post<TenantCreateResult>('/api/v2/saas/tenants', params); }
   async listTenants() { return this.http.get<any>('/api/v2/saas/tenants'); }
@@ -540,7 +540,7 @@ class SaaSAPI {
 
 // ═══════════════ Subscription — plans, subscribe, cancel ═══════════════
 
-class SubAPI {
+export class SubAPI {
   constructor(private http: HttpClient) {}
   async plans() { return this.http.get<any>('/api/v2/subscription/plans'); }
   async current() { return this.http.get<any>('/api/v2/subscription/current'); }
@@ -550,7 +550,7 @@ class SubAPI {
 
 // ═══════════════ DC — events, tokens, chains, checkpoints ═══════════════
 
-class DCAPI {
+export class DCAPI {
   constructor(private http: HttpClient) {}
   async events(params: DCEventsParams = {}) { const q = new URLSearchParams(); if (params.chain) q.set('chain', params.chain); if (params.address) q.set('address', params.address); if (params.contract) q.set('contract', params.contract); if (params.eventType) q.set('event_type', params.eventType); if (params.fromBlock) q.set('from_block', params.fromBlock); if (params.limit) q.set('page_size', String(params.limit)); return this.http.get<any>('/api/v2/data/events?' + q.toString()); }
   async stats() { return this.http.get<DCStatsResult>('/api/v2/data/stats'); }
@@ -571,7 +571,7 @@ class DCAPI {
 
 // ═══════════════ Vault — multisig safe creation + risk ═══════════════
 
-class VaultAPI {
+export class VaultAPI {
   constructor(private http: HttpClient) {}
   async dashboard() { return this.http.get<any>('/api/vault/dashboard'); }
   async safes(params: VaultSafeParams = {}) { const q = new URLSearchParams(); if (params.chain) q.set('chain', params.chain); if (params.status) q.set('status', params.status); return this.http.get<VaultSafe[]>('/api/vault/safe/list?' + q.toString()); }
@@ -584,7 +584,7 @@ class VaultAPI {
 
 // ═══════════════ MPC — key shard wallets ═══════════════
 
-class MPCAPI {
+export class MPCAPI {
   constructor(private http: HttpClient) {}
   async sendCode(params: MPCSendCodeParams) { return this.http.post<any>('/api/v2/mpc/send-code', params); }
   async register(params: MPCRegisterParams) { return this.http.post<MPCWalletResult>('/api/v2/mpc/register', params); }
@@ -618,7 +618,7 @@ class MPCAPI {
 
 // ═══════════════ Market — OKX ChainOS v6 DEX Market ═══════════════
 
-class MarketAPI {
+export class MarketAPI {
   constructor(private http: HttpClient) {}
 
   /** P1 Free — token search */
@@ -749,7 +749,7 @@ class MarketAPI {
 // 覆盖 data 服务数据面端点：K线 / ticker / 因子 / 快照（含 onchain/okx 快照）/
 // 符号搜索解析 / 统计。响应为 data 服务原始 JSON（成功时非 {code,message,data} 信封）。
 
-class DataAPI {
+export class DataAPI {
   constructor(private http: HttpClient) {}
 
   /** OHLCV K-line bars（crypto/usstock/forex/futures/cnstock/hkstock） */
@@ -859,7 +859,7 @@ class DataAPI {
 // 推荐路径：优先读 data 侧快照 infrax.data.mlPredictions()；实时性优先才直连本命名空间。
 // /ml/cache/stats 免鉴权；其余端点带 mlApiKey（x-api-key）。
 
-class MlAPI {
+export class MlAPI {
   constructor(private http: HttpClient) {}
 
   /** LightGBM 方向预测（训练+预测全 symbol，附 macro_context） */
@@ -934,7 +934,7 @@ export interface RpcVerifyParams { txHash: string; }
 export interface RpcVerifyResult { verified: boolean; activated?: boolean; }
 export interface RpcUsageResult { planId: string; planName: string; monthlyQuota: number; currentUsage: number; dailyBreakdown: any[]; rpcSubStatus: string; }
 
-class ChainRpcAPI {
+export class ChainRpcAPI {
   private readonly broadcastKey: string;
   constructor(private http: HttpClient, private broadcastHttp: HttpClient, broadcastKey: string) {
     this.broadcastKey = broadcastKey;

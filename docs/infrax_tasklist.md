@@ -1406,6 +1406,13 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| D-1 | 独立包脚手架 | 7 个规划包（waas/vault/dc/market/chain-rpc/payments/data）monorepo 结构 + publishConfig | 🔲 | P2 |
-| D-2 | 薄封装实现 | 各包薄封装 infrax-dk 对应 API 类（同源同步发版，不复制实现） | 🔲 | P2 |
+| D-1 | 独立包脚手架 | 7 个规划包（waas/vault/dc/market/chain-rpc/payments/data）monorepo 结构 + publishConfig | ✅ 代码完成（2026-08-12，待发布） | P2 |
+| D-2 | 薄封装实现 | 各包薄封装 infrax-dk 对应 API 类（同源同步发版，不复制实现） | ✅ 代码完成（2026-08-12，待发布） | P2 |
 | D-3 | SDK_INTEGRATION.md 更新 | §1 总览 + §1.1 独立包总览表已更新（commit 7a76c17） | ✅ | — |
+
+**D-1/D-2 实现记录（2026-08-12，commit 后待发布）**：
+- infrax-dk `0.6.0 → 0.7.0`：13 个内部 API 类改为 `export class`（HttpClient/WalletAPI/SafeAPI/PaymentAPI/SaaSAPI/SubAPI/DCAPI/VaultAPI/MPCAPI/MarketAPI/DataAPI/MlAPI/ChainRpcAPI）——d.ts 全量导出，供独立包类型引用（向后兼容，不破坏现有 API）
+- 7 个独立包（`projects/<name>-sdk/`，mpc-sdk 同构模板）：`waas-sdk`（wallet+safe+saas+sub）/ `vault-sdk` / `dc-sdk` / `market-sdk` / `chain-rpc-sdk` / `payments-sdk`（payment+sub）/ `data-sdk`（data+ml）
+- 每个包：`package.json`（`@0xinfrax/<name>-sdk@0.1.0`、`main/types: dist`、`files:[dist]`、`publishConfig` 依赖 `@0xinfrax/infrax-dk: ^0.7.0`）+ `tsconfig.json`（mpc-sdk 模板）+ `src/index.ts`（**薄封装**：re-export 对应 API 类 + `InfraXConfig` + `createXxxClient(config)` 工厂返回命名空间，零实现复制）
+- 本地验证：infrax-dk build 14 export classes → 7 包逐一 `npm i ../sdk --no-save && npm run build` 全部 tsc 通过（dist 生成）
+- **发布待办（同源同步发版，需 npm 凭证/CI）**：① 发布 `@0xinfrax/infrax-dk@0.7.0` → ② 依次发布 7 个 `@0xinfrax/*-sdk@0.1.0`（建议 `--registry=https://registry.npmjs.org/` 避免镜像延迟）

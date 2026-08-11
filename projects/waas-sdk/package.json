@@ -1,0 +1,33 @@
+{
+  "name": "@0xinfrax/waas-sdk",
+  "version": "0.1.0",
+  "description": "InfraX WAAS SDK — thin wrapper over @0xinfrax/infrax-dk exposing the WAAS service surface (wallet + safe + saas + sub). Same-source, synced releases: re-exports only, no duplicated implementation.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@0xinfrax/infrax-dk": "^0.7.0"
+  },
+  "keywords": [
+    "infrax",
+    "waas",
+    "wallet",
+    "multisig",
+    "saas",
+    "subscription"
+  ],
+  "license": "MIT",
+  "author": "InfraX",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

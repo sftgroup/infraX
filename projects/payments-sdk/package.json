@@ -1,0 +1,35 @@
+{
+  "name": "@0xinfrax/payments-sdk",
+  "version": "0.1.0",
+  "description": "InfraX Payments SDK — thin wrapper over @0xinfrax/infrax-dk exposing the payments engine surface (@0xinfrax/payments: checkout/a2a/verify/balance/price/capabilities + batch/invite/transfer + WAAS sub). Same-source, synced releases: re-exports only, no duplicated implementation.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@0xinfrax/infrax-dk": "^0.7.0"
+  },
+  "keywords": [
+    "infrax",
+    "payments",
+    "x402",
+    "a2a",
+    "batch",
+    "invite",
+    "transfer",
+    "subscription"
+  ],
+  "license": "MIT",
+  "author": "InfraX",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

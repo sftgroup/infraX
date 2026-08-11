@@ -19,17 +19,17 @@
 
 ### 1.1 独立包总览（统一包 + 每服务独立包，2026-08-11 规划）
 
-设计原则：`@0xinfrax/infrax-dk` 保持**统一入口**（一次配置覆盖全部服务），同时**每个微服务提供独立 npm 包**（仅依赖该服务的调用方无需安装全量包）。已发布 ✅ / 规划中 🔲：
+设计原则：`@0xinfrax/infrax-dk` 保持**统一入口**（一次配置覆盖全部服务），同时**每个微服务提供独立 npm 包**（仅依赖该服务的调用方无需安装全量包）。已发布 ✅ / 代码完成待发布 ⏳ / 规划中 🔲：
 
 | 微服务 | 独立包 | 覆盖方法（对应 infrax-dk 命名空间） | 状态 |
 |---|---|---|---|
-| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | 🔲 规划 |
-| Vault | `@0xinfrax/vault-sdk` | vault | 🔲 规划 |
-| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | 🔲 规划 |
-| Market（collector） | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | 🔲 规划 |
-| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | 🔲 规划 |
-| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | 🔲 规划 |
-| Data / ML | `@0xinfrax/data-sdk` | data + ml | 🔲 规划 |
+| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| Vault | `@0xinfrax/vault-sdk` | vault | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| Market（collector） | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
+| Data / ML | `@0xinfrax/data-sdk` | data + ml | ✅ 0.1.0（2026-08-12 代码完成，待发布） |
 | MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
 | Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
 | LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
