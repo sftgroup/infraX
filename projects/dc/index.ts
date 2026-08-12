@@ -702,18 +702,47 @@ app.get('/api/v2/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncH
   res.json(apiResponse(CATEGORIES.map(([category_id, label_id, name, description]) => ({ category_id, label_id, name, description }))));
 }));
 
-// 分类统计（按 category_id 聚合事件量；events 1 亿+ 行禁止全表 COUNT，只聚合最近 24h）
-app.get('/api/v2/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
-  const conditions: string[] = [];
-  const values: any[] = [];
+// 分类统计（按 category_id 聚合事件量）。
+// ⚠️ B-10-3 教训：events 161GB/1 亿+ 行，collected_at 时间窗会被规划器选成 Parallel Seq Scan，
+// 重演"卡死 pg-pool"（实测 24h 窗口全表扫描 10min+ 不返回）。改用**按链块号窗口**：
+//   每链读 event_checkpoints.last_block（O(1)）→ 按链均块时间折算 N 块 → 每链一条
+//   (chain=?, block_number>=?) 条件（OR 连接）→ 走 idx_events_chain_block 索引范围扫描，
+//   只读最近窗口数据，耗时毫秒~秒级、有界。
+const CHAIN_BLOCK_SEC: Record<string, number> = { sepolia: 12, ethereum: 12, bsc: 3, base: 2, oxa: 2, oxachain: 2, solana: 1 };
+const MAX_WINDOW_BLOCKS = 1_000_000; // 兜底：单链窗口块数上限（防病态参数）
+
+async function eventStatsByCategory(chain: string | undefined, hours: number): Promise<any[]> {
+  const h = Math.min(Math.max(hours || 24, 1), 24 * 7);
+  const cpRes = await eventsPool.query(
+    `SELECT chain, last_block FROM event_checkpoints WHERE collector_name = 'block_scanner'`
+  );
+  const conds: string[] = [];
+  const vals: any[] = [];
   let idx = 1;
-  if (req.query.chain) { conditions.push(`chain = $${idx++}`); values.push(req.query.chain.toLowerCase()); }
-  // 24h 窗口（hypertable/分片友好）；可经 hours 调整
-  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 7);
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')} AND collected_at >= NOW() - INTERVAL '${hours} hours'` : `WHERE collected_at >= NOW() - INTERVAL '${hours} hours'`;
-  const q = `SELECT category_id, COUNT(*)::int AS count FROM events ${where} GROUP BY category_id ORDER BY count DESC`;
-  const r = await eventsPool.query(q, values);
-  res.json(apiResponse({ window_hours: hours, categories: r.rows }));
+  for (const c of cpRes.rows) {
+    const ch: string = c.chain;
+    if (chain && chain !== ch) continue;
+    const blockSec = CHAIN_BLOCK_SEC[ch] ?? 12;
+    const delta = Math.min(Math.ceil((h * 3600) / blockSec), MAX_WINDOW_BLOCKS);
+    const threshold = Number(c.last_block) - delta;
+    conds.push(`(chain = $${idx} AND block_number >= $${idx + 1})`);
+    vals.push(ch, threshold);
+    idx += 2;
+  }
+  if (conds.length === 0) return [];
+  const q = `SELECT chain, category_id, COUNT(*)::int AS count
+             FROM events
+             WHERE ${conds.join(' OR ')}
+             GROUP BY chain, category_id
+             ORDER BY count DESC`;
+  const r = await eventsPool.query(q, vals);
+  return r.rows;
+}
+
+app.get('/api/v2/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
+  const hours = parseInt(req.query.hours) || 24;
+  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined, hours);
+  res.json(apiResponse({ window_hours: Math.min(Math.max(hours, 1), 24 * 7), categories: rows }));
 }));
 
 // ── 9.6 Phase 1.5: DC API v3（/api/v3/data/* 分类强化面）──
@@ -748,15 +777,9 @@ app.get('/api/v3/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncH
 }));
 
 app.get('/api/v3/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
-  const conditions: string[] = [];
-  const values: any[] = [];
-  let idx = 1;
-  if (req.query.chain) { conditions.push(`chain = $${idx++}`); values.push(req.query.chain.toLowerCase()); }
-  const hours = Math.min(Math.max(parseInt(req.query.hours) || 24, 1), 24 * 7);
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')} AND collected_at >= NOW() - INTERVAL '${hours} hours'` : `WHERE collected_at >= NOW() - INTERVAL '${hours} hours'`;
-  const q = `SELECT category_id, COUNT(*)::int AS count FROM events ${where} GROUP BY category_id ORDER BY count DESC`;
-  const r = await eventsPool.query(q, values);
-  res.json(apiResponse({ window_hours: hours, categories: r.rows }));
+  const hours = parseInt(req.query.hours) || 24;
+  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined, hours);
+  res.json(apiResponse({ window_hours: Math.min(Math.max(hours, 1), 24 * 7), categories: rows }));
 }));
 
 // 注意：events 表 150GB+/1 亿+ 行，COUNT(*) / GROUP BY 全表聚合会卡死 pg-pool（曾拖垮 dc 服务，
