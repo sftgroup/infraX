@@ -502,6 +502,24 @@ export async function migrateEventCollectorTables(): Promise<void> {
       );
     }
 
+    // ============================================================
+    // 9.6 Phase 1.5: 分类计数（collector 采集时增量维护，event-stats 端点 O(1) 读取）
+    // ⚠️ B-10-3 教训：events 161GB/1 亿+ 行禁止实时聚合（时间窗/块窗均会被规划器选成
+    // Parallel Seq Scan，实测 24h/1h 都 >30s）。改为 collector 每批插入时按
+    // (chain, category_id, label_id) 累计 event_count——采集时分类口径，reclassifier
+    // 事后改分类不回写计数（概览用途可接受的漂移）。
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS event_category_stats (
+        chain VARCHAR(50) NOT NULL,
+        category_id VARCHAR(50) NOT NULL,
+        label_id VARCHAR(50) NOT NULL,
+        event_count BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (chain, category_id, label_id)
+      );
+    `);
+
     await client.query('COMMIT');
     logger.info('[migration] All tables created', {
       tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'tracked_tokens', 'custom_event_sigs', 'event_categories'],

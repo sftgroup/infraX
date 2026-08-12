@@ -703,46 +703,29 @@ app.get('/api/v2/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncH
 }));
 
 // 分类统计（按 category_id 聚合事件量）。
-// ⚠️ B-10-3 教训：events 161GB/1 亿+ 行，collected_at 时间窗会被规划器选成 Parallel Seq Scan，
-// 重演"卡死 pg-pool"（实测 24h 窗口全表扫描 10min+ 不返回）。改用**按链块号窗口**：
-//   每链读 event_checkpoints.last_block（O(1)）→ 按链均块时间折算 N 块 → 每链一条
-//   (chain=?, block_number>=?) 条件（OR 连接）→ 走 idx_events_chain_block 索引范围扫描，
-//   只读最近窗口数据，耗时毫秒~秒级、有界。
-const CHAIN_BLOCK_SEC: Record<string, number> = { sepolia: 12, ethereum: 12, bsc: 3, base: 2, oxa: 2, oxachain: 2, solana: 1 };
-const MAX_WINDOW_BLOCKS = 1_000_000; // 兜底：单链窗口块数上限（防病态参数）
-
-async function eventStatsByCategory(chain: string | undefined, hours: number): Promise<any[]> {
-  const h = Math.min(Math.max(hours || 24, 1), 24 * 7);
-  const cpRes = await eventsPool.query(
-    `SELECT chain, last_block FROM event_checkpoints WHERE collector_name = 'block_scanner'`
-  );
+// ⚠️ B-10-3 教训：events 161GB/1 亿+ 行禁止实时聚合——collected_at 时间窗会被规划器选成
+// Parallel Seq Scan，实测 24h/1h 窗口均 >30s 不返回（会占满 eventsPool 拖垮 dc 服务）。
+// 改读 collector 采集时增量维护的 event_category_stats（O(1)），口径=采集时分类
+// （reclassifier 事后改分类不回写计数，概览用途可接受的漂移）。
+async function eventStatsByCategory(chain: string | undefined): Promise<any[]> {
   const conds: string[] = [];
   const vals: any[] = [];
   let idx = 1;
-  for (const c of cpRes.rows) {
-    const ch: string = c.chain;
-    if (chain && chain !== ch) continue;
-    const blockSec = CHAIN_BLOCK_SEC[ch] ?? 12;
-    const delta = Math.min(Math.ceil((h * 3600) / blockSec), MAX_WINDOW_BLOCKS);
-    const threshold = Number(c.last_block) - delta;
-    conds.push(`(chain = $${idx} AND block_number >= $${idx + 1})`);
-    vals.push(ch, threshold);
-    idx += 2;
-  }
-  if (conds.length === 0) return [];
-  const q = `SELECT chain, category_id, COUNT(*)::int AS count
-             FROM events
-             WHERE ${conds.join(' OR ')}
-             GROUP BY chain, category_id
-             ORDER BY count DESC`;
-  const r = await eventsPool.query(q, vals);
+  if (chain) { conds.push(`chain = $${idx++}`); vals.push(chain); }
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+  const r = await eventsPool.query(
+    `SELECT chain, category_id, SUM(event_count)::int AS count
+     FROM event_category_stats ${where}
+     GROUP BY chain, category_id
+     ORDER BY count DESC`,
+    vals
+  );
   return r.rows;
 }
 
 app.get('/api/v2/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
-  const hours = parseInt(req.query.hours) || 24;
-  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined, hours);
-  res.json(apiResponse({ window_hours: Math.min(Math.max(hours, 1), 24 * 7), categories: rows }));
+  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined);
+  res.json(apiResponse({ categories: rows }));
 }));
 
 // ── 9.6 Phase 1.5: DC API v3（/api/v3/data/* 分类强化面）──
@@ -777,9 +760,8 @@ app.get('/api/v3/data/event-categories', requireDcApiKey, dcQuotaEnforce, asyncH
 }));
 
 app.get('/api/v3/data/event-stats', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
-  const hours = parseInt(req.query.hours) || 24;
-  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined, hours);
-  res.json(apiResponse({ window_hours: Math.min(Math.max(hours, 1), 24 * 7), categories: rows }));
+  const rows = await eventStatsByCategory(req.query.chain ? String(req.query.chain).toLowerCase() : undefined);
+  res.json(apiResponse({ categories: rows }));
 }));
 
 // 注意：events 表 150GB+/1 亿+ 行，COUNT(*) / GROUP BY 全表聚合会卡死 pg-pool（曾拖垮 dc 服务，

@@ -14,6 +14,9 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
 
   const client = await pool.connect();
   let insertedCount = 0;
+  // 9.6 Phase 1.5: 采集时分类计数（key = chain|category_id|label_id → 批内数量）
+  // 落 event_category_stats，event-stats 端点 O(1) 读取，避免对 161GB events 实时聚合（B-10-3）
+  const categoryCounts = new Map<string, number>();
 
   try {
     await client.query('BEGIN');
@@ -69,6 +72,8 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
         );
         await client.query('RELEASE SAVEPOINT sp');
         insertedCount++;
+        const statKey = `${evt.chain}|${category_id}|${label_id}`;
+        categoryCounts.set(statKey, (categoryCounts.get(statKey) || 0) + 1);
 
         // Broadcast to WebSocket clients (fire-and-forget)
         try { broadcastEvent(evt); } catch {}
@@ -77,6 +82,31 @@ export async function insertEvents(events: NormalizedEvent[]): Promise<number> {
         if (err.code !== '23505') {
           logger.warn('[normalizer] Failed to insert event', { event_id: evt.event_id, error: err.message });
         }
+      }
+    }
+
+    // 9.6 Phase 1.5: 单条多行 upsert 累计分类计数（批内去重后通常个位数行，O(1)）
+    if (categoryCounts.size > 0) {
+      try {
+        const valueRows: string[] = [];
+        const valueParams: any[] = [];
+        let p = 1;
+        for (const [key, count] of categoryCounts) {
+          const [chain, categoryId, labelId] = key.split('|');
+          valueRows.push(`($${p++}, $${p++}, $${p++}, $${p++})`);
+          valueParams.push(chain, categoryId, labelId, count);
+        }
+        await client.query(
+          `INSERT INTO event_category_stats (chain, category_id, label_id, event_count)
+           VALUES ${valueRows.join(', ')}
+           ON CONFLICT (chain, category_id, label_id)
+           DO UPDATE SET event_count = event_category_stats.event_count + EXCLUDED.event_count,
+                         updated_at = NOW()`,
+          valueParams
+        );
+      } catch (err: any) {
+        // 计数表缺失/异常不阻断主链路（仅记录，插入照常提交）
+        logger.warn('[normalizer] category stats upsert skipped', { error: err.message });
       }
     }
 
