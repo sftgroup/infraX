@@ -938,7 +938,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | ✅ `148cc42`（共享中间件 + `px_` scope，E2E 直连 200/非法 401/跨 scope 401） | P0 |
 | B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | ✅ 已消除（MQ-12 T-6 关停伪支付路径；MQ-13 a2a 真实两阶段链上验 tx 入账；wallet-mcp payment 工具已迁移 :9132）；✅ **平台 :9132 已自配凭证启用 x402（D-2 闭环，2026-08-12 核验）**：`open-external.conf` `X402_ENABLED=true` + `X402_PAY_TO=0x52Ec…8e06` + `X402_PRICE_WEI=1e15`（0.001 ETH, oxachain），`/payments/info` rails.x402:true；**各 B 端实例 x402 rail 由实例自配凭证启用（D-2，2026-08-11 决策：平台只提供通道与工具，不代 B 端配凭证）** | P1 |
 | B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens` → 必失败 | ✅ 双修：① MQ-3 dc 已补 `GET /api/v2/data/tokens`（okx_token_snapshots 最新快照，见 §9.8 MQ-3）；② 根因 `DC_API_KEY` 未配置时静默回退 `test-key` → DC 按 `requireDcApiKey` 必 401——dc-index/market-index 改 fail-fast 明确报错，生产 `infrax-dc-mcp.service.d/dc-api-key.conf` 注入真实租户 key，模板 `deploy/overrides/templates/dc-mcp-key.conf.template`；本地 E2E：无 key → 明确 isError，有 key → 正常请求 | P1 |
-| B-10-3b | dc `events/stats/health` 对 152GB events 表全表 COUNT/GROUP BY 卡死 pg-pool（曾拖垮 dc 服务） | ✅ 生产修复（`4417ba9`）：stats/health 改读 `event_checkpoints.event_count`（collector 每批增量维护，O(1)，实测 0.1s/0.02s 秒回，uniqueTx 停用）；`idx_events_block_number` 已加 migration + 生产 CONCURRENTLY 构建（被 64min VACUUM 阻塞，完成后无过滤 `ORDER BY block_number DESC` 走索引） | P1 |
+| B-10-3b | dc `events/stats/health` 对 152GB events 表全表 COUNT/GROUP BY 卡死 pg-pool（曾拖垮 dc 服务） | ✅ 生产修复（`4417ba9`）：stats/health 改读 `event_checkpoints.event_count`（collector 每批增量维护，O(1)，实测 0.1s/0.02s 秒回，uniqueTx 停用）；`idx_events_block_number` 已加 migration + 生产 CONCURRENTLY 构建（被 64min VACUUM 阻塞，完成后无过滤 `ORDER BY block_number DESC` 走索引）；**2026-08-12 补修**：该索引曾变 INVALID（indisvalid=f）→ 默认 /events 路径退化全表扫描，`REINDEX INDEX CONCURRENTLY` 修复（33min）；v2/v3 events 双键 `ORDER BY block_number DESC, event_id ASC` 在 LIMIT 为绑定参数时计划器无法 top-N、Sort 全量排序匹配集（reclassifier 积累后超时）→ 改单键 `ORDER BY block_number DESC`（`3f2a9ce`），分类/无过滤查询全部索引直达毫秒级 | P1 |
 | B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | ✅ **chain-rpc 网关已承担**（B-10-6 盘点确认）：读 `/v1/rpc/:chain`（白名单 + raw JSON-RPC 透传，viem/ethers 可直连）+ 广播 `/v1/broadcast/:chain`（广播 key 隔离）；dc/waas/mpc/collector/vault 已全部收敛 | P1 |
 | B-10-5 | WAAS `paymentRoutes`/`mpcRoutes` 已定义未挂载 → 确认并挂载 | ✅ 已解决：遗留 `routes/paymentRoutes.ts` / `routes/mpcRoutes.ts` / `services/mpcService.ts` **已删除**，支付功能移交 payments 引擎、MPC 为独立服务（waas/index.ts L26 注明） | P1 |
 | B-10-6 | 交易广播链路统一：collector relay / waas `/internal/send-tx` / dc 余额 RPC 盘点并文档化 | ✅（2026-08-11 盘点 + vault 收口，commit `e3dd19c`）——见下方「B-10-6 广播链路盘点结论」 | P2 |
@@ -1416,3 +1416,42 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 - 每个包：`package.json`（`@0xinfrax/<name>-sdk@0.1.0`、`main/types: dist`、`files:[dist]`、`publishConfig` 依赖 `@0xinfrax/infrax-dk: ^0.7.0`）+ `tsconfig.json`（mpc-sdk 模板）+ `src/index.ts`（**薄封装**：re-export 对应 API 类 + `InfraXConfig` + `createXxxClient(config)` 工厂返回命名空间，零实现复制）
 - 本地验证：infrax-dk build 14 export classes → 7 包逐一 `npm i ../sdk --no-save && npm run build` 全部 tsc 通过（dist 生成）
 - **发布待办（同源同步发版，需 npm 凭证/CI）**：① 发布 `@0xinfrax/infrax-dk@0.7.0` → ② 依次发布 7 个 `@0xinfrax/*-sdk@0.1.0`（建议 `--registry=https://registry.npmjs.org/` 避免镜像延迟）
+
+**9.14 MooMoo 行情强化接入（2026-08-12 需求登记；详细方案：docs/MOOMOO_DATA_INTEGRATION.md）**
+
+> 动机：① 美股 K 线 1h/4h 依赖 yfinance（生产 IP 常 429，`_collect_multi_market` 频繁记 failed）；
+> ② 港股分钟级缺口（仅腾讯日线）；③ 宏观（FRED）/新闻（NewsAPI）依赖第三方 key。
+> **实测（账号 107803923，US LV3/HK LV1/Crypto LV1）**：moomoo 提供美股/港股分钟 K 线、
+> 宏观指标（US 24 项，历史**含 predict_value 一致预期**，优于 FRED）、新闻搜索（Moomoo News/
+> MT Newswires/Benzinga）、美股资金流（分钟级）——**全部免额外 key**；
+> **不可用**：外汇 / 全球股指指数（USIndices 无权限）/ A股 / 期货（保留现有源）。
+> 接入原则：新增 `MoomooDataSource` 走既有 `BaseDataSource` 契约 + 回退链头部插入，
+> 失败自动降级现有源（fail-silent），B 端零感知。
+> **2026-08-12 补充**：官方 skill `opend-skills/moomooapi/` 已入库（SKILL.md + docs/API_REFERENCE.md
+> 65+ 接口 + scripts/quote 100+ 成品脚本），已纳入方案（MOOMOO_DATA_INTEGRATION.md §2.1/§4.7/§7）；
+> 由此新增 MM-11~MM-15 增量数据任务（F10/卖空机构ARK/日历/榜单热力/筛选板块，P2，权限待生产验证）。
+
+**任务拆解（阶段一为前置，其余可并行）**
+
+| 编号 | 任务 | 说明 | 状态 | 优先级 |
+|---|---|---|---|---|
+| MM-1 | data-service 新增 Moomoo 适配器 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）：符号映射（AAPL→US.AAPL、00700→HK.00700）、timeframe 映射（1H→K_60M、4H 聚合）、OpenD 连接池/重连、短 TTL 缓存、fail-silent | 🔲 待办 | P1 |
+| MM-2 | multi_kline 采集接入 moomoo | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429）、HK 补 1m/5m/15m/1h 分钟级；失败回退现有源 | 🔲 待办 | P1 |
+| MM-3 | /ticker 回退链插入 moomoo | usstock/hkstock 第一优先 `get_market_snapshot`（实时性优于 yfinance/腾讯），失败走现有链 | 🔲 待办 | P1 |
+| MM-4 | 宏观指标采集器（moomoo） | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list/history` → `macro_history`（series 前缀 `MM:`，含 predict_value）+ `raw_snapshots`；与 FRED 并存，6h 增量 | 🔲 待办 | P1 |
+| MM-5 | 新闻采集增强（moomoo） | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池/市场关键词抓取，双源去重，无 key 时作主源 | 🔲 待办 | P2 |
+| MM-6 | ml-service Kronos 美股数据供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径，消除 yfinance 429 输入缺口 | 🔲 待办 | P2 |
+| MM-7 | OpenD 生产部署（前置） | 生产机 43.163.105.172 systemd 化 `infrax-opend`（FIFO stdin、Restart=always、11111 健康探活）；登录凭证仅存 OpenD.xml（600）不入 git；SSH 隧道/生产本机 curl 验收 | 🔲 待办 | P0 |
+| MM-8 | 美股资金流/股票列表增强 | `get_capital_flow` 落库 raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子；`get_stock_basicinfo` 作自选池候选 | 🔲 待办 | P2 |
+| MM-9 | 边界确认（指数保留 yfinance） | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）；VIX/DXY/US10Y 实时因子保持 CBOE/akshare/FRED 链 | 🔲 待办 | P2 |
+| MM-10 | 生产验证与文档 | 降级链演练（停 OpenD 自动回退）、额度监控（订阅/历史K线 1000）、验收脚本（/bars /ticker /macro/history /snapshots）、docs 更新 | 🔲 待办 | P1 |
+| MM-11 | F10 基本面/估值/评级采集 | `get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` → raw_snapshots（provider=moomoo_f10），补充 Finnhub key 依赖；skill 脚本 get_financials_*.py/get_research_*.py/get_valuation_*.py 为雏形 | 🔲 待办 | P2 |
+| MM-12 | 卖空/机构/内部人/ARK 采集 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` → raw_snapshots（provider=moomoo_smart_money） | 🔲 待办 | P2 |
+| MM-13 | 日历增强（moomoo 免 key） | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` 增强 `collectors/calendar.py`（FRED/Finnhub/FOMC 静态兜底） | 🔲 待办 | P2 |
+| MM-14 | 榜单/热力/盘前盘后排名 | `get_hot_list`/`get_top_movers_rank`/`get_us_pre_market_rank`/`get_us_after_hours_rank`/`get_us_overnight_rank`/`get_period_change_rank`/`get_heat_map_data` → raw_snapshots | 🔲 待办 | P2 |
+| MM-15 | 股票筛选/板块/产业链 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` 作自选池/候选池增强 | 🔲 待办 | P2 |
+
+**实测依据（2026-08-12，本机 OpenD :11111）**：AAPL 5m/60m/1D K线 ✅、HK.00700 5m ✅、CC.BTCUSD 快照 ✅、
+macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、capital flow AAPL 分钟级 ✅、
+外汇 `Unsupported quote market` ❌。SDK 版本 MMAPI4Python 10.9.6908（venv `/home/ubuntu/opend/venv`，
+`pip install moomoo` 不可用需官网包）。
