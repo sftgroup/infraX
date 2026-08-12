@@ -75,8 +75,8 @@ export function getChainConfig(chainAlias: string, env: NodeJS.ProcessEnv = proc
   };
 }
 
-/** 解析 JSON 数组形式的 BUNDLERS 环境变量；纯 URL 字符串自动包装为单端点数组（容错） */
-function parseBundlers(raw: string | undefined, chainAlias: string): BundlerConfig[] {
+/** 解析 JSON 数组形式的 BUNDLERS 环境变量；纯 URL 字符串自动包装为单端点数组（容错）——AASDK-3：导出（保留缺省抛错语义，PocketX 侧自行容错包装） */
+export function parseBundlers(raw: string | undefined, chainAlias: string): BundlerConfig[] {
   if (!raw) {
     throw new Error(
       `[aa-sdk] missing AA_${chainAlias.toUpperCase()}_BUNDLERS env var (JSON array or URL)`,

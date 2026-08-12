@@ -47,8 +47,8 @@ export interface ActivateSmartAccountResult {
   receiptStatus?: 'success' | 'failed';
 }
 
-/** EntryPoint v0.7 getNonce（sender, key=0 常规 nonce 序列） */
-const entryPointAbi = parseAbi([
+/** EntryPoint v0.7 getNonce（sender, key=0 常规 nonce 序列）——AASDK-2：导出供 PocketX wallet-base EntryPoint 只读调用 */
+export const entryPointAbi = parseAbi([
   'function getNonce(address sender, uint192 key) view returns (uint256)',
 ]);
 

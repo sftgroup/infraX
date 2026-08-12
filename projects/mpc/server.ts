@@ -460,10 +460,37 @@ async function getSession(token: string) {
   return session;
 }
 
-async function auditLog(token: string, action: string, detail: any, txHash?: string, chain?: string) {
+// ─── AASDK-4：按 email 定位已解锁会话（email 模式签名；鉴权=邮箱关联钱包已解锁，非裸邮箱鉴权） ───
+async function getSessionByEmail(email: string) {
+  const rowResult = await pool.query(
+    `SELECT email, wallet_address, expires_at FROM mpc_sessions
+     WHERE email = $1 AND expires_at > $2
+     ORDER BY expires_at DESC LIMIT 1`,
+    [email.toLowerCase(), Date.now()]
+  );
+  if (rowResult.rows.length === 0) {
+    throw Object.assign(new Error('No unlocked session for this email. Call /session/unlock first.'), { statusCode: 401 });
+  }
+  const srow = rowResult.rows[0];
+  const walletRow = await pool.query(
+    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
+    [srow.wallet_address]
+  );
+  if (walletRow.rows.length === 0) {
+    throw Object.assign(new Error('Wallet no longer active. Call /session/unlock again.'), { statusCode: 401 });
+  }
+  const wrow = walletRow.rows[0];
+  return {
+    ...(await buildSessionData(srow.email, wrow)),
+    email: srow.email,
+    expiresAt: srow.expires_at,
+  };
+}
+
+async function auditLog(token: string, action: string, detail: any, txHash?: string, chain?: string, emailOverride?: string) {
   try {
     const session = sessions.get(token);
-    const email = session?.email || 'unknown';
+    const email = emailOverride || session?.email || 'unknown';
     await pool.query(
       `INSERT INTO mpc_agent_logs (id, email, action, chain, tx_hash, detail, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -913,6 +940,44 @@ app.post('/api/v2/mpc/sign-digest', mpcMeter('sign_digest'), asyncHandler(async 
   }
   await auditLog(token, 'sign_digest', { digest: digest.slice(0, 34) });
   res.json(apiResponse({ signature, address: session.address }, 'Digest signed'));
+}));
+
+// ─── Sign (AASDK-4.1：email 模式统一签名端点，PocketX MpcSigner 双模式) ───
+// 请求 { message, mode: 'digest' | 'eip191', email }
+//   mode=digest：message 为 32B 摘要（同 sign-digest，不二次哈希）
+//   mode=eip191：message 为原始消息（同 sign-message，Node 侧 hashMessage）
+// 鉴权 = email 关联钱包已解锁会话（mpc_sessions），未解锁 → 401；不引入裸 email 鉴权
+app.post('/api/v2/mpc/sign', mpcMeter('sign_message'), asyncHandler(async (req: any, res: any) => {
+  const { message, mode, email } = req.body;
+  if (!email || !message) return res.status(400).json(apiResponse(null, 'email + message required', 1001));
+  if (mode !== 'digest' && mode !== 'eip191') {
+    return res.status(400).json(apiResponse(null, "mode must be 'digest' | 'eip191'", 1001));
+  }
+  let session: any;
+  try {
+    session = await getSessionByEmail(email);
+  } catch (e: any) {
+    return res.status(e.statusCode || 401).json(apiResponse(null, e.message, e.statusCode || 1004));
+  }
+  const digest = mode === 'digest' ? String(message) : ethers.hashMessage(String(message));
+  if (mode === 'digest') {
+    const normalized = digest.replace(/^0x/, '');
+    if (!/^[0-9a-fA-F]{64}$/.test(normalized)) {
+      return res.status(400).json(apiResponse(null, 'digest must be 32-byte hex', 1001));
+    }
+  }
+  let signature: string;
+  if (session.shard1) {
+    // M3 TSS 路径：raw 摘要交 TSS 2-of-2 签名
+    const rs = await tssSign(session.shard1, session.address, digest);
+    const sig = await ethersSignatureFromRs(rs, digest, session.address);
+    signature = sig.serialized;
+  } else {
+    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(digest.replace(/^0x/, ''));
+    signature = ethers.Signature.from(sig).serialized;
+  }
+  await auditLog('', `sign_${mode}`, { mode, message: String(message).slice(0, 100) }, undefined, undefined, session.email);
+  res.json(apiResponse({ signature, address: session.address }, `${mode} signed`));
 }));
 
 // ─── Send Transaction ───
