@@ -1489,25 +1489,72 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 > 65+ 接口 + scripts/quote 100+ 成品脚本），已纳入方案（MOOMOO_DATA_INTEGRATION.md §2.1/§4.7/§7）；
 > 由此新增 MM-11~MM-15 增量数据任务（F10/卖空机构ARK/日历/榜单热力/筛选板块，P2，权限待生产验证）。
 
-**任务拆解（阶段一为前置，其余可并行）**
+**任务拆解（子任务级；阶段依赖：MM-7 → MM-1 → MM-2/3 → MM-6；MM-4/5/8 独立可并行；MM-11~15 依赖 MM-7 + 权限验证）**
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| MM-1 | data-service 新增 Moomoo 适配器 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）：符号映射（AAPL→US.AAPL、00700→HK.00700）、timeframe 映射（1H→K_60M、4H 聚合）、OpenD 连接池/重连、短 TTL 缓存、fail-silent | 🔲 待办 | P1 |
-| MM-2 | multi_kline 采集接入 moomoo | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429）、HK 补 1m/5m/15m/1h 分钟级；失败回退现有源 | 🔲 待办 | P1 |
-| MM-3 | /ticker 回退链插入 moomoo | usstock/hkstock 第一优先 `get_market_snapshot`（实时性优于 yfinance/腾讯），失败走现有链 | 🔲 待办 | P1 |
-| MM-4 | 宏观指标采集器（moomoo） | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list/history` → `macro_history`（series 前缀 `MM:`，含 predict_value）+ `raw_snapshots`；与 FRED 并存，6h 增量 | 🔲 待办 | P1 |
-| MM-5 | 新闻采集增强（moomoo） | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池/市场关键词抓取，双源去重，无 key 时作主源 | 🔲 待办 | P2 |
-| MM-6 | ml-service Kronos 美股数据供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径，消除 yfinance 429 输入缺口 | 🔲 待办 | P2 |
-| MM-7 | OpenD 生产部署（前置） | 生产机 43.163.105.172 systemd 化 `infrax-opend`（FIFO stdin、Restart=always、11111 健康探活）；登录凭证仅存 OpenD.xml（600）不入 git；SSH 隧道/生产本机 curl 验收 | 🔲 待办 | P0 |
-| MM-8 | 美股资金流/股票列表增强 | `get_capital_flow` 落库 raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子；`get_stock_basicinfo` 作自选池候选 | 🔲 待办 | P2 |
-| MM-9 | 边界确认（指数保留 yfinance） | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）；VIX/DXY/US10Y 实时因子保持 CBOE/akshare/FRED 链 | 🔲 待办 | P2 |
-| MM-10 | 生产验证与文档 | 降级链演练（停 OpenD 自动回退）、额度监控（订阅/历史K线 1000）、验收脚本（/bars /ticker /macro/history /snapshots）、docs 更新 | 🔲 待办 | P1 |
-| MM-11 | F10 基本面/估值/评级采集 | `get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` → raw_snapshots（provider=moomoo_f10），补充 Finnhub key 依赖；skill 脚本 get_financials_*.py/get_research_*.py/get_valuation_*.py 为雏形 | 🔲 待办 | P2 |
-| MM-12 | 卖空/机构/内部人/ARK 采集 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` → raw_snapshots（provider=moomoo_smart_money） | 🔲 待办 | P2 |
-| MM-13 | 日历增强（moomoo 免 key） | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` 增强 `collectors/calendar.py`（FRED/Finnhub/FOMC 静态兜底） | 🔲 待办 | P2 |
-| MM-14 | 榜单/热力/盘前盘后排名 | `get_hot_list`/`get_top_movers_rank`/`get_us_pre_market_rank`/`get_us_after_hours_rank`/`get_us_overnight_rank`/`get_period_change_rank`/`get_heat_map_data` → raw_snapshots | 🔲 待办 | P2 |
-| MM-15 | 股票筛选/板块/产业链 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` 作自选池/候选池增强 | 🔲 待办 | P2 |
+| **MM-1** | data-service 新增 Moomoo 适配器（依赖 MM-7） | | 🔲 | P1 |
+| MM-1.1 | 适配器骨架 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）；符号映射 AAPL→US.AAPL、00700→HK.00700，复用 ticker.py `infer_market` | 🔲 | P1 |
+| MM-1.2 | K线调用 + timeframe 映射 | `request_history_kline`（ktype 字符串 K_5M/K_60M/K_DAY、显式 start/end、page_req_key 分页）；映射 1m/5m/15m/30m/1H→K_60M、4H→60m 聚合、1D→K_DAY；**time_key 本地交易所时区→UTC 对齐 kline 表 ts** | 🔲 | P1 |
+| MM-1.3 | 连接池 + 降级 | OpenD 断连自动重连、短 TTL 缓存、fail-silent（未启动/断连/额度耗尽→回退现有源） | 🔲 | P1 |
+| MM-1.4 | 单测 | 本机 pytest 单测（符号/timeframe 映射、降级路径） | 🔲 | P1 |
+| **MM-2** | multi_kline 采集接入（依赖 MM-1） | | 🔲 | P1 |
+| MM-2.1 | US 换源 | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429），1d 保留 akshare/切换对比后定；失败回退 yfinance | 🔲 | P1 |
+| MM-2.2 | HK 分钟级 | HK 补 1m/5m/15m/1h（HK LV1 实测 5m 可用），1d 保留腾讯/切 moomoo 对比 | 🔲 | P1 |
+| MM-2.3 | 额度节流 | 历史K线 1000 额度控制：复用 `_THROTTLE` + page_req_key 分页，防批量超限 | 🔲 | P1 |
+| MM-2.4 | 生产验证 | `/bars?market=usstock&symbol=AAPL&timeframe=1h&limit=200` 连续 7 天无 failed | 🔲 | P1 |
+| **MM-3** | /ticker 回退链插入（依赖 MM-1） | | 🔲 | P1 |
+| MM-3.1 | ticker 头部插入 | `ticker.py` usstock/hkstock 第一优先 moomoo `get_market_snapshot`（实时性优于 yfinance/腾讯） | 🔲 | P1 |
+| MM-3.2 | 回退 + 源标记 | 失败走现有链（yfinance fast_info/腾讯）；响应标记 source=moomoo | 🔲 | P1 |
+| MM-3.3 | 生产验证 | `/ticker?symbol=AAPL&market=usstock` 返回 moomoo 源标记 | 🔲 | P1 |
+| **MM-4** | 宏观指标采集器 | | 🔲 | P1 |
+| MM-4.1 | 采集器实现 | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list('US')`→`get_macro_indicator_history`→写 `macro_history`（series `MM:US:CPI` 命名空间）+ `raw_snapshots`（provider=moomoo_macro） | 🔲 | P1 |
+| MM-4.2 | 周期 + 并存 | 6h 增量对齐 FRED；`/macro/history` 按源过滤，默认 moomoo 优先 FRED 兜底；含 predict_value/release_time | 🔲 | P1 |
+| MM-4.3 | 生产验证 | `/macro/history?series=MM:US:CPI` 含 predict_value | 🔲 | P1 |
+| **MM-5** | 新闻采集增强（依赖 MM-7） | | 🔲 | P2 |
+| MM-5.1 | 新闻分支 | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池+市场关键词抓取 | 🔲 | P2 |
+| MM-5.2 | 双源去重 | 与 NewsAPI 并存（url 幂等去重）→ raw_snapshots（provider=news_moomoo）；无 key 时 moomoo 主源 | 🔲 | P2 |
+| MM-5.3 | 生产验证 | `/snapshots?provider=news_moomoo` 非空 | 🔲 | P2 |
+| **MM-6** | ml-service Kronos 供给（依赖 MM-2） | | 🔲 | P2 |
+| MM-6.1 | Kronos 供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径（get_kline 透传） | 🔲 | P2 |
+| MM-6.2 | 生产验证 | 45 符号预测无 429 输入缺口（Kronos 全量 ~18min 属预期） | 🔲 | P2 |
+| **MM-7** | OpenD 生产部署（P0 前置） | | 🔲 | P0 |
+| MM-7.1 | 生产环境安装 | 生产机 43.163.105.172 装 JRE + 部署 OpenD（版本与开发机一致 10.9.6918）+ venv 装 moomoo SDK | 🔲 | P0 |
+| MM-7.2 | 凭证落盘 | OpenD.xml 复用账号 107803923，权限 600，**不入 git**（仓库保持占位/示例） | 🔲 | P0 |
+| MM-7.3 | systemd 化 | `infrax-opend.service`：FIFO stdin、Restart=always、11111 健康探活脚本 | 🔲 | P0 |
+| MM-7.4 | 生产验证 | `get_market_snapshot(['US.SPY'])` 生产机直连通过（含短信验证码登录确认） | 🔲 | P0 |
+| **MM-8** | 资金流/股票列表（依赖 MM-7） | | 🔲 | P2 |
+| MM-8.1 | 资金流落库 | `get_capital_flow`（分钟级 super/big/mid/sml）→ raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子 | 🔲 | P2 |
+| MM-8.2 | 自选池候选 | `get_stock_basicinfo` 作美股自选池候选 | 🔲 | P2 |
+| MM-8.3 | 生产验证 | `/snapshots?provider=moomoo_capital_flow` 非空 | 🔲 | P2 |
+| **MM-9** | 边界确认（指数保留 yfinance） | | 🔲 | P2 |
+| MM-9.1 | 指数边界 | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）——不动代码，登记结论 | 🔲 | P2 |
+| MM-9.2 | 宏观因子边界 | VIX/DXY/US10Y 保持 CBOE/akshare/FRED 链（moomoo macro 仅作宏观序列增强，不作实时因子替代） | 🔲 | P2 |
+| MM-9.3 | 方案核对 | MOOMOO_DATA_INTEGRATION.md §4.4 边界段与 tasklist 同步更新 | 🔲 | P2 |
+| **MM-10** | 生产验证与文档（收尾） | | 🔲 | P1 |
+| MM-10.1 | 降级演练 | `systemctl stop infrax-opend` → 全部 moomoo 路径自动回退不报错；恢复后自动回归 | 🔲 | P1 |
+| MM-10.2 | 额度监控 | 订阅/历史K线 1000 额度监控 + 超限告警 | 🔲 | P1 |
+| MM-10.3 | 验收 + 文档 | E2E 验收脚本合集（/bars /ticker /macro/history /snapshots）+ docs 更新 | 🔲 | P1 |
+| **MM-11** | F10 基本面/估值/评级（依赖 MM-7） | | 🔲 | P2 |
+| MM-11.1 | 权限验证 | 生产机 §7 清单：`get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` | 🔲 | P2 |
+| MM-11.2 | F10 采集器 | skill 脚本（get_financials_*.py/get_research_*.py/get_valuation_*.py）为雏形 → raw_snapshots（provider=moomoo_f10） | 🔲 | P2 |
+| MM-11.3 | 生产验证 | `/snapshots?provider=moomoo_f10` 非空 | 🔲 | P2 |
+| **MM-12** | 卖空/机构/内部人/ARK（依赖 MM-7） | | 🔲 | P2 |
+| MM-12.1 | 权限验证 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` | 🔲 | P2 |
+| MM-12.2 | 采集器 | skill 脚本为雏形 → raw_snapshots（provider=moomoo_smart_money） | 🔲 | P2 |
+| MM-12.3 | 生产验证 | `/snapshots?provider=moomoo_smart_money` 非空 | 🔲 | P2 |
+| **MM-13** | 日历增强（依赖 MM-7） | | 🔲 | P2 |
+| MM-13.1 | 权限验证 | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` | 🔲 | P2 |
+| MM-13.2 | 日历增强 | `collectors/calendar.py` 增强（FRED/Finnhub/FOMC 静态兜底） | 🔲 | P2 |
+| MM-13.3 | 生产验证 | 日历端点含 moomoo 源数据 | 🔲 | P2 |
+| **MM-14** | 榜单/热力/盘前盘后（依赖 MM-7） | | 🔲 | P2 |
+| MM-14.1 | 权限验证 | `get_hot_list`/`get_top_movers_rank`/`get_us_{pre,after,overnight}_rank`/`get_period_change_rank`/`get_heat_map_data` | 🔲 | P2 |
+| MM-14.2 | 采集器 | → raw_snapshots（榜单/热力/盘前盘后排名） | 🔲 | P2 |
+| MM-14.3 | 生产验证 | `/snapshots?provider=moomoo_hot` 非空 | 🔲 | P2 |
+| **MM-15** | 股票筛选/板块（依赖 MM-7） | | 🔲 | P2 |
+| MM-15.1 | 权限验证 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` | 🔲 | P2 |
+| MM-15.2 | 筛选/板块增强 | 作自选池/候选池增强 | 🔲 | P2 |
+| MM-15.3 | 生产验证 | 筛选/板块端点可用 | 🔲 | P2 |
 
 **实测依据（2026-08-12，本机 OpenD :11111）**：AAPL 5m/60m/1D K线 ✅、HK.00700 5m ✅、CC.BTCUSD 快照 ✅、
 macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、capital flow AAPL 分钟级 ✅、
