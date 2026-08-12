@@ -1,0 +1,20 @@
+[Unit]
+Description=InfraX moomoo OpenD (行情/宏观/新闻网关)
+# MM-7.3: OpenD 常驻网关（FIFO stdin 供交互命令：短信验证码 input_phone_verify_code）
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+# MM-7.2: OpenD.xml（含账号凭证）落盘于 OpenD 运行目录，权限 600，不入 git
+WorkingDirectory=/opt/opend/moomoo_OpenD_10.9.6918_Ubuntu18.04/moomoo_OpenD_10.9.6918_Ubuntu18.04
+# FIFO stdin：systemd 无 stdin 重定向语法，用 bash -c 保证 OpenD 从 FIFO 读交互命令
+ExecStartPre=/bin/bash -c 'mkdir -p /tmp/opend_ctl && [ -p /tmp/opend_ctl/opend_in ] || mkfifo /tmp/opend_ctl/opend_in'
+ExecStart=/bin/bash -c 'exec ./OpenD < /tmp/opend_ctl/opend_in'
+Restart=always
+RestartSec=10
+# 11111 健康探活（脚本 exit!=0 触发重启）
+# 探活由外部脚本/定时器驱动；此处保证 OpenD 进程崩溃即拉起
+
+[Install]
+WantedBy=multi-user.target
