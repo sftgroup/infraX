@@ -136,17 +136,26 @@ router.post('/', asyncHandler(async (req, res) => {
       }
       case 'leaderboard': {
         if (!p.chainIndex) return bad(res, 'chainIndex required');
-        data = await m().getLeaderboard(String(p.chainIndex), p.leaderboardType ? String(p.leaderboardType) : 'pnl', parseLimit(p.limit, 50));
+        // 上游必填 sortBy（int）+ timeFrame（int）；默认 1=pnl / 4=24h
+        const sortBy = parseInt(p.sortBy ?? '1', 10);
+        const timeFrame = parseInt(p.timeFrame ?? '4', 10);
+        if (!Number.isFinite(sortBy) || !Number.isFinite(timeFrame)) return bad(res, 'sortBy/timeFrame must be integers');
+        data = await m().getLeaderboard(String(p.chainIndex), 'pnl', parseLimit(p.limit, 50), sortBy, timeFrame);
         break;
       }
       case 'signals': {
         if (!p.chainIndex) return bad(res, 'chainIndex required');
-        data = await m().getSignalList(String(p.chainIndex), p.signalType ? String(p.signalType) : undefined, parseLimit(p.limit, 50));
+        const walletType = p.walletType ? String(p.walletType) : undefined;
+        const minAmountUsd = p.minAmountUsd !== undefined ? parseFloat(p.minAmountUsd) : undefined;
+        data = await m().getSignalList(String(p.chainIndex), p.signalType ? String(p.signalType) : undefined, parseLimit(p.limit, 50), walletType, minAmountUsd);
         break;
       }
       case 'mempump': {
         if (!p.chainIndex) return bad(res, 'chainIndex required');
-        data = await m().getMemePumpTokenList(String(p.chainIndex), p.protocol ? String(p.protocol) : undefined, p.sortBy ? String(p.sortBy) : 'volume24h', parseLimit(p.limit, 50));
+        // 上游 stage 必填：NEW / MIGRATING / MIGRATED；链支持 Solana(501)/BNB(56)/Robinhood(4663) 等，ETH(1) 不支持
+        const stage = p.stage ? String(p.stage).toUpperCase() : undefined;
+        if (!stage || !['NEW', 'MIGRATING', 'MIGRATED'].includes(stage)) return bad(res, 'stage required: NEW | MIGRATING | MIGRATED');
+        data = await m().getMemePumpTokenList(String(p.chainIndex), p.protocol ? String(p.protocol) : undefined, p.sortBy ? String(p.sortBy) : 'volume24h', parseLimit(p.limit, 50), stage);
         break;
       }
       case 'candles': {
@@ -167,12 +176,17 @@ router.post('/', asyncHandler(async (req, res) => {
       }
       case 'balances': {
         if (!p.address) return bad(res, 'address required');
-        data = await m().getAllBalances(String(p.address), parseChains(p.chains));
+        // 上游 chains 必填（数组或逗号分隔，如 "1,56,8453"）
+        const chains = parseChains(p.chains);
+        if (!chains || chains.length === 0) return bad(res, 'chains required (array or comma-separated chainIndex)');
+        data = await m().getAllBalances(String(p.address), chains);
         break;
       }
       case 'transactions': {
         if (!p.address) return bad(res, 'address required');
-        data = await m().getTransactions(String(p.address), parseChains(p.chains), parseLimit(p.limit, 50));
+        const chains = parseChains(p.chains);
+        if (!chains || chains.length === 0) return bad(res, 'chains required (array or comma-separated chainIndex)');
+        data = await m().getTransactions(String(p.address), chains, parseLimit(p.limit, 50));
         break;
       }
       case 'trackedTokens': {
@@ -201,6 +215,12 @@ router.post('/', asyncHandler(async (req, res) => {
     }
     res.json(apiResponse(data));
   } catch (e: any) {
+    // x402 支付门控（HTTP 402）：显式返回 402 + 上游 x402 清单（含 network/amount/payTo），
+    // 调用方决定是否接入 x402 支付；不吞成 502
+    if (e?.x402 || e?.status === 402 || (typeof e?.message === 'string' && e.message.startsWith('OKX Market 402'))) {
+      res.status(402).json(apiResponse(null, `x402 payment required: ${e?.message || ''}`, 402));
+      return;
+    }
     res.status(502).json(apiResponse(null, e?.message || 'upstream error', -1));
   }
 }));

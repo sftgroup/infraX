@@ -154,6 +154,14 @@ export class OkxMarketV6Client {
     if (resp.status === 429) {
       throw new Error(`OKX Market rate-limited`);
     }
+    // x402 支付门控（HTTP 402）：保留结构化信息供路由层显式返回 payment_required
+    if (resp.status === 402) {
+      const text = await resp.text();
+      const err: any = new Error(`OKX Market 402: ${text.slice(0, 500)}`);
+      err.status = 402;
+      err.x402 = true;
+      throw err;
+    }
     if (!resp.ok) {
       const text = await resp.text();
       throw new Error(`OKX Market ${resp.status}: ${text.slice(0, 200)}`);
@@ -491,12 +499,20 @@ export class OkxMarketV6Client {
 
   // ── Signal / Leaderboard ──────────────────────────────────────
 
-  /** GET /api/v6/dex/market/signal/list — Premium */
-  async getSignalList(chainIndex: string, signalType?: string, limit = 50): Promise<OkxSignal[]> {
+  /** POST /api/v6/dex/market/signal/list — Premium（上游为 POST + JSON body）
+   *
+   * @param chainIndex  chainIndex（signal 支持链：1/56/196/501/8453/4663…）
+   * @param walletType  逗号分隔钱包类型（1,2,3…），可选
+   * @param minAmountUsd 最小金额 USD 过滤，可选
+   * @param limit       Max results
+   */
+  async getSignalList(chainIndex: string, signalType?: string, limit = 50, walletType?: string, minAmountUsd?: number): Promise<OkxSignal[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    let path = `/api/v6/dex/market/signal/list?chainIndex=${chainIndex}&limit=${limit}`;
-    if (signalType) path += `&signalType=${signalType}`;
-    return this.request(acct, 'GET', path);
+    const body: Record<string, unknown> = { chainIndex, limit };
+    if (signalType) body.signalType = signalType;
+    if (walletType) body.walletType = walletType;
+    if (minAmountUsd !== undefined) body.minAmountUsd = minAmountUsd;
+    return this.request(acct, 'POST', '/api/v6/dex/market/signal/list', body);
   }
 
   /** GET /api/v6/dex/market/signal/supported/chain — Free */
@@ -505,10 +521,18 @@ export class OkxMarketV6Client {
     return this.request(acct, 'GET', '/api/v6/dex/market/signal/supported/chain');
   }
 
-  /** GET /api/v6/dex/market/leaderboard/list — Premium */
-  async getLeaderboard(chainIndex: string, leaderboardType = 'pnl', limit = 50): Promise<OkxLeaderboardEntry[]> {
+  /** GET /api/v6/dex/market/leaderboard/list — Premium
+   *
+   * 上游必填：sortBy（整数：1=pnl, 2=profitRate…）+ timeFrame（整数：1=5m, 2=1h, 3=4h, 4=24h）
+   * @param chainIndex  chainIndex（leaderboard 支持链：1/56/196/501/8453/4663…）
+   * @param leaderboardType 兼容旧参数名（忽略，上游以 sortBy 为准）
+   * @param limit       Max results
+   * @param sortBy      上游排序字段整数（默认 1=pnl）
+   * @param timeFrame   上游时间窗整数（默认 4=24h）
+   */
+  async getLeaderboard(chainIndex: string, leaderboardType = 'pnl', limit = 50, sortBy = 1, timeFrame = 4): Promise<OkxLeaderboardEntry[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/leaderboard/list?chainIndex=${chainIndex}&leaderboardType=${leaderboardType}&limit=${limit}`;
+    const path = `/api/v6/dex/market/leaderboard/list?chainIndex=${chainIndex}&sortBy=${sortBy}&timeFrame=${timeFrame}&limit=${limit}`;
     return this.request(acct, 'GET', path);
   }
 
