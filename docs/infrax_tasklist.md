@@ -1281,7 +1281,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `docs/req-04-infrax-mlservice-arch-opt.md` | ml-service 架构优化（Provider 注册表/Device 参数化/因子解耦/统一端点） | §9.15 | 🔲 待评审（2026-08-12 登记，R4-1~R4-4） |
 | `docs/req-05-auto-find-factor.md` | 自动寻找因子（对话驱动 + 偏好/限制，MCP 工具集） | §9.15 | 🔲 待评审（2026-08-12 登记，R5-1~R5-4） |
 | `docs/req-06-factor-factory.md` | 因子工厂（挖掘/评估/管理/入库 → data-service `/factors/current`） | §9.15 | 🔲 待评审（2026-08-12 登记，FF-1~FF-4） |
-| `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | 🔲 待评审（2026-08-12 登记，HW-1） |
+| `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | ⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化；HW-1） |
 | `docs/INFRAX_REQ_SUMMARY_ARCH_AUTOFIND_FACTORY.md` | 需求 4/5/6 汇总 + 附录 A 复合/非线性因子计算架构 | §9.15 | 汇总文档（同 R4/R5/FF 状态） |
 | `docs/MOOMOO_DATA_INTEGRATION.md` | MooMoo 行情强化接入（K线/宏观/新闻/资金流/F10/卖空/日历/榜单/筛选，15 任务） | §9.14 | 🔲 待评审（2026-08-12 登记，MM-1~MM-15；OpenD 生产凭证复用账号 107803923，详见 9.14 段） |
 
@@ -1575,23 +1575,64 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > 向量化矩阵计算（numpy/GPU 均可），**不需要 vLLM/大模型推理**。
 > 部署约束：ml-service 在生产 43.156.25.197（2C4G），集成验证须生产机（本机仅写码）。
 
-**任务拆解（依赖链：R4 → FF-1 → FF-2 → FF-3 → FF-4；R5 提供对话入口，与 FF 有交集）**
+**任务拆解（子任务级；2026-08-12：HW-1 硬件升级延后，先做当前阶段 CPU 优化。依赖链：R4-1→R4-2→R4-3 架构主线；R4-4→FF-1→FF-2→FF-3→FF-4 因子主线；R5-1→R5-2→R5-3→R5-4 对话主线；R5-1 与 FF-2 同内核）**
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| R4-1 | Provider 基类 + 注册表 | `app/providers/base.py`：`ModelProvider(ABC)` + `registry`，懒加载单例/失败 flag 上收基类；迁移 kronos/bolt/moirai/timesfm ×4 继承，只留 `load()`+`predict_all()` 删样板；**回归：6 模型输出不变** | 🔲 待办 | P1 |
-| R4-2 | Device 参数化 | `config.py` 加 `DEVICE=os.getenv("DEVICE","cpu")` + `ML_GPU_VENDOR` 探测；provider `load()` 用 `device_map`/`map_location` 替代硬编码 cpu；GPU 不可用回落 cpu（fail-open）；V100(Volta 无 bf16) 预留 fp16 开关 | 🔲 待办 | P1 |
-| R4-3 | 统一端点挂载 + 预热 | `main.py` 遍历 `ModelProvider.registry` 动态挂 `GET /ml/{key}`；`_PRECOMPUTE` 预热表改 registry 遍历生成；保留现有手写端点兼容 | 🔲 待办 | P2 |
-| R4-4 | 因子工程解耦 | `tree_models.build_features` 14 因子收敛为 `app/factorengine/` 因子注册表；模板化因子展开（多窗口/多参数）；预留因子评估+动态选因入口（承接 L0-L6） | 🔲 待办 | P1 |
-| R5-1 | 偏好/限制结构化 job spec | preferences（市场类型/因子风格/投资风格/资产池/周期）+ constraints（数量上限/资源预算/耗时/标的/IC 门槛/ICIR≥0.3/独立度/单调性/黑白名单）；未指定用保守默认，**硬限制不可被偏好覆盖**，冲突提示；factor_pool（L0-L6 模板+参数展开 100+）/factor_eval（IC/超额/单调性/独立度）内核可配置 | 🔲 待办 | P1 |
-| R5-2 | 挖掘任务状态机 + 持久化 | `factor_jobs` + `factor_results`（PostgreSQL）；CREATED→PARSED→QUEUED→RUNNING(POOL→EVAL→SELECT→PERSIST)→COMPLETED/FAILED/CANCELLED/TIMEOUT；异步执行 + 重启可恢复 + 超时/取消保留部分结果 | 🔲 待办 | P1 |
-| R5-3 | MCP 对话工具集 | `factor_factory.start/status/result/list/cancel`（并入 ml-service 或独立 Factor-Factory 微服务，待定）；工具接收结构化参数，**内核不吃自然语言** | 🔲 待办 | P2 |
-| R5-4 | LLM 意图解析 + 结果报告 | 自然语言→job spec（DeepSeek API / 本地 V100 LLM）；结果报告（入选因子/IC/ICIR/独立度/稳定性）+ 可视化 | 🔲 待办 | P2 |
-| FF-1 | ml-service 因子引擎解耦 | 承接需求4（R4-4）：因子定义/计算上收注册表，新因子零复制接入 | 🔲 待办 | P1 |
-| FF-2 | factor_pool + factor_eval 内核 | 模板展开（100+）→ IC/超额/单调性/独立度评估 → 选因（top-K + 去冗余 + IC 淘汰）→ 合格因子（承接 R5-1，依赖 F1） | 🔲 待办 | P1 |
-| FF-3 | 因子管理 + 入库 | `factors_catalog.json`/DB：定义（key/公式/数据源/窗口/版本）+ 状态（active/inactive）；`GET/POST /factors/catalog` + `POST /factors/{key}/activate|deactivate`；合格因子自动入库 data-service `/factors/current`（AItrader factor_client 无改动全量透传） | 🔲 待办 | P1 |
-| FF-4 | 对话驱动 + 自动挖掘验证 | 需求5 MCP 入口 + 定时/手动触发；自动挖掘产出的合格因子自动登记 catalog 并可用；现有 `/ml/*` 预测端点不受影响（依赖 R5） | 🔲 待办 | P1 |
-| HW-1 | 因子工厂硬件评估/采购 | 双路 E5-2683v4 + 64G + V100 32G（阶段一单卡 / 阶段二双卡，能力对照见方案 §4）；附录 A：复合/非线性因子=向量化矩阵计算，无需 vLLM；当前 CPU 挖掘默认，偏好可指定 GPU | 🔲 待评审 | P2 |
+| **R4-1** | Provider 基类 + 注册表 | | 🔲 | P1 |
+| R4-1.1 | 基类实现 | `app/providers/base.py`：`ModelProvider(ABC)` + `registry`，`instance()` 上收懒加载单例/失败 flag/`threading.Lock`（对齐 kronos.py L82-115 现状） | 🔲 | P1 |
+| R4-1.2 | kronos 迁移 | `kronos.py` 继承基类，只留 `load()`+`predict_all()`，删 `_load_predictor` 样板 | 🔲 | P1 |
+| R4-1.3 | bolt/moirai/timesfm 迁移 | `chronos_bolt.py`/`moirai2.py`/`timesfm25.py` 同法迁移 | 🔲 | P1 |
+| R4-1.4 | 回归 | 6 模型行为/输出不变（本机 typecheck/import；生产 ml-service 43.156.25.197 回归） | 🔲 | P1 |
+| **R4-2** | Device 参数化 | | 🔲 | P1 |
+| R4-2.1 | config 开关 | `config.py` 加 `DEVICE=os.getenv("DEVICE","cpu")` + `ML_GPU_VENDOR` 探测 | 🔲 | P1 |
+| R4-2.2 | provider 接入 | 4 provider `load()` 用 `device_map=DEVICE`/`map_location=DEVICE` 替代硬编码 cpu；GPU 不可用回落 cpu（fail-open） | 🔲 | P1 |
+| R4-2.3 | V100 适配 | Volta 无 bf16 → 预留 fp16 适配开关 | 🔲 | P1 |
+| R4-2.4 | 回归 | 默认 DEVICE=cpu 行为不变 | 🔲 | P1 |
+| **R4-3** | 统一端点挂载 + 预热 | | 🔲 | P2 |
+| R4-3.1 | 动态端点 | `main.py` 遍历 `ModelProvider.registry` 动态挂 `GET /ml/{key}` | 🔲 | P2 |
+| R4-3.2 | 预热遍历 | `_PRECOMPUTE` 预热表改为 registry 遍历生成 | 🔲 | P2 |
+| R4-3.3 | 兼容验证 | 现有手写端点保留向后兼容 | 🔲 | P2 |
+| **R4-4** | 因子工程解耦 | | 🔲 | P1 |
+| R4-4.1 | 因子注册表 | 新增 `app/factorengine/`：14 因子定义化（rsi_14/macd_hist/bb_pos/bb_width/atr_pct/ma_5/10/20 等，对齐 tree_models.build_features L107-147） | 🔲 | P1 |
+| R4-4.2 | 模板化展开 | 因子模板化（多窗口/多参数展开） | 🔲 | P1 |
+| R4-4.3 | build_features 改造 | 注册表驱动重写，行为不变（回归：LGBM 训练/预测输出一致） | 🔲 | P1 |
+| R4-4.4 | 评估入口预留 | 预留因子评估 + 动态选因接口（承接 L0-L6） | 🔲 | P1 |
+| **R5-1** | 偏好/限制结构化 job spec | | 🔲 | P1 |
+| R5-1.1 | 数据模型 | preferences（市场类型/因子风格/投资风格/资产池/周期）+ constraints（数量/资源/耗时/标的/IC/ICIR≥0.3/独立度/单调性/黑白名单）Pydantic schema | 🔲 | P1 |
+| R5-1.2 | spec 生成 | 偏好+限制 → 结构化 job spec JSON（保守默认 + **硬限制不可被偏好覆盖** + 冲突提示） | 🔲 | P1 |
+| R5-1.3 | factor_pool | L0-L6 因子模板 + 参数展开（100+）→ 按偏好过滤 | 🔲 | P1 |
+| R5-1.4 | factor_eval | IC/超额/单调性/独立度评估（对齐 tree_models make_labels 标签） | 🔲 | P1 |
+| **R5-2** | 挖掘任务状态机 + 持久化 | | 🔲 | P1 |
+| R5-2.1 | 建表 | `factor_jobs` + `factor_results`（PostgreSQL，ml-service 生产库） | 🔲 | P1 |
+| R5-2.2 | 状态机 | CREATED→PARSED→QUEUED→RUNNING(POOL→EVAL→SELECT→PERSIST)→COMPLETED/FAILED/CANCELLED/TIMEOUT | 🔲 | P1 |
+| R5-2.3 | 异步执行器 | 线程池/队列执行 + 重启可恢复 + 超时/取消保留部分结果 | 🔲 | P1 |
+| R5-2.4 | 状态 API | `GET status(job_id)` / `GET list` | 🔲 | P1 |
+| **R5-3** | MCP 对话工具集 | | 🔲 | P2 |
+| R5-3.1 | 架构定位 | 定：并入 ml-service 或独立 Factor-Factory 微服务 | 🔲 | P2 |
+| R5-3.2 | 工具集 | `factor_factory.start/status/result/list/cancel`，接收结构化参数（内核不吃自然语言） | 🔲 | P2 |
+| R5-3.3 | 入站鉴权 | inboundAuth 对齐（参考 dc-index/mpc-index 模式） | 🔲 | P2 |
+| **R5-4** | LLM 意图解析 + 结果报告 | | 🔲 | P2 |
+| R5-4.1 | 意图解析 | 自然语言→job spec（DeepSeek API / 本地 V100 LLM，function calling/结构化输出） | 🔲 | P2 |
+| R5-4.2 | 冲突检测 | 偏好 vs 硬限制冲突回传提示，不静默 | 🔲 | P2 |
+| R5-4.3 | 结果报告 | 入选因子/IC/ICIR/独立度/稳定性报告 + 可视化 | 🔲 | P2 |
+| **FF-1** | ml-service 因子引擎解耦（承接 R4-4） | | 🔲 | P1 |
+| FF-1.1 | 定义上收 | 因子定义/计算上收 factorengine 注册表 | 🔲 | P1 |
+| FF-1.2 | 零复制接入验证 | 新增一个因子仅注册定义即可用 | 🔲 | P1 |
+| **FF-2** | factor_pool + factor_eval 内核（依赖 R5-1） | | 🔲 | P1 |
+| FF-2.1 | pool 展开 | 模板展开（100+）→ 按偏好过滤 | 🔲 | P1 |
+| FF-2.2 | 评估 | IC/超额/单调性/独立度评估 | 🔲 | P1 |
+| FF-2.3 | 选因 | top-K + 去冗余（独立度）+ IC 淘汰 | 🔲 | P1 |
+| FF-2.4 | 合格因子产出 | 写 catalog 候选（供 FF-3 登记） | 🔲 | P1 |
+| **FF-3** | 因子管理 + 入库 | | 🔲 | P1 |
+| FF-3.1 | catalog | `factors_catalog.json`/DB：定义（key/公式/数据源/窗口/版本）+ 状态（active/inactive） | 🔲 | P1 |
+| FF-3.2 | 管理端点 | `GET/POST /factors/catalog` + `POST /factors/{key}/activate|deactivate` | 🔲 | P1 |
+| FF-3.3 | 入库 data-service | 合格因子自动登记 → data-service `/factors/current`（AItrader factor_client 无改动全量透传） | 🔲 | P1 |
+| **FF-4** | 对话驱动 + 自动挖掘验证（依赖 R5） | | 🔲 | P1 |
+| FF-4.1 | 触发方式 | 定时/手动触发挖掘 | 🔲 | P1 |
+| FF-4.2 | 对话集成 | R5-3 MCP 入口接入 | 🔲 | P1 |
+| FF-4.3 | 端到端验证 | 自动挖掘→登记 catalog→/factors/current 可见；现有 `/ml/*` 不受影响 | 🔲 | P1 |
+| **HW-1** | 因子工厂硬件评估/采购 | 双路 E5-2683v4 + 64G + V100 32G（阶段一/二）；**⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化）**；附录 A 结论：复合/非线性因子=向量化矩阵计算，无需 vLLM | ⏸️ 延后 | P2 |
 
 **验收标准（对齐三需求文档）**：
 - [ ] 现有 6 模型行为/输出完全不变（回归通过）
