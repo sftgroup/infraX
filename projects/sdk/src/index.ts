@@ -744,6 +744,77 @@ export class MarketAPI {
   async usage() { return this.http.get<MarketUsageResult>('/api/v2/market/usage'); }
 }
 
+// ═══════════════ MarketRpc — 行情数据 RPC（A-12/13：/v1/market-rpc，与 REST MarketAPI 同源同缓存） ═══════════════
+// 12 组方法 + 多 token 批量（tokens 数组）+ 信封 {code,message,data}；rx_ 读 key 鉴权。
+// 同源同缓存：与 MarketAPI 走同一 HttpClient（同 collector 实例），口径一致。
+
+export interface MarketRpcTokenParams {
+  chainIndex?: string;
+  /** 单 token */
+  tokenAddress?: string;
+  /** 多 token 批量（tokenInfo/price/candles 支持；返回 [{tokenAddress,data},...] 保序） */
+  tokens?: string[];
+  limit?: number;
+  period?: string;
+  keyword?: string;
+  leaderboardType?: string;
+  signalType?: string;
+  protocol?: string;
+  sortBy?: string;
+  address?: string;
+  chains?: string[] | string;
+  chain?: string;
+  enabled?: boolean;
+  [key: string]: any;
+}
+export interface MarketRpcBatchItem<T = any> { tokenAddress: string; data: T; }
+
+export class MarketRpcAPI {
+  constructor(private http: HttpClient) {}
+
+  /** 通用调用（method 见下方类型化方法） */
+  async call<T = any>(method: string, params: Record<string, any> = {}) {
+    return this.http.post<T>('/v1/market-rpc', { method, params });
+  }
+
+  async tokenSearch(params: { keyword: string; chainIndex?: string; limit?: number }) {
+    return this.call<any[]>('tokenSearch', params);
+  }
+  async tokenInfo(params: { chainIndex: string; tokenAddress?: string; tokens?: string[] }) {
+    return this.call<any>('tokenInfo', params);
+  }
+  async hotTokens(params: MarketRpcTokenParams) {
+    return this.call<any[]>('hotTokens', params);
+  }
+  async leaderboard(params: { chainIndex: string; leaderboardType?: string; limit?: number }) {
+    return this.call<any[]>('leaderboard', params);
+  }
+  async signals(params: { chainIndex: string; signalType?: string; limit?: number }) {
+    return this.call<any[]>('signals', params);
+  }
+  async mempump(params: { chainIndex: string; protocol?: string; sortBy?: string; limit?: number }) {
+    return this.call<any[]>('mempump', params);
+  }
+  async candles(params: { chainIndex: string; tokenAddress?: string; tokens?: string[]; period?: string; limit?: number }) {
+    return this.call<any>('candles', params);
+  }
+  async price(params: { chainIndex: string; tokenAddress?: string; tokens?: string[] }) {
+    return this.call<any>('price', params);
+  }
+  async balances(params: { address: string; chains?: string[] | string }) {
+    return this.call<any[]>('balances', params);
+  }
+  async transactions(params: { address: string; chains?: string[] | string; limit?: number }) {
+    return this.call<any[]>('transactions', params);
+  }
+  async trackedTokens(params: { chain?: string; enabled?: boolean } = {}) {
+    return this.call<any[]>('trackedTokens', params);
+  }
+  async customSigs(params: { chain?: string; enabled?: boolean } = {}) {
+    return this.call<any[]>('customSigs', params);
+  }
+}
+
 // ═══════════════ Data — InfraX data service (:9112) market data plane ═══════════════
 // 覆盖 data 服务数据面端点：K线 / ticker / 因子 / 快照（含 onchain/okx 快照）/
 // 符号搜索解析 / 统计。响应为 data 服务原始 JSON（成功时非 {code,message,data} 信封）。
@@ -1111,6 +1182,7 @@ export class InfraX {
   readonly vault: VaultAPI;
   readonly mpc: MPCAPI;
   readonly market: MarketAPI;
+  readonly marketRpc: MarketRpcAPI;
   readonly data: DataAPI;
   readonly ml: MlAPI;
   readonly chainRpc: ChainRpcAPI;
@@ -1134,6 +1206,8 @@ export class InfraX {
     this.vault = new VaultAPI(this.http);
     this.mpc = new MPCAPI(this.http);
     this.market = new MarketAPI(this.http);
+    // A-12/13: 行情数据 RPC（与 MarketAPI 同 HttpClient 同源同缓存）
+    this.marketRpc = new MarketRpcAPI(this.http);
     // data 服务独立 baseUrl（dataUrl 优先，回退 baseUrl）+ 独立 key（dataApiKey 优先，回退 apiKey）
     this.data = new DataAPI(new HttpClient({
       ...config,

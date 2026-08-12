@@ -24,9 +24,11 @@ import apiKeyRoutes from './routes/apiKeyRoutes';
 import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { sessionAuth, hasSession, initSessionStore } from './middleware/sessionAuth';
 import { handleWsUpgrade } from './services/eventBus';
+import { handleMarketWsUpgrade } from './services/marketWs';
 import relayRoutes from './routes/relayRoutes';
 import priceRoutes from './routes/priceRoutes';
 import marketRoutes from './routes/marketRoutes';
+import marketRpcRoutes, { marketRpcAuth } from './routes/marketRpcRoutes';
 import marketSubscriptionRoutes from './routes/marketSubscriptionRoutes';
 import trackedTokenRoutes from './routes/trackedTokenRoutes';
 import customEventRoutes from './routes/customEventRoutes';
@@ -120,6 +122,8 @@ app.use('/api/v2/data', apiKeyAuth, priceRoutes);
 app.use('/api/v2/data', apiKeyAuth, marketQuotaEnforce, marketRoutes);
 // MQ-16 T-2: Market 订阅端点（plans 公开；checkout/payment-check/verify/usage 各路由内 key 鉴权；payment-callback HMAC 验签）
 app.use('/api/v2/market', marketSubscriptionRoutes);
+// A-12: 行情数据 RPC（rx_ 读 key 鉴权，与 chain-rpc /v1/rpc/:chain 并列；A-13 同源同缓存复用 getMarketClient）
+app.use('/v1/market-rpc', marketRpcAuth, marketRpcRoutes);
 // Relay: API key auth at mount point (was previously inside router only)
 app.use('/api/v1', apiKeyAuth, relayRoutes);
 
@@ -131,7 +135,10 @@ async function main() {
   // 2. HTTP server (start immediately, don't wait for collectors)
   const port = config.port || 3000;
   const server = http.createServer(app);
-  server.on('upgrade', (req, socket, head) => handleWsUpgrade(req as any, socket, head));
+  server.on('upgrade', (req, socket, head) => {
+    handleWsUpgrade(req as any, socket, head);
+    handleMarketWsUpgrade(req as any, socket, head).catch(() => {});
+  });
   server.listen(port, () => logger.info(`InfraX Collector listening on port ${port}`));
 
   // 3. Block scanner (allow failure, don't block market data)
