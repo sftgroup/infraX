@@ -11,7 +11,7 @@ export async function signAndBroadcast(params: {
   data: string;
   value?: string;
   gasLimit?: string;
-}): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string }> {
+}): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string; blockNumber?: number }> {
   const account = privateKeyToAccount(params.privateKey as `0x${string}`);
   const viemChain = buildViemChain(params.chain, params.rpcUrl);
 
@@ -46,6 +46,7 @@ export async function signAndBroadcast(params: {
       txHash: hash,
       success: receipt.status === 'success',
       gasUsed: receipt.gasUsed.toString(),
+      blockNumber: Number(receipt.blockNumber),
     };
   } catch (err: any) {
     return { txHash: '', success: false, reason: err.message || 'Unknown error' };

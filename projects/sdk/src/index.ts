@@ -29,6 +29,12 @@ export interface InfraXConfig {
   paymentsUrl?: string;
   /** 支付引擎 API key（PAYMENTS_API_KEY）；回退 apiKey */
   paymentsApiKey?: string;
+  /** session-key-engine 托管实例 URL（A-15：SESSION_KEY_ENGINE_URL）；回退 baseUrl */
+  sessionKeyUrl?: string;
+  /** session-key-engine API key（sdk_ 前缀 Bearer，A-15：SESSION_KEY_API_KEY） */
+  sessionKeyApiKey?: string;
+  /** 通用 Bearer 鉴权（HttpClient 层）：部分服务用 Authorization: Bearer 而非 x-api-key */
+  bearerToken?: string;
   /** WAAS wallet/tx 端点（/api/v2/wallet/*、/api/v2/tx/*）钱包签名鉴权头（EIP-191，消息 `InfraX auth: <ts>`）。
    *  配置后 WalletAPI 每次请求自动生成 x-wallet-address/x-wallet-signature/x-wallet-timestamp。 */
   walletAddress?: string;
@@ -262,6 +268,8 @@ export class HttpClient {
     this.headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) this.headers['x-api-key'] = config.apiKey;
     if (config.dcApiKey) this.headers['x-dc-api-key'] = config.dcApiKey;
+    // A-16: Bearer 鉴权（session-key-engine 等服务用 Authorization: Bearer）
+    if (config.bearerToken) this.headers['authorization'] = `Bearer ${config.bearerToken}`;
   }
 
   async get<T>(path: string, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
@@ -1170,6 +1178,142 @@ export class DexAPI {
   }
 }
 
+// ═══════════════ SessionKey — session-key-engine 托管实例（A-15/16/17/18） ═══════════════
+// 消费端仅配 sessionKeyUrl（SESSION_KEY_ENGINE_URL）+ sessionKeyApiKey（sdk_ 前缀 Bearer，
+// SESSION_KEY_API_KEY）。/health、/nonce 公开；/sessions、/execute 需 Bearer（A-18 端点隔离）。
+// 响应复用信封 {code,message,data}（与 session-key-engine 一致）。
+
+export interface SessionKeyNonceData { nonce: string; message: string; }
+export interface SessionKeyPermissionConfig { contracts: string[]; functions?: string[]; }
+export interface SessionKeyCreateParams {
+  signature: string;
+  chain: string;
+  permissions: SessionKeyPermissionConfig;
+  validDays?: number;
+  maxPerTx?: string;
+  maxTotal?: string;
+  userAddress: string;
+  nonce: string;
+}
+export interface SessionKeyInfo {
+  id: string;
+  sessionAddress: string;
+  chain: string;
+  status: string;
+  validUntil: string;
+  userAddress?: string;
+  maxPerTx?: string;
+  maxTotal?: string;
+  totalSpent?: string;
+  permissions?: SessionKeyPermissionConfig;
+}
+export interface SessionKeyExecuteParams {
+  sessionId: string;
+  chain: string;
+  to: string;
+  data: string;
+  value?: string;
+  gasLimit?: string;
+}
+export interface SessionKeyExecuteResult {
+  executionId: string;
+  userOpHash: string | null;
+  txHash: string;
+  status: 'success' | 'failed';
+  blockNumber: number | null;
+  gasUsed?: string;
+  errorReason?: string;
+}
+
+// ── A-16: EIP-712 域参数内置（与服务端 verifySessionAuthSignature 同构） ──
+export const SESSION_KEY_EIP712_DOMAIN_NAME = 'Session Key Engine';
+export const SESSION_KEY_EIP712_VERSION = '1';
+export const SESSION_KEY_CHAIN_IDS: Record<string, number> = {
+  eth: 1, bsc: 56, base: 8453, polygon: 137,
+  arbitrum: 42161, optimism: 10, xlayer: 196,
+};
+/** 链 → EIP-712 域（name/version/chainId；verifyingContract 由消费方按自有合约补填） */
+export function sessionKeyDomain(chain: string, verifyingContract?: string): {
+  name: string; version: string; chainId: number; verifyingContract?: string;
+} {
+  return {
+    name: SESSION_KEY_EIP712_DOMAIN_NAME,
+    version: SESSION_KEY_EIP712_VERSION,
+    chainId: SESSION_KEY_CHAIN_IDS[chain] ?? 0,
+    ...(verifyingContract ? { verifyingContract } : {}),
+  };
+}
+/** 构建 SessionAuth EIP-712 待签名数据（零依赖，返回结构可直接交 ethers/viem signTypedData） */
+export function sessionAuthTypedData(params: {
+  chain: string;
+  nonce: string;
+  sessionAddress: string;
+  permissions: SessionKeyPermissionConfig;
+  validUntil: number;
+  maxPerTx: string;
+  maxTotal: string;
+}) {
+  return {
+    domain: sessionKeyDomain(params.chain),
+    types: {
+      SessionAuth: [
+        { name: 'nonce', type: 'string' },
+        { name: 'sessionAddress', type: 'address' },
+        { name: 'contracts', type: 'string' },
+        { name: 'validUntil', type: 'uint256' },
+        { name: 'maxPerTx', type: 'uint256' },
+        { name: 'maxTotal', type: 'uint256' },
+      ],
+    },
+    primaryType: 'SessionAuth' as const,
+    message: {
+      nonce: params.nonce,
+      sessionAddress: params.sessionAddress as `0x${string}`,
+      contracts: JSON.stringify(params.permissions.contracts),
+      validUntil: BigInt(params.validUntil),
+      maxPerTx: BigInt(params.maxPerTx),
+      maxTotal: BigInt(params.maxTotal),
+    },
+  };
+}
+
+export class SessionKeyAPI {
+  constructor(private http: HttpClient) {}
+
+  /** 一次性 nonce（公开端点；EIP-712 防重放，消费即失效） */
+  async getNonce(userAddress: string) {
+    return this.http.get<SessionKeyNonceData>(`/api/v1/nonce?user=${encodeURIComponent(userAddress)}`);
+  }
+  /** 创建 session（Bearer；signature 由用户对 sessionAuthTypedData 签名） */
+  async createSession(params: SessionKeyCreateParams) {
+    return this.http.post<SessionKeyInfo>('/api/v1/sessions', params);
+  }
+  async listSessions(userAddress: string, chain?: string, status?: string) {
+    const q = new URLSearchParams({ user: userAddress });
+    if (chain) q.set('chain', chain);
+    if (status) q.set('status', status);
+    return this.http.get<{ sessions: SessionKeyInfo[] }>(`/api/v1/sessions?${q.toString()}`);
+  }
+  async getSession(id: string) {
+    return this.http.get<SessionKeyInfo>(`/api/v1/sessions/${encodeURIComponent(id)}`);
+  }
+  /** 撤销（立即生效：服务端置 revoked，execute 拒绝） */
+  async revokeSession(id: string) {
+    return this.http.del<{ revoked: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`);
+  }
+  /** 执行（Bearer；服务端限额硬校验 + 全程审计） */
+  async execute(params: SessionKeyExecuteParams) {
+    return this.http.post<SessionKeyExecuteResult>('/api/v1/execute', params);
+  }
+  /** A-17: execute 明细（含 blockNumber/调用方掩码/限额快照） */
+  async getExecution(id: string) {
+    return this.http.get<any>(`/api/v1/execute/${encodeURIComponent(id)}`);
+  }
+  async health() {
+    return this.http.get<{ status: string }>('/api/v1/health');
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -1187,6 +1331,7 @@ export class InfraX {
   readonly ml: MlAPI;
   readonly chainRpc: ChainRpcAPI;
   readonly dex: DexAPI;
+  readonly sessionKey: SessionKeyAPI;
 
   private http: HttpClient;
 
@@ -1228,6 +1373,12 @@ export class InfraX {
     this.chainRpc = new ChainRpcAPI(chainRpcReadHttp, chainRpcBroadcastHttp, chainRpcBroadcastKey);
     // A-11：DexAPI 复用 chainRpc 读/广播双 HttpClient（quote=读 key；approve/swap=广播 key）
     this.dex = new DexAPI(chainRpcReadHttp, chainRpcBroadcastHttp, chainRpcBroadcastKey);
+    // A-15/16: session-key-engine 独立 baseUrl（sessionKeyUrl 优先，回退 baseUrl）+ Bearer key
+    this.sessionKey = new SessionKeyAPI(new HttpClient({
+      ...config,
+      baseUrl: config.sessionKeyUrl || config.baseUrl,
+      bearerToken: config.sessionKeyApiKey,
+    }));
   }
 
   setApiKey(key: string) { this.http.setApiKey(key); }

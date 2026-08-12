@@ -27,7 +27,7 @@ export interface IBlockchainAdapter {
     data: string;
     value?: string;
     gasLimit?: string;
-  }): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string }>;
+  }): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string; blockNumber?: number }>;
 
   /** Decrypt encrypted Session Key private key */
   decryptKey(encryptedKey: string): string;

@@ -83,11 +83,22 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
       return res.status(400).send({ code: 400, message: 'sessionId, chain, to, data required' });
     }
     try {
-      const result = await svc.executionService.execute({ sessionId, chain, to, data, value, gasLimit });
+      const result = await svc.executionService.execute({
+        sessionId, chain, to, data, value, gasLimit,
+        caller: (req as any).callerToken, // A-18: 审计调用方（auth hook 掩码，不落 key 原文）
+      });
       return res.send({ code: 200, data: result, message: result.status === 'success' ? 'Transaction sent' : 'Transaction failed' });
     } catch (err: any) {
       const status = err.statusCode || 500;
       return res.status(status).send({ code: status, message: err.message, errorCode: err.errorCode });
     }
+  });
+
+  // ── A-17: Execute 明细 ─────────────────────────────────────────────
+  app.get('/api/v1/execute/:id', async (req, res) => {
+    const { id } = req.params as any;
+    const record = await svc.executionService.findById(id);
+    if (!record) return res.status(404).send({ code: 404, message: 'Execution not found' });
+    return res.send({ code: 200, data: record, message: 'ok' });
   });
 }

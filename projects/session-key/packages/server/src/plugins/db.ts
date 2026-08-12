@@ -79,4 +79,9 @@ export async function initDb(pool: pg.Pool): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_exec_session ON session_executions(session_id);
     CREATE INDEX IF NOT EXISTS idx_exec_hash    ON session_executions(tx_hash);
   `);
+
+  // A-17/A-18: execute 审计字段（blockNumber / 调用方掩码 / 限额快照 JSON），老库幂等补列
+  await pool.query(`ALTER TABLE session_executions ADD COLUMN IF NOT EXISTS block_number BIGINT`);
+  await pool.query(`ALTER TABLE session_executions ADD COLUMN IF NOT EXISTS caller VARCHAR(32)`);
+  await pool.query(`ALTER TABLE session_executions ADD COLUMN IF NOT EXISTS limit_snapshot JSONB`);
 }

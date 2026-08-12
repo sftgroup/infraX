@@ -15,7 +15,7 @@ export class ExecutionService {
 
   async execute(params: {
     sessionId: string; chain: Chain; to: string; data: string;
-    value?: string; gasLimit?: string;
+    value?: string; gasLimit?: string; caller?: string;
   }) {
     const lockKey = `lock:session:${params.sessionId}`;
     const locked = await this.redis.set(lockKey, '1', 'EX', 30, 'NX');
@@ -70,6 +70,7 @@ export class ExecutionService {
         gasLimit: params.gasLimit,
       });
 
+      // A-17/A-18: execute 全程审计——调用方掩码 + 限额快照（构建前取值，不落 key 原文）
       await this.executionRepo.insert({
         sessionId: params.sessionId,
         txHash: result.txHash,
@@ -78,6 +79,14 @@ export class ExecutionService {
         value: params.value || '0',
         status: result.success ? 'success' : 'failed',
         errorReason: result.reason,
+        blockNumber: result.blockNumber,
+        caller: params.caller,
+        limitSnapshot: {
+          maxPerTx: session.maxPerTx,
+          maxTotal: session.maxTotal,
+          validUntil: session.validUntil,
+          totalSpent: session.totalSpent || '0',
+        },
       });
 
       // MQ-4: 记账已花费额度（仅成功交易）
@@ -87,13 +96,21 @@ export class ExecutionService {
 
       return {
         executionId: crypto.randomUUID(),
+        // A-17: 直接 EOA 交易路径无 userOpHash（ERC-4337 userOp 路径联动 E-1b 后续）
+        userOpHash: null as string | null,
         txHash: result.txHash || '',
         status: result.success ? 'success' as const : 'failed' as const,
+        blockNumber: result.blockNumber ?? null,
         gasUsed: result.gasUsed,
         errorReason: result.reason,
       };
     } finally {
       await this.redis.del(lockKey);
     }
+  }
+
+  /** A-17: 按执行 ID 查明细 */
+  async findById(id: string) {
+    return this.executionRepo.findById(id);
   }
 }
