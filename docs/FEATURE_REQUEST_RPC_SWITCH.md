@@ -35,8 +35,16 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 
 ### R3 链覆盖补齐 — P1
 
+**背景与必要性（为什么需要 polygon/arbitrum/optimism）**:
+
+- 我方**交易/信号面本就是 7 链**：OKX ChainOS 路由表 `"137":POLYGON "42161":ARBITRUM "10":OPTIMISM`（broadcast/wallet-tee okx_client），信号面 `EVM_CHAINS = {ETH, BSC, BASE, POLYGON, ARBITRUM, OPTIMISM}`（signal ws_market_client）——信号可在 POLYGON/ARBITRUM/OPTIMISM 上触发并在 OKX 执行 swap。
+- 但现有 RPC 兜底/链读**只覆盖 4 链**：广播兜底 `CHAIN_RPC_FALLBACK` 仅 ETH/BSC/BASE（publicnode），风控链读 `DEFAULT_RPC_URLS` 仅 ETH/BSC/BASE/SOL——**POLYGON/ARBITRUM/OPTIMISM 无任何 RPC 通道**（OKX 广播失败时兜底直接报 `Unsupported chain`，风控无链可读）。
+- 因此 R3 是**补齐既有缺口**（非新增能力）：趁 RPC 全量切换一次性对齐交易面 7 链，避免「切了 InfraX 但 3 条链仍无 RPC」的半切状态。
+
+需求：
+
 - 保持现有 `sepolia,ethereum,bsc,base,oxa,solana` 稳定；
-- **新增 polygon / arbitrum / optimism**（对齐 OKX ChainOS 多链执行面）；
+- **新增 polygon / arbitrum / optimism**（对齐 OKX ChainOS 多链执行面；链参数建议 `polygon/arbitrum/optimism`，与 OKX ChainOS 命名一致）；
 - 链参数与链 ID 映射文档化（`GET /v1/status` 或 plans 返回完整链表）。
 
 ### R4 方法白名单确认 — P1
