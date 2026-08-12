@@ -599,5 +599,67 @@
       },
       "status": "healthy"
     }
+  ],
+  "xlayer": [
+    {
+      "key": "xlayer-official",
+      "url": "https://rpc.xlayer.tech",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "xlayer-drpc",
+      "url": "https://xlayer.drpc.org",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "xlayer-publicnode",
+      "url": "https://xlayer-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "xlayer-ankr",
+      "url": "https://rpc.ankr.com/xlayer",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
   ]
 }

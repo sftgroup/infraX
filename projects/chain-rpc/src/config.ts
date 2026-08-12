@@ -28,7 +28,7 @@ export const config = {
 
   // ── RPC 端点池 ───────────────────────────────────────
   // 端点来源：rpc-pool.json 基线 → 链 env URL（SEPOLIA/ETH/BSC/BASE/OXA/SOLANA_RPC_URL）→ INFRAX_RPC_POOL 全量覆盖
-  supportedChains: (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana,polygon,arbitrum,optimism')
+  supportedChains: (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana,polygon,arbitrum,optimism,xlayer')
     .split(',').map((s) => s.trim()).filter(Boolean),
 
   // ── 广播确认轮询 ─────────────────────────────────────
@@ -39,6 +39,17 @@ export const config = {
   healthIntervalMs: parseInt(process.env.CHAIN_RPC_HEALTH_INTERVAL_MS || '30000', 10),
   maxRetries: parseInt(process.env.CHAIN_RPC_MAX_RETRIES || '3', 10),
   requestTimeoutMs: parseInt(process.env.CHAIN_RPC_REQUEST_TIMEOUT_MS || '15000', 10),
+
+  // ── A-11: DEX 交易执行 RPC ───────────────────────────
+  // 聚合器：OKX DEX Aggregator 首选（免 key 公共 API），1inch 回退（需 DEX_API_KEY）
+  dexAggregatorUrl: (process.env.DEX_AGGREGATOR_URL || '').trim(),
+  dexApiKey: process.env.DEX_API_KEY || '',
+  // A-11.6: approve/swap 构建白名单链集（联动 RPC-3 链补齐；Solana quote 先行二期）
+  dexSupportedChains: (process.env.DEX_SUPPORTED_CHAINS || 'ethereum,bsc,base,arbitrum,polygon,xlayer')
+    .split(',').map((s) => s.trim()).filter(Boolean),
+  // gasLimit 预估上限保护（防超长 calldata 滥用）
+  dexMaxApproveGas: parseInt(process.env.DEX_MAX_APPROVE_GAS || '200000', 10),
+  dexMaxSwapGas: parseInt(process.env.DEX_MAX_SWAP_GAS || '1500000', 10),
 
   // ── 端点级开关 ───────────────────────────────────────
   enableExternalVerify: boolOr(process.env.CHAIN_RPC_ENABLE_EXTERNAL_VERIFY, false),

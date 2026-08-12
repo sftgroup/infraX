@@ -1005,6 +1005,100 @@ export class ChainRpcAPI {
   }
 }
 
+// ═══════════════ Dex — chain-rpc /v1/dex-rpc DEX 交易执行（A-11） ═══════════════
+// A-11：聚合报价 / approve / swap 构建（只构建待签名 rawTransaction，无 sign 端点）。
+// 鉴权分级：quote=读 key（chainRpcApiKey）；approve/swap=广播 key（chainRpcBroadcastKey，
+// 未配置时 fail-closed 明确报错）。rawTransaction 由调用方签名后交 ChainRpcAPI.broadcast 广播。
+
+export interface DexQuoteParams {
+  chain: string;
+  tokenIn: string;
+  tokenOut: string;
+  /** 输入数量（wei，纯数字字符串） */
+  amountIn: string;
+  /** 滑点容忍度，如 0.005 = 0.5% */
+  slippage?: number;
+  /** 交易发起地址（聚合器路由参考，可不传） */
+  from?: string;
+}
+export interface DexQuoteResult {
+  chain: string;
+  aggregator: 'okx' | '1inch';
+  amountOut: string;
+  minAmountOut: string;
+  priceImpact?: number;
+  fee?: string;
+  route?: any;
+}
+export interface DexApproveParams {
+  chain: string;
+  token: string;
+  spender: string;
+  /** 授权额度；不传/0 → max uint256 */
+  amount?: string;
+  from?: string;
+}
+export interface DexRawTransaction {
+  to: string;
+  data: string;
+  value: string;
+  chainId: number;
+  gasLimit?: string;
+  estimated?: boolean;
+}
+export interface DexApproveResult {
+  chain: string;
+  rawTransaction: DexRawTransaction;
+  from: string | null;
+}
+export interface DexSwapParams {
+  chain: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  slippage?: number;
+  from?: string;
+  recipient?: string;
+}
+export interface DexSwapResult {
+  chain: string;
+  rawTransaction: DexRawTransaction;
+  aggregator: 'okx' | '1inch';
+  amountOutMin: string;
+}
+
+export class DexAPI {
+  private readonly broadcastKey: string;
+  constructor(private http: HttpClient, private broadcastHttp: HttpClient, broadcastKey: string) {
+    this.broadcastKey = broadcastKey;
+  }
+
+  /** 聚合报价（读 key）：OKX DEX Aggregator 首选，1inch 回退；返回信封 {code,message,data} */
+  async quote(params: DexQuoteParams) {
+    return this.http.post<DexQuoteResult>('/v1/dex-rpc', { method: 'dex.quote', params });
+  }
+
+  /** 构建 ERC20 approve 待签名交易（广播 key；amount 空/0 → max uint256） */
+  async approve(params: DexApproveParams) {
+    this.requireBroadcastKey('dex.approve');
+    return this.broadcastHttp.post<DexApproveResult>('/v1/dex-rpc', { method: 'dex.approve', params });
+  }
+
+  /** 构建 swap 待签名交易（广播 key；聚合器路由 + gasLimit 预估，超上限 400 拒绝） */
+  async swap(params: DexSwapParams) {
+    this.requireBroadcastKey('dex.swap');
+    return this.broadcastHttp.post<DexSwapResult>('/v1/dex-rpc', { method: 'dex.swap', params });
+  }
+
+  private requireBroadcastKey(method: string): void {
+    if (!this.broadcastKey) {
+      throw new Error(
+        `[infrax-sdk] chainRpcBroadcastKey not configured: ${method} requires the server-issued broadcast key (read key cannot build dex transactions). Set chainRpcBroadcastKey or call POST /v1/dex-rpc directly with X-Service-Key.`
+      );
+    }
+  }
+}
+
 // ═══════════════ Main Client ═══════════════
 
 export class InfraX {
@@ -1020,6 +1114,7 @@ export class InfraX {
   readonly data: DataAPI;
   readonly ml: MlAPI;
   readonly chainRpc: ChainRpcAPI;
+  readonly dex: DexAPI;
 
   private http: HttpClient;
 
@@ -1054,11 +1149,11 @@ export class InfraX {
     // chain-rpc 网关独立 baseUrl（chainRpcUrl 优先，回退 baseUrl）+ 独立 key（chainRpcApiKey 优先，回退 apiKey）
     // 广播独立 HttpClient（chainRpcBroadcastKey）——读/广播 key 分离，读 key 无法触达广播端点
     const chainRpcBroadcastKey = config.chainRpcBroadcastKey || '';
-    this.chainRpc = new ChainRpcAPI(
-      new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: config.chainRpcApiKey || config.apiKey }),
-      new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: chainRpcBroadcastKey }),
-      chainRpcBroadcastKey,
-    );
+    const chainRpcReadHttp = new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: config.chainRpcApiKey || config.apiKey });
+    const chainRpcBroadcastHttp = new HttpClient({ ...config, baseUrl: config.chainRpcUrl || config.baseUrl, apiKey: chainRpcBroadcastKey });
+    this.chainRpc = new ChainRpcAPI(chainRpcReadHttp, chainRpcBroadcastHttp, chainRpcBroadcastKey);
+    // A-11：DexAPI 复用 chainRpc 读/广播双 HttpClient（quote=读 key；approve/swap=广播 key）
+    this.dex = new DexAPI(chainRpcReadHttp, chainRpcBroadcastHttp, chainRpcBroadcastKey);
   }
 
   setApiKey(key: string) { this.http.setApiKey(key); }

@@ -8,6 +8,7 @@
  *   GET  /health                     健康检查（公开）
  *   POST /v1/rpc/:chain              读（CHAIN_RPC_READ_KEY 或广播 key）
  *   POST /v1/broadcast/:chain        广播（仅 CHAIN_RPC_BROADCAST_KEY）
+ *   POST /v1/dex-rpc                 A-11: DEX 执行（quote=读 key / approve+swap=广播 key）
  *   GET  /v1/status                  池状态（脱敏，读 key）
  *   WS   /v1/ws                      订阅代理（读 key；仅 eth_subscribe/eth_unsubscribe）
  */
@@ -23,6 +24,7 @@ import { buildRpcPoolConfig } from './services/rpcPoolConfig';
 import { createReadAuth, createBroadcastAuth } from './middleware/auth';
 import { rpcQuotaEnforce } from './middleware/rpcQuotaEnforce';
 import { createRpcRouter, createBroadcastRouter } from './routes/rpcRoutes';
+import { createDexReadRouter, createDexBroadcastRouter } from './routes/dexRoutes';
 import { attachWs } from './routes/ws';
 import subscriptionRouter from './routes/rpcSubscriptionRoutes';
 import { initRpcTables } from './services/rpcSubscription';
@@ -44,7 +46,8 @@ app.use((req, res, next) => {
     const meta: Record<string, unknown> = {
       route: p.startsWith('/v1/rpc') ? 'rpc'
         : p.startsWith('/v1/broadcast') ? 'broadcast'
-          : p.startsWith('/v1/status') ? 'status' : 'other',
+          : p.startsWith('/v1/dex-rpc') ? 'dex-rpc'
+            : p.startsWith('/v1/status') ? 'status' : 'other',
       status: res.statusCode,
       dur: `${Date.now() - t0}ms`,
     };
@@ -93,6 +96,9 @@ app.get('/health', (_req, res) => {
 // ── 路由（鉴权分级：读 / 广播独立挂载，读 key 无法触达广播） ──
 app.use('/v1/rpc', createReadAuth(), rpcQuotaEnforce(), createRpcRouter(pool));
 app.use('/v1/broadcast', createBroadcastAuth(), createBroadcastRouter(pool));
+// A-11: /v1/dex-rpc 分权限挂载——quote=读 key（计入读配额）；approve/swap=广播 key
+app.use('/v1/dex-rpc', createReadAuth(), rpcQuotaEnforce(), createDexReadRouter(pool));
+app.use('/v1/dex-rpc', createBroadcastAuth(), createDexBroadcastRouter(pool));
 // MQ-16 T-3: RPC 读套餐订阅（plans/issue-key 内部鉴权，checkout/payment-check/verify/usage 用 rx_ key 鉴权）
 app.use('/v1/subscription', subscriptionRouter);
 app.get('/v1/status', createReadAuth(), (_req, res) => {
