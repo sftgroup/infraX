@@ -935,7 +935,7 @@ app.post('/api/v2/mpc/sign-digest', mpcMeter('sign_digest'), asyncHandler(async 
     const sig = await ethersSignatureFromRs(rs, digest, session.address);
     signature = sig.serialized;
   } else {
-    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(normalized);
+    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(`0x${normalized}`);
     signature = ethers.Signature.from(sig).serialized;
   }
   await auditLog(token, 'sign_digest', { digest: digest.slice(0, 34) });
@@ -973,7 +973,7 @@ app.post('/api/v2/mpc/sign', mpcMeter('sign_message'), asyncHandler(async (req: 
     const sig = await ethersSignatureFromRs(rs, digest, session.address);
     signature = sig.serialized;
   } else {
-    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(digest.replace(/^0x/, ''));
+    const sig = new ethers.SigningKey(session.wallet!.privateKey).sign(`0x${digest.replace(/^0x/, '')}`);
     signature = ethers.Signature.from(sig).serialized;
   }
   await auditLog('', `sign_${mode}`, { mode, message: String(message).slice(0, 100) }, undefined, undefined, session.email);
