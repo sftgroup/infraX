@@ -359,6 +359,150 @@ def consensus():
         return {"code": 0, "message": "ok", "data": None}
 
 
+# ── 因子工厂（需求5 R5-2.4 / 需求6 FF-3、FF-4） ─────────────
+# 挖掘任务：start（结构化 spec）/ mine（自然语言→LLM 解析）/ status / result /
+# list / cancel；因子目录：catalog / current / activate|deactivate。
+# 端点均需鉴权（ML_API_KEY，统一中间件已覆盖；自然语言入口缺 LLM key 时 400）。
+
+from pydantic import BaseModel as _BaseModel  # noqa: E402
+
+
+class _MineRequest(_BaseModel):
+    preferences: dict = {}
+    constraints: dict = {}
+    intent: str | None = None
+
+
+@app.post("/factor-factory/start")
+def factor_start(req: _MineRequest):
+    """创建挖掘任务（结构化 preferences/constraints）→ 入队执行。
+
+    body: {"preferences": {...}, "constraints": {...}}（字段见 JobSpec schema）。
+    偏好/硬限制冲突时返回 400 + conflicts（不静默）；成功返回 {job_id, status}。
+    """
+    try:
+        from app.factorengine.job import build_spec
+        spec, conflicts = build_spec(req.preferences, req.constraints)
+        if conflicts:
+            return JSONResponse(status_code=400, content={
+                "code": 400, "message": "偏好与硬限制冲突", "data": {"conflicts": conflicts}})
+        from app.factorengine.jobs import start_job
+        job = start_job(spec)
+        return {"code": 0, "message": "ok",
+                "data": {"job_id": job["job_id"], "status": job["status"]}}
+    except Exception as exc:
+        logger.warning("factor start failed: %s", exc)
+        return JSONResponse(status_code=400, content={
+            "code": 400, "message": str(exc), "data": None})
+
+
+@app.post("/factor-factory/mine")
+def factor_mine(req: _MineRequest):
+    """自然语言挖掘入口（R5-4）：LLM 意图解析 → 建任务。
+
+    body: {"preferences": {...}, "constraints": {...}, "intent": "自然语言描述"}。
+    intent 优先走 LLM 解析（缺 LLM key → 400 提示）；否则用结构化字段。
+    """
+    intent = req.intent
+    try:
+        from app.factorengine.job import build_spec
+        if intent:
+            from app.factorengine.intent import parse_intent
+            parsed = parse_intent(str(intent))
+            spec, conflicts = build_spec(parsed["preferences"], parsed["constraints"])
+        else:
+            spec, conflicts = build_spec(req.preferences, req.constraints)
+        if conflicts:
+            return JSONResponse(status_code=400, content={
+                "code": 400, "message": "偏好与硬限制冲突", "data": {"conflicts": conflicts}})
+        from app.factorengine.jobs import start_job
+        job = start_job(spec)
+        return {"code": 0, "message": "ok",
+                "data": {"job_id": job["job_id"], "status": job["status"]}}
+    except Exception as exc:
+        logger.warning("factor mine failed: %s", exc)
+        return JSONResponse(status_code=400, content={
+            "code": 400, "message": str(exc), "data": None})
+
+
+@app.get("/factor-factory/status")
+def factor_status(job_id: str):
+    """任务状态（含 stage 细分：pool/eval/select/persist）。"""
+    from app.factorengine.jobs import job_status
+    job = job_status(job_id)
+    if job is None:
+        return {"code": 0, "message": "ok", "data": None}
+    return {"code": 0, "message": "ok", "data": {
+        "job_id": job["job_id"], "status": job["status"], "stage": job.get("stage"),
+        "error": job.get("error"), "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at")}}
+
+
+@app.get("/factor-factory/result")
+def factor_result(job_id: str):
+    """任务结果：合格因子列表（IC/ICIR/独立度）+ 统计。"""
+    from app.factorengine.jobs import get_store
+    store = get_store()
+    job = store.get(job_id)
+    if job is None:
+        return {"code": 0, "message": "ok", "data": None}
+    results = store.results(job_id)
+    return {"code": 0, "message": "ok", "data": {
+        "job_id": job_id, "status": job["status"],
+        "stats": (job.get("result") or {}).get("stats"),
+        "factors": results}}
+
+
+@app.get("/factor-factory/list")
+def factor_list(limit: int = 50):
+    """最近任务列表。"""
+    from app.factorengine.jobs import list_jobs
+    return {"code": 0, "message": "ok", "data": list_jobs(limit)}
+
+
+@app.post("/factor-factory/cancel")
+def factor_cancel(job_id: str):
+    """取消任务（排队/运行中可取消）。"""
+    from app.factorengine.jobs import cancel_job
+    ok = cancel_job(job_id)
+    return {"code": 0, "message": "ok", "data": {"cancelled": ok}}
+
+
+@app.get("/factors/catalog")
+def factor_catalog():
+    """因子目录（全部/按状态）。"""
+    from app.factorengine.catalog import get_catalog
+    return {"code": 0, "message": "ok", "data": get_catalog().list()}
+
+
+@app.get("/factors/current")
+def factors_current():
+    """当前激活因子（FF-3.3：data-service /factors/current 的数据源）。"""
+    from app.factorengine.catalog import get_catalog
+    store = get_catalog()
+    return {"code": 0, "message": "ok", "data": {
+        "updated_at": _now_ms(), "factors": store.active_keys()}}
+
+
+@app.post("/factors/{factor_key}/activate")
+def factor_activate(factor_key: str):
+    from app.factorengine.catalog import get_catalog
+    ok = get_catalog().set_status(factor_key, "active")
+    return {"code": 0, "message": "ok", "data": {"updated": ok}}
+
+
+@app.post("/factors/{factor_key}/deactivate")
+def factor_deactivate(factor_key: str):
+    from app.factorengine.catalog import get_catalog
+    ok = get_catalog().set_status(factor_key, "inactive")
+    return {"code": 0, "message": "ok", "data": {"updated": ok}}
+
+
+def _now_ms() -> int:
+    import time
+    return int(time.time() * 1000)
+
+
 # ── 宏观特征（FRED 历史趋势 + DXY/VIX/US10Y） ─────────────
 
 @app.get("/ml/macro_features")

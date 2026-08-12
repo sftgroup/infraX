@@ -36,6 +36,21 @@ DATA_SERVICE_URL = os.getenv("DATA_SERVICE_URL", "")
 # data-service 业务端点鉴权（/bars /symbols 需 X-API-Key）
 DATA_API_KEY = os.getenv("DATA_API_KEY", "")
 
+# ── 因子工厂（需求5/6 R5-1/FF-2~4） ──────────────────────
+# 挖掘任务存储：默认 SQLite（标准库零依赖，生产立即可用）；FACTOR_DB_PATH
+# 可指向自定义文件。PostgreSQL 支持为后续可选项（psycopg2 依赖）。
+FACTOR_DB_PATH = os.getenv("FACTOR_DB_PATH", "factor_factory.db")
+# 因子评估数据窗口（每标的拉取 K 线根数；需 ≥ 评估窗口 + horizon + 缓冲）
+FACTOR_EVAL_BARS = int(os.getenv("FACTOR_EVAL_BARS", "800"))
+# 挖掘 worker 并发数（小内存机保持 1，防挤爆 CPU/内存）
+FACTOR_MINER_WORKERS = int(os.getenv("FACTOR_MINER_WORKERS", "1"))
+
+# ── 因子工厂 LLM 意图解析（需求5 R5-4） ──────────────────
+# OpenAI 兼容 chat completions（默认 DeepSeek）；未配置时自然语言入口 400 提示。
+FACTOR_LLM_API_KEY = os.getenv("FACTOR_LLM_API_KEY", os.getenv("LLM_BINDING_API_KEY", ""))
+FACTOR_LLM_HOST = os.getenv("FACTOR_LLM_HOST", "")
+FACTOR_LLM_MODEL = os.getenv("FACTOR_LLM_MODEL", "deepseek-chat")
+
 # ── P2/波动率目标符号池 ──────────────────────────────
 # 默认从 data-service /symbols（timeframe=1d，min_bars=TREE_ML_MIN_BARS）动态拉取，
 # 覆盖传统资产 1D + 加密资产；P2_TARGET_SYMBOLS 可显式覆盖（逗号分隔，留空走动态）。
