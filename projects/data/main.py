@@ -1090,7 +1090,7 @@ async def _startup():
         NewsCollector, SentimentCollector, AdanosCollector, OpportunityCollector,
         FinbertSentimentCollector, TreeMlCollector, ConsensusCollector, P2MlCollector,
         GlobalMarketCollector, OnchainCollector, OkxChainosCollector, MacroHistoryCollector,
-        MoomooMacroCollector,
+        MoomooMacroCollector, MoomooExtraCollector,
     )
     _collectors = [
         ("external_factors", ExternalFactorCollector()),
@@ -1098,6 +1098,7 @@ async def _startup():
         ("snapshots", SnapshotCollector()),
         ("macro_history", MacroHistoryCollector()),
         ("moomoo_macro", MoomooMacroCollector()),
+        ("moomoo_extra", MoomooExtraCollector()),
         ("heatmap", HeatmapCollector()),
         ("news", NewsCollector()),
         ("sentiment", SentimentCollector()),

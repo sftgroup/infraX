@@ -226,6 +226,64 @@ def _fetch_finnhub_calendar() -> Optional[list[dict]]:
     return None
 
 
+# ── Moomoo（MM-13：get_economic_calendar，免 key，含 consensus/actual） ──
+
+def _fetch_moomoo_calendar() -> Optional[list[dict]]:
+    """moomoo 经济日历：title/star/previous/consensus/actual（免 key）。
+
+    与 FRED/Finnhub 并存：数据并入 events（source="moomoo"），优先使用
+    consensus（一致预期），FRED/Finnhub 无此字段。
+    """
+    try:
+        from app.data_sources.moomoo_extra import fetch_economic_calendar
+
+        cfg = _get_calendar_config()
+        lookahead = cfg.get("lookahead_days", 7)
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=7)).date().isoformat()
+        end = (now + timedelta(days=lookahead)).date().isoformat()
+        rows = fetch_economic_calendar(start, end)
+        if not rows:
+            return None
+        events = []
+        for r in rows:
+            ts = None
+            ts_raw = str(r.get("time") or "")
+            try:
+                ts = float(ts_raw)
+            except (TypeError, ValueError):
+                try:
+                    ts = datetime.strptime(ts_raw[:19], "%Y-%m-%d %H:%M:%S").replace(
+                        tzinfo=timezone.utc
+                    ).timestamp()
+                except Exception:
+                    ts = None
+            if ts is None:
+                continue
+            star = str(r.get("star") or "").upper()
+            impact = {
+                "HIGH": "high", "H": "high", "5": "high", "4": "high",
+                "MEDIUM": "medium", "M": "medium", "3": "medium", "2": "medium",
+                "LOW": "low", "L": "low", "1": "low",
+            }.get(star, "medium")
+            events.append({
+                "name": r.get("title", ""),
+                "timestamp": ts,
+                "date": datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d"),
+                "country": r.get("country", "US"),
+                "impact": impact,
+                "category": "macro",
+                "forecast": r.get("consensus"),
+                "previous": r.get("previous"),
+                "actual": r.get("actual"),
+                "source": "moomoo",
+            })
+        return events or None
+    except Exception as exc:
+        logger.debug("Moomoo calendar branch skipped: %s", exc)
+        return None
+
+
 # ── Collector ───────────────────────────────────────────────
 
 class CalendarCollector:
@@ -265,6 +323,12 @@ class CalendarCollector:
         # 数据源策略：FRED（真实近期发布）+ static（未来 FOMC，提前公布）并集。
         # FRED 免费 API 只返回已发布/近排期记录，不含遥远未来；static 补未来 FOMC。
         events: list[dict] = []
+
+        # MM-13：moomoo 经济日历（免 key，含 consensus/actual）→ 并入 events
+        moomoo_events = _fetch_moomoo_calendar()
+        if moomoo_events:
+            logger.info("CalendarCollector: moomoo source (%d event(s))", len(moomoo_events))
+            events.extend(moomoo_events)
 
         fred_events = _fetch_fred_calendar()
         if fred_events:

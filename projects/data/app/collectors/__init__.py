@@ -16,3 +16,4 @@ from .onchain import OnchainCollector
 from .okx_chainos import OkxChainosCollector
 from .macro_history import MacroHistoryCollector
 from .moomoo_macro import MoomooMacroCollector
+from .moomoo_extra import MoomooExtraCollector

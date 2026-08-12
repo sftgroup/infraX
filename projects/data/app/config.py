@@ -164,6 +164,8 @@ MOOMOO_MACRO_INTERVAL_SEC = int(os.getenv("MOOMOO_MACRO_INTERVAL_SEC", str(6 * 3
 # 首次回填 / 周期刷新的观测条数（get_macro_indicator_history max_count）
 MOOMOO_MACRO_BACKFILL = int(os.getenv("MOOMOO_MACRO_BACKFILL", "400"))
 MOOMOO_MACRO_REFRESH = int(os.getenv("MOOMOO_MACRO_REFRESH", "90"))
+# MM-8/11~15 增量数据（资金流/F10/卖空/热力/板块等）总开关
+MOOMOO_EXTRA_ENABLED = os.getenv("MOOMOO_EXTRA_ENABLED", "true").lower() == "true"
 
 # ── Data config ───────────────────────────────────────────────
 
