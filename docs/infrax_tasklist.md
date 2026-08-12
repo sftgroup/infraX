@@ -1283,6 +1283,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `docs/req-06-factor-factory.md` | 因子工厂（挖掘/评估/管理/入库 → data-service `/factors/current`） | §9.15 | 🔲 待评审（2026-08-12 登记，FF-1~FF-4） |
 | `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | 🔲 待评审（2026-08-12 登记，HW-1） |
 | `docs/INFRAX_REQ_SUMMARY_ARCH_AUTOFIND_FACTORY.md` | 需求 4/5/6 汇总 + 附录 A 复合/非线性因子计算架构 | §9.15 | 汇总文档（同 R4/R5/FF 状态） |
+| `docs/MOOMOO_DATA_INTEGRATION.md` | MooMoo 行情强化接入（K线/宏观/新闻/资金流/F10/卖空/日历/榜单/筛选，15 任务） | §9.14 | 🔲 待评审（2026-08-12 登记，MM-1~MM-15；OpenD 生产凭证复用账号 107803923，详见 9.14 段） |
 
 **9.10 微服务定位纠正与体验对齐（2026-08-11 商业评审，对标 OKX OnchainOS）**
 
