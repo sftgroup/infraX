@@ -2,12 +2,13 @@
  * A-11.1: DEX 聚合器客户端（dex.quote / dex.swap 上游）。
  *
  * 选型（AASDK4_A11_TECH_DESIGN §2.3）：
- *   - OKX DEX Aggregator 首选（与 ChainOS 生态一致，500+ 源；公共 API 免 key）
+ *   - OKX OnchainOS DEX Aggregator V6 首选（web3.okx.com，500+ 源；需 OK-ACCESS 签名鉴权）
  *   - 1inch 回退（需 DEX_API_KEY）
- * 安全：fail-closed——聚合器不可用/超时/无 key → 503，不静默给错报价；
- * 本服务仅做服务端代理，DEX_API_KEY 不下发调用方。
+ * 安全：fail-closed——聚合器不可用/超时/未配置凭证 → 5xx，不静默给错报价；
+ * 本服务仅做服务端代理，OKX 凭证/1inch key 不下发调用方。
  */
 import axios from 'axios';
+import crypto from 'crypto';
 import { config } from '../config';
 import { ChainRpcError } from './rpcPool';
 import { CHAIN_IDS, normalizeChain } from './rpcPoolConfig';
@@ -76,29 +77,58 @@ function minOut(amountOut: string, slippage: number): bigint {
   return out - (out * slip) / 10_000n;
 }
 
-// ─── OKX DEX Aggregator ──────────────────────────────────────────────
+// ─── OKX OnchainOS DEX Aggregator V6 ─────────────────────────────────
 
 interface OkxQuoteData {
-  fromTokenAmount?: string;
   toTokenAmount?: string;
   quoteId?: string;
-  priceImpact?: string;
-  estimatedGas?: string;
-  routes?: unknown;
+  priceImpactPercent?: string;
+  estimateGasFee?: string;
+  dexRouterList?: unknown;
+  tx?: OkxSwapTx;
+}
+
+interface OkxSwapTx {
+  to?: string;
+  data?: string;
+  value?: string;
+  gas?: string;
+  minReceiveAmount?: string;
+}
+
+/** OKX V6 请求签名头（prehash = timestamp + METHOD + requestPath，HMAC-SHA256 → Base64） */
+function okxSign(method: 'GET' | 'POST', requestPath: string, body?: string): Record<string, string> {
+  const ts = new Date().toISOString();
+  const prehash = ts + method + requestPath + (body || '');
+  const sign = crypto.createHmac('sha256', config.okxDex.apiSecret).update(prehash).digest('base64');
+  return {
+    'OK-ACCESS-KEY': config.okxDex.apiKey,
+    'OK-ACCESS-SIGN': sign,
+    'OK-ACCESS-TIMESTAMP': ts,
+    'OK-ACCESS-PASSPHRASE': config.okxDex.apiPassphrase,
+    'Content-Type': 'application/json',
+  };
+}
+
+/** 凭证缺失 → fail-closed（避免裸 401 泄漏） */
+function assertOkxCreds(): void {
+  if (!config.okxDex.apiKey || !config.okxDex.apiSecret || !config.okxDex.apiPassphrase) {
+    throw new ChainRpcError('OKX DEX credentials not configured (OKX_DEX_API_KEY/SECRET/PASSPHRASE or OKX_CHAINOS_*)', 'dex_config_missing', 503);
+  }
 }
 
 async function okxQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
-  const chainId = dexChainId(params.chain);
+  assertOkxCreds();
   const qs = new URLSearchParams({
-    chainId: String(chainId),
+    chainIndex: String(dexChainId(params.chain)),
     fromTokenAddress: t(params.tokenIn),
     toTokenAddress: t(params.tokenOut),
     amount: params.amountIn,
   });
-  const resp = await axios.get(`${okxBase()}/api/v5/dex/aggregator/quote`, {
-    params: qs,
+  const requestPath = `/api/v6/dex/aggregator/quote?${qs.toString()}`;
+  const resp = await axios.get(`${okxBase()}${requestPath}`, {
     timeout: REQUEST_TIMEOUT,
-    headers: { 'Content-Type': 'application/json' },
+    headers: okxSign('GET', requestPath),
   });
   const data = resp.data?.data?.[0] as OkxQuoteData | undefined;
   if (!data?.toTokenAmount) {
@@ -109,24 +139,26 @@ async function okxQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
     aggregator: 'okx',
     amountOut: data.toTokenAmount,
     minAmountOut: minOut(data.toTokenAmount, params.slippage ?? 0.005).toString(),
-    priceImpact: data.priceImpact,
-    fee: data.estimatedGas,
-    route: data.routes,
+    priceImpact: data.priceImpactPercent,
+    fee: data.estimateGasFee,
+    route: data.dexRouterList,
   };
 }
 
 async function okxSwap(params: DexQuoteParams): Promise<DexSwapResult> {
+  assertOkxCreds();
   const chainId = dexChainId(params.chain);
-  // 先 quote 拿 quoteId（OKX swap 依赖 quoteId + slippage + 钱包地址）
+  // 先 quote 拿 quoteId（OKX swap 依赖 quoteId + slippagePercent + 钱包地址）
   const qs = new URLSearchParams({
-    chainId: String(chainId),
+    chainIndex: String(chainId),
     fromTokenAddress: t(params.tokenIn),
     toTokenAddress: t(params.tokenOut),
     amount: params.amountIn,
   });
-  const qResp = await axios.get(`${okxBase()}/api/v5/dex/aggregator/quote`, {
-    params: qs,
+  const qPath = `/api/v6/dex/aggregator/quote?${qs.toString()}`;
+  const qResp = await axios.get(`${okxBase()}${qPath}`, {
     timeout: REQUEST_TIMEOUT,
+    headers: okxSign('GET', qPath),
   });
   const quote = qResp.data?.data?.[0] as OkxQuoteData | undefined;
   const quoteId = quote?.quoteId;
@@ -134,27 +166,32 @@ async function okxSwap(params: DexQuoteParams): Promise<DexSwapResult> {
   if (!quoteId || !amountOut) {
     throw new ChainRpcError('OKX DEX quote (for swap) failed', 'dex_quote_failed', 502);
   }
-  const body: Record<string, string> = {
-    chainId: String(chainId),
+  const sQs = new URLSearchParams({
+    chainIndex: String(chainId),
+    amount: params.amountIn,
     quoteId,
-    slippage: String(params.slippage ?? 0.005),
+    slippagePercent: String(Math.round((params.slippage ?? 0.005) * 10000) / 100),
+    fromTokenAddress: t(params.tokenIn),
+    toTokenAddress: t(params.tokenOut),
     userWalletAddress: params.from || '0x0000000000000000000000000000000000000001',
     receiver: params.recipient || params.from || '0x0000000000000000000000000000000000000001',
-  };
-  const sResp = await axios.post(`${okxBase()}/api/v5/dex/aggregator/swap`, body, {
-    timeout: REQUEST_TIMEOUT,
-    headers: { 'Content-Type': 'application/json' },
   });
-  const tx = sResp.data?.data?.[0]?.tx as { from?: string; to?: string; data?: string; value?: string } | undefined;
+  const sPath = `/api/v6/dex/aggregator/swap?${sQs.toString()}`;
+  const sResp = await axios.get(`${okxBase()}${sPath}`, {
+    timeout: REQUEST_TIMEOUT,
+    headers: okxSign('GET', sPath),
+  });
+  const data = sResp.data?.data?.[0] as OkxQuoteData | undefined;
+  const tx = data?.tx;
   if (!tx?.to || !tx.data) {
     throw new ChainRpcError(`OKX DEX swap build failed: ${sResp.data?.msg || 'empty tx'}`, 'dex_swap_failed', 502);
   }
   return {
     chain: params.chain,
     aggregator: 'okx',
-    amountOutMin: minOut(amountOut, params.slippage ?? 0.005).toString(),
+    amountOutMin: tx.minReceiveAmount || minOut(amountOut, params.slippage ?? 0.005).toString(),
     quoteId,
-    tx: { to: tx.to, data: tx.data, value: tx.value || '0', chainId },
+    tx: { to: tx.to, data: tx.data, value: tx.value || '0', chainId, gasLimit: tx.gas },
   };
 }
 
