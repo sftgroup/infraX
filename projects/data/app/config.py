@@ -150,6 +150,21 @@ FRESHNESS_MS = int(os.getenv("FRESHNESS_MS", "600000"))
 # DQ-2: /factors/history 缺值因子列前值填充开关（ffill，false 则返回 null 占位）
 FACTORS_FFILL = os.getenv("FACTORS_FFILL", "true").lower() == "true"
 
+# ── moomoo OpenAPI（MM-1~MM-5，OpenD 本地网关）────────────────
+# OpenD 为 moomoo 平台账号登录的行情网关（127.0.0.1:11111），SDK 未安装 /
+# OpenD 未启动 / 无权限时全部 moomoo 路径 fail-silent 回退现有源（B 端零感知）。
+MOOMOO_ENABLED = os.getenv("MOOMOO_ENABLED", "true").lower() == "true"
+MOOMOO_HOST = os.getenv("MOOMOO_HOST", "127.0.0.1")
+MOOMOO_PORT = int(os.getenv("MOOMOO_PORT", "11111"))
+
+# 宏观采集（MM-4）：region 逗号分隔；周期 6h 对齐 FRED 采集器
+MOOMOO_MACRO_ENABLED = os.getenv("MOOMOO_MACRO_ENABLED", "true").lower() == "true"
+MOOMOO_MACRO_REGIONS = os.getenv("MOOMOO_MACRO_REGIONS", "US,HK")
+MOOMOO_MACRO_INTERVAL_SEC = int(os.getenv("MOOMOO_MACRO_INTERVAL_SEC", str(6 * 3600)))
+# 首次回填 / 周期刷新的观测条数（get_macro_indicator_history max_count）
+MOOMOO_MACRO_BACKFILL = int(os.getenv("MOOMOO_MACRO_BACKFILL", "400"))
+MOOMOO_MACRO_REFRESH = int(os.getenv("MOOMOO_MACRO_REFRESH", "90"))
+
 # ── Data config ───────────────────────────────────────────────
 
 DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data_config.json")

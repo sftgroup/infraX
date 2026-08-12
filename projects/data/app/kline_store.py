@@ -506,20 +506,21 @@ class KlineStore:
     def _collect_multi_market(self):
         """Fetch multi-market K-lines and write OHLCV (no indicators).
 
-        数据源（绕过 Yahoo 限流）：
-          - us_stocks → 1d akshare 新浪日线（stock_us_daily）；1h/4h yfinance
-                        （生产 IP 常被 Yahoo 限流 429 → 记 failed，等待 B 端提供
-                          Twelve Data 付费 tier / Alpha Vantage 配额）
+        数据源（MM-2 起引入 moomoo OpenAPI 强化，失败自动回退）：
+          - us_stocks → 1m/5m/15m/1h/4h moomoo（US LV3 稳定源）；1d akshare
+                        新浪日线（stock_us_daily），moomoo 兜底；moomoo 失败回退
+                        yfinance（生产 IP 常被 Yahoo 限流 429 → 记 failed）
           - futures   → 1d akshare 东财外盘期货日线（futures_foreign_hist）；1h/4h yfinance
           - forex     → Twelve Data（interval 参数化 1m~1day）。**轮换采集**：每周期只拉
                         1 个 timeframe（7 对 × 1 请求），请求间节流 ≥8s，适配免费
                         tier（8 次/分、800 credits/天，且与机会/宏观/DXY 等共用）
           - cn_stocks → 1d 腾讯日线 + 15m/1h 腾讯分钟线（akshare stock_zh_a_minute，
                         免费无额度）+ 4h 由 1h 聚合
-          - hk_stocks → 1d 腾讯日线（分钟级源待扩展，仅 1d）
+          - hk_stocks → 1m/5m/15m/1h/4h moomoo（HK LV1，补分钟级缺口）；1d 腾讯/akshare，
+                        moomoo 兜底
 
         timeframes 取自 data_config.json multi_kline.<market>.timeframes（需求目标）；
-        源不支持的周期跳过并记入 failed（如 hk 分钟级）。
+        源不支持的周期跳过并记入 failed（如 hk 分钟级在 moomoo 不可用时的回退）。
         """
         cfg = self._get_multi_config()
         if not cfg:
@@ -543,14 +544,19 @@ class KlineStore:
             total += 1
             return True
 
-        # US stocks → 1d akshare + 1h/4h yfinance
+        # US stocks → 1d akshare（moomoo 兜底，MM-6 Kronos 供给）+ 分钟/1h/4h moomoo
+        # （MM-2：moomoo US LV3 稳定源替代 yfinance 429 重灾区，yfinance 兜底）
         us = cfg.get("us_stocks") or {}
-        us_tfs = [t for t in (us.get("timeframes") or ["1d"]) if t in ("1d", "1h", "4h")]
+        us_tfs = [t for t in (us.get("timeframes") or ["1d"])
+                  if t in ("1m", "5m", "15m", "30m", "1h", "4h", "1d")]
         for sym in us.get("symbols", []):
             time.sleep(_THROTTLE)
             for tf in us_tfs:
-                rows = (self._fetch_akshare_us(sym["symbol"], fetch_bars) if tf == "1d"
-                        else self._fetch_yfinance(sym["symbol"], tf, fetch_bars))
+                rows = self._fetch_moomoo(sym["symbol"], tf, fetch_bars)
+                if not rows and tf == "1d":
+                    rows = self._fetch_akshare_us(sym["symbol"], fetch_bars)
+                elif not rows:
+                    rows = self._fetch_yfinance(sym["symbol"], tf, fetch_bars)
                 if not _upsert(sym["symbol"], tf, rows):
                     failed.append(f"{sym['symbol']} {tf}")
 
@@ -597,13 +603,22 @@ class KlineStore:
                 if not _upsert(sym["symbol"], tf, rows):
                     failed.append(f"{sym['symbol']} {tf}")
 
-        # HK stocks → 1d 腾讯日线（分钟级源待扩展）
+        # HK stocks → 1d 腾讯/akshare（moomoo 兜底）+ 分钟/1h/4h moomoo
+        # （MM-2：HK LV1 实测 5m 可用，补 1m/5m/15m/1h 分钟级缺口）
         hk = cfg.get("hk_stocks") or {}
+        hk_tfs = [t for t in (hk.get("timeframes") or ["1d"])
+                  if t in ("1m", "5m", "15m", "30m", "1h", "4h", "1d")]
         for sym in hk.get("symbols", []):
             time.sleep(_THROTTLE)
-            rows = self._fetch_akshare_hk(sym["symbol"], fetch_bars)
-            if not _upsert(sym["symbol"], "1d", rows):
-                failed.append(sym["symbol"])
+            for tf in hk_tfs:
+                if tf == "1d":
+                    rows = self._fetch_akshare_hk(sym["symbol"], fetch_bars)
+                    if not rows:
+                        rows = self._fetch_moomoo(sym["symbol"], tf, fetch_bars)
+                else:
+                    rows = self._fetch_moomoo(sym["symbol"], tf, fetch_bars)
+                if not _upsert(sym["symbol"], tf, rows):
+                    failed.append(f"{sym['symbol']} {tf}")
 
         if total:
             logger.info("KlineStore: multi-market saved %d symbol(s)", total)
@@ -738,6 +753,22 @@ class KlineStore:
             except ValueError:
                 return None
         return None
+
+    @staticmethod
+    def _fetch_moomoo(symbol: str, timeframe: str, bars: int) -> list:
+        """moomoo 历史 K 线（MM-2/MM-6）：→ [(ts_ms, o, h, l, c, v)]。
+
+        fail-silent：moomoo SDK 未安装 / OpenD 未启动 / 无权限 / 无数据 → 返回 []，
+        由调用方回退现有源（yfinance/akshare/腾讯）。market 由调用方已知，
+        显式传入避免符号推断歧义（00700 与 US 代码数字开头等）。
+        """
+        try:
+            from app.data_sources.moomoo import fetch_kline_rows
+            market = "hkstock" if symbol.isdigit() and len(symbol) == 5 else "usstock"
+            return fetch_kline_rows(symbol, timeframe, bars, market=market)
+        except Exception as exc:
+            logger.debug("moomoo kline %s %s skipped: %s", symbol, timeframe, exc)
+            return []
 
     @staticmethod
     def _fetch_akshare_us(symbol: str, bars: int) -> list:

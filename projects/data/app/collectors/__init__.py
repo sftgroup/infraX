@@ -15,3 +15,4 @@ from .global_market import GlobalMarketCollector
 from .onchain import OnchainCollector
 from .okx_chainos import OkxChainosCollector
 from .macro_history import MacroHistoryCollector
+from .moomoo_macro import MoomooMacroCollector

@@ -43,8 +43,24 @@ def init_db():
         conn = _conn()
         conn.executescript(_SCHEMA)
         _migrate_v2_kline(conn)
+        _migrate_macro_predict(conn)
         conn.commit()
     logger.info("SQLite initialized: %s", _DB_PATH)
+
+
+def _migrate_macro_predict(conn: sqlite3.Connection):
+    """老库 macro_history 无 predict_value 列（MM-4：moomoo 宏观一致预期）→ ALTER 补列。
+
+    moomoo get_macro_indicator_history 返回 predict_value（分析师一致预期），
+    FRED 无此值。旧库补列后新老库均可写入（幂等，重复执行安全）。
+    """
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(macro_history)").fetchall()]
+        if "predict_value" not in cols:
+            conn.execute("ALTER TABLE macro_history ADD COLUMN predict_value REAL")
+            logger.info("macro_history 已补 predict_value 列（MM-4）")
+    except Exception as exc:
+        logger.warning("macro_history predict_value migration skipped: %s", exc)
 
 
 def _migrate_v2_kline(conn: sqlite3.Connection):
@@ -131,11 +147,13 @@ CREATE TABLE IF NOT EXISTS ml_predictions (
 CREATE INDEX IF NOT EXISTS idx_mlpred_model_sym_ts ON ml_predictions(model, symbol, generated_at);
 
 CREATE TABLE IF NOT EXISTS macro_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    series_id   TEXT    NOT NULL,   -- FRED series id（CPIAUCSL / PAYEMS / FEDFUNDS ...）
-    date        TEXT    NOT NULL,   -- 观测日期 YYYY-MM-DD
-    value       REAL,
-    fetched_at  REAL    NOT NULL,   -- 落库时间（unix ms）
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    series_id      TEXT    NOT NULL,   -- FRED series id（CPIAUCSL / PAYEMS / FEDFUNDS ...）
+                                       -- 或 moomoo 宏观命名空间（MM:US:CPI，MM-4）
+    date           TEXT    NOT NULL,   -- 观测日期 YYYY-MM-DD
+    value          REAL,
+    predict_value  REAL,               -- moomoo 宏观一致预期（FRED 无此值，MM-4）
+    fetched_at     REAL    NOT NULL,   -- 落库时间（unix ms）
     UNIQUE(series_id, date)
 );
 

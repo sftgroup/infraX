@@ -10,6 +10,8 @@
   - crypto   → ccxt fetch_ticker（binance，spot / swap）
   - usstock / forex / futures → yfinance fast_info（Yahoo 限流时回退 kline 最新 1d bar）
   - cnstock / hkstock → 腾讯实时行情（qt.gtimg.cn，免费无 key）
+  - MM-3（moomoo）：usstock / hkstock 第一优先 get_market_snapshot
+    （实时性/稳定性优于 yfinance fast_info 与腾讯），失败走现有链
   - 兜底：kline 表最新 1d bar（previousClose 取倒数第二根）
 
 短 TTL 内存缓存（TICKER_CACHE_TTL_SEC，默认 10s，催办单建议 5-30s）。
@@ -205,6 +207,16 @@ def _fetch_crypto(symbol: str, market_type: str, exchange_id: Optional[str]) -> 
         "previousClose": prev_close,
         "ts": int(t.get("timestamp") or time.time() * 1000),
     }
+
+
+def _fetch_moomoo(symbol: str, market: str) -> Optional[dict]:
+    """moomoo 实时快照（MM-3，usstock/hkstock 第一优先）。失败返回 None。"""
+    try:
+        from app.data_sources.moomoo import get_moomoo_ticker
+        return get_moomoo_ticker(symbol, market)
+    except Exception as exc:
+        logger.debug("moomoo ticker failed %s: %s", symbol, exc)
+        return None
 
 
 def _fetch_yfinance(symbol: str) -> Optional[dict]:
@@ -430,17 +442,27 @@ def get_ticker(
     result: Optional[dict] = None
     if mkt == "crypto":
         result = _fetch_crypto(symbol, market_type, exchange_id)
-    elif mkt in ("usstock", "forex", "futures"):
+    elif mkt == "usstock":
+        # MM-3：moomoo 快照第一优先（实时性/稳定性优于 yfinance fast_info），
+        # 失败回退 yfinance（限流再回退腾讯美股实时，免费无 key）
+        result = _fetch_moomoo(symbol, "usstock")
+        if result is None:
+            result = _fetch_yfinance(symbol)
+        if result is None:
+            result = _fetch_tencent(symbol, "usstock")
+    elif mkt == "hkstock":
+        # MM-3：moomoo 快照第一优先，失败回退腾讯港股实时
+        result = _fetch_moomoo(symbol, "hkstock")
+        if result is None:
+            result = _fetch_tencent(symbol, "hkstock")
+    elif mkt in ("forex", "futures"):
         # 外汇符号规范化（EUR/USD → EURUSD=X，yfinance 形式）
         quote_symbol = _normalize_forex_symbol(symbol) if mkt == "forex" else symbol
         result = _fetch_yfinance(quote_symbol)
-        if result is None and mkt == "usstock":
-            # Yahoo 限流/反爬 → 腾讯美股实时（免费无 key）
-            result = _fetch_tencent(symbol, "usstock")
         if result is None and mkt == "forex":
             # Twelve Data 备用（免费 tier 限流 8/min，尽力而为）
             result = _fetch_twelve_data(quote_symbol, mkt)
-    elif mkt in ("cnstock", "hkstock"):
+    elif mkt == "cnstock":
         result = _fetch_tencent(symbol, mkt)
     if result is None:
         # 兜底用规范化的存储键（外汇 EUR/USD → EURUSD=X），避免 404

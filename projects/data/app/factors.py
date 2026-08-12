@@ -920,9 +920,10 @@ def macro_series_map() -> dict[str, str]:
 
 
 def save_macro_observations(series_id: str, observations: list[dict], now_ms: Optional[int] = None):
-    """Upsert FRED 观测值到 macro_history（幂等，INSERT OR IGNORE）。
+    """Upsert 宏观观测值到 macro_history（幂等，INSERT OR IGNORE）。
 
-    observations: [{"date": "2026-06-01", "value": 332.5}, ...]
+    observations: [{"date": "2026-06-01", "value": 332.5, "predict_value": 333.0}, ...]
+    predict_value（moomoo 宏观一致预期，MM-4）可选，缺省 None；FRED 系列不受影响。
     """
     if not observations:
         return 0
@@ -932,18 +933,25 @@ def save_macro_observations(series_id: str, observations: list[dict], now_ms: Op
     for obs in observations:
         date_str = (obs or {}).get("date", "")
         value = (obs or {}).get("value")
-        if not date_str or value is None:
+        predict_value = (obs or {}).get("predict_value")
+        if not date_str or (value is None and predict_value is None):
             continue
         try:
-            value = float(value)
+            value = float(value) if value is not None else None
         except (TypeError, ValueError):
+            value = None
+        try:
+            predict_value = float(predict_value) if predict_value is not None else None
+        except (TypeError, ValueError):
+            predict_value = None
+        if value is None and predict_value is None:
             continue
-        rows.append((series_id, date_str, value, now_ms))
+        rows.append((series_id, date_str, value, predict_value, now_ms))
     if not rows:
         return 0
     db.executemany(
-        """INSERT OR IGNORE INTO macro_history (series_id, date, value, fetched_at)
-           VALUES (?, ?, ?, ?)""",
+        """INSERT OR IGNORE INTO macro_history (series_id, date, value, predict_value, fetched_at)
+           VALUES (?, ?, ?, ?, ?)""",
         rows,
     )
     db.commit()
@@ -964,7 +972,7 @@ def get_macro_history(
     db = get_db()
     names = macro_series_map()
     names = {**names, **_MACRO_DISPLAY_EXTRA}
-    sql = "SELECT series_id, date, value FROM macro_history"
+    sql = "SELECT series_id, date, value, predict_value FROM macro_history"
     params: list = []
     if series_ids:
         sql += f" WHERE series_id IN ({','.join('?' * len(series_ids))})"
@@ -986,6 +994,7 @@ def get_macro_history(
         series.setdefault(name, []).append({
             "date": r["date"],
             "value": r["value"],
+            "predict_value": r["predict_value"] if "predict_value" in r.keys() else None,
         })
     ts_row = db.execute("SELECT MAX(fetched_at) AS t FROM macro_history").fetchone()
     return {

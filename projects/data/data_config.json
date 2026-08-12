@@ -109,7 +109,7 @@
     "_comment": "多市场K线。美股/期货已切换 akshare 日线源（绕过 Yahoo 限流，仅 1d）；A股/港股切腾讯日线（规避新浪批量风控）；外汇 Twelve Data（配置 key 后优先）→ yfinance 回退。采集周期共用 KL_INTERVAL_SEC。fetch_bars=400 对齐 B 端验收（非 crypto 1D≥1 年，约 250 交易日，含余量）。",
     "fetch_bars": 400,
     "us_stocks": {
-      "_comment": "DS-8：SPY/QQQ/AAPL 等主流；timeframes 为需求目标（1D≥3 年，分钟级≥30 天），当前采集器仅落 1d，分钟级待扩展。",
+      "_comment": "MM-2：1m/5m/15m/1h/4h 走 moomoo（US LV3，OpenD）；1d akshare 新浪日线（moomoo 兜底）。DS-8：1D≥3 年，分钟级≥30 天。",
       "symbols": [
         {"symbol": "SPY",   "name": "SPDR S&P 500 ETF"},
         {"symbol": "QQQ",   "name": "Invesco QQQ Trust"},
@@ -166,7 +166,7 @@
       "timeframes": ["15m", "1h", "4h", "1d"]
     },
     "hk_stocks": {
-      "_comment": "腾讯日线（前复权）优先 → akshare 新浪 stock_hk_daily 回退。DS-8：15m/1h/4h/1D，1D≥1 年；当前采集器仅落 1d。",
+      "_comment": "MM-2：1m/5m/15m/1h/4h 走 moomoo（HK LV1，补分钟级缺口）；1d 腾讯日线（前复权）→ akshare 新浪 stock_hk_daily 回退，moomoo 兜底。",
       "symbols": [
         {"symbol": "00700", "name": "腾讯控股"},
         {"symbol": "09988", "name": "阿里巴巴"},
@@ -174,7 +174,7 @@
         {"symbol": "01810", "name": "小米集团"},
         {"symbol": "09618", "name": "京东集团"}
       ],
-      "timeframes": ["15m", "1h", "4h", "1d"]
+      "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"]
     },
     "crypto_swap": {
       "_comment": "DS-8 方案 B：USDT 永续合约（ccxt defaultType: swap）。当前采集器仅 spot，永续采集待 B 端实现；快交易与策略执行涉及 market_type=swap。",
