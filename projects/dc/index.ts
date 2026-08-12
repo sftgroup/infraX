@@ -746,7 +746,7 @@ app.get('/api/v3/data/events', requireDcApiKey, dcQuotaEnforce, asyncHandler(asy
   if (req.query.from_block){ conditions.push(`block_number >= $${idx++}`); values.push(parseInt(req.query.from_block)); }
   if (req.query.to_block)  { conditions.push(`block_number <= $${idx++}`); values.push(parseInt(req.query.to_block)); }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, category_id, label_id, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC, event_id ASC LIMIT $${idx}`;
+  const q = `SELECT event_id, event_type, chain, block_number, tx_hash, from_address, to_address, contract_address, token_address, token_symbol, amount, amount_raw, topic_hash, category_id, label_id, event_data, confirmations, collected_at, created_at FROM events ${where} ORDER BY block_number DESC LIMIT $${idx}`;
   const result = await eventsPool.query(q, values.concat(pageSize + 1));
   const rows = result.rows;
   let next_token: string | null = null;
