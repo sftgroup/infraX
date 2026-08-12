@@ -11,7 +11,7 @@
  */
 import axios from 'axios';
 import { logger } from '../logger';
-import { RpcEndpoint, RpcPoolConfig, normalizeChain } from './rpcPoolConfig';
+import { RpcEndpoint, RpcPoolConfig, normalizeChain, CHAIN_IDS } from './rpcPoolConfig';
 import { profileFor } from './chainProfiles';
 
 /** DC-7: 池运行参数（env 可配，见 config.ts） */
@@ -226,6 +226,7 @@ export class RpcPoolManager {
     const out: Record<string, unknown> = {};
     for (const [chain, eps] of Object.entries(this.config)) {
       out[chain] = {
+        chainId: CHAIN_IDS[chain] ?? null,
         total: eps.length,
         active: this.activeEndpoints(chain).length,
         endpoints: eps.map((e) => {

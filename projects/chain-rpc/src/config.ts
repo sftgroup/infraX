@@ -28,7 +28,7 @@ export const config = {
 
   // ── RPC 端点池 ───────────────────────────────────────
   // 端点来源：rpc-pool.json 基线 → 链 env URL（SEPOLIA/ETH/BSC/BASE/OXA/SOLANA_RPC_URL）→ INFRAX_RPC_POOL 全量覆盖
-  supportedChains: (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana')
+  supportedChains: (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana,polygon,arbitrum,optimism')
     .split(',').map((s) => s.trim()).filter(Boolean),
 
   // ── 广播确认轮询 ─────────────────────────────────────

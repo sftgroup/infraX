@@ -6,6 +6,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../logger';
+import { CHAIN_IDS } from '../services/rpcPoolConfig';
 import {
   RPC_PLANS, rpcPool, paymentsApi, PaymentsError,
   generateRpcKey, findRpcKeyByRaw, activateRpcSubscription,
@@ -48,9 +49,12 @@ async function rpcKeyAuth(req: any, res: any, next: any): Promise<void> {
   next();
 }
 
-// GET /v1/subscription/plans — 套餐目录（公开，无敏感数据）
+// GET /v1/subscription/plans — 套餐目录 + 完整链表（RPC-3：链参数与 chainId 映射文档化，公开无敏感数据）
 router.get('/plans', asyncHandler(async (_req, res) => {
-  res.json({ code: 0, message: 'ok', data: RPC_PLANS });
+  const chains = config.supportedChains
+    .map((c) => ({ chain: c, chainId: CHAIN_IDS[c] ?? null }))
+    .sort((a, b) => a.chain.localeCompare(b.chain));
+  res.json({ code: 0, message: 'ok', data: RPC_PLANS, chains });
 }));
 
 // POST /v1/subscription/issue-key — 签发 rx_ 读 key（管理操作：X-Service-Key = 本地 bridge key）

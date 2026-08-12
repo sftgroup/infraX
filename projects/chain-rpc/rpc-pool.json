@@ -413,5 +413,191 @@
       },
       "status": "healthy"
     }
+  ],
+  "polygon": [
+    {
+      "key": "polygon-public",
+      "url": "https://polygon-rpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "polygon-publicnode",
+      "url": "https://polygon-bor-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "polygon-ankr",
+      "url": "https://rpc.ankr.com/polygon",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "polygon-llamarpc",
+      "url": "https://polygon.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "arbitrum": [
+    {
+      "key": "arbitrum-official",
+      "url": "https://arb1.arbitrum.io/rpc",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "arbitrum-publicnode",
+      "url": "https://arbitrum-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "arbitrum-ankr",
+      "url": "https://rpc.ankr.com/arbitrum",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "arbitrum-llamarpc",
+      "url": "https://arbitrum.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
+  ],
+  "optimism": [
+    {
+      "key": "optimism-official",
+      "url": "https://mainnet.optimism.io",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "optimism-publicnode",
+      "url": "https://optimism-rpc.publicnode.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "optimism-ankr",
+      "url": "https://rpc.ankr.com/optimism",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    },
+    {
+      "key": "optimism-llamarpc",
+      "url": "https://optimism.llamarpc.com",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
+    }
   ]
 }

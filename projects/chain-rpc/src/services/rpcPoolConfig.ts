@@ -25,7 +25,21 @@ export interface RpcPoolConfig {
   [chain: string]: RpcEndpoint[];
 }
 
-const ACTIVE_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa', 'solana'];
+// RPC-3: 激活链（对齐 OKX ChainOS 7 链执行面：sepolia/ethereum/bsc/base/oxa/solana + polygon/arbitrum/optimism）
+const ACTIVE_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa', 'solana', 'polygon', 'arbitrum', 'optimism'];
+
+/** RPC-3: 链参数映射（chainId；solana 无 EVM chainId 用 0 占位），供 /v1/status 与 plans 文档化 */
+export const CHAIN_IDS: Record<string, number> = {
+  sepolia: 11155111,
+  ethereum: 1,
+  bsc: 56,
+  base: 8453,
+  oxa: 19505,
+  solana: 0,
+  polygon: 137,
+  arbitrum: 42161,
+  optimism: 10,
+};
 
 export function buildRpcPoolConfig(chains: string[]): RpcPoolConfig {
   const envPool = process.env.INFRAX_RPC_POOL;
@@ -46,6 +60,9 @@ export function buildRpcPoolConfig(chains: string[]): RpcPoolConfig {
     ['base', ['BASE_RPC_URL', 'BASE_RPC_URL_2']],
     ['oxa', ['OXA_RPC_URL']],
     ['solana', ['SOLANA_RPC_URL']],
+    ['polygon', ['POLYGON_RPC_URL', 'POLYGON_RPC_URL_2']],
+    ['arbitrum', ['ARBITRUM_RPC_URL', 'ARBITRUM_RPC_URL_2']],
+    ['optimism', ['OPTIMISM_RPC_URL', 'OPTIMISM_RPC_URL_2']],
   ];
   for (const [chain, keys] of chainEnv) {
     if (!chains.includes(chain)) continue;
@@ -143,6 +160,14 @@ export function normalizeChain(chain: string): string | null {
     oxa: 'oxa',
     solana: 'solana',
     sol: 'solana',
+    polygon: 'polygon',
+    matic: 'polygon',
+    poly: 'polygon',
+    arbitrum: 'arbitrum',
+    arb: 'arbitrum',
+    arbi: 'arbitrum',
+    optimism: 'optimism',
+    op: 'optimism',
   };
   return aliases[c] || null;
 }
