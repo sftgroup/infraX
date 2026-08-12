@@ -714,11 +714,11 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 任务 | 估计 | 状态 |
 |:---:|------|:---:|:---:|
-| 1.1 | `event_categories` 表 + 分类数据 | 1d | 🔲 |
-| 1.2 | `events` 表加 `category_id`/`label_id` 列 | 0.5d | 🔲 |
-| 1.3 | collector 事件分类逻辑 | 2d | 🔲 |
-| 1.4 | dc-index.ts 扩展 → v2（+2 tools） | 2d | 🔲 |
-| 1.5 | DC API v3（/api/v3/data/*） | 2d | 🔲 |
+| 1.1 | `event_categories` 表 + 分类数据 | 1d | ✅ `0c5605a`（migration 10 条种子：asset_transfer/authorization/dex_trading/wrapping/supply/unclassified） |
+| 1.2 | `events` 表加 `category_id`/`label_id` 列 | 0.5d | ✅ `0c5605a`（含 idx_events_category_block/label_block 索引） |
+| 1.3 | collector 事件分类逻辑 | 2d | ✅ `0c5605a` + `37387dd`（insertEvents 插入分类 + reclassifier 同源映射 + 采集时增量计数 `event_category_stats`） |
+| 1.4 | dc-index.ts 扩展 → v2（+2 tools） | 2d | ✅ `0c5605a`（v1.3.0：dc_event_categories / dc_event_stats，dc_events +category/label） |
+| 1.5 | DC API v3（/api/v3/data/*） | 2d | ✅ `0c5605a` + `37387dd`（v3 events category/label 过滤 + event-categories/event-stats O(1)） |
 
 **Phase 2: TEE 钱包 + 品牌 MCP Hub（2 周）**
 
@@ -936,7 +936,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|:---:|
 | B-10-1 | Payment 服务接入统一鉴权（`server.ts` 仅 `express.json()+cors`，**全部端点无鉴权**） | ✅ `148cc42`（共享中间件 + `px_` scope，E2E 直连 200/非法 401/跨 scope 401） | P0 |
-| B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | ✅ 已消除（MQ-12 T-6 关停伪支付路径；MQ-13 a2a 真实两阶段链上验 tx 入账；wallet-mcp payment 工具已迁移 :9132）；🔲 生产 x402 rail 由各 B 端实例**自配凭证**启用（D-2，2026-08-11 决策：平台只提供通道与工具，不代 B 端配凭证） | P1 |
+| B-10-2 | Payment x402/pay 伪实现（返回随机 tx_hash）→ 接真实签名/广播链路 | ✅ 已消除（MQ-12 T-6 关停伪支付路径；MQ-13 a2a 真实两阶段链上验 tx 入账；wallet-mcp payment 工具已迁移 :9132）；✅ **平台 :9132 已自配凭证启用 x402（D-2 闭环，2026-08-12 核验）**：`open-external.conf` `X402_ENABLED=true` + `X402_PAY_TO=0x52Ec…8e06` + `X402_PRICE_WEI=1e15`（0.001 ETH, oxachain），`/payments/info` rails.x402:true；**各 B 端实例 x402 rail 由实例自配凭证启用（D-2，2026-08-11 决策：平台只提供通道与工具，不代 B 端配凭证）** | P1 |
 | B-10-3 | dc-index `dc_tokens` 工具调 `/api/v2/data/tokens` → 必失败 | ✅ 双修：① MQ-3 dc 已补 `GET /api/v2/data/tokens`（okx_token_snapshots 最新快照，见 §9.8 MQ-3）；② 根因 `DC_API_KEY` 未配置时静默回退 `test-key` → DC 按 `requireDcApiKey` 必 401——dc-index/market-index 改 fail-fast 明确报错，生产 `infrax-dc-mcp.service.d/dc-api-key.conf` 注入真实租户 key，模板 `deploy/overrides/templates/dc-mcp-key.conf.template`；本地 E2E：无 key → 明确 isError，有 key → 正常请求 | P1 |
 | B-10-3b | dc `events/stats/health` 对 152GB events 表全表 COUNT/GROUP BY 卡死 pg-pool（曾拖垮 dc 服务） | ✅ 生产修复（`4417ba9`）：stats/health 改读 `event_checkpoints.event_count`（collector 每批增量维护，O(1)，实测 0.1s/0.02s 秒回，uniqueTx 停用）；`idx_events_block_number` 已加 migration + 生产 CONCURRENTLY 构建（被 64min VACUUM 阻塞，完成后无过滤 `ORDER BY block_number DESC` 走索引） | P1 |
 | B-10-4 | 通用 RPC 转发代理端点（WAAS/DC 均无 `eth_sendRawTransaction` 类转发；仅 collector :9101 `POST /api/v1/relay` 广播最完整） | ✅ **chain-rpc 网关已承担**（B-10-6 盘点确认）：读 `/v1/rpc/:chain`（白名单 + raw JSON-RPC 透传，viem/ethers 可直连）+ 广播 `/v1/broadcast/:chain`（广播 key 隔离）；dc/waas/mpc/collector/vault 已全部收敛 | P1 |
