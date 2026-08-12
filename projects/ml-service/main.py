@@ -199,6 +199,44 @@ _PRECOMPUTE: dict = {
     "consensus": _compute_consensus,
 }
 
+# R4-3.2：预热表从 provider registry 遍历生成（新 provider 注册即自动纳入预热）
+from app.providers.base import get_registry as _get_provider_registry  # noqa: E402
+
+for _pkey, _pcls in _get_provider_registry().items():
+    if _pkey not in _PRECOMPUTE and hasattr(_pcls, "predict_all"):
+        _PRECOMPUTE[_pkey] = _pcls.predict_all
+
+
+def _mount_provider_endpoints() -> None:
+    """R4-3.1：遍历 provider registry 动态挂载 GET /ml/{key}。
+
+    已存在手写端点（tree/volatility/bolt/moirai/timesfm/consensus 等）保持
+    不动（向后兼容）；新 provider 注册即自动获得标准端点（_wrap_results 包装）。
+    """
+    handled = set(_PRECOMPUTE) | {"sentiment", "macro_features"}
+    score_default = "score"
+
+    for key, pcls in _get_provider_registry().items():
+        if key in handled or not hasattr(pcls, "predict_all"):
+            continue
+
+        def _make(key=key, pcls=pcls, score_default=score_default):
+            def handler():
+                try:
+                    results = pcls.predict_all()
+                    return {"code": 0, "message": "ok",
+                            "data": _wrap_results(results, score_default)}
+                except Exception as exc:
+                    logger.warning("%s failed: %s", key, exc)
+                    return {"code": 0, "message": "ok", "data": None}
+            return handler
+
+        app.add_api_route(f"/ml/{key}", _make(), methods=["GET"])
+        logger.info("ml-service: mounted dynamic provider endpoint /ml/%s", key)
+
+
+_mount_provider_endpoints()
+
 
 @app.on_event("startup")
 def _start_prewarm() -> None:

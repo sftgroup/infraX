@@ -18,12 +18,12 @@ yfinance 回退（与 kronos 同款 _fetch_klines，符号别名自动处理）�
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 import numpy as np
 
 import config
+from app.providers.base import ModelProvider
 from app.providers.kronos import _fetch_klines, get_target_symbols
 
 logger = logging.getLogger(__name__)
@@ -43,34 +43,21 @@ def _parse_quantiles() -> list[float]:
     return out or [0.1, 0.5, 0.9]
 
 
-# ── 预测器单例（懒加载） ───────────────────────────────────
+# ── 预测器单例（懒加载由基类统一管理） ─────────────────────
 
-_pipeline: Any = None
-_pipeline_lock = threading.Lock()
-_pipeline_failed = False
+class BoltProvider(ModelProvider):
+    """Chronos-Bolt pipeline provider（需求4 R4-1/R4-2）。
 
+    device_kwargs 走默认 device_map=DEVICE（GPU 可用时自动用 GPU）。
+    """
 
-def _load_pipeline():
-    """懒加载 ChronosBoltPipeline（需 BOLT_ENABLED + torch + chronos）。"""
-    global _pipeline, _pipeline_failed
-    if _pipeline is not None or _pipeline_failed:
-        return _pipeline
-    if not config.BOLT_ENABLED:
-        return None
-    with _pipeline_lock:
-        if _pipeline is not None or _pipeline_failed:
-            return _pipeline
-        try:
-            from chronos import ChronosBoltPipeline
+    model_key = "bolt"
+    enabled_attr = "BOLT_ENABLED"
 
-            _pipeline = ChronosBoltPipeline.from_pretrained(
-                config.BOLT_MODEL, device_map="cpu"
-            )
-            logger.info("Chronos-Bolt pipeline loaded: %s", config.BOLT_MODEL)
-        except Exception as exc:
-            _pipeline_failed = True
-            logger.warning("Chronos-Bolt 加载失败（真实预测未启用）: %s", exc)
-    return _pipeline
+    def _do_load(self) -> Any:
+        from chronos import ChronosBoltPipeline
+
+        return ChronosBoltPipeline.from_pretrained(config.BOLT_MODEL, **self.device_kwargs())
 
 
 # ── 纯函数统计（可单测） ───────────────────────────────────
@@ -138,7 +125,7 @@ def _stats_from_paths(point: np.ndarray, q10: np.ndarray, q50: np.ndarray, q90: 
 
 def predict_symbol(symbol: str) -> dict[str, Any] | None:
     """Chronos-Bolt 单标的 30 日分位数预测；不可用/数据不足返回 None。"""
-    pipeline = _load_pipeline()
+    pipeline = BoltProvider.get()
     if pipeline is None:
         return None
 

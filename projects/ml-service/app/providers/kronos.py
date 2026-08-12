@@ -16,7 +16,6 @@ CPU 可推理，约 0.4s/次）。
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 import numpy as np
@@ -24,6 +23,7 @@ import pandas as pd
 
 import config
 from app import data_client
+from app.providers.base import ModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -76,45 +76,31 @@ _VOL_LEVELS = [
     (float("inf"), "very_high"),
 ]
 
-# ── 预测器单例（懒加载） ───────────────────────────────────
+# ── 预测器单例（懒加载由基类统一管理） ─────────────────────
 
-_predictor: Any = None
-_predictor_lock = threading.Lock()
-_predictor_failed = False
+class KronosProvider(ModelProvider):
+    """Kronos 波动率预测 provider（需求4 R4-1：继承基类，仅保留加载逻辑）。
 
-
-def _load_predictor():
-    """懒加载 KronosPredictor（需 KRONOS_ENABLED + torch + Kronos 源码）。
-
-    首次失败后记 flag 不再重试（避免每次注入周期反复 import 报错）；
-    服务重启（或环境就绪后重启）即可重新加载。
+    加载约定与旧 _load_predictor 完全一致：需 KRONOS_ENABLED + torch +
+    Kronos 源码（PYTHONPATH 指向克隆目录）；首次失败置 flag 不重试（重启可重载）。
     """
-    global _predictor, _predictor_failed
-    if _predictor is not None or _predictor_failed:
-        return _predictor
-    if not config.KRONOS_ENABLED:
-        return None
-    with _predictor_lock:
-        if _predictor is not None or _predictor_failed:
-            return _predictor
-        try:
-            # shiyu-coder/Kronos：PYTHONPATH 指向克隆目录后 import model
-            from model import Kronos, KronosPredictor, KronosTokenizer
 
-            model_name = config.KRONOS_MODEL
-            tokenizer_name = (
-                "NeoQuasar/Kronos-Tokenizer-2k" if "mini" in model_name
-                else "NeoQuasar/Kronos-Tokenizer-base"
-            )
-            max_context = 2048 if "mini" in model_name else 512
-            tokenizer = KronosTokenizer.from_pretrained(tokenizer_name)
-            model = Kronos.from_pretrained(model_name)
-            _predictor = KronosPredictor(model, tokenizer, max_context=max_context)
-            logger.info("Kronos predictor loaded: %s", model_name)
-        except Exception as exc:  # ImportError / HF 下载失败 / OOM 等
-            _predictor_failed = True
-            logger.warning("Kronos 加载失败（真实预测未启用）: %s", exc)
-    return _predictor
+    model_key = "volatility"
+    enabled_attr = "KRONOS_ENABLED"
+
+    def _do_load(self) -> Any:
+        # shiyu-coder/Kronos：PYTHONPATH 指向克隆目录后 import model
+        from model import Kronos, KronosPredictor, KronosTokenizer
+
+        model_name = config.KRONOS_MODEL
+        tokenizer_name = (
+            "NeoQuasar/Kronos-Tokenizer-2k" if "mini" in model_name
+            else "NeoQuasar/Kronos-Tokenizer-base"
+        )
+        max_context = 2048 if "mini" in model_name else 512
+        tokenizer = KronosTokenizer.from_pretrained(tokenizer_name)
+        model = Kronos.from_pretrained(model_name)
+        return KronosPredictor(model, tokenizer, max_context=max_context)
 
 
 # ── 数据获取 ──────────────────────────────────────────────
@@ -189,7 +175,7 @@ def _path_stats(paths: list[np.ndarray], last_close: float) -> dict[str, Any]:
 
 def predict_volatility(symbol: str) -> dict[str, Any] | None:
     """Kronos 真实波动率预测；未启用/依赖缺失/数据不足返回 None。"""
-    predictor = _load_predictor()
+    predictor = KronosProvider.get()
     if predictor is None:
         return None
 

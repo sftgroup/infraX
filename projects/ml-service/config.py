@@ -24,6 +24,13 @@ if _SHARED_DIR.is_dir():
 ML_SERVICE_PORT = int(os.getenv("ML_SERVICE_PORT", "9120"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
+# ── 推理设备（需求4 R4-2） ─────────────────────────────────
+# DEVICE: "cpu"/"cuda"（cuda 目标不可用时 provider 自动回落 cpu，fail-open）；
+# ML_GPU_VENDOR: GPU 型号探测结果（预留 V100 等 Volta 架构 fp16 适配开关，
+#   Volta 无 bf16，统一走 fp16）。
+DEVICE = os.getenv("DEVICE", "cpu").strip().lower()
+ML_GPU_VENDOR = os.getenv("ML_GPU_VENDOR", "")
+
 # ── data-service 联动（K线/符号清单） ─────────────────────
 DATA_SERVICE_URL = os.getenv("DATA_SERVICE_URL", "")
 # data-service 业务端点鉴权（/bars /symbols 需 X-API-Key）

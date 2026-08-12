@@ -19,55 +19,45 @@ yfinance 回退（与 kronos 同款 _fetch_klines）。
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 import numpy as np
 
 import config
 from app.providers import chronos_bolt as bolt
+from app.providers.base import ModelProvider
 from app.providers.kronos import _fetch_klines, get_target_symbols
 
 logger = logging.getLogger(__name__)
 
 
-# ── 模型单例（懒加载） ─────────────────────────────────────
+# ── 模型单例（懒加载由基类统一管理） ───────────────────────
 
-_model: Any = None
-_model_lock = threading.Lock()
-_model_failed = False
+class TimesFmProvider(ModelProvider):
+    """TimesFM 2.5 model provider（需求4 R4-1/R4-2）。
 
+    加载 API 无 device 参数（TimesFM 2.5 内部管理设备），基类 device_kwargs
+    默认即可；DEVICE=cuda 时模型按 torch 默认设备运行。
+    """
 
-def _load_model():
-    """懒加载 TimesFM 2.5（需 TIMESFM_ENABLED + timesfm[torch]）。"""
-    global _model, _model_failed
-    if _model is not None or _model_failed:
-        return _model
-    if not config.TIMESFM_ENABLED:
-        return None
-    with _model_lock:
-        if _model is not None or _model_failed:
-            return _model
-        try:
-            import torch
-            import timesfm
+    model_key = "timesfm"
+    enabled_attr = "TIMESFM_ENABLED"
 
-            torch.set_float32_matmul_precision("high")
-            m = timesfm.TimesFM_2p5_200M_torch.from_pretrained(config.TIMESFM_MODEL)
-            m.compile(timesfm.ForecastConfig(
-                max_context=config.TIMESFM_CONTEXT,
-                max_horizon=config.TIMESFM_PRED_LEN,
-                normalize_inputs=True,
-                use_continuous_quantile_head=True,
-                force_flip_invariance=True,
-                fix_quantile_crossing=True,
-            ))
-            _model = m
-            logger.info("TimesFM 2.5 model loaded: %s", config.TIMESFM_MODEL)
-        except Exception as exc:
-            _model_failed = True
-            logger.warning("TimesFM 2.5 加载失败（真实预测未启用）: %s", exc)
-    return _model
+    def _do_load(self) -> Any:
+        import torch
+        import timesfm
+
+        torch.set_float32_matmul_precision("high")
+        m = timesfm.TimesFM_2p5_200M_torch.from_pretrained(config.TIMESFM_MODEL)
+        m.compile(timesfm.ForecastConfig(
+            max_context=config.TIMESFM_CONTEXT,
+            max_horizon=config.TIMESFM_PRED_LEN,
+            normalize_inputs=True,
+            use_continuous_quantile_head=True,
+            force_flip_invariance=True,
+            fix_quantile_crossing=True,
+        ))
+        return m
 
 
 # ── 主入口 ────────────────────────────────────────────────
@@ -75,7 +65,7 @@ def _load_model():
 
 def predict_symbol(symbol: str) -> dict[str, Any] | None:
     """TimesFM 单标的点预测 + 分位区间；不可用/数据不足返回 None。"""
-    model = _load_model()
+    model = TimesFmProvider.get()
     if model is None:
         return None
 

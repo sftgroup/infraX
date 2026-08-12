@@ -115,35 +115,12 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
       ret_1/3/5/10/20, vol_20, vol_60, mom_5_20,
       rsi_14, macd_hist_pct, bb_pos, bb_width, atr_pct,
       ma5_pct, ma10_pct, ma20_pct, high_low_range
+
+    需求4 R4-4：改为注册表驱动（factorengine），输出列与旧硬编码完全一致。
     """
-    feat = pd.DataFrame(index=df.index)
-    close = df["close"].astype(float)
+    from app.factorengine.engine import build_feature_matrix
 
-    for n in (1, 3, 5, 10, 20):
-        feat[f"ret_{n}"] = close.pct_change(n)
-    r1 = close.pct_change()
-    feat["vol_20"] = r1.rolling(20).std()
-    feat["vol_60"] = r1.rolling(60).std()
-    feat["mom_5_20"] = feat["ret_5"] - feat["ret_20"]
-
-    if "rsi_14" in df.columns:
-        feat["rsi_14"] = _num(df, "rsi_14")
-    if "macd_hist" in df.columns:
-        feat["macd_hist_pct"] = _num(df, "macd_hist") / close
-    if {"bb_upper", "bb_lower"}.issubset(df.columns):
-        bbw = _num(df, "bb_upper") - _num(df, "bb_lower")
-        feat["bb_pos"] = (close - _num(df, "bb_lower")) / bbw.replace(0, np.nan)
-        feat["bb_width"] = bbw / close
-    if "atr_14" in df.columns:
-        feat["atr_pct"] = _num(df, "atr_14") / close
-    for n in (5, 10, 20):
-        col = f"ma_{n}"
-        if col in df.columns:
-            feat[f"ma{n}_pct"] = (close - _num(df, col)) / close
-    if {"high", "low"}.issubset(df.columns):
-        feat["high_low_range"] = (_num(df, "high") - _num(df, "low")) / close
-
-    return feat
+    return build_feature_matrix(df)
 
 
 def _num(df: pd.DataFrame, col: str) -> pd.Series:

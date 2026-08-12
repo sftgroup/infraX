@@ -18,53 +18,40 @@ yfinance 回退（与 kronos 同款 _fetch_klines）。
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 import numpy as np
 
 import config
 from app.providers import chronos_bolt as bolt
+from app.providers.base import ModelProvider
 from app.providers.kronos import _fetch_klines, get_target_symbols
 
 logger = logging.getLogger(__name__)
 
 
-# ── 模型单例（懒加载） ─────────────────────────────────────
+# ── 模型单例（懒加载由基类统一管理） ───────────────────────
 
-_module: Any = None
-_model_lock = threading.Lock()
-_model_failed = False
-
-
-def _load_model():
-    """懒加载 Moirai2Module（需 MOIRAI_ENABLED + uni2ts）。
+class MoiraiProvider(ModelProvider):
+    """Moirai2Module provider（需求4 R4-1/R4-2）。
 
     uni2ts 2.x 的 Moirai2Module 走 PyTorchModelHubMixin（参数 map_location，
-    非 device_map）；Moirai2Forecast 预测 wrapper 按 target_dim 在 predict_all
-    中构造（资产数动态）。
+    非 device_map），故覆写 device_kwargs；Moirai2Forecast 预测 wrapper 按
+    target_dim 在 predict_all 中构造（资产数动态）。
     """
-    global _module, _model_failed
-    if _module is not None or _model_failed:
-        return _module
-    if not config.MOIRAI_ENABLED:
-        return None
-    with _model_lock:
-        if _module is not None or _model_failed:
-            return _module
-        try:
-            from uni2ts.model.moirai2 import Moirai2Module
 
-            module = Moirai2Module.from_pretrained(
-                config.MOIRAI_MODEL, map_location="cpu"
-            )
-            module.eval()
-            _module = module
-            logger.info("Moirai2 module loaded: %s", config.MOIRAI_MODEL)
-        except Exception as exc:
-            _model_failed = True
-            logger.warning("Moirai2 加载失败（真实预测未启用）: %s", exc)
-    return _module
+    model_key = "moirai"
+    enabled_attr = "MOIRAI_ENABLED"
+
+    def device_kwargs(self) -> dict[str, Any]:
+        return {"map_location": config.DEVICE}
+
+    def _do_load(self) -> Any:
+        from uni2ts.model.moirai2 import Moirai2Module
+
+        module = Moirai2Module.from_pretrained(config.MOIRAI_MODEL, **self.device_kwargs())
+        module.eval()
+        return module
 
 
 # ── 主入口 ────────────────────────────────────────────────
@@ -75,7 +62,7 @@ def predict_all() -> list[dict[str, Any]]:
 
     任一资产数据不足时降级为「仅可用资产」；全部不足返回 []。
     """
-    module = _load_model()
+    module = MoiraiProvider.get()
     if module is None:
         return []
 
