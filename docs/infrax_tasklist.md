@@ -1227,16 +1227,20 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 **9.8.11 PocketX aa-sdk 发布（2026-08-12 需求登记；源：docs/FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md，PocketX 提出）**
 
-> ⚠️ **与 §9.11 白标决策（2026-08-11）冲突待裁定**：此前裁定 aa-sdk 不独立发布（合并进 `@0xinfrax/session-key-core` v0.2.0 以 `Aa` 命名空间导出，✅ 已发布）；本需求单要求**独立发布 `@infrax/aa-sdk` 至 npm**（当前 registry 404 + `private:true`）——需评审确认采用独立包 / 继续 Aa 命名空间 / 或提供 re-export 兼容包。关联 E-1（aa-sdk 三缺口）与 tasklist A-4（Paymaster）。
+> ⚠️ **与 §9.11 白标决策关系（2026-08-12 用户裁定）**：**不单独发布 `@infrax/aa-sdk`**，维持 §9.11 决策（并入 `@0xinfrax/session-key-core` v0.2.0 以 `Aa` 命名空间导出，✅ 已发布）——**要求功能覆盖** PocketX 需求单 3 处兼容（AASDK-2/3/4 在现有包内补齐，见下）。关联 E-1（aa-sdk 三缺口）与 tasklist A-4（Paymaster）。
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| AASDK-1 | 发布形式裁定 | 评审并落地：独立发布 `@infrax/aa-sdk` vs §9.11 决策（session-key-core `Aa` 命名空间）——二选一或提供兼容 re-export 包；交付可安装形式（npm 公开/私有 registry、git 依赖或 tarball） | 🔲 待评审 | P0 |
-| AASDK-2 | 导出 `entryPointAbi` | `activate.ts` 中模块私有 `const entryPointAbi` → 导出（PocketX wallet-base `host/aa.ts` 依赖，用于 EntryPoint 只读调用） | 🔲 待办 | P1 |
-| AASDK-3 | 导出 `parseBundlers` | `config.ts` 中私有函数（缺省抛错）→ 导出（保留抛错语义，PocketX 侧自行容错包装"非法/缺失 → []"） | 🔲 待办 | P1 |
-| AASDK-4 | MpcSigner 双端点兼容 | 二选一：**方案 A（推荐，PocketX 零改动）**——构造兼容 `{email? \| token?}` + 支持 `/sign {mode:'digest'\|'eip191'}` email 鉴权路径（生产 mpc-server 已提供 `/sign`）；**方案 B**——生产 mpc-server 部署 `sign-digest`/`sign-message` 端点 + token 鉴权，PocketX 按新构造对齐 | 🔲 待评审 | P0 |
+| AASDK-1 | 发布形式裁定 | ✅ **已裁定（2026-08-12 用户）**：不单独发包，维持 `Aa` 命名空间（session-key-core v0.2.0）——功能覆盖为准，不发布独立 `@infrax/aa-sdk`；PocketX 侧以 `import { Aa } from '@0xinfrax/session-key-core'` 接入 | ✅ 已裁定 | P0 |
+| AASDK-2 | 导出 `entryPointAbi` | `activate.ts` 中模块私有 `const entryPointAbi` → 在 session-key-core `Aa` 命名空间导出（PocketX wallet-base `host/aa.ts` 依赖，用于 EntryPoint 只读调用） | 🔲 待办 | P1 |
+| AASDK-3 | 导出 `parseBundlers` | `config.ts` 中私有函数（缺省抛错）→ 在 session-key-core `Aa` 命名空间导出（保留抛错语义，PocketX 侧自行容错包装"非法/缺失 → []"） | 🔲 待办 | P1 |
+| AASDK-4 | MpcSigner 双端点兼容（✅ 方案定稿 2026-08-12） | 技术方案：[AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §1。**方案 A**：MpcSigner 构造兼容 `string \| {email?\|token?}`（token 模式走现有 sign-digest/sign-message；email 模式走 mpc-server 新增 `/api/v2/mpc/sign {message, mode:'digest'\|'eip191', email}`，鉴权语义=email 关联钱包已解锁会话，不引入裸 email 鉴权）；子任务 AASDK-4.1~4.4 | ✅ 已裁定（方案 A） | P0 |
+| AASDK-4.1 | mpc-server 新增 `/api/v2/mpc/sign` | email 定位钱包 + 解锁会话校验 + mode digest/eip191 双分支 TSS 签名（复用 `tssSign`/`ethersSignatureFromRs`）；401 语义（email 未解锁）；对齐 sign-digest/sign-message 返回信封 | 🔲 待办 | P0 |
+| AASDK-4.2 | MpcSigner 双模式改造 | `aa-sdk/src/signers/mpc.ts`：构造兼容 `string \| {email?\|token?}`；signUserOp（digest）/signMessage（eip191）双模式路由；barrel 导出 `MpcSignerAuth` | 🔲 待办 | P0 |
+| AASDK-4.3 | 回归与联调验证 | aa-sdk vitest（构造三形态/双模式路由/401 语义）；生产 mpc-server `/sign` 双模式 curl E2E（unlock 后 email 签名与 token 签名一致性比对） | 🔲 待办 | P0 |
+| AASDK-4.4 | PocketX 侧回归（外部） | PocketX 替换 import → `@0xinfrax/session-key-core`（`import { Aa }`）+ 适配；wallet-base tsc/vitest 44/44 + build 回归 | —（外部执行） | — |
 
-> 备注（PocketX 收到包后执行，非 InfraX 任务）：全量替换 `@pocketx/aa-sdk` → `@infrax/aa-sdk`（7 处）+ 按 AASDK-4 结论适配 + wallet-base tsc/vitest 44/44 + build 回归 + aa-relay/Paymaster 联调（E-1b 待生产部署）。
+> 备注（PocketX 收到包后执行，非 InfraX 任务）：全量替换 `@pocketx/aa-sdk` → `@0xinfrax/session-key-core`（`import { Aa }`，7 处）+ 按 AASDK-4 结论适配 + wallet-base tsc/vitest 44/44 + build 回归 + aa-relay/Paymaster 联调（E-1b 待生产部署）。
 
 **9.8 盘点明细（2026-08-06 调查结论，时点快照）**
 
@@ -1271,8 +1275,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：SDK 发布记录已修正 0.3.0；2026-08-08 更新 SDK 0.5.0 `chainRpc` + MCP `rpc-index` 4 工具；SDK 0.5.1 `walletAddress`+`walletSign` 钱包签名鉴权 + MCP 7 服务入站 `inboundAuth` 闭环） |
 | `docs/DEPLOYMENT.md` / `docs/PROJECT_STATUS.md` 等 | 区块链栈部署/状态（旧布局） | §9.8 | ⚠️ 引用已随改名更新 |
 | `docs/FEATURE_REQUEST_RPC_SWITCH.md` | RPC 基础设施切换 InfraX（公网入口 + 双 key + 链补齐 + SLA，AIHunter SaaS） | §9.8.10 | 🔲 待评审（2026-08-12 登记，RPC-1~RPC-7） |
-| `docs/FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md` | `@infrax/aa-sdk` 发布 npm + 3 处 API 兼容（PocketX） | §9.8.11 | 🔲 待评审（2026-08-12 登记，AASDK-1~4；与 §9.11 白标决策冲突待裁定） |
-| `docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md` | 行情数据 RPC + DEX 交易执行（AIHunter SaaS） | §9.10 | 🔲 待评审（2026-08-12 登记，A-11~A-14；覆盖 A-6"swap/DEX 延后"项） |
+| `docs/FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md` | `@infrax/aa-sdk` 发布 npm + 3 处 API 兼容（PocketX） | §9.8.11 | ⚠️ 已裁定（2026-08-12：不单独发包，维持 Aa 命名空间功能覆盖）；AASDK-2/3 待办，**AASDK-4 已拆 AASDK-4.1~4.4（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §1）** |
+| `docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md` | 行情数据 RPC + DEX 交易执行（AIHunter SaaS） | §9.10 | ⚠️ 已裁定排期（2026-08-12：A-11 DEX P0 排期执行，覆盖 A-6 延后项）；**A-11 已拆 A-11.1~A-11.7（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2）**；A-12~A-14 待办 |
 | `docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md` | Session Key 自动交易托管：托管实例 + SDK 封装 + 安全加固（AIHunter SaaS） | §9.10 | 🔲 待评审（2026-08-12 登记，A-15~A-18） |
 
 **9.10 微服务定位纠正与体验对齐（2026-08-11 商业评审，对标 OKX OnchainOS）**
@@ -1339,12 +1343,19 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
 | A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并确认发送（2026-08-12，§9.11 B-1 ⚠️）——发送渠道待用户执行，收到回传后立即：验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（aa-relay `/v1/paymaster` 端点已实现，08-11 重启生效）。**多调用者通用化设计已补入文档 §7**：成本归属（payments ledger 对账）/ 策略隔离（policyId）/ 多服务商容灾 / relay 配额 | 🔲 挂起 | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
-| A-6 | 广度项延后 | swap / 多链 / 60+ 链 —— 用户决策延后，不排期 | 延后 | — |
+| A-6 | 广度项：swap/DEX 部分恢复排期（2026-08-12） | **用户裁定**：swap/DEX 聚合执行**重新排期**（A-11 DEX 交易执行 RPC，2026-08-12 需求单覆盖原延后项）；多链 / 60+ 链仍维持延后不排期 | 部分恢复（A-11）| — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | ✅ `743ede1`：ai-skills 仓库（7 组 skill + 5 IDE 发布物 + QUICKSTART 文档） | P2 |
 | A-8 | vault 增强实施（2026-08-11 完成） | 按 W-4.1：vault 支持 MPC session confirm（`POST /api/vault/safe/confirm-mpc` → MPC `sign-message` EIP-191 代签 → `safe_signatures` 记 `owner_address`+`signature_type='mpc'` → `wallets` 表登记 → threshold 达标自动 execute）；`executeTransaction` 加固（owner_address 直接关联，老数据回退 wallets 表）；SDK `SafeAPI.confirmMpc` 透传；未配 MPC_URL fail-fast 503 | ✅（2026-08-11 代码完成，待生产部署） | P2 |
 | A-9 | Paymaster/relay 配额前端展示（2026-08-11 完成） | 集成方控制台**统一租户视图**——Dashboard 用量表聚合 5 产品线真实数据：DC（`/usage` plan/quota/used）、MPC（`/api/v2/mpc/plans` 模式）、WaaS（订阅套餐）、Safe Vault（`/api/vault/plans` + `ledger-balance` gas 自付余额）、AA/Session（`/v1/plans` + `ledger-balance`）；web 代理新增 `/v1 → aa-relay`；计费仍 per-product 分离（A-10），仅展示层聚合；未购买显示「—/未激活」，端点不可用显示「不可用」 | ✅（2026-08-11 代码完成，待生产部署） | P2 |
 | A-10 | per-product 计费接入（2026-08-11 完成） | **机制统一、账户分离**：payments 引擎 ledger 机制复用——dc/market/chain-rpc/mpc 已接入 ✅（MQ-16 T-1~T-4）；**2026-08-11 新增接入**：vault 线（`vaultBilling.ts`：gas 自付，createSafe/execute 广播前按预估成本预扣（5% 缓冲），收据后按 gasUsed×gasPrice 结算退差，GAS_POOL 仅广播不垫付；`GET /api/vault/plans` + `POST /api/vault/ledger-balance`；未配引擎免费/余额不足 402/故障 503）、session/AA 线（`aa-relay/src/billing.ts`：UserOp 次数费（默认 0.0001）+ paymaster gas 代付按收据 actualGasCost 结算，广播前预扣、失败全额退；`GET /v1/plans` + `POST /v1/ledger-balance`） | ✅（2026-08-11 代码完成，待生产部署） | P1 |
-| A-11 | DEX 交易执行 RPC（2026-08-12 需求单，P0） | 源 [FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md](docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md)：`dex.quote`（聚合报价 500+ 流动性源 → 最优路由+预估输出+滑点）、`dex.approve`（构建 ERC20 授权 tx 返回**待签名** rawTransaction）、`dex.swap`（构建 swap tx 返回**待签名** rawTransaction）、`dex.broadcast`（复用 `/v1/broadcast/:chain`，`cr_` 广播 key）；**安全约束**：RPC 侧无任何 sign 端点，rawTx 由调用方（MPC `signDigest`/`signTypedData` 或本地钱包）签名；覆盖链 X Layer/ETH/Base/BSC/Arbitrum/Polygon + Solana | 🔲 待办 | P0 |
+| A-11 | DEX 交易执行 RPC（2026-08-12 需求单，✅ 已裁定排期，P0） | 技术方案：[AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2。源 [FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md](docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md)：chain-rpc 新增 `/v1/dex-rpc`——`dex.quote`（聚合器报价，OKX DEX 首选/1inch 回退）、`dex.approve`/`dex.swap`（构建**待签名** rawTransaction）、`dex.broadcast` 复用 `/v1/broadcast/:chain`；**安全**：无 sign 端点、quote=读 key、approve/swap=广播 key（分 router）；覆盖链 X Layer/ETH/Base/BSC/Arbitrum/Polygon（联动 RPC-3 链补齐）+ Solana（quote 先行）；子任务 A-11.1~A-11.7 | ✅ 已裁定排期（覆盖 A-6 原"swap/DEX 延后"） | P0 |
+| A-11.1 | 聚合器接入（quote） | `chain-rpc/src/services/dexAggregator.ts`（新增）：OKX DEX Aggregator 客户端（quote/supported-chains）+ 1inch 回退；超时/失败 fail-closed 503；`DEX_AGGREGATOR_URL`/`DEX_API_KEY` 入 config | 🔲 待办 | P0 |
+| A-11.2 | approve/swap 构建 | `chain-rpc/src/services/dexBuilder.ts`（新增）：ERC20 approve（amount=0→max uint256）+ swap 未签名 tx（to/data/value/chainId/gasLimit 预估） | 🔲 待办 | P0 |
+| A-11.3 | `/v1/dex-rpc` 路由与鉴权 | `chain-rpc/src/routes/dexRoutes.ts`（新增）+ `index.ts` 挂载：method 分发（quote 读鉴权 / approve+swap 广播鉴权，分 router）；信封 `{code,message,data}` + `X-Json-Rpc: raw` 透传；请求日志 `dex-rpc` 标签 | 🔲 待办 | P0 |
+| A-11.4 | 链池补齐与白名单 | `rpcPoolConfig.ts` 补 `arbitrum/polygon/xlayer`；`dex.quote` 链上校验（token 精度/余额）方法入白名单（联动 RPC-3） | 🔲 待办 | P1 |
+| A-11.5 | SDK 封装 | infrax-dk `DexAPI`（TS + Python）：`quote/approve/swap` 类型化 + 文档；`dex.broadcast` 复用现有 `ChainRpcAPI.broadcast` | 🔲 待办 | P1 |
+| A-11.6 | 安全加固与限流 | `/v1/dex-rpc` 纳入 rpcQuotaEnforce（读）/广播配额；approve/swap 校验 `chain` 白名单链集；gasLimit 预估上限保护 | 🔲 待办 | P1 |
+| A-11.7 | E2E 验证（生产） | `quote → approve → swap` 模拟 + 真实小额定单：SDK 构建 → MPC `sign-digest` → `/v1/broadcast {wait:true}` → 收据核对；quote P95 < 100ms；接口清单自证无 sign 端点 | 🔲 待办 | P0 |
 | A-12 | 行情数据 RPC（2026-08-12 需求单，P1） | 入口 `/v1/market-rpc`（与 `/v1/rpc/:chain` 并列）：`tokenSearch/tokenInfo/hotTokens/leaderboard/signals/mempump/candles/price/balances/transactions/trackedTokens/customSigs` 12 组方法，支持**多 token 批量**，响应信封 `{code,message,data}`，鉴权沿用 `rx_` 读 key | 🔲 待办 | P1 |
 | A-13 | 行情 RPC 一致性保障（2026-08-12 需求单，P1） | 行情 RPC 与 REST MarketAPI **同源同缓存**（口径一致）；SDK TS 类型 + Python 客户端同步发布；P95：quote < 100ms、行情 RPC < 200ms | 🔲 待办 | P1 |
 | A-14 | ws 行情订阅（2026-08-12 需求单，P2） | 行情 RPC 订阅面：price/candles 增量推送，对齐低延迟场景 | 🔲 待办 | P2 |
