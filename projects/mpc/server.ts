@@ -441,7 +441,7 @@ async function getSession(token: string) {
   }
   // 由钱包表重建 signer（双片合并），写回内存（E-4④：按 wallet_address 唯一定位，1:N 不歧义）
   const walletRow = await pool.query(
-    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
+    `SELECT wallet_address, encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
     [srow.wallet_address]
   );
   if (walletRow.rows.length === 0) {
@@ -473,7 +473,7 @@ async function getSessionByEmail(email: string) {
   }
   const srow = rowResult.rows[0];
   const walletRow = await pool.query(
-    `SELECT encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
+    `SELECT wallet_address, encrypted_shard, recovery_shard FROM mpc_wallets WHERE wallet_address = $1 AND status = 'active'`,
     [srow.wallet_address]
   );
   if (walletRow.rows.length === 0) {
