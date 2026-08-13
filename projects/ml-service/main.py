@@ -186,7 +186,18 @@ def _compute_timesfm():
 
 def _compute_consensus():
     from app.analytics import consensus as cs
-    return cs.build_consensus()
+
+    # §9.18 C-2：信号走外层 _async_runner 缓存（SWR）复用同源计算结果，
+    # 不再自行触发 Kronos/P2 全量推理（避免 2×22min 并行重复计算）。
+    # get miss 时返回 stale/None 且后台触发刷新，consensus 该信号降级不阻塞。
+    return cs.build_consensus({
+        "tree": lambda: _async_runner.get("tree_predictions", _compute_tree),
+        "volatility": lambda: _async_runner.get("volatility", _compute_volatility),
+        "bolt": lambda: _async_runner.get("bolt", _compute_bolt),
+        "moirai": lambda: _async_runner.get("moirai", _compute_moirai),
+        "timesfm": lambda: _async_runner.get("timesfm", _compute_timesfm),
+        # sentiment/macro 为轻量拉取（data-service / 特征计算），无外层缓存，走默认底层计算
+    })
 
 
 # 预热任务表：全部重计算端点（启用与否由 compute 内部 fail-silent 决定）

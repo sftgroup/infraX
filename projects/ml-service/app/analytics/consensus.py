@@ -279,62 +279,84 @@ def aggregate(
     return payload
 
 
-def build_consensus() -> Optional[dict]:
-    """主入口：在 ml-service 内现拉六路信号（本地计算）→ 聚合。
+def _safe_call(providers: Optional[dict], name: str, default) -> Any:
+    """按 providers 注入回调或默认底层计算获取单路信号；失败降级 None。
 
-    TTL 缓存（默认 25min）内直接返回上次结果，避免每次调用都触发
-    Kronos 全量推理（~60s）与 P2 模型推理（Bolt/Moirai 秒级、
-    TimesFM 首次 ~70s）。全部信号不可用时返回 None（fail-silent，
-    无模拟数据）。
+    fail-silent：任一路信号抛异常仅记 debug 日志并返回 None（聚合侧按
+    不可用降级），不中断共识整体计算。
     """
-    cached = _cached()
-    if cached is not None:
-        return cached
-    tree_payload = None
-    volatility_results = None
-    sentiment = None
-    bolt_results = None
-    moirai_results = None
-    timesfm_results = None
     try:
-        from app.analytics import tree_models
-        tree_payload = tree_models.predict_payload()
+        if providers is not None and name in providers:
+            return providers[name]()
+        return default()
     except Exception as exc:
-        logger.debug("consensus tree signal unavailable: %s", exc)
-    try:
-        from app.providers import kronos
-        volatility_results = kronos.predict_all_volatility()
-    except Exception as exc:
-        logger.debug("consensus volatility signal unavailable: %s", exc)
-    try:
-        sentiment = data_client.fetch_sentiment_score()
-    except Exception as exc:
-        logger.debug("consensus sentiment signal unavailable: %s", exc)
-    try:
-        from app.providers import chronos_bolt
-        bolt_results = chronos_bolt.predict_all()
-    except Exception as exc:
-        logger.debug("consensus bolt signal unavailable: %s", exc)
-    try:
-        from app.providers import moirai2
-        moirai_results = moirai2.predict_all()
-    except Exception as exc:
-        logger.debug("consensus moirai signal unavailable: %s", exc)
-    try:
-        from app.providers import timesfm25
-        timesfm_results = timesfm25.predict_all()
-    except Exception as exc:
-        logger.debug("consensus timesfm signal unavailable: %s", exc)
-    macro_features = None
-    try:
-        from app import macro_features as mf
-        macro_features = mf.compute_macro_features()
-    except Exception as exc:
-        logger.debug("consensus macro features unavailable: %s", exc)
+        logger.debug("consensus %s signal unavailable: %s", name, exc)
+        return None
+
+
+def _default_tree() -> Any:
+    from app.analytics import tree_models
+    return tree_models.predict_payload()
+
+
+def _default_volatility() -> Any:
+    from app.providers import kronos
+    return kronos.predict_all_volatility()
+
+
+def _default_sentiment() -> Any:
+    return data_client.fetch_sentiment_score()
+
+
+def _default_bolt() -> Any:
+    from app.providers import chronos_bolt
+    return chronos_bolt.predict_all()
+
+
+def _default_moirai() -> Any:
+    from app.providers import moirai2
+    return moirai2.predict_all()
+
+
+def _default_timesfm() -> Any:
+    from app.providers import timesfm25
+    return timesfm25.predict_all()
+
+
+def _default_macro() -> Any:
+    from app import macro_features as mf
+    return mf.compute_macro_features()
+
+
+def build_consensus(signal_providers: Optional[dict] = None) -> Optional[dict]:
+    """主入口：聚合六路信号 → 共识 payload。
+
+    参数:
+        signal_providers: 可选注入 {信号名: 获取回调}（tree / volatility /
+            sentiment / bolt / moirai / timesfm / macro）。传入时**跳过模块级
+            TTL 缓存**（缓存职责移交外层 AsyncCacheRunner，见 main.py
+            _compute_consensus 注入；§9.18 避免 consensus 重复触发 Kronos
+            全量推理）；回调返回 None 表示该信号不可用（fail-silent 降级）。
+            None 时使用默认底层计算并走模块级 25min 缓存（向后兼容）。
+
+    全部信号不可用时返回 None（无模拟数据）。
+    """
+    if signal_providers is None:
+        cached = _cached()
+        if cached is not None:
+            return cached
+    tree_payload = _safe_call(signal_providers, "tree", _default_tree)
+    volatility_results = _safe_call(signal_providers, "volatility", _default_volatility)
+    sentiment = _safe_call(signal_providers, "sentiment", _default_sentiment)
+    bolt_results = _safe_call(signal_providers, "bolt", _default_bolt)
+    moirai_results = _safe_call(signal_providers, "moirai", _default_moirai)
+    timesfm_results = _safe_call(signal_providers, "timesfm", _default_timesfm)
+    macro_features = _safe_call(signal_providers, "macro", _default_macro)
     payload = aggregate(
         tree_payload, volatility_results, sentiment,
         bolt_results, moirai_results, timesfm_results,
         macro_features=macro_features,
     )
-    _set_cache(payload)
+    if signal_providers is None:
+        _set_cache(payload)
     return payload

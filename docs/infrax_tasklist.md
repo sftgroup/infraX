@@ -1722,3 +1722,29 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > ③ `/bars` limit=1000 大查询 + clean_bars 清洗逻辑本身有成本（clean_bars 为 O(n) 线性判定，毫秒级非瓶颈；40-200ms 已可控，外部轮询频率如有上升需再评估）。
 >
 > **CLOSE-WAIT 采样结论（2026-08-13，两次对比后判定非泄漏）**：重启后 ~10min cw=17/fd=99（目标=东财/新浪/腾讯云/CloudFront 数据源）；重启后 ~16min **cw=0/fd=103**。fd 稳定无增长、CLOSE-WAIT 可归零 → 属连接池正常残留（服务端 keep-alive 关闭后 urllib3 在下一采集周期复用前处于 CLOSE-WAIT 的临时状态），**无需代码修复**。可选兜底：systemd timer 每 5min 检查 fd 数（阈值 1500）超限自动重启。
+
+**9.18 ml-service 性能优化：consensus 复用外层信号缓存，消除 Kronos 重复全量推理（2026-08-14 登记；方案见下）**
+
+**背景/症状**（ML 负载诊断时发现，2026-08-14）：
+- `volatility` 与 `consensus` 各并行触发 **Kronos 全量推理（各 ~22min/轮）**：prewarm 并行 trigger 各 key，consensus 内部 [consensus.py `build_consensus`](projects/ml-service/app/analytics/consensus.py) 直接调 `kronos.predict_all_volatility()` 不走外层 `_async_runner` 缓存 → 每轮 2C4G CPU 双倍（约 44min 计算 / 25min 周期）；
+- consensus 内部另有 25min 缓存（`_cached`），与外层 `_endpoint_cache` 30min TTL **双层缓存错位**，语义混乱。
+
+**目标**：consensus 复用外层 `_async_runner` 的 volatility/tree/bolt/moirai/timesfm 缓存（SWR 语义），避免重复全量推理；consensus 与各信号**同源一致**（同一份缓存数据）。
+
+**方案**（依赖注入，避免 main.py ↔ consensus.py 循环导入）：
+- `consensus.py`：`build_consensus(signal_providers: Optional[dict] = None)` — providers 为 `{信号名: 获取回调}`（tree/volatility/bolt/moirai/timesfm/sentiment/macro）；**None = 直接底层计算（保持库函数向后兼容）**；注入模式下内部 `_cached` 停用（统一外层 TTL 1800）；
+- `main.py`：`_compute_consensus()` 注入 providers：`volatility → _async_runner.get("volatility", _compute_volatility)`（SWR：miss 触发后台计算并返回 stale/None，consensus 该信号降级，不阻塞）；
+- TTL 对齐：consensus 外层缓存 TTL=1800 与依赖信号一致（默认已满足）。
+
+**任务拆分**：
+- C-1 `consensus.py` 签名参数化 + 信号获取解耦（默认行为不变，本地单测覆盖）
+- C-2 `main.py` `_compute_consensus` 注入 providers（读外层缓存，miss 降级）
+- C-3 双层缓存语义梳理：注入模式停用 `_cached`，统一走 `_endpoint_cache`
+- C-4 本地验证：py_compile + build_consensus 注入假 provider 单测（聚合逻辑输出结构不变）
+- C-5 生产验证：load 峰值减半（22min×2 → 22min×1）、`/ml/volatility` 与 `/ml/consensus` 数据同源、错误计数零新增
+
+**风险/注意**：
+- consensus 首次启动（volatility 缓存未就绪）→ 该信号缺失 → 聚合降级（risk 项减少）但仍出数据；数据滞后一周期可接受（30min 粒度，volatility 本就是慢变数据）；
+- 依赖注入后需回归 consensus 输出结构（`n_symbols/avg_consensus_score/risk_flag`）与现有消费方（data-service collector）兼容。
+
+**验收**：① load 峰值单轮（不再 2×22min 并行）；② volatility/consensus 数据同源；③ 端点 30 天无 null（SWR 兜底）。
