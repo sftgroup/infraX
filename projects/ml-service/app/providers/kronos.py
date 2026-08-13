@@ -16,6 +16,7 @@ CPU 可推理，约 0.4s/次）。
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
 import numpy as np
@@ -26,6 +27,13 @@ from app import data_client
 from app.providers.base import ModelProvider
 
 logger = logging.getLogger(__name__)
+
+# 模型推理互斥锁：Kronos 单例模型的 RoPE cos/sin 位置编码缓存（module.py
+# _update_cos_sin_cache，seq_len_cached）非线程安全。FastAPI sync 端点经线程池
+# 并发执行 + prewarm 重叠时，多线程同时调 KronosProvider 单例会竞争该缓存，
+# 导致维度错乱（"tensor a (401) must match tensor b (400)"）。进程内串行化
+# 推理（CPU 单模型本就该串行，每符号约 0.4s/次采样）。
+_predict_lock = threading.Lock()
 
 # 目标资产（核心回退集；默认符号池由 get_target_symbols() 从 data-service 动态拉取）
 _TARGETS = ["BTC", "ETH", "SPY", "QQQ"]
@@ -203,16 +211,17 @@ def predict_volatility(symbol: str) -> dict[str, Any] | None:
 
     last_close = float(hist[-1]["close"])
     paths: list[np.ndarray] = []
-    for _ in range(max(1, config.KRONOS_SAMPLE_COUNT)):
-        try:
-            pred = predictor.predict(
-                df=df, x_timestamp=x_ts, y_timestamp=y_ts,
-                pred_len=config.KRONOS_PRED_LEN,
-                T=1.0, top_p=0.9, sample_count=1,
-            )
-            paths.append(pred["close"].to_numpy(dtype=float))
-        except Exception as exc:
-            logger.warning("Kronos %s predict 失败: %s", symbol, exc)
+    with _predict_lock:  # 串行化推理，避免单例模型 RoPE cache 并发竞争
+        for _ in range(max(1, config.KRONOS_SAMPLE_COUNT)):
+            try:
+                pred = predictor.predict(
+                    df=df, x_timestamp=x_ts, y_timestamp=y_ts,
+                    pred_len=config.KRONOS_PRED_LEN,
+                    T=1.0, top_p=0.9, sample_count=1,
+                )
+                paths.append(pred["close"].to_numpy(dtype=float))
+            except Exception as exc:
+                logger.warning("Kronos %s predict 失败: %s", symbol, exc)
     if not paths:
         return None
 
