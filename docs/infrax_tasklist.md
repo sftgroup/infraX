@@ -1659,3 +1659,41 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 6. 恢复 `LIKE` 未复制的 20 个列 DEFAULT（`updated_at` 等 NOT NULL 依赖默认值）
 
 **遗留建议**：① 长期方案 = events 按 collected_at 做时间分区表（DROP PARTITION 物理回收），cleaner 换 `drop_chunks` 类机制；② 数据盘扩容 / 减少采集冗余（如 `idx_events_to_chain_block` 与 `chain_block` 部分重叠）；③ 磁盘使用率告警阈值建议接入监控（>85% 告警）。
+
+---
+
+**9.16 数据获取优化：RPC 池 + 多 IP 出口 + 节流（2026-08-13 登记；方案：docs/INFRAX_BACKUP_MULTI_IP.md）**
+
+> **背景**：生产 RPC 全为免费公共节点（publicnode/bsc-dataseed/base.org/oxachain，**无 Infura/Alchemy**），全部出口走主服务器单 IP；免费公共节点均按 IP 限流，Yahoo/OKX 高频易 429。
+> **评审确认（2026-08-13）**：① events **不做归档**（72h 保留不变）；② 用户将提供 **Infura/Alchemy API key** → 升级付费主 RPC；③ **免费 RPC 用多 IP 轮换确实有效**（配额 ×N）。
+> **实施约束**：生产验证（本机仅写码）；B 端零感知、fail-silent；key 不入 git（systemd override/.env 权限 600）；全部配置驱动、默认直连可回滚。
+
+**任务拆解（依赖链：A→B→C 可并行于 D；D-1 前置=用户提供目标服务器清单；RI-1 前置=用户提供 key）**
+
+| 任务 | 内容 | 验收 | 状态 | 优先级 |
+|---|---|---|---|---|
+| **RI-1** | 接入 Infura/Alchemy 主 RPC（✅ 2026-08-13 key 已提供并部署） | | ✅ | P0 |
+| RI-1.1 | key 配置 | 10 个 Infura key（实测限额不一）+ 2 账号 Alchemy（eth/base/solana 主网）写入 `collector/rpc-pool.json`（✅ 已部署生产） | 配置生效 | ✅ | P0 |
+| RI-1.2 | 主链路由 | **按链分拆 key 池**（每 key 只服务一条链，避免三链共用耗配额）：eth=infura×4+alchemy×2、bsc=infura×3、base=infura×3+alchemy×2、solana=alchemy×2+public | 主 RPC 切换完成 | ✅ | P0 |
+| RI-1.3 | 生产验证 | 34 端点加载；ethereum/bsc/base/sepolia 均经 Infura/Alchemy 持续出数（块号前进）；残余 429 为 Infura 免费 key 突发限额（单 key ~3-5 req/s），重试自愈；公共节点 403 已降级排除 | | ✅ | P0 |
+| **RI-2** | 免费节点多提供商池（failover 备选） | | 🔲 | P1 |
+| RI-2.1 | 多 provider 列表 | rpc-pool 本已含多 provider（publicnode/llamarpc/ankr/dataseed）并实现轮询+健康检查+故障切换（rpcPool.ts 既有能力）；本次补齐 solana（alchemy×2+public）并入 static 过滤（rpcPoolConfig.ts activeChains 已加 solana） | 列表入配置 | ✅ | P1 |
+| RI-2.2 | rpc-pool 多 provider 轮询 | 现有降级检测+round-robin+epoch 分片已实现；**改进点（未做）**：429 重试改换端点而非重试同一 key | 单节点故障无感知切换 | 🔲 | P1 |
+| RI-2.3 | 生产验证 | 公共节点 403/limit 自动降级排除；付费端点接管 | | ✅ | P1 |
+| **RI-3** | 请求侧节流 | | 🔲 | P1 |
+| RI-3.1 | 指数退避+jitter 封装 | collector okx 客户端、knowledge-injector yfinance 统一封装（429/5xx → 1s→2s→4s + jitter） | 429 时自动退避 | 🔲 | P1 |
+| RI-3.2 | 基线观察 | 24-48h 记录 429/错误率基线 | 基线数据留存 | 🔲 | P1 |
+| **RI-4** | 多 IP 出口代理池（免费 RPC 多 IP 轮换核心；🔲 待用户提供目标服务器清单） | | 🔲 | P1 |
+| RI-4.1 | 代理部署 | 2-3 台空闲服务器装轻量 CONNECT 代理（自写/tinyproxy）+ token 鉴权 + 源 IP 白名单，不暴露公网 | 代理探测通过 | 🔲 | P1 |
+| RI-4.2 | EGRESS_PROXIES 配置层 | 主服务器调用侧代理池配置（JSON，默认空=直连；回滚=清空重启） | 配置驱动生效 | 🔲 | P1 |
+| RI-4.3 | 免费 RPC 出口轮换 | 公共节点请求经代理池轮换出口 IP（分摊 per-IP 配额） | 出口 IP 可轮换 | 🔲 | P1 |
+| RI-4.4 | yfinance 出口轮换 | proxies 按请求轮换（Yahoo 单 IP 高频 429） | 出口 IP 可轮换 | 🔲 | P1 |
+| RI-4.5 | 健康探测+降级 | 30s 探测，代理故障自动回直连（fail-silent） | 单代理故障无感知 | 🔲 | P1 |
+| RI-4.6 | 验收 | 免费 RPC/Yahoo 出口 IP 可轮换；单代理故障 fail-silent；24h 观察 | | 🔲 | P1 |
+
+> **遗留（2026-08-13 部署发现，非本次改动引入）**：
+> ① ~~oxa 链 DNS 失败~~（✅ 2026-08-13 已修复）：`rpc.l1.oxachain.io` DNS 已死（ENOTFOUND），确认正确域名为 `rpc-oxa.0xainet.top`（chain-rpc 网关 8-10 起在用，AgentX 生产同域名）；collector `rpc-pool.json`+生产 `OXA_RPC_URL` drop-in、dc/index.ts、deploy 模板/文档已全部修正，oxa 扫描已恢复（checkpoint 82,556→前进中，落后 ~21k 块补扫约半天）；
+> ② **eth 扫描慢**：单周期 ~30s（每块 getLogs 响应巨大，5 千+ 事件/块），落后实时约 N 块，属既有性能特征；
+> ③ solana 端点已配置但 `scanner.ts ACTIVE_CHAINS` 未含 solana（未开启扫描）——如需开启另排任务（增加写入量）。
+
+> **备注**：备份（P0）按 docs/INFRAX_BACKUP_MULTI_IP.md §2 另行排期，前置=用户确认目标服务器清单（10 业务库 pg_dump ~90MB/日 + 加密配置，systemd timer 每日 03:30，14日+4周+12月，每月恢复演练）。

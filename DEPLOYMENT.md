@@ -212,7 +212,7 @@ Environment="OKX_CHAINOS_API_SECRET=..."
 Environment="OKX_CHAINOS_API_PASSPHRASE=..."
 
 # /etc/systemd/system/infrax-collector.service.d/oxa.conf
-Environment="OXA_RPC_URL=https://rpc.l1.oxachain.io"
+Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
 ```
 
 ## 数据库
@@ -348,7 +348,7 @@ SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ETH_RPC_URL=https://ethereum-rpc.publicnode.com
 BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
 BASE_RPC_URL=https://mainnet.base.org
-OXA_RPC_URL=https://rpc.l1.oxachain.io
+OXA_RPC_URL=https://rpc-oxa.0xainet.top
 ```
 
 ### Admin

@@ -91,7 +91,7 @@ function loadStaticPoolConfig(): RpcPoolConfig {
       const raw = fs.readFileSync(poolPath, 'utf-8');
       const parsed = JSON.parse(raw) as RpcPoolConfig;
       // Filter to only our active chains
-      const activeChains = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa'];
+      const activeChains = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa', 'solana'];
       const filtered: RpcPoolConfig = {};
       for (const chain of activeChains) {
         if (parsed[chain]) filtered[chain] = parsed[chain];

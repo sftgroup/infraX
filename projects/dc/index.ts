@@ -378,7 +378,7 @@ const SUPPORTED_CHAINS = [
   { name: 'ethereum', chainId: 1, type: 'evm', network: 'mainnet', rpc: 'https://ethereum-rpc.publicnode.com' },
   { name: 'bsc', chainId: 56, type: 'evm', network: 'mainnet', rpc: 'https://bsc-dataseed.bnbchain.org' },
   { name: 'base', chainId: 8453, type: 'evm', network: 'l2', rpc: 'https://mainnet.base.org' },
-  { name: 'oxa', chainId: 19505, type: 'evm', network: 'l1', rpc: 'https://rpc.l1.oxachain.io' },
+  { name: 'oxa', chainId: 19505, type: 'evm', network: 'l1', rpc: 'https://rpc-oxa.0xainet.top' },
 ];
 
 app.get('/api/v2/data/plans', asyncHandler(async (_req: any, res: any) => {
@@ -897,7 +897,7 @@ const RPC_ENDPOINTS: Record<string, string> = {
   eth:     "https://ethereum-rpc.publicnode.com",
   bsc:     "https://bsc-dataseed.bnbchain.org",
   base:    "https://mainnet.base.org",
-  oxa:     "https://rpc.l1.oxachain.io",
+  oxa:     "https://rpc-oxa.0xainet.top",
 };
 
 // MQ-10 DC-1/DC-9: 统一走 chain-rpc 网关（唯一读入口，读 key）；网关不可用直接抛错，

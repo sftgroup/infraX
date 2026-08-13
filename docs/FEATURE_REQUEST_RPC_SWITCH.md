@@ -104,4 +104,4 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 | 5 | services/chain-sync/ | 链同步（读） | OxaChain 19505 | env `RPC_URL` | `/v1/rpc/oxa` |
 | 6 | gateway server.ts | 行情代理（ticker/candles） | —（数据面） | OKX V5 REST | 属行情需求单，不在本单范围 |
 
-> 注：OxaChain（chainId 19505，`rpc.l1.oxachain.io`）为集团公共链，InfraX chain-rpc 已支持（链参数 `oxa`），我方 3/4/5 号使用点可直接切换。
+> 注：OxaChain（chainId 19505，`rpc-oxa.0xainet.top`；旧域名 `rpc.l1.oxachain.io` DNS 已死）为集团公共链，InfraX chain-rpc 已支持（链参数 `oxa`），我方 3/4/5 号使用点可直接切换。

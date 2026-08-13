@@ -304,7 +304,7 @@ infraX/
 | Arbitrum | `arbitrum` | 42161 | EVM L2 | 🟢 |
 | Optimism | `optimism` | 10 | EVM L2 | 🟢 |
 
-> DC Free 套餐仅 Sepolia。Pro/Enterprise 支持 Sepolia/ETH/BSC/Polygon/Arbitrum/Optimism/Base/OxaChain。OxaChain RPC: `https://rpc.l1.oxachain.io`
+> DC Free 套餐仅 Sepolia。Pro/Enterprise 支持 Sepolia/ETH/BSC/Polygon/Arbitrum/Optimism/Base/OxaChain。OxaChain RPC: `https://rpc-oxa.0xainet.top`
 
 ## 当前服务状态
 

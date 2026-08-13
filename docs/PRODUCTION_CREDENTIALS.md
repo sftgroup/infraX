@@ -66,7 +66,7 @@
 | ETH_RPC_URL | https://ethereum-rpc.publicnode.com |
 | BSC_RPC_URL | https://bsc-dataseed.bnbchain.org |
 | BASE_RPC_URL | https://mainnet.base.org |
-| OXA_RPC_URL | https://rpc.l1.oxachain.io |
+| OXA_RPC_URL | https://rpc-oxa.0xainet.top |
 | SOLANA_RPC_URL | https://api.mainnet-beta.solana.com |
 | CHAIN_RPC_WAIT_SEC / INTERVAL_MS | 30 / 3000 |
 | CHAIN_RPC_HEALTH_INTERVAL_MS | 60000 |
