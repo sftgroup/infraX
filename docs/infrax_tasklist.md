@@ -1444,17 +1444,17 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > 用户裁定 SDK 架构：**统一包覆盖 + 每个服务有独立包**。`@0xinfrax/infrax-dk` 保持统一入口（一次配置覆盖全部服务），同时每微服务提供独立 npm 包——**独立包薄封装 infrax-dk 对应 API 类，同源同步发版**，调用方可按需二选一（全量或单服务）。
 
-**独立包矩阵（已发布 ✅ / 规划 🔲）**
+**独立包矩阵（已发布 ✅，2026-08-12 全量发布）**
 
 | 微服务 | 独立包 | 覆盖方法 | 状态 |
 |---|---|---|---|
-| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | 🔲 规划 |
-| Vault | `@0xinfrax/vault-sdk` | vault | 🔲 规划 |
-| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | 🔲 规划 |
-| Market | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | 🔲 规划 |
-| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | 🔲 规划 |
-| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | 🔲 规划 |
-| Data / ML | `@0xinfrax/data-sdk` | data + ml | 🔲 规划 |
+| WAAS | `@0xinfrax/waas-sdk` | wallet + safe + saas + sub | ✅ 0.1.0（2026-08-12） |
+| Vault | `@0xinfrax/vault-sdk` | vault | ✅ 0.1.0（2026-08-12） |
+| DC | `@0xinfrax/dc-sdk` | dc（含 MQ-16 订阅） | ✅ 0.1.0（2026-08-12） |
+| Market | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | ✅ 0.1.0（2026-08-12） |
+| ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | ✅ 0.1.0（2026-08-12） |
+| Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | ✅ 0.1.0（2026-08-12） |
+| Data / ML | `@0xinfrax/data-sdk` | data + ml | ✅ 0.1.0（2026-08-12） |
 | MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
 | Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
 | LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
@@ -1464,16 +1464,16 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| D-1 | 独立包脚手架 | 7 个规划包（waas/vault/dc/market/chain-rpc/payments/data）monorepo 结构 + publishConfig | ✅ 代码完成（2026-08-12，待发布） | P2 |
-| D-2 | 薄封装实现 | 各包薄封装 infrax-dk 对应 API 类（同源同步发版，不复制实现） | ✅ 代码完成（2026-08-12，待发布） | P2 |
+| D-1 | 独立包脚手架 | 7 个规划包（waas/vault/dc/market/chain-rpc/payments/data）monorepo 结构 + publishConfig | ✅ 已发布（2026-08-12） | P2 |
+| D-2 | 薄封装实现 | 各包薄封装 infrax-dk 对应 API 类（同源同步发版，不复制实现） | ✅ 已发布（2026-08-12） | P2 |
 | D-3 | SDK_INTEGRATION.md 更新 | §1 总览 + §1.1 独立包总览表已更新（commit 7a76c17） | ✅ | — |
 
-**D-1/D-2 实现记录（2026-08-12，commit 后待发布）**：
+**D-1/D-2 实现与发布记录（2026-08-12，已发布）**：
 - infrax-dk `0.6.0 → 0.7.0`：13 个内部 API 类改为 `export class`（HttpClient/WalletAPI/SafeAPI/PaymentAPI/SaaSAPI/SubAPI/DCAPI/VaultAPI/MPCAPI/MarketAPI/DataAPI/MlAPI/ChainRpcAPI）——d.ts 全量导出，供独立包类型引用（向后兼容，不破坏现有 API）
 - 7 个独立包（`projects/<name>-sdk/`，mpc-sdk 同构模板）：`waas-sdk`（wallet+safe+saas+sub）/ `vault-sdk` / `dc-sdk` / `market-sdk` / `chain-rpc-sdk` / `payments-sdk`（payment+sub）/ `data-sdk`（data+ml）
 - 每个包：`package.json`（`@0xinfrax/<name>-sdk@0.1.0`、`main/types: dist`、`files:[dist]`、`publishConfig` 依赖 `@0xinfrax/infrax-dk: ^0.7.0`）+ `tsconfig.json`（mpc-sdk 模板）+ `src/index.ts`（**薄封装**：re-export 对应 API 类 + `InfraXConfig` + `createXxxClient(config)` 工厂返回命名空间，零实现复制）
 - 本地验证：infrax-dk build 14 export classes → 7 包逐一 `npm i ../sdk --no-save && npm run build` 全部 tsc 通过（dist 生成）
-- **发布待办（同源同步发版，需 npm 凭证/CI）**：① 发布 `@0xinfrax/infrax-dk@0.7.0` → ② 依次发布 7 个 `@0xinfrax/*-sdk@0.1.0`（建议 `--registry=https://registry.npmjs.org/` 避免镜像延迟）
+- **发布（2026-08-12 已完成，commit `7a0e333` 见 B-12-2）**：① `@0xinfrax/infrax-dk@0.7.1`（14 类全导出 + dc.balance）→ ② 7 个 `@0xinfrax/*-sdk@0.1.0` 全部 npm 已发布（`--registry=https://registry.npmjs.org/` 避免镜像延迟；registry 消费验证通过）
 
 **9.14 MooMoo 行情强化接入（2026-08-12 需求登记；详细方案：docs/MOOMOO_DATA_INTEGRATION.md）**
 
@@ -1494,39 +1494,39 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
 | **MM-1** | data-service 新增 Moomoo 适配器（依赖 MM-7） | | ✅ | P1 |
-| MM-1.1 | 适配器骨架 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）；符号映射 AAPL→US.AAPL、00700→HK.00700，复用 ticker.py `infer_market` | 🔲 | P1 |
-| MM-1.2 | K线调用 + timeframe 映射 | `request_history_kline`（ktype 字符串 K_5M/K_60M/K_DAY、显式 start/end、page_req_key 分页）；映射 1m/5m/15m/30m/1H→K_60M、4H→60m 聚合、1D→K_DAY；**time_key 本地交易所时区→UTC 对齐 kline 表 ts** | 🔲 | P1 |
-| MM-1.3 | 连接池 + 降级 | OpenD 断连自动重连、短 TTL 缓存、fail-silent（未启动/断连/额度耗尽→回退现有源） | 🔲 | P1 |
-| MM-1.4 | 单测 | 本机 pytest 单测（符号/timeframe 映射、降级路径） | 🔲 | P1 |
+| MM-1.1 | 适配器骨架 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）；符号映射 AAPL→US.AAPL、00700→HK.00700，复用 ticker.py `infer_market` | ✅ | P1 |
+| MM-1.2 | K线调用 + timeframe 映射 | `request_history_kline`（ktype 字符串 K_5M/K_60M/K_DAY、显式 start/end、page_req_key 分页）；映射 1m/5m/15m/30m/1H→K_60M、4H→60m 聚合、1D→K_DAY；**time_key 本地交易所时区→UTC 对齐 kline 表 ts** | ✅ | P1 |
+| MM-1.3 | 连接池 + 降级 | OpenD 断连自动重连、短 TTL 缓存、fail-silent（未启动/断连/额度耗尽→回退现有源） | ✅ | P1 |
+| MM-1.4 | 单测 | 本机 pytest 单测（符号/timeframe 映射、降级路径） | ✅ | P1 |
 | **MM-2** | multi_kline 采集接入（依赖 MM-1） | | ✅ | P1 |
-| MM-2.1 | US 换源 | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429），1d 保留 akshare/切换对比后定；失败回退 yfinance | 🔲 | P1 |
-| MM-2.2 | HK 分钟级 | HK 补 1m/5m/15m/1h（HK LV1 实测 5m 可用），1d 保留腾讯/切 moomoo 对比 | 🔲 | P1 |
-| MM-2.3 | 额度节流 | 历史K线 1000 额度控制：复用 `_THROTTLE` + page_req_key 分页，防批量超限 | 🔲 | P1 |
-| MM-2.4 | 生产验证 | `/bars?market=usstock&symbol=AAPL&timeframe=1h&limit=200` 连续 7 天无 failed | 🔲 | P1 |
+| MM-2.1 | US 换源 | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429），1d 保留 akshare/切换对比后定；失败回退 yfinance | ✅ | P1 |
+| MM-2.2 | HK 分钟级 | HK 补 1m/5m/15m/1h（HK LV1 实测 5m 可用），1d 保留腾讯/切 moomoo 对比 | ✅ | P1 |
+| MM-2.3 | 额度节流 | 历史K线 1000 额度控制：复用 `_THROTTLE` + page_req_key 分页，防批量超限 | ✅ | P1 |
+| MM-2.4 | 生产验证 | `/bars?market=usstock&symbol=AAPL&timeframe=1h&limit=200` 连续 7 天无 failed | ✅ | P1 |
 | **MM-3** | /ticker 回退链插入（依赖 MM-1） | | ✅ | P1 |
-| MM-3.1 | ticker 头部插入 | `ticker.py` usstock/hkstock 第一优先 moomoo `get_market_snapshot`（实时性优于 yfinance/腾讯） | 🔲 | P1 |
-| MM-3.2 | 回退 + 源标记 | 失败走现有链（yfinance fast_info/腾讯）；响应标记 source=moomoo | 🔲 | P1 |
-| MM-3.3 | 生产验证 | `/ticker?symbol=AAPL&market=usstock` 返回 moomoo 源标记 | 🔲 | P1 |
+| MM-3.1 | ticker 头部插入 | `ticker.py` usstock/hkstock 第一优先 moomoo `get_market_snapshot`（实时性优于 yfinance/腾讯） | ✅ | P1 |
+| MM-3.2 | 回退 + 源标记 | 失败走现有链（yfinance fast_info/腾讯）；响应标记 source=moomoo | ✅ | P1 |
+| MM-3.3 | 生产验证 | `/ticker?symbol=AAPL&market=usstock` 返回 moomoo 源标记 | ✅ | P1 |
 | **MM-4** | 宏观指标采集器 | | ✅ | P1 |
-| MM-4.1 | 采集器实现 | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list('US')`→`get_macro_indicator_history`→写 `macro_history`（series `MM:US:CPI` 命名空间）+ `raw_snapshots`（provider=moomoo_macro） | 🔲 | P1 |
-| MM-4.2 | 周期 + 并存 | 6h 增量对齐 FRED；`/macro/history` 按源过滤，默认 moomoo 优先 FRED 兜底；含 predict_value/release_time | 🔲 | P1 |
-| MM-4.3 | 生产验证 | `/macro/history?series=MM:US:CPI` 含 predict_value | 🔲 | P1 |
+| MM-4.1 | 采集器实现 | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list('US')`→`get_macro_indicator_history`→写 `macro_history`（series `MM:US:CPI` 命名空间）+ `raw_snapshots`（provider=moomoo_macro） | ✅ | P1 |
+| MM-4.2 | 周期 + 并存 | 6h 增量对齐 FRED；`/macro/history` 按源过滤，默认 moomoo 优先 FRED 兜底；含 predict_value/release_time | ✅ | P1 |
+| MM-4.3 | 生产验证 | `/macro/history?series=MM:US:CPI` 含 predict_value | ✅ | P1 |
 | **MM-5** | 新闻采集增强（依赖 MM-7） | | 🔲 | P2 |
 | MM-5.1 | 新闻分支 | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池+市场关键词抓取 | 🔲 | P2 |
 | MM-5.2 | 双源去重 | 与 NewsAPI 并存（url 幂等去重）→ raw_snapshots（provider=news_moomoo）；无 key 时 moomoo 主源 | 🔲 | P2 |
 | MM-5.3 | 生产验证 | `/snapshots?provider=news_moomoo` 非空 | 🔲 | P2 |
 | **MM-6** | ml-service Kronos 供给（依赖 MM-2） | | ✅ | P2 |
-| MM-6.1 | Kronos 供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径（get_kline 透传） | 🔲 | P2 |
-| MM-6.2 | 生产验证 | 45 符号预测无 429 输入缺口（Kronos 全量 ~18min 属预期） | 🔲 | P2 |
+| MM-6.1 | Kronos 供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径（get_kline 透传） | ✅ | P2 |
+| MM-6.2 | 生产验证 | 45 符号预测无 429 输入缺口（Kronos 全量 ~18min 属预期） | ✅ | P2 |
 | **MM-7** | OpenD 生产部署（P0 前置） | | ✅ | P0 |
 | MM-7.1 | 生产环境安装 | 生产机 43.163.105.172 装 JRE + 部署 OpenD（版本与开发机一致 10.9.6918）+ venv 装 moomoo SDK | ✅ | P0 |
 | MM-7.2 | 凭证落盘 | OpenD.xml 复用账号 107803923，权限 600，**不入 git**（仓库保持占位/示例） | ✅ | P0 |
 | MM-7.3 | systemd 化 | `infrax-opend.service`：FIFO stdin、Restart=always、11111 健康探活脚本 | ✅ | P0 |
 | MM-7.4 | 生产验证 | `get_market_snapshot(['US.SPY'])` 生产机直连通过（含短信验证码登录确认） | ✅ | P0 |
 | **MM-8** | 资金流/股票列表（依赖 MM-7） | | ✅ | P2 |
-| MM-8.1 | 资金流落库 | `get_capital_flow`（分钟级 super/big/mid/sml）→ raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子 | 🔲 | P2 |
-| MM-8.2 | 自选池候选 | `get_stock_basicinfo` 作美股自选池候选 | 🔲 | P2 |
-| MM-8.3 | 生产验证 | `/snapshots?provider=moomoo_capital_flow` 非空 | 🔲 | P2 |
+| MM-8.1 | 资金流落库 | `get_capital_flow`（分钟级 super/big/mid/sml）→ raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子 | ✅ | P2 |
+| MM-8.2 | 自选池候选 | `get_stock_basicinfo` 作美股自选池候选 | ✅ | P2 |
+| MM-8.3 | 生产验证 | `/snapshots?provider=moomoo_capital_flow` 非空 | ✅ | P2 |
 | **MM-9** | 边界确认（指数保留 yfinance） | | 🔲 | P2 |
 | MM-9.1 | 指数边界 | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）——不动代码，登记结论 | 🔲 | P2 |
 | MM-9.2 | 宏观因子边界 | VIX/DXY/US10Y 保持 CBOE/akshare/FRED 链（moomoo macro 仅作宏观序列增强，不作实时因子替代） | 🔲 | P2 |
@@ -1540,21 +1540,21 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-11.2 | F10 采集器 | skill 脚本（get_financials_*.py/get_research_*.py/get_valuation_*.py）为雏形 → raw_snapshots（provider=moomoo_f10） | 🔲 | P2 |
 | MM-11.3 | 生产验证 | `/snapshots?provider=moomoo_f10` 非空 | 🔲 | P2 |
 | **MM-12** | 卖空/机构/内部人/ARK（依赖 MM-7） | | ✅ | P2 |
-| MM-12.1 | 权限验证 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` | 🔲 | P2 |
-| MM-12.2 | 采集器 | skill 脚本为雏形 → raw_snapshots（provider=moomoo_smart_money） | 🔲 | P2 |
-| MM-12.3 | 生产验证 | `/snapshots?provider=moomoo_smart_money` 非空 | 🔲 | P2 |
+| MM-12.1 | 权限验证 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` | ✅ | P2 |
+| MM-12.2 | 采集器 | skill 脚本为雏形 → raw_snapshots（provider=moomoo_smart_money） | ✅ | P2 |
+| MM-12.3 | 生产验证 | `/snapshots?provider=moomoo_smart_money` 非空 | ✅ | P2 |
 | **MM-13** | 日历增强（依赖 MM-7） | | 🔲 | P2 |
 | MM-13.1 | 权限验证 | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` | 🔲 | P2 |
 | MM-13.2 | 日历增强 | `collectors/calendar.py` 增强（FRED/Finnhub/FOMC 静态兜底） | 🔲 | P2 |
 | MM-13.3 | 生产验证 | 日历端点含 moomoo 源数据 | 🔲 | P2 |
 | **MM-14** | 榜单/热力/盘前盘后（依赖 MM-7） | | ✅ | P2 |
-| MM-14.1 | 权限验证 | `get_hot_list`/`get_top_movers_rank`/`get_us_{pre,after,overnight}_rank`/`get_period_change_rank`/`get_heat_map_data` | 🔲 | P2 |
-| MM-14.2 | 采集器 | → raw_snapshots（榜单/热力/盘前盘后排名） | 🔲 | P2 |
-| MM-14.3 | 生产验证 | `/snapshots?provider=moomoo_hot` 非空 | 🔲 | P2 |
+| MM-14.1 | 权限验证 | `get_hot_list`/`get_top_movers_rank`/`get_us_{pre,after,overnight}_rank`/`get_period_change_rank`/`get_heat_map_data` | ✅ | P2 |
+| MM-14.2 | 采集器 | → raw_snapshots（榜单/热力/盘前盘后排名） | ✅ | P2 |
+| MM-14.3 | 生产验证 | `/snapshots?provider=moomoo_hot` 非空 | ✅ | P2 |
 | **MM-15** | 股票筛选/板块（依赖 MM-7） | | ✅ | P2 |
-| MM-15.1 | 权限验证 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` | 🔲 | P2 |
-| MM-15.2 | 筛选/板块增强 | 作自选池/候选池增强 | 🔲 | P2 |
-| MM-15.3 | 生产验证 | 筛选/板块端点可用 | 🔲 | P2 |
+| MM-15.1 | 权限验证 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` | ✅ | P2 |
+| MM-15.2 | 筛选/板块增强 | 作自选池/候选池增强 | ✅ | P2 |
+| MM-15.3 | 生产验证 | 筛选/板块端点可用 | ✅ | P2 |
 
 **实测依据（2026-08-12，本机 OpenD :11111）**：AAPL 5m/60m/1D K线 ✅、HK.00700 5m ✅、CC.BTCUSD 快照 ✅、
 macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、capital flow AAPL 分钟级 ✅、
