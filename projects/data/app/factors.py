@@ -157,6 +157,13 @@ _SIMPLE_FACTOR_IDS = {
 _FACTORS_CURRENT_CACHE: dict = {}
 _FACTORS_CURRENT_TTL = 5.0
 
+# _load_non_tech_history 全局结果缓存（30s 过期，宏观数据慢变）
+_NON_TECH_HIST_CACHE: dict = {}
+_NON_TECH_HIST_TTL = 30.0
+# _load_ml_history 按 symbol 缓存（30s 过期，ML 预测低频更新）
+_ML_HIST_CACHE: dict = {}
+_ML_HIST_TTL = 30.0
+
 
 def get_current_factors(
     symbols: Optional[list[str]] = None,
@@ -570,9 +577,18 @@ def _load_ml_history(symbol: str) -> dict[str, tuple[list[int], list[float]]]:
     _load_non_tech_history 同型。来源：
       tree_predictions / consensus 快照历史（raw_snapshots，每快照按 symbol 提取）
       ml_predictions 明细表（逐 model×symbol×generated_at）
+
+    ML 预测低频更新（模型按小时级产出）—— 按 symbol 加 30s TTL 缓存，
+    避免每次 /factors/history 请求重复全量扫快照与 ml_predictions（load 热点）。
     """
+    now = time.time()
+    key0 = _ml_symbol_key(symbol)
+    hit = _ML_HIST_CACHE.get(key0)
+    if hit and now - hit[0] < _ML_HIST_TTL:
+        return hit[1]
+
     db = get_db()
-    key = _ml_symbol_key(symbol)
+    key = key0
     raw: dict[str, list[tuple[int, float]]] = {f: [] for f in _ML_FACTOR_IDS}
 
     def _push(fid: str, ts: int, val):
@@ -643,6 +659,9 @@ def _load_ml_history(symbol: str) -> dict[str, tuple[list[int], list[float]]]:
                 last = v
         ts_list = sorted(steps)
         out[fid] = (ts_list, [steps[t] for t in ts_list])
+    if len(_ML_HIST_CACHE) > 64:
+        _ML_HIST_CACHE.clear()
+    _ML_HIST_CACHE[key] = (time.time(), out)
     return out
 
 
@@ -768,7 +787,15 @@ def _load_non_tech_history() -> dict[str, tuple[list[int], list[float]]]:
 
     Returns ``{factor_id: (sorted_fetched_at, values)}`` — a value-change
     step function. Consumers asof-lookup the nearest ``fetched_at <= bar_ts``.
+
+    结果全局（不依赖 symbol）且宏观数据分钟级更新 —— 加 30s TTL 缓存，
+    避免每次 /factors/history 请求都全量扫 5 万条快照并解析 JSON（load 热点）。
     """
+    now = time.time()
+    hit = _NON_TECH_HIST_CACHE.get(0)
+    if hit and now - hit[0] < _NON_TECH_HIST_TTL:
+        return hit[1]
+
     db = get_db()
     rows = db.execute(
         f"SELECT data_type, raw_json, fetched_at FROM raw_snapshots "
@@ -831,6 +858,7 @@ def _load_non_tech_history() -> dict[str, tuple[list[int], list[float]]]:
                 last_v = v
         ts_list = sorted(steps)
         out[fid] = (ts_list, [steps[t] for t in ts_list])
+    _NON_TECH_HIST_CACHE[0] = (time.time(), out)
     return out
 
 

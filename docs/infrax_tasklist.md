@@ -1718,5 +1718,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **遗留**：
 > ① **CLOSE-WAIT 连接泄漏**（data 服务 python 重启后 ~10min 又积累 20+ 个对外 HTTPS CLOSE-WAIT，Recv-Q 积压）：疑 akshare/moomoo 等外部 HTTP 会话连接池对端关 keep-alive 未及时 close，需定位具体 collector（次要，不直接致 CPU 高但 fd/内存缓慢增长）；
-> ② `/factors/history`（43.156.55.212 高频调）单请求仍 0.5-1.5s，未纳入本次优化（下一步可加缓存）；
-> ③ `/bars` limit=1000 大查询 + clean_bars 清洗逻辑本身有成本（40-200ms 已可控，外部轮询频率如有上升需再评估）。
+> ② ~~`/factors/history` 单请求 0.5-1.5s~~（✅ 2026-08-13 修复）：元凶为 `_load_non_tech_history`（每次全量扫 5 万条 raw_snapshots 逐条 JSON 解析）+ `_load_ml_history`；已加 30s TTL 缓存（非 tech 全局 / ML 按 symbol），实测 1.6s → 18ms（命中）；
+> ③ `/bars` limit=1000 大查询 + clean_bars 清洗逻辑本身有成本（clean_bars 为 O(n) 线性判定，毫秒级非瓶颈；40-200ms 已可控，外部轮询频率如有上升需再评估）。
+>
+> **CLOSE-WAIT 基线采样（2026-08-13，重启后 ~10min）**：fd=99（默认 ulimit 远高于此）、CLOSE-WAIT=17，目标=东财（180.222.x）/新浪（66.175.214.97）/腾讯云（106.10.236.x）/AWS CloudFront（13.249.x 等）。**待二次采样判断**：若数量稳定不涨 → 连接池正常残留（各采集周期每源留 1-2 个），无害，可选 akshare 补丁注入 `Connection: close` + systemd timer fd 兜底监控；若持续增长 → 真泄漏需定位具体源。
