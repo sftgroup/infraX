@@ -41,6 +41,8 @@ export function createDexReadRouter(pool: RpcPoolManager): Router {
       if (!p.amountIn || !/^\d+$/.test(String(p.amountIn))) {
         throw new ChainRpcError('amountIn required (wei, digits only)', 'missing_params', 400);
       }
+      logger.info('[dex-rpc] quote start', { chain: p.chain, tokenIn: p.tokenIn, tokenOut: p.tokenOut, amountIn: p.amountIn, slippage: p.slippage });
+      const t0 = Date.now();
       const aggregator = new DexAggregator();
       const result = await aggregator.quote({
         chain: normalizeChain(p.chain)!,
@@ -50,7 +52,7 @@ export function createDexReadRouter(pool: RpcPoolManager): Router {
         slippage: p.slippage,
         from: p.from,
       });
-      logger.info('[dex-rpc] quote ok', { chain: result.chain, aggregator: result.aggregator });
+      logger.info('[dex-rpc] quote ok', { chain: result.chain, aggregator: result.aggregator, amountOut: result.amountOut, ms: Date.now() - t0 });
       res.json({ code: 0, message: 'ok', data: result });
     } catch (err: any) {
       handleDexError(res, err, 'quote');
@@ -70,13 +72,15 @@ export function createDexBroadcastRouter(pool: RpcPoolManager): Router {
       const p = body.params || {};
       assertDexChain(p.chain);
       if (method === 'dex.approve') {
+        logger.info('[dex-rpc] approve start', { chain: p.chain, token: p.token, spender: p.spender, amount: p.amount, from: p.from });
+        const t0 = Date.now();
         const tx = await buildApproveTx(pool, normalizeChain(p.chain)!, {
           token: p.token,
           spender: p.spender,
           amount: p.amount,
           from: p.from,
         });
-        logger.info('[dex-rpc] approve built', { chain: p.chain, token: p.token, spender: p.spender });
+        logger.info('[dex-rpc] approve built', { chain: p.chain, token: p.token, spender: p.spender, gasLimit: tx.gasLimit, estimated: tx.estimated, dataLen: tx.data.length, ms: Date.now() - t0 });
         res.json({ code: 0, message: 'ok', data: { chain: normalizeChain(p.chain), rawTransaction: tx, from: p.from || null } });
         return;
       }
@@ -87,6 +91,8 @@ export function createDexBroadcastRouter(pool: RpcPoolManager): Router {
       if (!p.amountIn || !/^\d+$/.test(String(p.amountIn))) {
         throw new ChainRpcError('amountIn required (wei, digits only)', 'missing_params', 400);
       }
+      logger.info('[dex-rpc] swap start', { chain: p.chain, tokenIn: p.tokenIn, tokenOut: p.tokenOut, amountIn: p.amountIn, slippage: p.slippage, from: p.from, recipient: p.recipient, gasLimit: p.gasLimit });
+      const t0 = Date.now();
       const aggregator = new DexAggregator();
       const swap = await aggregator.swap({
         chain: normalizeChain(p.chain)!,
@@ -99,7 +105,17 @@ export function createDexBroadcastRouter(pool: RpcPoolManager): Router {
         gasLimit: p.gasLimit,
       });
       const tx = await buildSwapTx(pool, normalizeChain(p.chain)!, swap.tx, { from: p.from });
-      logger.info('[dex-rpc] swap built', { chain: swap.chain, aggregator: swap.aggregator });
+      logger.info('[dex-rpc] swap built', {
+        chain: swap.chain,
+        aggregator: swap.aggregator,
+        quoteId: swap.quoteId,
+        amountOutMin: swap.amountOutMin,
+        to: tx.to,
+        gasLimit: tx.gasLimit,
+        estimated: tx.estimated,
+        dataLen: tx.data.length,
+        ms: Date.now() - t0,
+      });
       res.json({
         code: 0,
         message: 'ok',
@@ -114,6 +130,8 @@ export function createDexBroadcastRouter(pool: RpcPoolManager): Router {
 
 function handleDexError(res: any, err: any, tag: string): void {
   if (err instanceof ChainRpcError) {
+    // 业务级错误（缺参/链不支持/gas 超限/上游聚合器失败）：记录错误码便于按 code 归因
+    logger.warn(`[dex-rpc] ${tag} failed`, { code: err.code, status: err.status, message: err.message });
     res.status(err.status).json({ detail: err.message, code: err.code });
     return;
   }

@@ -169,85 +169,127 @@ async function withCredRolling<T>(fn: (cred: OkxCred) => Promise<T>): Promise<T>
 
 async function okxQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
   assertOkxCreds();
+  const t0 = Date.now();
+  const tokenIn = t(params.tokenIn);
+  const tokenOut = t(params.tokenOut);
+  logger.info('[dex-rpc] okx.quote start', { chain: params.chain, tokenIn, tokenOut, amountIn: params.amountIn });
   const qs = new URLSearchParams({
     chainIndex: String(dexChainId(params.chain)),
-    fromTokenAddress: t(params.tokenIn),
-    toTokenAddress: t(params.tokenOut),
+    fromTokenAddress: tokenIn,
+    toTokenAddress: tokenOut,
     amount: params.amountIn,
   });
   const requestPath = `/api/v6/dex/aggregator/quote?${qs.toString()}`;
   return withCredRolling(async (cred) => {
-    const resp = await axios.get(`${okxBase()}${requestPath}`, {
-      timeout: REQUEST_TIMEOUT,
-      headers: okxSign('GET', requestPath, cred),
-    });
-    const data = resp.data?.data?.[0] as OkxQuoteData | undefined;
-    if (!data?.toTokenAmount) {
-      throw new ChainRpcError(`OKX DEX quote failed: ${resp.data?.msg || 'empty result'}`, 'dex_quote_failed', 502);
+    try {
+      const resp = await axios.get(`${okxBase()}${requestPath}`, {
+        timeout: REQUEST_TIMEOUT,
+        headers: okxSign('GET', requestPath, cred),
+      });
+      const data = resp.data?.data?.[0] as OkxQuoteData | undefined;
+      if (!data?.toTokenAmount) {
+        throw new ChainRpcError(`OKX DEX quote failed: ${resp.data?.msg || 'empty result'}`, 'dex_quote_failed', 502);
+      }
+      logger.info('[dex-rpc] okx.quote ok', {
+        chain: params.chain,
+        amountOut: data.toTokenAmount,
+        quoteId: data.quoteId,
+        priceImpact: data.priceImpactPercent,
+        ms: Date.now() - t0,
+      });
+      return {
+        chain: params.chain,
+        aggregator: 'okx',
+        amountOut: data.toTokenAmount,
+        minAmountOut: minOut(data.toTokenAmount, params.slippage ?? 0.005).toString(),
+        priceImpact: data.priceImpactPercent,
+        fee: data.estimateGasFee,
+        route: data.dexRouterList,
+      };
+    } catch (err: any) {
+      logger.warn(`[dex-rpc] okx.quote error: ${err?.message || err}`, { chain: params.chain, ms: Date.now() - t0 });
+      throw err;
     }
-    return {
-      chain: params.chain,
-      aggregator: 'okx',
-      amountOut: data.toTokenAmount,
-      minAmountOut: minOut(data.toTokenAmount, params.slippage ?? 0.005).toString(),
-      priceImpact: data.priceImpactPercent,
-      fee: data.estimateGasFee,
-      route: data.dexRouterList,
-    };
   });
 }
 
 async function okxSwap(params: DexQuoteParams): Promise<DexSwapResult> {
   assertOkxCreds();
   const chainId = dexChainId(params.chain);
+  const t0 = Date.now();
+  const tokenIn = t(params.tokenIn);
+  const tokenOut = t(params.tokenOut);
+  logger.info('[dex-rpc] okx.swap start', {
+    chain: params.chain,
+    tokenIn,
+    tokenOut,
+    amountIn: params.amountIn,
+    from: params.from,
+    gasLimit: params.gasLimit,
+  });
   return withCredRolling(async (cred) => {
-    // 先 quote 拿 quoteId（OKX swap 依赖 quoteId + slippagePercent + 钱包地址）
-    const qs = new URLSearchParams({
-      chainIndex: String(chainId),
-      fromTokenAddress: t(params.tokenIn),
-      toTokenAddress: t(params.tokenOut),
-      amount: params.amountIn,
-    });
-    const qPath = `/api/v6/dex/aggregator/quote?${qs.toString()}`;
-    const qResp = await axios.get(`${okxBase()}${qPath}`, {
-      timeout: REQUEST_TIMEOUT,
-      headers: okxSign('GET', qPath, cred),
-    });
-    const quote = qResp.data?.data?.[0] as OkxQuoteData | undefined;
-    const quoteId = quote?.quoteId;
-    const amountOut = quote?.toTokenAmount;
-    if (!quoteId || !amountOut) {
-      throw new ChainRpcError('OKX DEX quote (for swap) failed', 'dex_quote_failed', 502);
+    try {
+      // 先 quote 拿 quoteId（OKX swap 依赖 quoteId + slippagePercent + 钱包地址）
+      const qs = new URLSearchParams({
+        chainIndex: String(chainId),
+        fromTokenAddress: tokenIn,
+        toTokenAddress: tokenOut,
+        amount: params.amountIn,
+      });
+      const qPath = `/api/v6/dex/aggregator/quote?${qs.toString()}`;
+      const qResp = await axios.get(`${okxBase()}${qPath}`, {
+        timeout: REQUEST_TIMEOUT,
+        headers: okxSign('GET', qPath, cred),
+      });
+      const quote = qResp.data?.data?.[0] as OkxQuoteData | undefined;
+      const quoteId = quote?.quoteId;
+      const amountOut = quote?.toTokenAmount;
+      if (!quoteId || !amountOut) {
+        throw new ChainRpcError('OKX DEX quote (for swap) failed', 'dex_quote_failed', 502);
+      }
+      logger.info('[dex-rpc] okx.swap quote stage ok', { quoteId, amountOut, ms: Date.now() - t0 });
+      const sQs = new URLSearchParams({
+        chainIndex: String(chainId),
+        amount: params.amountIn,
+        quoteId,
+        slippagePercent: String(Math.round((params.slippage ?? 0.005) * 10000) / 100),
+        fromTokenAddress: tokenIn,
+        toTokenAddress: tokenOut,
+        userWalletAddress: params.from || '0x0000000000000000000000000000000000000001',
+        receiver: params.recipient || params.from || '0x0000000000000000000000000000000000000001',
+      });
+      // 调用方显式覆盖 gasLimit（防 OKX RFQ 路径估算偏低导致 OOG）
+      if (params.gasLimit && /^\d+$/.test(String(params.gasLimit))) sQs.set('gasLimit', String(params.gasLimit));
+      const sPath = `/api/v6/dex/aggregator/swap?${sQs.toString()}`;
+      const sResp = await axios.get(`${okxBase()}${sPath}`, {
+        timeout: REQUEST_TIMEOUT,
+        headers: okxSign('GET', sPath, cred),
+      });
+      const data = sResp.data?.data?.[0] as OkxQuoteData | undefined;
+      const tx = data?.tx;
+      if (!tx?.to || !tx.data) {
+        throw new ChainRpcError(`OKX DEX swap build failed: ${sResp.data?.msg || 'empty tx'}`, 'dex_swap_failed', 502);
+      }
+      logger.info('[dex-rpc] okx.swap ok', {
+        quoteId,
+        amountOutMin: tx.minReceiveAmount,
+        txTo: tx.to,
+        txGas: tx.gas,
+        txValue: tx.value,
+        dataLen: tx.data.length,
+        ms: Date.now() - t0,
+      });
+      return {
+        chain: params.chain,
+        aggregator: 'okx',
+        amountOutMin: tx.minReceiveAmount || minOut(amountOut, params.slippage ?? 0.005).toString(),
+        quoteId,
+        tx: { to: tx.to, data: tx.data, value: tx.value || '0', chainId, gasLimit: tx.gas },
+      };
+    } catch (err: any) {
+      logger.warn(`[dex-rpc] okx.swap error: ${err?.message || err}`, { chain: params.chain, ms: Date.now() - t0 });
+      throw err;
     }
-    const sQs = new URLSearchParams({
-      chainIndex: String(chainId),
-      amount: params.amountIn,
-      quoteId,
-      slippagePercent: String(Math.round((params.slippage ?? 0.005) * 10000) / 100),
-      fromTokenAddress: t(params.tokenIn),
-      toTokenAddress: t(params.tokenOut),
-      userWalletAddress: params.from || '0x0000000000000000000000000000000000000001',
-      receiver: params.recipient || params.from || '0x0000000000000000000000000000000000000001',
-    });
-    // 调用方显式覆盖 gasLimit（防 OKX RFQ 路径估算偏低导致 OOG）
-    if (params.gasLimit && /^\d+$/.test(String(params.gasLimit))) sQs.set('gasLimit', String(params.gasLimit));
-    const sPath = `/api/v6/dex/aggregator/swap?${sQs.toString()}`;
-    const sResp = await axios.get(`${okxBase()}${sPath}`, {
-      timeout: REQUEST_TIMEOUT,
-      headers: okxSign('GET', sPath, cred),
-    });
-    const data = sResp.data?.data?.[0] as OkxQuoteData | undefined;
-    const tx = data?.tx;
-    if (!tx?.to || !tx.data) {
-      throw new ChainRpcError(`OKX DEX swap build failed: ${sResp.data?.msg || 'empty tx'}`, 'dex_swap_failed', 502);
-    }
-    return {
-      chain: params.chain,
-      aggregator: 'okx',
-      amountOutMin: tx.minReceiveAmount || minOut(amountOut, params.slippage ?? 0.005).toString(),
-      quoteId,
-      tx: { to: tx.to, data: tx.data, value: tx.value || '0', chainId, gasLimit: tx.gas },
-    };
   });
 }
 
@@ -264,6 +306,7 @@ async function inchAvailable(): Promise<boolean> {
 
 async function inchQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
   const chainId = dexChainId(params.chain);
+  const t0 = Date.now();
   const qs = new URLSearchParams({
     src: t(params.tokenIn),
     dst: t(params.tokenOut),
@@ -278,6 +321,7 @@ async function inchQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
   if (!dstAmount) {
     throw new ChainRpcError('1inch quote failed: empty result', 'dex_quote_failed', 502);
   }
+  logger.info('[dex-rpc] 1inch.quote ok', { chain: params.chain, amountOut: dstAmount, ms: Date.now() - t0 });
   return {
     chain: params.chain,
     aggregator: '1inch',
@@ -289,6 +333,7 @@ async function inchQuote(params: DexQuoteParams): Promise<DexQuoteResult> {
 
 async function inchSwap(params: DexQuoteParams): Promise<DexSwapResult> {
   const chainId = dexChainId(params.chain);
+  const t0 = Date.now();
   const qs = new URLSearchParams({
     src: t(params.tokenIn),
     dst: t(params.tokenOut),
@@ -306,6 +351,13 @@ async function inchSwap(params: DexQuoteParams): Promise<DexSwapResult> {
   if (!tx?.to || !tx.data) {
     throw new ChainRpcError('1inch swap build failed: empty tx', 'dex_swap_failed', 502);
   }
+  logger.info('[dex-rpc] 1inch.swap ok', {
+    chain: params.chain,
+    txTo: tx.to,
+    txGas: tx.gas,
+    dataLen: tx.data.length,
+    ms: Date.now() - t0,
+  });
   return {
     chain: params.chain,
     aggregator: '1inch',
