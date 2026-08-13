@@ -96,6 +96,7 @@ export function createDexBroadcastRouter(pool: RpcPoolManager): Router {
         slippage: p.slippage,
         from: p.from,
         recipient: p.recipient,
+        gasLimit: p.gasLimit,
       });
       const tx = await buildSwapTx(pool, normalizeChain(p.chain)!, swap.tx, { from: p.from });
       logger.info('[dex-rpc] swap built', { chain: swap.chain, aggregator: swap.aggregator });

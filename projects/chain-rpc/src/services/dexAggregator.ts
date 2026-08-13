@@ -25,6 +25,7 @@ export interface DexQuoteParams {
   slippage?: number;    // 0.005 = 0.5%
   from?: string;        // 调用方地址（可选，部分聚合器需要）
   recipient?: string;   // 收款地址（可选）
+  gasLimit?: string;    // 覆盖聚合器返回的 gasLimit（EVM，可选；E2E 发现 OKX RFQ 路径估算偏低易 OOG）
 }
 
 export interface DexTx {
@@ -228,6 +229,8 @@ async function okxSwap(params: DexQuoteParams): Promise<DexSwapResult> {
       userWalletAddress: params.from || '0x0000000000000000000000000000000000000001',
       receiver: params.recipient || params.from || '0x0000000000000000000000000000000000000001',
     });
+    // 调用方显式覆盖 gasLimit（防 OKX RFQ 路径估算偏低导致 OOG）
+    if (params.gasLimit && /^\d+$/.test(String(params.gasLimit))) sQs.set('gasLimit', String(params.gasLimit));
     const sPath = `/api/v6/dex/aggregator/swap?${sQs.toString()}`;
     const sResp = await axios.get(`${okxBase()}${sPath}`, {
       timeout: REQUEST_TIMEOUT,
