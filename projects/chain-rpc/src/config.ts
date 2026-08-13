@@ -69,8 +69,8 @@ export const config = {
       return [];
     }
   })(),
-  // A-11.6: approve/swap 构建白名单链集（联动 RPC-3 链补齐；Solana quote 先行二期）
-  dexSupportedChains: (process.env.DEX_SUPPORTED_CHAINS || 'ethereum,bsc,base,arbitrum,polygon,xlayer')
+  // A-11.6: approve/swap 构建白名单链集（2026-08-14 用户裁定：arbitrum/polygon/xlayer 暂不加，仅 eth/bsc/base）
+  dexSupportedChains: (process.env.DEX_SUPPORTED_CHAINS || 'ethereum,bsc,base')
     .split(',').map((s) => s.trim()).filter(Boolean),
   // gasLimit 预估上限保护（防超长 calldata 滥用）
   dexMaxApproveGas: parseInt(process.env.DEX_MAX_APPROVE_GAS || '200000', 10),
