@@ -7,6 +7,7 @@ and joined by nearest timestamp.
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from app.storage import get_db
@@ -16,6 +17,33 @@ from app.factors import get_catalog, normalize_crypto_pair
 # 外部因子 join 白名单：仅附加 catalog 中声明的因子 id，
 # 避免 market_overview/indices 等快照的 sections/summary 等非因子字段污染 bars（D8）。
 _FACTOR_KEYS = {f["id"] for f in get_catalog()}
+
+# _join_factors 快照查询 TTL 缓存（键=symbol，5s 过期）——
+# 高频 /bars 轮询时避免每次全量解析 raw_snapshots 大 JSON（load 热点，见 2026-08-13 诊断）。
+_FACTOR_ROWS_CACHE: dict = {}
+_FACTOR_ROWS_TTL = 5.0
+
+
+def _load_factor_rows(symbol: str) -> list:
+    """每个 data_type 仅取最新一条快照（SQL 去重，替代原 LIMIT 50 后应用层去重）。"""
+    now = time.time()
+    hit = _FACTOR_ROWS_CACHE.get(symbol)
+    if hit and now - hit[0] < _FACTOR_ROWS_TTL:
+        return hit[1]
+    db = get_db()
+    rows = db.execute(
+        """SELECT data_type, raw_json, fetched_at
+           FROM raw_snapshots
+           WHERE (symbol = ? OR symbol = '')
+             AND id IN (SELECT MAX(id) FROM raw_snapshots
+                        WHERE symbol = ? OR symbol = '' GROUP BY data_type)
+           ORDER BY fetched_at DESC""",
+        (symbol, symbol),
+    ).fetchall()
+    if len(_FACTOR_ROWS_CACHE) > 128:
+        _FACTOR_ROWS_CACHE.clear()
+    _FACTOR_ROWS_CACHE[symbol] = (time.time(), rows)
+    return rows
 
 
 def _normalize_kline_symbol(symbol: str, market_type: str) -> str:
@@ -106,16 +134,7 @@ def query_bars(
 
 def _join_factors(bars: list[dict], symbol: str):
     """Attach latest factor values from raw_snapshots to each bar (by nearest time)."""
-    db = get_db()
-    # Get all factor snapshots
-    rows = db.execute(
-        """SELECT data_type, raw_json, fetched_at
-           FROM raw_snapshots
-           WHERE symbol = ? OR symbol = ''
-           ORDER BY fetched_at DESC
-           LIMIT 50""",
-        (symbol,),
-    ).fetchall()
+    rows = _load_factor_rows(symbol)
 
     if not rows:
         return

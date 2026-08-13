@@ -153,6 +153,10 @@ _SIMPLE_FACTOR_IDS = {
     "btc_difficulty", "btc_hashrate", "sentiment_score",
 }
 
+# get_current_factors 结果 TTL 缓存（键=(symbols tuple, category)，5s 过期）
+_FACTORS_CURRENT_CACHE: dict = {}
+_FACTORS_CURRENT_TTL = 5.0
+
 
 def get_current_factors(
     symbols: Optional[list[str]] = None,
@@ -163,9 +167,17 @@ def get_current_factors(
     If category is specified, filters by collector type.
     Simple numeric factors are returned per-symbol.
     Complex data (heatmap, calendar) is returned as raw structures.
+
+    NOTE: 结果按 (symbols, category) 做 5s TTL 缓存 —— 底层快照分钟级更新，
+    高频轮询时避免每次全量解析 raw_snapshots 大 JSON（load 热点，见 2026-08-13 诊断）。
     """
-    db = get_db()
     target = symbols or ["BTC"]
+    cache_key = (tuple(target), category)
+    _hit = _FACTORS_CURRENT_CACHE.get(cache_key)
+    if _hit and time.time() - _hit[0] < _FACTORS_CURRENT_TTL:
+        return _hit[1]
+
+    db = get_db()
     now_ms = int(time.time() * 1000)
 
     result: dict = {}
@@ -191,12 +203,13 @@ def get_current_factors(
         # No filter: include all simple factors + complex snapshots
         wanted = None  # signal: return everything
 
-    # Get latest snapshot per (provider, data_type)
+    # Get latest snapshot per (provider, data_type) — 直接 SQL 去重，
+    # 避免旧实现取 200 条后再在应用层去重（200 条里约 7 成重复，JSON 解析浪费）。
     rows = db.execute(
         """SELECT provider, data_type, raw_json, fetched_at
            FROM raw_snapshots
-           ORDER BY fetched_at DESC
-           LIMIT 200"""
+           WHERE id IN (SELECT MAX(id) FROM raw_snapshots GROUP BY provider, data_type)
+           ORDER BY fetched_at DESC"""
     ).fetchall()
 
     seen: set = set()
@@ -318,6 +331,10 @@ def get_current_factors(
         result["_meta"] = meta
     if complex_data:
         result["_complex"] = complex_data
+    # TTL 缓存：限制条目数防无界增长（组合爆炸时直接清空重建）
+    if len(_FACTORS_CURRENT_CACHE) > 64:
+        _FACTORS_CURRENT_CACHE.clear()
+    _FACTORS_CURRENT_CACHE[cache_key] = (time.time(), result)
     return result
 
 

@@ -1694,6 +1694,29 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > **遗留（2026-08-13 部署发现，非本次改动引入）**：
 > ① ~~oxa 链 DNS 失败~~（✅ 2026-08-13 已修复）：`rpc.l1.oxachain.io` DNS 已死（ENOTFOUND），确认正确域名为 `rpc-oxa.0xainet.top`（chain-rpc 网关 8-10 起在用，AgentX 生产同域名）；collector `rpc-pool.json`+生产 `OXA_RPC_URL` drop-in、dc/index.ts、deploy 模板/文档已全部修正，oxa 扫描已恢复（checkpoint 82,556→前进中，落后 ~21k 块补扫约半天）；
 > ② **eth 扫描慢**：单周期 ~30s（每块 getLogs 响应巨大，5 千+ 事件/块），落后实时约 N 块，属既有性能特征；
-> ③ solana 端点已配置但 `scanner.ts ACTIVE_CHAINS` 未含 solana（未开启扫描）——如需开启另排任务（增加写入量）。
+> ③ **solana 扫描：保持关闭（2026-08-13 用户决策）**。端点已配置（alchemy×2+public，rpc-pool.json 就绪）但 `scanner.ts ACTIVE_CHAINS` 未含 solana。实测（30 slot 采样外推）：**1.41 亿事件/天 ≈ 270GB/天 写入**（当前 5 链合计 ~1780 万/30GB），getBlock 全量响应 8.7MB/slot → 日下载 1.8TB，数据盘一天爆满、Alchemy 免费额度秒尽——全量不可控。如需采集，须先设计白名单（指定代币）+ 金额阈值过滤并小样本验证。
 
 > **备注**：备份（P0）按 docs/INFRAX_BACKUP_MULTI_IP.md §2 另行排期，前置=用户确认目标服务器清单（10 业务库 pg_dump ~90MB/日 + 加密配置，systemd timer 每日 03:30，14日+4周+12月，每月恢复演练）。
+
+---
+
+**9.17 生产负载诊断与优化：data 服务单核打满（2026-08-13 诊断+修复，生产已部署）**
+
+**症状**：172 服务器 2 核 load 3.33，swap 1.5G 改用，IO wait 30%；infrax-data（:9112）24h 烧 16h59m CPU（~70% 单核）。
+
+**根因**（证据链）：
+1. `raw_snapshots`（58.5k 行 / 720MB）**无索引**，两个热点查询每次全表扫：`enrich.py _join_factors`（`WHERE symbol=? OR symbol='' ORDER BY fetched_at DESC LIMIT 50`）与 `factors.py get_current_factors`（`ORDER BY fetched_at DESC LIMIT 200`）；
+2. **最新 200 条里仅 27 个唯一 (provider,data_type)**，73 条重复 —— 每次请求解析 200 条大 JSON（每条 10-50KB）浪费约 7 倍；
+3. **4 个外部 IP 持续高频轮询**（43.156.25.197 ml 服务器 / 43.156.50.6 / 43.133.37.213 / 43.156.55.212），`/bars`（limit 500-1000）、`/factors/current` 单请求 3-5s。
+
+**修复（生产已部署，2026-08-13 13:17 重启生效）**：
+- ✅ 生产 SQLite 建索引：`idx_raw_snapshots_fetched (fetched_at DESC)`、`idx_raw_snapshots_sym_fetched (symbol, fetched_at DESC)`（EXPLAIN 已确认被采用；join 仍残留 `USE TEMP B-TREE FOR ORDER BY` 因 OR 分支合并）；
+- ✅ `factors.py get_current_factors`：SQL 改 `WHERE id IN (SELECT MAX(id) GROUP BY provider,data_type)` 去重（200→27 条解析）+ **5s TTL 结果缓存**（键=(symbols, category)，上限 64 条）；
+- ✅ `enrich.py _join_factors`：SQL 去重（每 data_type 最新 1 条）+ **5s TTL 快照缓存**（键=symbol，上限 128 条）。
+
+**效果（重启后验证）**：`/factors/current` 5s → 279ms（miss）/ 52ms（hit）；`/bars` 3-5s → 40-200ms；data 服务 CPU 70% → **14.5% 稳态**；load 3.33 → 1.71。剩余负载 = collector 四链扫描（eth/bsc/base/sepolia）+ PG 写 events（正常采集业务）。
+
+**遗留**：
+> ① **CLOSE-WAIT 连接泄漏**（data 服务 python 重启后 ~10min 又积累 20+ 个对外 HTTPS CLOSE-WAIT，Recv-Q 积压）：疑 akshare/moomoo 等外部 HTTP 会话连接池对端关 keep-alive 未及时 close，需定位具体 collector（次要，不直接致 CPU 高但 fd/内存缓慢增长）；
+> ② `/factors/history`（43.156.55.212 高频调）单请求仍 0.5-1.5s，未纳入本次优化（下一步可加缓存）；
+> ③ `/bars` limit=1000 大查询 + clean_bars 清洗逻辑本身有成本（40-200ms 已可控，外部轮询频率如有上升需再评估）。
