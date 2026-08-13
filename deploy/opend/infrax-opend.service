@@ -10,7 +10,8 @@ User=ubuntu
 WorkingDirectory=/opt/opend/moomoo_OpenD_10.9.6918_Ubuntu18.04/moomoo_OpenD_10.9.6918_Ubuntu18.04
 # FIFO stdin：systemd 无 stdin 重定向语法，用 bash -c 保证 OpenD 从 FIFO 读交互命令
 ExecStartPre=/bin/bash -c 'mkdir -p /tmp/opend_ctl && [ -p /tmp/opend_ctl/opend_in ] || mkfifo /tmp/opend_ctl/opend_in'
-ExecStart=/bin/bash -c 'exec ./OpenD < /tmp/opend_ctl/opend_in'
+# FIFO 只读打开会阻塞（无写端时 OpenD 无法启动）；tail -f 进程替换立即打开读端并持续转发 stdin 交互命令
+ExecStart=/bin/bash -c 'exec ./OpenD < <(tail -f /tmp/opend_ctl/opend_in)'
 Restart=always
 RestartSec=10
 # 11111 健康探活（脚本 exit!=0 触发重启）

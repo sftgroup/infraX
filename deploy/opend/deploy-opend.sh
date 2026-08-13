@@ -35,6 +35,9 @@ OPEN_D_HOME="${OPEN_D_DIR}/moomoo_OpenD_10.9.6918_Ubuntu18.04/moomoo_OpenD_10.9.
 
 SSH=(ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/kh_opend -o ConnectTimeout=15)
 [ -n "${SSH_PASS:-}" ] && SSH=(sshpass -p "${SSH_PASS}" "${SSH[@]}")
+# scp 同样需要 sshpass 包装（SSH_PASS 模式）
+SCP=(scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/kh_opend)
+[ -n "${SSH_PASS:-}" ] && SCP=(sshpass -p "${SSH_PASS}" "${SCP[@]}")
 
 echo "==> 1/5 校验本机源文件"
 for f in "${SRC_OPEND_TGZ}" "${SRC_SDK}"; do
@@ -48,13 +51,10 @@ fi
 
 echo "==> 2/5 上传分发包 + SDK + unit"
 "${SSH[@]}" "${USER}@${HOST}" "mkdir -p ${REMOTE_TMP}"
-scp -r -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/kh_opend \
-  "${SRC_OPEND_TGZ}" "${SRC_SDK}" "${USER}@${HOST}:${REMOTE_TMP}/"
-scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/kh_opend \
-  "$(dirname "$0")/infrax-opend.service" "$(dirname "$0")/opend-health.sh" "${USER}@${HOST}:${REMOTE_TMP}/"
+"${SCP[@]}" -r "${SRC_OPEND_TGZ}" "${SRC_SDK}" "${USER}@${HOST}:${REMOTE_TMP}/"
+"${SCP[@]}" "$(dirname "$0")/infrax-opend.service" "$(dirname "$0")/opend-health.sh" "${USER}@${HOST}:${REMOTE_TMP}/"
 if [ -f "${SRC_OPEN_D_XML}" ]; then
-  scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/kh_opend \
-    "${SRC_OPEN_D_XML}" "${USER}@${HOST}:${REMOTE_TMP}/OpenD.xml"
+  "${SCP[@]}" "${SRC_OPEN_D_XML}" "${USER}@${HOST}:${REMOTE_TMP}/OpenD.xml"
 fi
 
 echo "==> 3/5 生产机安装（解压/JRE/venv SDK/凭证）"
@@ -71,12 +71,14 @@ if ! command -v java >/dev/null 2>&1; then
   sudo apt-get update -qq && sudo apt-get install -y -qq default-jre-headless
 fi
 
-# venv + moomoo SDK
+# venv + moomoo SDK（SDK 根目录含 setup.py，自动定位）
 if [ ! -x ${OPEN_D_DIR}/venv/bin/python ]; then
   python3 -m venv ${OPEN_D_DIR}/venv
   ${OPEN_D_DIR}/venv/bin/pip install --quiet --upgrade pip
-  ${OPEN_D_DIR}/venv/bin/pip install --quiet ${REMOTE_TMP}/mmapi-python
 fi
+SDK_SETUP_DIR="$(dirname "$(find ${REMOTE_TMP}/mmapi-python -maxdepth 4 -name setup.py | head -1)")"
+[ -n "${SDK_SETUP_DIR}" ] || { echo "SDK setup.py 未找到"; exit 1; }
+${OPEN_D_DIR}/venv/bin/pip install --quiet "${SDK_SETUP_DIR}"
 
 # 凭证落盘（MM-7.2: 权限 600，不入 git）
 if [ -f ${REMOTE_TMP}/OpenD.xml ]; then
