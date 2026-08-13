@@ -1215,7 +1215,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| RPC-1 | 公网接入路径 | nginx 为 `/v1/rpc/:chain` `/v1/broadcast/:chain` `/v1/status` `/v1/subscription/*` `/v1/ws` 提供 **HTTPS 公网入口**（建议独立域名如 `rpc-gw.0xainet.top` 或 Cloudflare 路由），复用平台 key 鉴权（X-API-Key/X-Service-Key/Bearer 三选一契约不变）；交付公网 base URL + TLS 证书有效说明（或等价 VPN/跳板方案） | 🔲 待办 | P0 |
+| RPC-1 | 公网接入路径 | nginx 为 `/v1/rpc/:chain` `/v1/broadcast/:chain` `/v1/status` `/v1/subscription/*` `/v1/ws` 提供 **HTTPS 公网入口**（建议独立域名如 `rpc-gw.0xainet.top` 或 Cloudflare 路由），复用平台 key 鉴权（X-API-Key/X-Service-Key/Bearer 三选一契约不变）；交付公网 base URL + TLS 证书有效说明（或等价 VPN/跳板方案） | ✅ **已完成+生产验证**（2026-08-13：DNS 橙云 + certbot SAN 证书 + nginx 反代；`https://rpc-gw.0xainet.top/v1/rpc/polygon` eth_chainId=0x89、arbitrum blockNumber 全通） | P0 |
 | RPC-2 | 双 key 签发（AIHunter） | 为 AIHunter 签发读 key（`rx_` scope=rpc）+ 广播 key（scope=rpc_broadcast）；验收：读 key 调广播端点 → 401、广播 key 可读可广播、`X-Json-Rpc: raw` 透传正常 | 🔲 待办 | P0 |
 | RPC-3 | 链覆盖补齐 | 现有 6 链（sepolia/ethereum/bsc/base/oxa/solana）保持稳定；**新增 polygon/arbitrum/optimism**（对齐 OKX ChainOS 多链执行面，路由表 137/42161/10；补齐 broadcast 兜底与风控链读缺口）；链参数与链 ID 映射文档化（`GET /v1/status`/plans 返回完整链表） | ✅ **已完成+生产验证**（2026-08-13：rpc-pool.json 公共端点 + CHAIN_RPC_CHAINS 全链已部署；curl /v1/rpc/{polygon,arbitrum,optimism,xlayer} chainId/blockNumber 全通：0x89/0xa4b1/0xa/0xc4） | P1 |
 | RPC-4 | 方法白名单确认 | 放行 AIHunter 读方法清单（`eth_blockNumber/chainId/gasPrice/feeHistory/eth_call/getBalance/getCode/getStorageAt/getTransactionByHash/getTransactionReceipt/getBlockByNumber/getLogs` + solana `get*`）；非白名单 403 语义保留 | ✅ **已完成**（2026-08-13 核对 chainProfiles.ts：EVM_READ_METHODS/SOLANA_READ_METHODS 已覆盖清单全部方法，非白名单 403 由 whitelist.ts 保证） | P1 |
@@ -1493,21 +1493,21 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
-| **MM-1** | data-service 新增 Moomoo 适配器（依赖 MM-7） | | 🔲 | P1 |
+| **MM-1** | data-service 新增 Moomoo 适配器（依赖 MM-7） | | ✅ | P1 |
 | MM-1.1 | 适配器骨架 | `app/data_sources/moomoo.py` 实现 `BaseDataSource`（get_kline/get_ticker）；符号映射 AAPL→US.AAPL、00700→HK.00700，复用 ticker.py `infer_market` | 🔲 | P1 |
 | MM-1.2 | K线调用 + timeframe 映射 | `request_history_kline`（ktype 字符串 K_5M/K_60M/K_DAY、显式 start/end、page_req_key 分页）；映射 1m/5m/15m/30m/1H→K_60M、4H→60m 聚合、1D→K_DAY；**time_key 本地交易所时区→UTC 对齐 kline 表 ts** | 🔲 | P1 |
 | MM-1.3 | 连接池 + 降级 | OpenD 断连自动重连、短 TTL 缓存、fail-silent（未启动/断连/额度耗尽→回退现有源） | 🔲 | P1 |
 | MM-1.4 | 单测 | 本机 pytest 单测（符号/timeframe 映射、降级路径） | 🔲 | P1 |
-| **MM-2** | multi_kline 采集接入（依赖 MM-1） | | 🔲 | P1 |
+| **MM-2** | multi_kline 采集接入（依赖 MM-1） | | ✅ | P1 |
 | MM-2.1 | US 换源 | `kline_store._collect_multi_market`：US 1h/4h 改 moomoo（替代 yfinance 429），1d 保留 akshare/切换对比后定；失败回退 yfinance | 🔲 | P1 |
 | MM-2.2 | HK 分钟级 | HK 补 1m/5m/15m/1h（HK LV1 实测 5m 可用），1d 保留腾讯/切 moomoo 对比 | 🔲 | P1 |
 | MM-2.3 | 额度节流 | 历史K线 1000 额度控制：复用 `_THROTTLE` + page_req_key 分页，防批量超限 | 🔲 | P1 |
 | MM-2.4 | 生产验证 | `/bars?market=usstock&symbol=AAPL&timeframe=1h&limit=200` 连续 7 天无 failed | 🔲 | P1 |
-| **MM-3** | /ticker 回退链插入（依赖 MM-1） | | 🔲 | P1 |
+| **MM-3** | /ticker 回退链插入（依赖 MM-1） | | ✅ | P1 |
 | MM-3.1 | ticker 头部插入 | `ticker.py` usstock/hkstock 第一优先 moomoo `get_market_snapshot`（实时性优于 yfinance/腾讯） | 🔲 | P1 |
 | MM-3.2 | 回退 + 源标记 | 失败走现有链（yfinance fast_info/腾讯）；响应标记 source=moomoo | 🔲 | P1 |
 | MM-3.3 | 生产验证 | `/ticker?symbol=AAPL&market=usstock` 返回 moomoo 源标记 | 🔲 | P1 |
-| **MM-4** | 宏观指标采集器 | | 🔲 | P1 |
+| **MM-4** | 宏观指标采集器 | | ✅ | P1 |
 | MM-4.1 | 采集器实现 | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list('US')`→`get_macro_indicator_history`→写 `macro_history`（series `MM:US:CPI` 命名空间）+ `raw_snapshots`（provider=moomoo_macro） | 🔲 | P1 |
 | MM-4.2 | 周期 + 并存 | 6h 增量对齐 FRED；`/macro/history` 按源过滤，默认 moomoo 优先 FRED 兜底；含 predict_value/release_time | 🔲 | P1 |
 | MM-4.3 | 生产验证 | `/macro/history?series=MM:US:CPI` 含 predict_value | 🔲 | P1 |
@@ -1515,15 +1515,15 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-5.1 | 新闻分支 | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池+市场关键词抓取 | 🔲 | P2 |
 | MM-5.2 | 双源去重 | 与 NewsAPI 并存（url 幂等去重）→ raw_snapshots（provider=news_moomoo）；无 key 时 moomoo 主源 | 🔲 | P2 |
 | MM-5.3 | 生产验证 | `/snapshots?provider=news_moomoo` 非空 | 🔲 | P2 |
-| **MM-6** | ml-service Kronos 供给（依赖 MM-2） | | 🔲 | P2 |
+| **MM-6** | ml-service Kronos 供给（依赖 MM-2） | | ✅ | P2 |
 | MM-6.1 | Kronos 供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径（get_kline 透传） | 🔲 | P2 |
 | MM-6.2 | 生产验证 | 45 符号预测无 429 输入缺口（Kronos 全量 ~18min 属预期） | 🔲 | P2 |
-| **MM-7** | OpenD 生产部署（P0 前置） | | 🔲 | P0 |
-| MM-7.1 | 生产环境安装 | 生产机 43.163.105.172 装 JRE + 部署 OpenD（版本与开发机一致 10.9.6918）+ venv 装 moomoo SDK | 🔲 | P0 |
-| MM-7.2 | 凭证落盘 | OpenD.xml 复用账号 107803923，权限 600，**不入 git**（仓库保持占位/示例） | 🔲 | P0 |
-| MM-7.3 | systemd 化 | `infrax-opend.service`：FIFO stdin、Restart=always、11111 健康探活脚本 | 🔲 | P0 |
-| MM-7.4 | 生产验证 | `get_market_snapshot(['US.SPY'])` 生产机直连通过（含短信验证码登录确认） | 🔲 | P0 |
-| **MM-8** | 资金流/股票列表（依赖 MM-7） | | 🔲 | P2 |
+| **MM-7** | OpenD 生产部署（P0 前置） | | ✅ | P0 |
+| MM-7.1 | 生产环境安装 | 生产机 43.163.105.172 装 JRE + 部署 OpenD（版本与开发机一致 10.9.6918）+ venv 装 moomoo SDK | ✅ | P0 |
+| MM-7.2 | 凭证落盘 | OpenD.xml 复用账号 107803923，权限 600，**不入 git**（仓库保持占位/示例） | ✅ | P0 |
+| MM-7.3 | systemd 化 | `infrax-opend.service`：FIFO stdin、Restart=always、11111 健康探活脚本 | ✅ | P0 |
+| MM-7.4 | 生产验证 | `get_market_snapshot(['US.SPY'])` 生产机直连通过（含短信验证码登录确认） | ✅ | P0 |
+| **MM-8** | 资金流/股票列表（依赖 MM-7） | | ✅ | P2 |
 | MM-8.1 | 资金流落库 | `get_capital_flow`（分钟级 super/big/mid/sml）→ raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子 | 🔲 | P2 |
 | MM-8.2 | 自选池候选 | `get_stock_basicinfo` 作美股自选池候选 | 🔲 | P2 |
 | MM-8.3 | 生产验证 | `/snapshots?provider=moomoo_capital_flow` 非空 | 🔲 | P2 |
@@ -1539,7 +1539,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-11.1 | 权限验证 | 生产机 §7 清单：`get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` | 🔲 | P2 |
 | MM-11.2 | F10 采集器 | skill 脚本（get_financials_*.py/get_research_*.py/get_valuation_*.py）为雏形 → raw_snapshots（provider=moomoo_f10） | 🔲 | P2 |
 | MM-11.3 | 生产验证 | `/snapshots?provider=moomoo_f10` 非空 | 🔲 | P2 |
-| **MM-12** | 卖空/机构/内部人/ARK（依赖 MM-7） | | 🔲 | P2 |
+| **MM-12** | 卖空/机构/内部人/ARK（依赖 MM-7） | | ✅ | P2 |
 | MM-12.1 | 权限验证 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` | 🔲 | P2 |
 | MM-12.2 | 采集器 | skill 脚本为雏形 → raw_snapshots（provider=moomoo_smart_money） | 🔲 | P2 |
 | MM-12.3 | 生产验证 | `/snapshots?provider=moomoo_smart_money` 非空 | 🔲 | P2 |
@@ -1547,11 +1547,11 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-13.1 | 权限验证 | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` | 🔲 | P2 |
 | MM-13.2 | 日历增强 | `collectors/calendar.py` 增强（FRED/Finnhub/FOMC 静态兜底） | 🔲 | P2 |
 | MM-13.3 | 生产验证 | 日历端点含 moomoo 源数据 | 🔲 | P2 |
-| **MM-14** | 榜单/热力/盘前盘后（依赖 MM-7） | | 🔲 | P2 |
+| **MM-14** | 榜单/热力/盘前盘后（依赖 MM-7） | | ✅ | P2 |
 | MM-14.1 | 权限验证 | `get_hot_list`/`get_top_movers_rank`/`get_us_{pre,after,overnight}_rank`/`get_period_change_rank`/`get_heat_map_data` | 🔲 | P2 |
 | MM-14.2 | 采集器 | → raw_snapshots（榜单/热力/盘前盘后排名） | 🔲 | P2 |
 | MM-14.3 | 生产验证 | `/snapshots?provider=moomoo_hot` 非空 | 🔲 | P2 |
-| **MM-15** | 股票筛选/板块（依赖 MM-7） | | 🔲 | P2 |
+| **MM-15** | 股票筛选/板块（依赖 MM-7） | | ✅ | P2 |
 | MM-15.1 | 权限验证 | `get_stock_screen`(V2 244+ 因子)/`get_plate_list`/`get_industrial_chain_*` | 🔲 | P2 |
 | MM-15.2 | 筛选/板块增强 | 作自选池/候选池增强 | 🔲 | P2 |
 | MM-15.3 | 生产验证 | 筛选/板块端点可用 | 🔲 | P2 |
