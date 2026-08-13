@@ -41,6 +41,7 @@ export async function reclassifyRawEvents(batchSize: number = config.reclassifie
        WHERE event_type = 'raw_event'
          AND event_data ? '_raw'
          AND (event_data->>'_classified') IS NULL
+         AND collected_at > NOW() - INTERVAL '12 hours'
        LIMIT $1`,
       [batchSize]
     );
