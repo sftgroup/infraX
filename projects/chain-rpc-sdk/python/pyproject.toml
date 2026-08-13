@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "infra-chain-rpc-client"
+version = "0.1.0"
+description = "Official Python SDK for InfraX chain-rpc gateway — chain reads (/v1/rpc/:chain) + DEX execution (A-11: /v1/dex-rpc quote/approve/swap) with read/broadcast key separation"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "InfraX" }]
+keywords = ["chain-rpc", "dex", "aggregator", "infrax", "web3", "quote", "swap"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = ["requests>=2.25"]
+
+[project.urls]
+Homepage = "https://infrax.io"
+
+[tool.setuptools]
+packages = ["infra_chain_rpc_client"]
