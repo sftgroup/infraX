@@ -63,6 +63,19 @@ class TTLCache:
         value, hit = self._peek(key)
         return value if hit else None
 
+    def peek_stale(self, key: str) -> Any:
+        """返回缓存值（含已过期条目），无条目返回 None。不淘汰、不统计。
+
+        供 SWR（stale-while-revalidate）读取旧值：TTL 过期但重算未完成期间
+        返回旧数据（volatility 等慢变预测可接受陈旧结果），避免分钟级重算
+        窗口内端点长时间返回 null。
+        """
+        with self._lock:
+            item = self._data.get(key)
+            if item is None:
+                return None
+            return item[1]
+
     def bump(self, key: str, **fields: int) -> None:
         """递增缓存统计字段（hits/misses 等）。"""
         self._bump(key, **fields)

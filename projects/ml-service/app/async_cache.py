@@ -34,16 +34,22 @@ class AsyncCacheRunner:
         self._lock = threading.Lock()
 
     def get(self, key: str, compute: Callable[[], Any]) -> Any:
-        """命中返回缓存值；miss 触发后台计算并返回 None（防重入）。
+        """SWR（stale-while-revalidate）读取。
 
-        后台计算完成后写回缓存，后续请求即可命中。
+        命中返回新鲜缓存；缓存缺失/过期时先取旧值（stale）返回（volatility
+        等分钟级重算的慢变预测可接受陈旧结果，避免重算窗口内端点长时间
+        null），同时触发后台刷新（防重入，请求不阻塞）。从未缓存过才返回
+        None。
         """
+        stale = self._cache.peek_stale(key)  # 先取旧值（含过期，不淘汰）
         value = self._cache.peek(key)
         if value is not None:
             self._cache.bump(key, hits=1)
             return value
         self.trigger(key, compute)
-        return None
+        if stale is not None:
+            self._cache.bump(key, stale=1)
+        return stale
 
     def trigger(self, key: str, compute: Callable[[], Any]) -> bool:
         """确保后台计算已启动（同 key 已在计算则跳过）。返回是否新启动。"""
