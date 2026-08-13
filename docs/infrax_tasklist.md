@@ -1358,7 +1358,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-11.1 | 聚合器接入（quote） | `chain-rpc/src/services/dexAggregator.ts`（新增）：OKX DEX Aggregator 客户端（quote/supported-chains）+ 1inch 回退；超时/失败 fail-closed 503；`DEX_AGGREGATOR_URL`/`DEX_API_KEY` 入 config；**2026-08-14 增强：OKX_DEX_KEYS_JSON 凭证池多账号轮询（round-robin + 401/403 failover，commit e4e30be）** | ✅（2026-08-14 生产验证：3 组 key 轮询 quote 9/9 200，P95 ~70ms） | P0 |
 | A-11.2 | approve/swap 构建 | `chain-rpc/src/services/dexBuilder.ts`（新增）：ERC20 approve（amount=0→max uint256）+ swap 未签名 tx（to/data/value/chainId/gasLimit 预估） | ✅（代码完成，待 E2E） | P0 |
 | A-11.3 | `/v1/dex-rpc` 路由与鉴权 | `chain-rpc/src/routes/dexRoutes.ts`（新增）+ `index.ts` 挂载：method 分发（quote 读鉴权 / approve+swap 广播鉴权，分 router）；信封 `{code,message,data}` + `X-Json-Rpc: raw` 透传；请求日志 `dex-rpc` 标签 | ✅（2026-08-14 生产验证：quote 走该路由 200） | P0 |
-| A-11.4 | 链池补齐与白名单 | `rpcPoolConfig.ts` 补 `arbitrum/polygon/xlayer`；`dex.quote` 链上校验（token 精度/余额）方法入白名单（联动 RPC-3） | 🔲 待办 | P1 |
+| A-11.4 | 链池补齐与白名单 | `rpcPoolConfig.ts` 补 `arbitrum/polygon/xlayer`；`dex.quote` 链上校验（token 精度/余额）方法入白名单（联动 RPC-3）。**2026-08-14 用户裁定：arbitrum/polygon/xlayer 暂不加**，DEX 白名单保持 `ethereum,bsc,base`（config `DEX_SUPPORTED_CHAINS`，commit 14029a6） | ⏸️ 延后（白名单已收紧并生产验证） | P1 |
 | A-11.5 | SDK 封装 | infrax-dk `DexAPI`（TS + Python）：`quote/approve/swap` 类型化 + 文档；`dex.broadcast` 复用现有 `ChainRpcAPI.broadcast` | 🔲 待办 | P1 |
 | A-11.6 | 安全加固与限流 | `/v1/dex-rpc` 纳入 rpcQuotaEnforce（读）/广播配额；approve/swap 校验 `chain` 白名单链集；gasLimit 预估上限保护 | 🔲 待办 | P1 |
 | A-11.7 | E2E 验证（生产） | `quote → approve → swap` 模拟 + 真实小额定单：SDK 构建 → MPC `sign-digest` → `/v1/broadcast {wait:true}` → 收据核对；quote P95 < 100ms；接口清单自证无 sign 端点 | 🔲 待办 | P0 |
