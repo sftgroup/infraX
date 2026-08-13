@@ -1641,3 +1641,21 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - [ ] 合格因子自动登记 catalog 并在 data-service `/factors/current` 可见，AItrader factor_client 无改动可消费
 - [ ] 对话驱动：自然语言设定偏好+限制启动挖掘，硬限制不越界（预算/数量/耗时受控），任务状态可查、多轮对话可恢复
 - [ ] 现有 `/ml/*` 预测端点不受影响
+
+---
+
+**2026-08-13 生产运维：PG 数据盘满紧急处置（/dev/vdb 196G）**
+
+**现象**：`/mnt/pgdata`（数据盘）100% 满 → PG 无法写 `pg_wal`/`pg_subtrans` → PANIC 频繁崩溃；collector events 表 149GB（123G heap + 26G 索引）占满全盘。
+
+**根因**：events 表按 7 天保留（cleaner `RETENTION_HOURS=7*24`），但实测写入约 30GB/天 → 7 天数据 ~210GB 超出 196G 数据盘容量；且全量数据都在保留窗口内时 `deleted:0`，表只增不减直到堆满。
+
+**处置（已完成，collector 已恢复写入）**：
+1. `pg_wal` 软链迁移至根盘 `/var/lib/pgdata_wal`（WAL 不再吃数据盘，**永久保留该布局**）
+2. root 删除损坏索引段文件（idx_events_dedup 27G / idx_events_to_chain_block 10G）+ SIGKILL 释放文件句柄 + `DROP INDEX` 清 catalog
+3. `CREATE TABLE events_keep (LIKE events)` 分片复制近 24h（索引强制位图扫描，避开全表 seq scan；共 17.8M 行 / 15GB），TRUNCATE → DROP → RENAME 换表，数据盘从 100% → 11%（167G 可用）
+4. 去重 138 万行重复（索引缺失窗口期混入）后重建全部 13 个索引（含 UNIQUE `idx_events_dedup`）
+5. **cleaner 改造（`collector/src/services/cleaner.ts`，已部署生产）**：保留窗口 7 天 → **72h**（`CLEANER_RETENTION_HOURS` 可覆盖）+ **磁盘守卫**：数据盘可用 <15% 自动按 24h 紧急保留清理；批量 DELETE + 非 FULL VACUUM（空间复用，物理尺寸封顶在窗口峰值）
+6. 恢复 `LIKE` 未复制的 20 个列 DEFAULT（`updated_at` 等 NOT NULL 依赖默认值）
+
+**遗留建议**：① 长期方案 = events 按 collected_at 做时间分区表（DROP PARTITION 物理回收），cleaner 换 `drop_chunks` 类机制；② 数据盘扩容 / 减少采集冗余（如 `idx_events_to_chain_block` 与 `chain_block` 部分重叠）；③ 磁盘使用率告警阈值建议接入监控（>85% 告警）。
