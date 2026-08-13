@@ -1,0 +1,8 @@
+[Unit]
+Description=InfraX fd 兜底监控（infrax-data fd 超阈值自动重启）
+
+[Service]
+Type=oneshot
+ExecStart=/opt/infrax-fd-monitor.sh
+StandardOutput=journal
+StandardError=journal
