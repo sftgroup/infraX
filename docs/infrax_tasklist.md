@@ -1217,8 +1217,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 |---|---|---|---|---|
 | RPC-1 | 公网接入路径 | nginx 为 `/v1/rpc/:chain` `/v1/broadcast/:chain` `/v1/status` `/v1/subscription/*` `/v1/ws` 提供 **HTTPS 公网入口**（建议独立域名如 `rpc-gw.0xainet.top` 或 Cloudflare 路由），复用平台 key 鉴权（X-API-Key/X-Service-Key/Bearer 三选一契约不变）；交付公网 base URL + TLS 证书有效说明（或等价 VPN/跳板方案） | 🔲 待办 | P0 |
 | RPC-2 | 双 key 签发（AIHunter） | 为 AIHunter 签发读 key（`rx_` scope=rpc）+ 广播 key（scope=rpc_broadcast）；验收：读 key 调广播端点 → 401、广播 key 可读可广播、`X-Json-Rpc: raw` 透传正常 | 🔲 待办 | P0 |
-| RPC-3 | 链覆盖补齐 | 现有 6 链（sepolia/ethereum/bsc/base/oxa/solana）保持稳定；**新增 polygon/arbitrum/optimism**（对齐 OKX ChainOS 多链执行面，路由表 137/42161/10；补齐 broadcast 兜底与风控链读缺口）；链参数与链 ID 映射文档化（`GET /v1/status`/plans 返回完整链表） | 🔲 待办 | P1 |
-| RPC-4 | 方法白名单确认 | 放行 AIHunter 读方法清单（`eth_blockNumber/chainId/gasPrice/feeHistory/eth_call/getBalance/getCode/getStorageAt/getTransactionByHash/getTransactionReceipt/getBlockByNumber/getLogs` + solana `get*`）；非白名单 403 语义保留 | 🔲 待办 | P1 |
+| RPC-3 | 链覆盖补齐 | 现有 6 链（sepolia/ethereum/bsc/base/oxa/solana）保持稳定；**新增 polygon/arbitrum/optimism**（对齐 OKX ChainOS 多链执行面，路由表 137/42161/10；补齐 broadcast 兜底与风控链读缺口）；链参数与链 ID 映射文档化（`GET /v1/status`/plans 返回完整链表） | ✅ **已完成+生产验证**（2026-08-13：rpc-pool.json 公共端点 + CHAIN_RPC_CHAINS 全链已部署；curl /v1/rpc/{polygon,arbitrum,optimism,xlayer} chainId/blockNumber 全通：0x89/0xa4b1/0xa/0xc4） | P1 |
+| RPC-4 | 方法白名单确认 | 放行 AIHunter 读方法清单（`eth_blockNumber/chainId/gasPrice/feeHistory/eth_call/getBalance/getCode/getStorageAt/getTransactionByHash/getTransactionReceipt/getBlockByNumber/getLogs` + solana `get*`）；非白名单 403 语义保留 | ✅ **已完成**（2026-08-13 核对 chainProfiles.ts：EVM_READ_METHODS/SOLANA_READ_METHODS 已覆盖清单全部方法，非白名单 403 由 whitelist.ts 保证） | P1 |
 | RPC-5 | 生产 SLA 与配额 | 免费套餐（rpc_free）单 key 月度配额/并发；pro/enterprise 建议与定价；超限 503 升级路径；P95 读 < 500ms（单链非 batch）；batch 并发上限 8、≤100 条/批确认（信号链同秒多策略并发） | 🔲 待办 | P1 |
 | RPC-6 | 广播语义确认 | `wait=true` 回执轮询语义稳定；`confirmed=false` 错误/超时语义；非 2xx 重试建议；广播链覆盖同 RPC-3（含 oxa 19505——nft/subscription 写路径） | 🔲 待办 | P1 |
 | RPC-7 | WS 订阅面 | `/v1/ws`（`eth_subscribe`）链覆盖与配额；高频链上事件订阅（预留，非当前阻塞） | 🔲 待办 | P2 |
@@ -1274,16 +1274,16 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `prd/PRD.md` | MCP & Skill 产品需求（v1.1） | §9.6 + §9.7 | ⚠️ 待审阅（2026-08-08 更新：§4 加架构决策注记 TEE 降级 P3、新增 §4.5 MPC 独立 SDK 需求 → tasklist MQ-10 补充 E-5）；✅ **§3 Phase 1（DC 事件分类）已实施完成（2026-08-12，`0c5605a`+`37387dd`+`3f2a9ce`，生产 E2E 全绿）** |
 | `docs/MCP_USAGE.md` / `docs/SDK_INTEGRATION.md` | MCP/SDK 使用与集成 | §9.7 | ✅（MQ-6：SDK 发布记录已修正 0.3.0；2026-08-08 更新 SDK 0.5.0 `chainRpc` + MCP `rpc-index` 4 工具；SDK 0.5.1 `walletAddress`+`walletSign` 钱包签名鉴权 + MCP 7 服务入站 `inboundAuth` 闭环） |
 | `docs/DEPLOYMENT.md` / `docs/PROJECT_STATUS.md` 等 | 区块链栈部署/状态（旧布局） | §9.8 | ⚠️ 引用已随改名更新 |
-| `docs/FEATURE_REQUEST_RPC_SWITCH.md` | RPC 基础设施切换 InfraX（公网入口 + 双 key + 链补齐 + SLA，AIHunter SaaS） | §9.8.10 | 🔲 待评审（2026-08-12 登记，RPC-1~RPC-7） |
+| `docs/FEATURE_REQUEST_RPC_SWITCH.md` | RPC 基础设施切换 InfraX（公网入口 + 双 key + 链补齐 + SLA，AIHunter SaaS） | §9.8.10 | 🔲 **待评审 → ✅ 已评审执行中**（2026-08-13 用户确认：公网=新子域名 `rpc-gw.0xainet.top` + nginx TLS；链补齐走公共节点优先；RPC-1~RPC-7） |
 | `docs/FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md` | `@infrax/aa-sdk` 发布 npm + 3 处 API 兼容（PocketX） | §9.8.11 | ⚠️ 已裁定（2026-08-12：不单独发包，维持 Aa 命名空间功能覆盖）；AASDK-2/3 待办，**AASDK-4 已拆 AASDK-4.1~4.4（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §1）** |
-| `docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md` | 行情数据 RPC + DEX 交易执行（AIHunter SaaS） | §9.10 | ⚠️ 已裁定排期（2026-08-12：A-11 DEX P0 排期执行，覆盖 A-6 延后项）；**A-11 已拆 A-11.1~A-11.7（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2）**；A-12~A-14 待办 |
-| `docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md` | Session Key 自动交易托管：托管实例 + SDK 封装 + 安全加固（AIHunter SaaS） | §9.10 | 🔲 待评审（2026-08-12 登记，A-15~A-18） |
+| `docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md` | 行情数据 RPC + DEX 交易执行（AIHunter SaaS） | §9.10 | ⚠️ 已裁定排期（2026-08-12：A-11 DEX P0 排期执行，覆盖 A-6 延后项）；**A-11 已拆 A-11.1~A-11.7（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2，2026-08-13 确认 OKX DEX key 由用户提供）**；A-12~A-14 待办 |
+| `docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md` | Session Key 自动交易托管：托管实例 + SDK 封装 + 安全加固（AIHunter SaaS） | §9.10 | 🔲 **待评审 → ✅ 已评审执行中**（2026-08-13 用户确认：A-15~A-18 全做） |
 | `docs/req-04-infrax-mlservice-arch-opt.md` | ml-service 架构优化（Provider 注册表/Device 参数化/因子解耦/统一端点） | §9.15 | 🔲 待评审（2026-08-12 登记，R4-1~R4-4） |
 | `docs/req-05-auto-find-factor.md` | 自动寻找因子（对话驱动 + 偏好/限制，MCP 工具集） | §9.15 | 🔲 待评审（2026-08-12 登记，R5-1~R5-4） |
 | `docs/req-06-factor-factory.md` | 因子工厂（挖掘/评估/管理/入库 → data-service `/factors/current`） | §9.15 | 🔲 待评审（2026-08-12 登记，FF-1~FF-4） |
 | `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | ⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化；HW-1） |
 | `docs/INFRAX_REQ_SUMMARY_ARCH_AUTOFIND_FACTORY.md` | 需求 4/5/6 汇总 + 附录 A 复合/非线性因子计算架构 | §9.15 | 汇总文档（同 R4/R5/FF 状态） |
-| `docs/MOOMOO_DATA_INTEGRATION.md` | MooMoo 行情强化接入（K线/宏观/新闻/资金流/F10/卖空/日历/榜单/筛选，15 任务） | §9.14 | 🔲 待评审（2026-08-12 登记，MM-1~MM-15；OpenD 生产凭证复用账号 107803923，详见 9.14 段） |
+| `docs/MOOMOO_DATA_INTEGRATION.md` | MooMoo 行情强化接入（K线/宏观/新闻/资金流/F10/卖空/日历/榜单/筛选，15 任务） | §9.14 | 🔲 **待评审 → ✅ 已评审执行中**（2026-08-13 用户确认：全量接入 MM-1~MM-10，含新闻/资金流/Kronos 供给；MM-7 OpenD 生产化 P0 前置） |
 
 **9.10 微服务定位纠正与体验对齐（2026-08-11 商业评审，对标 OKX OnchainOS）**
 
