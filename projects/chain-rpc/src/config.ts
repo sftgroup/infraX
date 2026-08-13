@@ -40,17 +40,35 @@ export const config = {
   maxRetries: parseInt(process.env.CHAIN_RPC_MAX_RETRIES || '3', 10),
   requestTimeoutMs: parseInt(process.env.CHAIN_RPC_REQUEST_TIMEOUT_MS || '15000', 10),
 
-  // ── A-11: DEX 交易执行 RPC ───────────────────────────
+  // A-11: DEX 交易执行 RPC ───────────────────────────
   // 聚合器：OKX OnchainOS DEX Aggregator V6 首选（需 OKX DEX 签名鉴权），1inch 回退（需 DEX_API_KEY）
   dexAggregatorUrl: (process.env.DEX_AGGREGATOR_URL || 'https://web3.okx.com').trim(),
   dexApiKey: process.env.DEX_API_KEY || '',
   // OKX V6 签名鉴权（prehash = ts + METHOD + requestPath，HMAC-SHA256 → Base64）；
-  // 与 collector 共用 OKX_CHAINOS_* 凭证，避免重复配置
+  // 支持凭证池（A-11 多账号轮询）：OKX_DEX_KEYS_JSON 为 JSON 数组
+  //   [{"apiKey":"..","apiSecret":"..","apiPassphrase":".."}, ...]
+  // 未配置时回退单组 OKX_DEX_* → OKX_CHAINOS_*（与 collector 共用凭证）
   okxDex: {
     apiKey: process.env.OKX_DEX_API_KEY || process.env.OKX_CHAINOS_API_KEY || '',
     apiSecret: process.env.OKX_DEX_API_SECRET || process.env.OKX_CHAINOS_API_SECRET || '',
     apiPassphrase: process.env.OKX_DEX_API_PASSPHRASE || process.env.OKX_CHAINOS_API_PASSPHRASE || '',
   },
+  // 多账号凭证池（轮询 + failover）。解析失败/为空 → 空数组，运行时回退 okxDex 单组
+  okxDexKeys: ((): Array<{ apiKey: string; apiSecret: string; apiPassphrase: string }> => {
+    try {
+      const raw = JSON.parse(process.env.OKX_DEX_KEYS_JSON || '[]');
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .map((k: any) => ({
+          apiKey: String(k?.apiKey || ''),
+          apiSecret: String(k?.apiSecret || ''),
+          apiPassphrase: String(k?.apiPassphrase || ''),
+        }))
+        .filter((k) => k.apiKey && k.apiSecret && k.apiPassphrase);
+    } catch {
+      return [];
+    }
+  })(),
   // A-11.6: approve/swap 构建白名单链集（联动 RPC-3 链补齐；Solana quote 先行二期）
   dexSupportedChains: (process.env.DEX_SUPPORTED_CHAINS || 'ethereum,bsc,base,arbitrum,polygon,xlayer')
     .split(',').map((s) => s.trim()).filter(Boolean),
