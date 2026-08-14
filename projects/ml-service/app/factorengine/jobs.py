@@ -246,9 +246,18 @@ def _run_wrapper(job_id: str, spec: JobSpec) -> None:
     try:
         from app.factorengine.runner import run_mine
         result = run_mine(spec, progress=progress)
-        if result is None:  # 被超时/取消终止
+        if result is None:
+            # 超时/取消由 progress 落终态；其余 None（无标的/无K线/候选为空）标记 FAILED，
+            # 避免 job 永久停在 RUNNING。
+            job = store.get(job_id)
+            if job is not None and job["status"] == JobStatus.RUNNING.value:
+                store.update(job_id, status=JobStatus.FAILED,
+                             error="无可用数据：asset_pool 无有效标的或 K 线不足（见日志）")
             return
         store.save_results(job_id, result["results"])
+        # FF-3.1：passed 因子自动登记进 catalog（inactive，待人工激活）
+        from app.factorengine.catalog import register_qualified
+        register_qualified(job_id, result["results"])
         store.update(job_id, status=JobStatus.COMPLETED, stage="persist",
                      result={"selected": result["selected"],
                              "stats": result["stats"],

@@ -45,8 +45,15 @@ def _fetch_symbols(spec: JobSpec) -> list[str]:
 
 
 def _kline_df(symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
-    """拉取 K 线并转 DataFrame（index=DatetimeIndex ts）。"""
-    rows = data_client.fetch_bars(symbol, timeframe=timeframe, limit=config.FACTOR_EVAL_BARS + 90)
+    """拉取 K 线并转 DataFrame（index=DatetimeIndex ts）。
+
+    symbol 未命中（如用户传裸符号 BTC）时尝试补 /USDT 后缀（crypto 常见
+    写法），降低 asset_pool 传裸符号导致的"无 K 线达标"失败率。
+    """
+    limit = config.FACTOR_EVAL_BARS + 90
+    rows = data_client.fetch_bars(symbol, timeframe=timeframe, limit=limit)
+    if not rows and "/" not in symbol:
+        rows = data_client.fetch_bars(f"{symbol}/USDT", timeframe=timeframe, limit=limit)
     if not rows:
         return None
     df = pd.DataFrame(rows)

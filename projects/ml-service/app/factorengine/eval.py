@@ -30,6 +30,16 @@ class FactorEvalResult:
 
 
 def _spearman(a: pd.Series, b: pd.Series) -> float | None:
+    # 因子 warmup 不同（ret_60 vs ret_1）导致序列长度不一：先 inner 对齐到共同索引，
+    # 否则 a[mask] 会因 mask 长度（并集）≠ a 长度而 IndexError。对齐失败/无公共
+    # 索引 → 返回 None（独立度退化为跳过，不阻塞选因）。
+    if not a.index.equals(b.index):
+        try:
+            a, b = a.align(b, join="inner")
+        except Exception:
+            return None
+    if len(a) != len(b):
+        return None
     mask = a.notna() & b.notna()
     if mask.sum() < 3:
         return None

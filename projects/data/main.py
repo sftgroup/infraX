@@ -331,6 +331,14 @@ async def factors_current(
         # DQ-4: 因子新鲜度元数据（age_ms / fresh）随响应返回
         meta = result.pop("_meta", {})
         response = {"ts": result.pop("_ts", 0), "meta": meta, "factors": result}
+        # FF-3.3: 透传 ml-service 因子工厂激活因子（AItrader factor_client 无改动感知新因子）
+        try:
+            from app.ml_client import fetch_factor_factory_activations
+            ff = fetch_factor_factory_activations()
+            if ff:
+                response["ml_factory"] = ff
+        except Exception:
+            pass
         return response
     except Exception as e:
         logger.error(f"/factors/current failed: {e}")

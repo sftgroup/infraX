@@ -11,6 +11,7 @@ ml-service 端点（见 ml-service/main.py）：
 from __future__ import annotations
 
 import logging
+import time
 
 import requests
 
@@ -78,8 +79,42 @@ def fetch_consensus() -> dict | None:
     except requests.RequestException as exc:
         logger.debug("ml-service consensus request failed: %s", exc)
         return None
+
+
+# 因子工厂激活列表 TTL 缓存（/factors/current 请求频繁，避免每请求打 ml-service）
+_FF_CACHE: dict = {}
+_FF_CACHE_TTL_S = 60
+
+
+def fetch_factor_factory_activations() -> dict | None:
+    """拉取 ml-service 因子工厂激活因子（/factors/current，FF-3.3）。
+
+    返回 {"updated_at", "factors": [factor_key...]} 或 None（fail-silent）。
+    60s TTL 缓存（激活列表变化低频）。data-service /factors/current 将其
+    透传给下游（AItrader factor_client 无需改动即可感知新挖掘因子）。
+    """
+    global _FF_CACHE  # 函数内赋值 → 需显式 global，否则读取时 UnboundLocalError
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return None
+    now = time.time()
+    if _FF_CACHE and now - _FF_CACHE.get("ts", 0) < _FF_CACHE_TTL_S:
+        return _FF_CACHE.get("data")
+    try:
+        resp = requests.get(f"{base}/factors/current", headers=_headers(), timeout=10)
+        if resp.status_code != 200:
+            logger.debug("ml-service /factors/current → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict) or not data.get("factors"):
+            return None
+        _FF_CACHE = {"ts": now, "data": {"updated_at": data.get("updated_at"), "factors": data["factors"]}}
+        return _FF_CACHE["data"]
+    except requests.RequestException as exc:
+        logger.debug("ml-service /factors/current request failed: %s", exc)
+        return None
     except Exception as exc:
-        logger.debug("ml-service consensus parse failed: %s", exc)
+        logger.debug("ml-service /factors/current parse failed: %s", exc)
         return None
 
 
