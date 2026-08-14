@@ -82,6 +82,84 @@ def _static_fomc_events() -> list[dict]:
     return events
 
 
+# ── 事件说明（经济日历指标的解读，中英双语）──────────────────────
+
+_EVENT_DESC: dict[str, dict[str, str]] = {
+    "Fed policy (FRED release)": {
+        "description": "美联储货币政策决议，影响利率预期与全球风险资产",
+        "description_en": "Fed monetary policy decision; moves rate expectations and global risk assets",
+    },
+    "FOMC Meeting": {
+        "description": "美联储议息会议，关注利率决议与点阵图指引",
+        "description_en": "FOMC meeting; watch rate decision and dot plot guidance",
+    },
+    "Fed Interest Rate Decision": {
+        "description": "美联储利率决议，加息利空风险资产、降息利多",
+        "description_en": "Fed rate decision; hikes pressure risk assets, cuts support them",
+    },
+    "CPI (FRED release)": {
+        "description": "消费者物价指数，核心通胀指标，影响加息预期",
+        "description_en": "Consumer Price Index; core inflation gauge that drives rate expectations",
+    },
+    "CPI MoM": {
+        "description": "消费者物价指数（环比），高于预期增强加息预期",
+        "description_en": "CPI month-over-month; higher than expected raises rate-hike odds",
+    },
+    "Core CPI MoM": {
+        "description": "核心 CPI（剔除食品与能源，环比），美联储关注指标",
+        "description_en": "Core CPI ex food & energy (m/m); key Fed-watched inflation gauge",
+    },
+    "PPI (FRED release)": {
+        "description": "生产者物价指数，上游通胀的先行指标",
+        "description_en": "Producer Price Index; leading upstream inflation indicator",
+    },
+    "PPI MoM": {
+        "description": "生产者物价指数（环比），上游价格压力信号",
+        "description_en": "Producer Price Index (m/m); signal of upstream price pressure",
+    },
+    "Employment Situation (FRED release)": {
+        "description": "美国非农就业报告（就业/失业/薪资），劳动力市场核心指标",
+        "description_en": "US employment report (payrolls/unemployment/wages); core labor market indicator",
+    },
+    "Nonfarm Payrolls": {
+        "description": "非农就业人数变化，衡量就业市场强弱",
+        "description_en": "Nonfarm payrolls change; gauges labor market strength",
+    },
+    "Unemployment Rate": {
+        "description": "失业率，劳动力市场健康状况指标",
+        "description_en": "Unemployment rate; labor market health indicator",
+    },
+    "GDP (FRED release)": {
+        "description": "国内生产总值，衡量经济增长的核心指标",
+        "description_en": "Gross Domestic Product; core economic growth indicator",
+    },
+    "GDP Growth Rate QoQ": {
+        "description": "GDP 季环比增速，反映经济扩张或收缩",
+        "description_en": "GDP quarter-over-quarter growth; reflects expansion or contraction",
+    },
+    "Retail Sales MoM": {
+        "description": "零售销售环比，反映消费需求强弱",
+        "description_en": "Retail sales (m/m); reflects consumer demand strength",
+    },
+    "ISM Manufacturing PMI": {
+        "description": "ISM 制造业 PMI，50 荣枯线之上为扩张",
+        "description_en": "ISM Manufacturing PMI; above 50 signals expansion",
+    },
+    "ISM Services PMI": {
+        "description": "ISM 服务业 PMI，服务业景气度指标",
+        "description_en": "ISM Services PMI; services sector activity gauge",
+    },
+    "Consumer Confidence": {
+        "description": "消费者信心指数，前瞻消费支出意愿",
+        "description_en": "Consumer confidence; forward-looking spending intent",
+    },
+}
+
+
+def _event_description(name: str) -> dict[str, str]:
+    return _EVENT_DESC.get(name, {})
+
+
 # ── FRED ──────────────────────────────────────────────────
 
 def _fetch_fred_calendar() -> Optional[list[dict]]:
@@ -145,8 +223,11 @@ def _fetch_fred_calendar() -> Optional[list[dict]]:
                 if key in seen:
                     continue
                 seen.add(key)
+                desc = _event_description(rel.get("name", ""))
                 events.append({
                     "name": rel.get("name", f"FRED Release {rid}"),
+                    "description": desc.get("description"),
+                    "description_en": desc.get("description_en"),
                     "timestamp": ts,
                     "date": date_str,
                     "country": "US",
@@ -210,8 +291,11 @@ def _fetch_finnhub_calendar() -> Optional[list[dict]]:
                     ts = float(e.get("time", 0))
                 except (TypeError, ValueError):
                     continue
+            desc = _event_description(event_name)
             filtered.append({
                 "name": event_name,
+                "description": desc.get("description"),
+                "description_en": desc.get("description_en"),
                 "timestamp": ts,
                 "date": ts_str,
                 "country": e.get("country", "US"),

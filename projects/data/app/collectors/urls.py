@@ -55,10 +55,11 @@ FRED_OBSERVATIONS_URL = os.getenv(
     "https://api.stlouisfed.org/fred/series/observations",
 )
 
-# 经济日历：FRED release 发布日期（releases/dates），免费 key 可用
+# 经济日历：FRED release 发布日期（release/dates 单数接口，release_id 过滤生效；
+# 复数 releases/dates 会忽略 release_id 返回全部 release 日期，导致日历事件重复/错乱）
 FRED_RELEASES_DATES_URL = os.getenv(
     "FRED_RELEASES_DATES_URL",
-    "https://api.stlouisfed.org/fred/releases/dates",
+    "https://api.stlouisfed.org/fred/release/dates",
 )
 
 # ── Finnhub ────────────────────────────────────────────────
