@@ -15,107 +15,153 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+import requests
+
 from app.factors import save_snapshot
 from app.utils.logger import get_logger
+from app.collectors.urls import FRED_OBSERVATIONS_URL
+from app.collectors.external_factors import _fetch_vix_cboe, _fetch_us10y_bond
 
 logger = get_logger(__name__)
 
 COLLECT_INTERVAL = int(os.getenv("SENTIMENT_COLLECT_INTERVAL_SEC", "1800"))  # 30 min
 
 
-def fetch_yield_curve() -> Dict[str, Any]:
-    """Fetch Treasury yield curve (10Y − 2Y spread) with level/signal."""
+def _yf_close(ticker: str) -> Optional[float]:
+    """yfinance 最新收盘价（限流时 None，fail-silent）。"""
     try:
         import yfinance as yf
+        hist = yf.Ticker(ticker).history(period="5d")
+        if hist is not None and not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        return None
+    return None
 
-        tnx = yf.Ticker("^TNX")
-        tnx_hist = tnx.history(period="5d")
-        if tnx_hist is None or tnx_hist.empty:
-            return {
-                "yield_10y": 4.2, "yield_2y": 4.0, "spread": 0.2, "change": 0,
-                "level": "normal", "signal": "neutral",
-                "interpretation": "数据暂不可用", "interpretation_en": "Data temporarily unavailable",
-            }
 
-        yield_10y = float(tnx_hist["Close"].iloc[-1])
-        try:
-            yield_2y = float(yield_10y * 0.85)  # ^2Y is unavailable on yfinance; proxy from 10Y
-        except Exception:
-            yield_2y = yield_10y
-        spread = yield_10y - yield_2y
-        yc_change = 0.0
+def _fetch_us10y_fred() -> Optional[float]:
+    """US 10Y Treasury yield from FRED DGS10（官方，需 FRED_API_KEY）。"""
+    try:
+        from app.config import APIKeys
+        key = APIKeys.rotate("FRED_API_KEY")
+        if not key:
+            return None
+        resp = requests.get(
+            FRED_OBSERVATIONS_URL,
+            params={"series_id": "DGS10", "api_key": key, "file_type": "json",
+                    "sort_order": "desc", "limit": 2},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.debug("US10Y (FRED) fetch failed: status=%d", resp.status_code)
+            return None
+        for obs in resp.json().get("observations") or []:
+            try:
+                return round(float(obs["value"]), 2)
+            except (TypeError, ValueError):
+                continue
+        return None
+    except Exception as exc:
+        logger.debug("US10Y (FRED) fetch failed: %s", exc)
+        return None
 
-        if spread < -0.5:
-            level, cn, en, signal = "deeply_inverted", "深度倒挂 - 强烈衰退信号", "Deeply Inverted - Strong recession signal", "bearish"
-        elif spread < 0:
-            level, cn, en, signal = "inverted", "收益率倒挂 - 衰退预警", "Inverted - Recession warning", "bearish"
-        elif spread < 0.5:
-            level, cn, en, signal = "flat", "曲线平坦 - 经济放缓信号", "Flat - Economic slowdown signal", "neutral"
-        elif spread < 1.5:
-            level, cn, en, signal = "normal", "正常曲线 - 经济健康", "Normal - Healthy economy", "bullish"
-        else:
-            level, cn, en, signal = "steep", "陡峭曲线 - 经济扩张预期", "Steep - Economic expansion expected", "bullish"
 
-        logger.info("Yield Curve: 10Y=%.2f%%, spread=%.2f%% (%s)", yield_10y, spread, level)
+def fetch_yield_curve() -> Dict[str, Any]:
+    """Fetch Treasury yield curve (10Y − 2Y spread) with level/signal.
+
+    10Y 来源（Yahoo 段限流后不再依赖）：FRED DGS10 → akshare 东财美债 → yfinance。
+    """
+    yield_10y = _fetch_us10y_fred()
+    if yield_10y is None:
+        yield_10y = _fetch_us10y_bond()
+    if yield_10y is None:
+        yield_10y = _yf_close("^TNX")
+    if yield_10y is None:
         return {
-            "yield_10y": round(yield_10y, 2), "yield_2y": round(yield_2y, 2),
-            "spread": round(spread, 2), "change": round(yc_change, 3),
-            "level": level, "signal": signal, "interpretation": cn, "interpretation_en": en,
+            "yield_10y": 4.2, "yield_2y": 4.0, "spread": 0.2, "change": 0,
+            "level": "normal", "signal": "neutral",
+            "interpretation": "数据暂不可用", "interpretation_en": "Data temporarily unavailable",
         }
-    except Exception as e:
-        logger.debug("Failed to fetch Yield Curve: %s", e)
-        return {
-            "yield_10y": 0, "yield_2y": 0, "spread": 0, "change": 0,
-            "level": "unknown", "signal": "neutral",
-            "interpretation": "数据获取失败", "interpretation_en": "Data fetch failed",
-        }
+
+    yield_2y = float(yield_10y * 0.85)  # ^2Y 免费源不可用；由 10Y 近似
+    spread = yield_10y - yield_2y
+
+    if spread < -0.5:
+        level, cn, en, signal = "deeply_inverted", "深度倒挂 - 强烈衰退信号", "Deeply Inverted - Strong recession signal", "bearish"
+    elif spread < 0:
+        level, cn, en, signal = "inverted", "收益率倒挂 - 衰退预警", "Inverted - Recession warning", "bearish"
+    elif spread < 0.5:
+        level, cn, en, signal = "flat", "曲线平坦 - 经济放缓信号", "Flat - Economic slowdown signal", "neutral"
+    elif spread < 1.5:
+        level, cn, en, signal = "normal", "正常曲线 - 经济健康", "Normal - Healthy economy", "bullish"
+    else:
+        level, cn, en, signal = "steep", "陡峭曲线 - 经济扩张预期", "Steep - Economic expansion expected", "bullish"
+
+    logger.info("Yield Curve: 10Y=%.2f%%, spread=%.2f%% (%s)", yield_10y, spread, level)
+    return {
+        "yield_10y": round(yield_10y, 2), "yield_2y": round(yield_2y, 2),
+        "spread": round(spread, 2), "change": 0.0,
+        "level": level, "signal": signal, "interpretation": cn, "interpretation_en": en,
+    }
+
+
+def _fetch_vix3m_cboe() -> Optional[float]:
+    """VIX3M from CBOE official CSV (free, no key；与 VIX 同源)."""
+    try:
+        resp = requests.get(
+            "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX3M_History.csv",
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=15,
+        )
+        if resp.status_code != 200:
+            return None
+        lines = [ln.strip() for ln in resp.text.strip().splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return None
+        last = lines[-1].split(",")
+        if len(last) >= 5 and last[4]:
+            return round(float(last[4]), 2)
+        return None
+    except Exception as exc:
+        logger.debug("VIX3M (CBOE) fetch failed: %s", exc)
+        return None
 
 
 def fetch_put_call_ratio() -> Dict[str, Any]:
-    """Put/Call ratio proxy from the VIX term structure (VIX / VIX3M)."""
-    try:
-        import yfinance as yf
+    """Put/Call ratio proxy from the VIX term structure (VIX / VIX3M).
 
-        vix = yf.Ticker("^VIX")
-        vix3m = yf.Ticker("^VIX3M")
-        vix_hist = vix.history(period="5d")
-        vix3m_hist = vix3m.history(period="5d")
-
-        ratio = 1.0
-        vix_val = vix3m_val = 0.0
-        change = 0.0
-        if len(vix_hist) >= 1 and len(vix3m_hist) >= 1:
-            vix_val = float(vix_hist["Close"].iloc[-1])
-            vix3m_val = float(vix3m_hist["Close"].iloc[-1])
-            ratio = vix_val / vix3m_val if vix3m_val > 0 else 1.0
-            if len(vix_hist) >= 2 and len(vix3m_hist) >= 2:
-                prev_ratio = vix_hist["Close"].iloc[-2] / vix3m_hist["Close"].iloc[-2] if vix3m_hist["Close"].iloc[-2] > 0 else 1.0
-                change = ((ratio - prev_ratio) / prev_ratio) * 100 if prev_ratio else 0.0
-
-        if ratio > 1.15:
-            level, cn, en, signal = "high_fear", "VIX倒挂 - 短期恐慌情绪高涨", "VIX Backwardation - High short-term fear", "bearish"
-        elif ratio > 1.0:
-            level, cn, en, signal = "elevated", "轻度倒挂 - 市场谨慎", "Slight Backwardation - Market cautious", "neutral"
-        elif ratio > 0.9:
-            level, cn, en, signal = "normal", "正常结构 - 市场稳定", "Normal Structure - Market stable", "neutral"
-        elif ratio > 0.8:
-            level, cn, en, signal = "complacent", "深度正价差 - 市场自满", "Deep Contango - Market complacent", "bullish"
-        else:
-            level, cn, en, signal = "extreme_complacency", "极度自满 - 警惕反转", "Extreme Complacency - Watch for reversal", "neutral"
-
-        logger.info("VIX Term Structure: ratio=%.3f (%s)", ratio, level)
+    VIX/VIX3M 均优先 CBOE 官方 CSV，其次 yfinance（限流时缺省降级）。
+    """
+    vix_val = _fetch_vix_cboe()
+    if vix_val is None:
+        vix_val = _yf_close("^VIX")
+    vix3m_val = _fetch_vix3m_cboe()
+    if vix3m_val is None:
+        vix3m_val = _yf_close("^VIX3M")
+    if vix_val is None or vix3m_val is None:
         return {
-            "value": round(ratio, 3), "vix": round(vix_val, 2), "vix3m": round(vix3m_val, 2),
-            "change": round(change, 2), "level": level, "signal": signal,
-            "interpretation": cn, "interpretation_en": en,
-        }
-    except Exception as e:
-        logger.debug("Failed to calculate Put/Call proxy: %s", e)
-        return {
-            "value": 1.0, "vix": 0, "vix3m": 0, "change": 0,
-            "level": "unknown", "signal": "neutral",
+            "value": 1.0, "vix": round(vix_val or 0, 2), "vix3m": round(vix3m_val or 0, 2),
+            "change": 0, "level": "unknown", "signal": "neutral",
             "interpretation": "数据获取失败", "interpretation_en": "Data fetch failed",
         }
+
+    ratio = vix_val / vix3m_val if vix3m_val > 0 else 1.0
+    if ratio > 1.15:
+        level, cn, en, signal = "high_fear", "VIX倒挂 - 短期恐慌情绪高涨", "VIX Backwardation - High short-term fear", "bearish"
+    elif ratio > 1.0:
+        level, cn, en, signal = "elevated", "轻度倒挂 - 市场谨慎", "Slight Backwardation - Market cautious", "neutral"
+    elif ratio > 0.9:
+        level, cn, en, signal = "normal", "正常结构 - 市场稳定", "Normal Structure - Market stable", "neutral"
+    elif ratio > 0.8:
+        level, cn, en, signal = "complacent", "深度正价差 - 市场自满", "Deep Contango - Market complacent", "bullish"
+    else:
+        level, cn, en, signal = "extreme_complacency", "极度自满 - 警惕反转", "Extreme Complacency - Watch for reversal", "neutral"
+
+    logger.info("VIX Term Structure: ratio=%.3f (%s)", ratio, level)
+    return {
+        "value": round(ratio, 3), "vix": round(vix_val, 2), "vix3m": round(vix3m_val, 2),
+        "change": 0, "level": level, "signal": signal,
+        "interpretation": cn, "interpretation_en": en,
+    }
 
 
 def _latest_fear_greed() -> Optional[int]:
