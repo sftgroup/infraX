@@ -59,6 +59,9 @@ FACTOR_MINER_SCHEDULE_INTERVAL_H = float(os.getenv("FACTOR_MINER_SCHEDULE_INTERV
 FACTOR_MINER_SCHEDULE_DELAY_S = float(os.getenv("FACTOR_MINER_SCHEDULE_DELAY_S", "60"))
 FACTOR_MINER_SCHEDULE_SPEC = os.getenv("FACTOR_MINER_SCHEDULE_SPEC", "")
 FACTOR_MINER_SCHEDULE_INTENT = os.getenv("FACTOR_MINER_SCHEDULE_INTENT", "")
+# ICIR 阈值（动态可调）：INTENT 分支强制覆盖 LLM 解析值（LLM 输出数字不确定，
+# 阈值调整只改 .env 这一个数字重启即生效，不依赖意图文案）
+FACTOR_MINER_SCHEDULE_MIN_ICIR = float(os.getenv("FACTOR_MINER_SCHEDULE_MIN_ICIR", "0.3"))
 
 # ── 因子工厂 LLM 意图解析（需求5 R5-4） ──────────────────
 # OpenAI 兼容 chat completions（默认 DeepSeek）；未配置时自然语言入口 400 提示。
