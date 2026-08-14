@@ -108,7 +108,8 @@ server.tool(
   "取消挖掘任务（排队/运行中可取消）。",
   { job_id: z.string().describe("任务 id") },
   async ({ job_id }) => {
-    const r = await ml(`/factor-factory/cancel?job_id=${encodeURIComponent(job_id)}`);
+    // ml-service 侧为 POST /factor-factory/cancel?job_id=（main.py 484，GET 会 405）
+    const r = await ml(`/factor-factory/cancel?job_id=${encodeURIComponent(job_id)}`, { method: "POST" });
     return { content: [{ type: "text" as const, text: JSON.stringify(r.body || r, null, 2) }] };
   }
 );
