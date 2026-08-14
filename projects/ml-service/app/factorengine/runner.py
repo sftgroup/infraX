@@ -63,12 +63,11 @@ def _kline_df(symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
 
 
 def _candidate_keys(spec: JobSpec) -> list[str]:
-    """候选因子：DSL 公式（LLM/用户指定，优先） + pool 展开 → 偏好/限制过滤。"""
-    pool = expand_factor_pool()
-    # FF-5：LLM 生成的 DSL 公式候选，优先于内置池（指定了就该被评估）
+    """候选因子：DSL 公式（LLM/用户指定，优先且不被风格过滤） + pool 展开过滤。"""
     dsl_pool = dsl_candidates(spec.formulas)
-    pool = dsl_pool + pool
-    # 偏好：风格类别过滤（momentum→L0，volatility→L1，trend→L2，mean_reversion→L0/L4）
+    pool = expand_factor_pool()
+    # 偏好：风格类别过滤（momentum→L0，volatility→L1，trend→L2，mean_reversion→L0/L4）。
+    # 只作用于内置池——DSL 公式候选是 LLM/用户显式指定，不因风格被过滤（FF-5）
     styles = spec.preferences.factor_styles
     if "any" not in styles:
         cat_map = {"momentum": "L0", "volatility": "L1", "trend": "L2",
@@ -82,7 +81,7 @@ def _candidate_keys(spec: JobSpec) -> list[str]:
     if cons.whitelist_keys:
         pool = [c for c in pool if c.key in cons.whitelist_keys]
     pool = [c for c in pool if c.key not in cons.blacklist_keys]
-    return [c.key for c in pool][: cons.max_factors]
+    return [c.key for c in dsl_pool + pool][: cons.max_factors]
 
 
 def run_mine(spec: JobSpec,

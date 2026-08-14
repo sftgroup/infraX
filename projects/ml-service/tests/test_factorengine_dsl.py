@@ -148,6 +148,21 @@ def test_pool_merge_dsl_first():
     assert cands[0].key in [c.key for c in cands + expand_factor_pool()]
 
 
+def test_dsl_candidates_survive_style_filter():
+    """DSL 候选（L5）不被风格过滤掉（FF-5：LLM/用户显式指定的公式必须被评估）。"""
+    from app.factorengine.job import build_spec
+    from app.factorengine.runner import _candidate_keys
+
+    spec, _ = build_spec(
+        preferences={"factor_styles": ["momentum", "volatility"], "asset_pool": ["BTC"]},
+        formulas=["close.pct_change().rolling(20).std()"],
+    )
+    keys = _candidate_keys(spec)
+    dsl_keys = [k for k in keys if k.startswith("dsl_")]
+    assert len(dsl_keys) == 1
+    assert dsl_keys[0] == dsl_key_for_formula("close.pct_change().rolling(20).std()")
+
+
 def test_build_spec_formulas():
     spec, conflicts = build_spec(
         preferences={"asset_pool": ["BTC"]},
