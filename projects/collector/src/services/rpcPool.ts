@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { RpcEndpoint, RpcPoolConfig } from './rpcPoolConfig';
+import { egressProxy } from './egressProxy';
 import { logger } from '../logger';
 
 /**
@@ -24,6 +25,8 @@ export class RpcPoolManager {
 
   constructor(config: RpcPoolConfig) {
     this.config = config;
+    // RI-4.2: 初始化出口代理池（空配置=直连），RPC 请求经代理轮换出口 IP
+    egressProxy.init();
     this.startHealthChecks();
   }
 
@@ -217,6 +220,9 @@ export class RpcPoolManager {
           {
             timeout: REQUEST_TIMEOUT_MS,
             headers: { 'Content-Type': 'application/json' },
+            // RI-4.3: 免费 RPC 出口轮换 — 经代理池（round-robin）分摊 per-IP 配额；
+            // 无健康代理 → null = 直连（fail-silent）
+            proxy: egressProxy.getProxyConfig(),
           }
         );
 

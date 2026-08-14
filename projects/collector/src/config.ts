@@ -74,13 +74,26 @@ export const config = {
     schedulerMempumpMs: parseInt(process.env.OKX_MARKET_MEMPUMP_INTERVAL_MS || '300000', 10),
   },
 
-  // Event reclassifier (raw_event → classified)
+  // Reclassifier (raw_event → classified)
   reclassifier: {
     intervalMs: parseInt(process.env.RECLASSIFY_INTERVAL_MS || '30000', 10),
     batchSize: parseInt(process.env.RECLASSIFY_BATCH_SIZE || '500', 10),
     firstRunDelayMs: parseInt(process.env.RECLASSIFY_FIRST_RUN_MS || '10000', 10),
     customSigsRefreshMs: parseInt(process.env.RECLASSIFY_CUSTOM_SIGS_REFRESH_MS || '300000', 10),
   },
+
+  // RI-4.2: Egress proxy pool (出口 IP 轮换). JSON array; empty → direct connect.
+  //   [{ "host": "127.0.0.1", "port": 18848, "auth": "proxy-token" }, ...]
+  // Rollback = clear EGRESS_PROXIES and restart.
+  egressProxies: (() => {
+    try {
+      const raw = process.env.EGRESS_PROXIES || '[]';
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  })(),
 };
 
 // Startup safety checks — fail-closed in production

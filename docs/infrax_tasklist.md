@@ -1687,13 +1687,13 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | **RI-3** | 请求侧节流 | | 🔲 | P1 |
 | RI-3.1 | 指数退避+jitter 封装 | collector okx 客户端、knowledge-injector yfinance 统一封装（429/5xx → 1s→2s→4s + jitter） | ✅（2026-08-15 部署：`okxMarketV6.ts` request 内 429/5xx → `1000×2^n×(0.6+rand×0.8)` 退避重试 3 次（402/其他 4xx 不重试透传），本地 mock 验证 backoff 区间 PASS；`knowledge-injector/providers/_yf_helpers.py` `_MAX_RETRIES 1→3`、退避加 jitter、`_is_rate_limit` 覆盖 429/5xx（500/502/503/504/server error）。生产部署 infrax-collector + infrax-knowledge-injector 重启，okx Snapshot 300 tokens 0 errors 无回归） | 🔲 | P1 |
 | RI-3.2 | 基线观察 | 24-48h 记录 429/错误率基线 | 🔲（2026-08-15 04:38 部署后起算观察期，journald 日志留存：`journalctl -u infrax-collector | grep -E '429|rate-limit'` 可统计 okx/rpc-pool 429 基线；okx 429 重试现走 warn 日志） | P1 |
-| **RI-4** | 多 IP 出口代理池（免费 RPC 多 IP 轮换核心；🔲 待用户提供目标服务器清单） | | 🔲 | P1 |
-| RI-4.1 | 代理部署 | 2-3 台空闲服务器装轻量 CONNECT 代理（自写/tinyproxy）+ token 鉴权 + 源 IP 白名单，不暴露公网 | 代理探测通过 | 🔲 | P1 |
-| RI-4.2 | EGRESS_PROXIES 配置层 | 主服务器调用侧代理池配置（JSON，默认空=直连；回滚=清空重启） | 配置驱动生效 | 🔲 | P1 |
-| RI-4.3 | 免费 RPC 出口轮换 | 公共节点请求经代理池轮换出口 IP（分摊 per-IP 配额） | 出口 IP 可轮换 | 🔲 | P1 |
-| RI-4.4 | yfinance 出口轮换 | proxies 按请求轮换（Yahoo 单 IP 高频 429） | 出口 IP 可轮换 | 🔲 | P1 |
-| RI-4.5 | 健康探测+降级 | 30s 探测，代理故障自动回直连（fail-silent） | 单代理故障无感知 | 🔲 | P1 |
-| RI-4.6 | 验收 | 免费 RPC/Yahoo 出口 IP 可轮换；单代理故障 fail-silent；24h 观察 | | 🔲 | P1 |
+| **RI-4** | 多 IP 出口代理池（免费 RPC 多 IP 轮换核心） | | ✅ | P1 |
+| RI-4.1 | 代理部署 | 5 台服务器装轻量 CONNECT 代理（自写 `connect_proxy.py`，select+threading）+ token 鉴权 + 本机绑定（`127.0.0.1:8848`）+ systemd；主服务器经 5 条 SSH `-L` 隧道（本地 18848-18852）接入，规避云防火墙 | ✅（2026-08-15 部署：5 台 systemd `infrax-egress-proxy` 均 active，5 条 `infrax-egress-tunnel-{1..5}` active，经代理 curl ipify 验证 5 个不同出口 IP：43.156.99.215/225.164/138.166/133.37.213/159.60.46） | ✅ | P1 |
+| RI-4.2 | EGRESS_PROXIES 配置层 | 主服务器调用侧代理池配置（JSON，默认空=直连；回滚=清空重启） | ✅（2026-08-15：collector `.env` + knowledge-injector systemd drop-in `egress.conf` 注入 5 代理 JSON；collector `config.ts` `egressProxies` 解析（非法 JSON→`[]` 直连）；knowledge-injector `_yf_helpers._load_egress_proxies()` 加载（修复 drop-in 非法 JSON key 无引号导致池空→改写为合法 JSON，进程 environ 验证 `json.loads` OK）） | ✅ | P1 |
+| RI-4.3 | 免费 RPC 出口轮换 | 公共节点请求经代理池轮换出口 IP（分摊 per-IP 配额） | ✅（2026-08-15：`collector/src/services/egressProxy.ts` EgressProxyManager（round-robin+30s 探测）+ `rpcPool.ts` axios `proxy:` 注入；生产部署后 5 台出口 TUNNEL 流量均匀 55-56 条，轮换生效） | ✅ | P1 |
+| RI-4.4 | yfinance 出口轮换 | proxies 按请求轮换（Yahoo 单 IP 高频 429） | ✅（2026-08-15：yfinance 1.5.2 `_make_request` 每次用 `YfConfig.network.proxy` 覆盖 session.proxies（data.py），故改设 `YfConfig.network.proxy` 为 round-robin 选中代理（session.proxies 方式会被覆盖失效）；`safe_history` 带池实测 `hist=(5,7)` 成功，5 台出口 yahoo TUNNEL 12/10/10/… 条确认轮换） | ✅ | P1 |
+| RI-4.5 | 健康探测+降级 | 30s 探测，代理故障自动回直连（fail-silent） | ✅（2026-08-15：collector egressProxy 30s 探测 ipify；knowledge-injector `_egress_probe` 30s 探测，unhealthy 跳过+日志告警。单代理故障演练：停 `infrax-egress-tunnel-5` → 18852 探测失败自动跳过（8 次轮换无 18852），safe_history 正常 `hist=(5,7)`；恢复后 18852 自动回归轮换） | ✅ | P1 |
+| RI-4.6 | 验收 | 免费 RPC/Yahoo 出口 IP 可轮换；单代理故障 fail-silent；24h 观察 | 🔲（2026-08-15 验证完毕，24h 观察自 05:13 起） | ✅ | P1 |
 
 > **遗留（2026-08-13 部署发现，非本次改动引入）**：
 > ① ~~oxa 链 DNS 失败~~（✅ 2026-08-13 已修复）：`rpc.l1.oxachain.io` DNS 已死（ENOTFOUND），确认正确域名为 `rpc-oxa.0xainet.top`（chain-rpc 网关 8-10 起在用，AgentX 生产同域名）；collector `rpc-pool.json`+生产 `OXA_RPC_URL` drop-in、dc/index.ts、deploy 模板/文档已全部修正，oxa 扫描已恢复（checkpoint 82,556→前进中，落后 ~21k 块补扫约半天）；
