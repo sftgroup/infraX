@@ -38,9 +38,13 @@ PREFIX_BY_SCOPE = {
     "mpc": "mp_",       # mpc 服务
     "chain-rpc": "cr_", # chain-rpc 网关（读/广播）
     "waas": "wa_",      # waas 服务
+    "rpc": "cr_",           # chain-rpc 读校验 scope（RPC-2：外部 key 可读；AIHunter 读 key 走 chain-rpc rx_ 订阅 key）
+    "rpc_broadcast": "cr_", # chain-rpc 广播 key（RPC-2：可读可广播，与 rpc 家族互认）
 }
 _DEFAULT_PREFIX = "dx_"
 _DEFAULT_RATE_LIMIT = 100
+# chain-rpc 外部 key 家族：广播 key 需同时通过读校验（scope=rpc），故两者互认
+_RPC_FAMILY_SCOPES = ("rpc", "rpc_broadcast")
 
 # ── 表结构（幂等创建，模块导入时执行）────────────────────────
 _DDL = """
@@ -126,10 +130,17 @@ def verify(api_key: str, scope: str = "data") -> int:
     prefix = PREFIX_BY_SCOPE.get(scope, _DEFAULT_PREFIX)
     if not api_key or not api_key.startswith(prefix):
         return 401
-    row = get_db().execute(
-        "SELECT id, enabled, rate_limit FROM api_keys WHERE key_hash = ? AND scope = ?",
-        (_hash(api_key), scope),
-    ).fetchone()
+    # chain-rpc 家族互认（RPC-2）：rpc_broadcast key 需同时通过读校验（scope=rpc）
+    if scope in _RPC_FAMILY_SCOPES:
+        row = get_db().execute(
+            "SELECT id, enabled, rate_limit FROM api_keys WHERE key_hash = ? AND scope IN (?, ?)",
+            (_hash(api_key), _RPC_FAMILY_SCOPES[0], _RPC_FAMILY_SCOPES[1]),
+        ).fetchone()
+    else:
+        row = get_db().execute(
+            "SELECT id, enabled, rate_limit FROM api_keys WHERE key_hash = ? AND scope = ?",
+            (_hash(api_key), scope),
+        ).fetchone()
     if row is None:
         return 401
     if not row["enabled"]:
