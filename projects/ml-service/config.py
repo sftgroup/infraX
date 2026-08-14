@@ -45,6 +45,21 @@ FACTOR_EVAL_BARS = int(os.getenv("FACTOR_EVAL_BARS", "800"))
 # 挖掘 worker 并发数（小内存机保持 1，防挤爆 CPU/内存）
 FACTOR_MINER_WORKERS = int(os.getenv("FACTOR_MINER_WORKERS", "1"))
 
+# ── 因子工厂定时挖掘（需求6 FF-4.1） ─────────────────────
+# 进程内 daemon 线程（仿 async_cache.prewarm_loop）：启动 delay 后每
+# INTERVAL_H 小时触发一次 start_job。负载控制：
+#   - 单 worker 串行 + 已有 QUEUED/RUNNING 任务跳过本 tick（手动/定时不叠加）
+#   - 距上次终态任务不足 interval 跳过（重启后不立即重复跑）
+#   - interval 下限 1h（防误配导致高频空转）；spec 用保守 max_targets/max_runtime
+# 默认 spec：FACTOR_MINER_SCHEDULE_SPEC（结构化 JSON {preferences, constraints}）；
+# 设置 FACTOR_MINER_SCHEDULE_INTENT（自然语言）时优先走 LLM 意图解析（R5-4）。
+# 未启用 / SPEC/INTENT 均未配置 / 解析失败 → 调度线程不启动（fail-silent）。
+FACTOR_MINER_SCHEDULE_ENABLED = os.getenv("FACTOR_MINER_SCHEDULE_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+FACTOR_MINER_SCHEDULE_INTERVAL_H = float(os.getenv("FACTOR_MINER_SCHEDULE_INTERVAL_H", "6"))
+FACTOR_MINER_SCHEDULE_DELAY_S = float(os.getenv("FACTOR_MINER_SCHEDULE_DELAY_S", "60"))
+FACTOR_MINER_SCHEDULE_SPEC = os.getenv("FACTOR_MINER_SCHEDULE_SPEC", "")
+FACTOR_MINER_SCHEDULE_INTENT = os.getenv("FACTOR_MINER_SCHEDULE_INTENT", "")
+
 # ── 因子工厂 LLM 意图解析（需求5 R5-4） ──────────────────
 # OpenAI 兼容 chat completions（默认 DeepSeek）；未配置时自然语言入口 400 提示。
 FACTOR_LLM_API_KEY = os.getenv("FACTOR_LLM_API_KEY", os.getenv("LLM_BINDING_API_KEY", ""))

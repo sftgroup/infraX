@@ -270,6 +270,16 @@ def _start_prewarm() -> None:
     )
 
 
+@app.on_event("startup")
+def _start_factor_miner_scheduler() -> None:
+    """启动定时挖掘调度线程（FF-4.1）；未启用/配置缺失时 fail-silent。"""
+    from app.factorengine.scheduler import start_miner_scheduler
+
+    t = start_miner_scheduler()
+    if t is not None:
+        logger.info("factor miner scheduler thread started (%s)", t.name)
+
+
 # ── 缓存统计（与 /metrics 同级豁免鉴权，监控探针免 key 拉取） ──────
 
 @app.get("/ml/cache/stats")
