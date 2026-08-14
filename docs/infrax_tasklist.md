@@ -927,7 +927,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | B-3 | MPC 是否升级真 MPC/TEE（当前单 EOA 私钥、`shard_count` 恒 1/1、无 TEE 硬件隔离） | ✅ 真 TSS 分片签名已落地（E-4：cggmp21，M1-M4 生产 9200/9201，签名全程无完整私钥重建）；🔲 **TEE 硬件隔离（SGX/Nitro）延后**（2026-08-11 用户决策：先延后，待 TEE 环境审批，与 9.6 Phase 2 排期联动，P3） | P2 |
 | B-4 | Vault 运行期接入鉴权：`auth.ts` 已定义 5 种中间件但 `server.ts` 未挂载 → 全部端点裸奔 | ✅ `148cc42`（共享中间件 + `vx_` scope） | P0 |
 | B-5 | Vault 功能补齐：`safe_owners` 表建表、`updateSafeOwners` 走链上、多链支持（当前仅 Sepolia）、`GAS_POOL_PRIVATE_KEY` 注入 systemd | ✅ `a0dbc76`（见 §9.8.1-B5 备注：safe_owners 表 + 链上多签 + 4 链 + GAS_POOL，生产 schema 修复 + E2E 9/9） | P1 |
-| B-6 | Session Key Engine（:3500）+ MCP 生产部署（⚠️ 当前未上线；MCP 默认端口 9111 与 web 冲突，需改端口；session-key 实现最完整：Bearer + EIP-712 + 白名单 + Redis 锁） | ✅ `414248c`（engine :3500 + MCP :3011 per-request stateless transport；E2E 401/403/200 + MCP initialize 200/7 工具全通） | P1 |
+| B-6 | Session Key Engine（:3500）+ MCP 生产部署（已上线：engine :3500 + MCP :3011，per-request stateless transport；session-key 实现完整：Bearer + EIP-712 + 白名单 + Redis 锁） | ✅ `414248c`（engine :3500 + MCP :3011 per-request stateless transport；E2E 401/403/200 + MCP initialize 200/7 工具全通） | P1 |
 
 > **B-5 备注（已完成）**：`multiSigService.ts` 新增 `SAFE_MANAGEMENT_ABI` + `SENTINEL_OWNERS` + `parseOwners`/`computeOwnerOps`/`encodeOwnerOp`；`updateSafeOwners` 改为生成 Safe owner 管理交易（addOwner/removeOwner/changeThreshold，`to=safeAddress` self-call）逐条 propose 为 `safe_transactions`（链上 nonce，RPC 不可达 fallback DB MAX(nonce)+1），可选 `signature` 自动 confirm；`createSafe`/`executeTransaction` 成功后同步写/回写 `safe_owners`；`CHAIN_CONFIG` 扩展 4 链（11155111/1/56/8453，Sepolia 沿用历史 Safe 地址，其余官方 Safe v1.4.1）。生产部署：GAS_POOL key 注入 `override.conf`；**生产 schema 修复**（旧 `safe_owners` id=integer → drop 重建 UUID + backfill 17 行；`safe_signatures` 旧 schema 无 `safe_tx_hash` → 重建；`safe_transactions` 补 `executor_id/executed_at/tx_hash/error_message`）；E2E 全绿 9/9（4 链 createSafe、owners ADD propose、safe 详情 tx 可见、no-op 不产生 tx）。注：GAS_POOL 各链余额为 0，createSafe 当前落 pending（代码路径已验证，链上部署待充币后生效）。
 
@@ -1755,7 +1755,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 ---
 
-**9.18 生产扩容迁移（方案 C：整盘迁移 + ML 服务外迁，2026-08-15 定稿，详见 docs/INFRAX_MIGRATION_SCALE_OUT.md）**
+**9.19 生产扩容迁移（方案 C：整盘迁移 + ML 服务外迁，2026-08-15 定稿，详见 docs/INFRAX_MIGRATION_SCALE_OUT.md）**
 
 > 背景：172（2C3.6G）swap 已用 1.3G、15min load 曾达 3.19（postgres ~60% CPU + ~1.1G 内存为最大户）；新增 43.156.78.59（2C4G Ubuntu 22.04，同地域可挂盘）。**核心决策**：172 数据盘 /dev/vdb（200G）是 postgres 唯一数据目录（10 库全在盘上，含 85G collector 事件库）→ 腾讯云控制台**物理整盘迁移**，零数据传输。
 >
