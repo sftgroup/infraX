@@ -209,10 +209,15 @@ export class RpcPoolManager {
     const p = profileFor(norm);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const result = await this.call(norm, p.receiptMethod, p.receiptParams(txHash));
-      if (p.receiptConfirmed(result)) {
-        const receipt = p.key === 'solana' ? { signatureStatus: result?.value?.[0] } : result;
-        return { confirmed: true, txHash, receipt, reason: null };
+      // RPC-6 轮询容错：上游端点异常/瞬断不应中断等待——吞错续轮，直到超时返回 confirmed:false
+      try {
+        const result = await this.call(norm, p.receiptMethod, p.receiptParams(txHash));
+        if (p.receiptConfirmed(result)) {
+          const receipt = p.key === 'solana' ? { signatureStatus: result?.value?.[0] } : result;
+          return { confirmed: true, txHash, receipt, reason: null };
+        }
+      } catch (err: any) {
+        logger.debug(`[rpc-pool] waitReceipt poll error (continue until timeout): ${err.message}`);
       }
       await sleep(intervalMs);
     }

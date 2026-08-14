@@ -16,11 +16,11 @@ import { Pool } from 'pg';
 
 export const RPC_PLANS = [
   { id: 'rpc_free', name: 'RPC Free', price: 0, billingCycle: 'monthly',
-    features: { callsPerMonth: 10000, bandwidth: '5GB' } },
+    features: { callsPerMonth: 10000, bandwidth: '5GB', concurrent: 10 } },
   { id: 'rpc_pro', name: 'RPC Pro', price: 79, billingCycle: 'monthly',
-    features: { callsPerMonth: 100000, bandwidth: '50GB' } },
+    features: { callsPerMonth: 100000, bandwidth: '50GB', concurrent: 50 } },
   { id: 'rpc_enterprise', name: 'RPC Enterprise', price: 299, billingCycle: 'monthly',
-    features: { callsPerMonth: 1000000, bandwidth: '500GB' } },
+    features: { callsPerMonth: 1000000, bandwidth: '500GB', concurrent: 200 } },
 ];
 
 // ─── DB Pool（独立库，表结构自举） ─────────────────────────────

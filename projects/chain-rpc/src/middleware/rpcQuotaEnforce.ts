@@ -7,12 +7,33 @@
 import { Request, Response, NextFunction } from 'express';
 import { rpcPool, RPC_PLANS, monthStart } from '../services/rpcSubscription';
 
+// RPC-5：per-key 并发限制（in-memory，单进程；超限 503 + 升级提示，不扣月度配额）
+const _concurrent = new Map<string, number>();
+
 export function rpcQuotaEnforce() {
   return async function enforce(req: Request, res: Response, next: NextFunction): Promise<void> {
     const rpcKey = (req as any).rpcKey as { id: number; rpc_plan_id: string } | undefined;
     if (!rpcKey) return next(); // 本地/外部 data key：豁免
     const planId = rpcKey.rpc_plan_id || 'rpc_free';
     const plan = RPC_PLANS.find((p) => p.id === planId) || RPC_PLANS[0];
+    // 并发检查（同步先于异步配额查询，保证突发时计数准确）
+    const concurrencyLimit = plan.features.concurrent || 10;
+    const key = String(rpcKey.id);
+    const inFlight = (_concurrent.get(key) || 0) + 1;
+    if (inFlight > concurrencyLimit) {
+      res.status(503).json({
+        code: 503,
+        message: 'RPC concurrency limit exceeded — upgrade your plan at /v1/subscription/plans',
+        data: { concurrent: inFlight, limit: concurrencyLimit, plan: planId, upgradeUrl: '/v1/subscription/plans' },
+      });
+      return;
+    }
+    _concurrent.set(key, inFlight);
+    res.on('finish', () => {
+      const n = (_concurrent.get(key) || 1) - 1;
+      if (n <= 0) _concurrent.delete(key);
+      else _concurrent.set(key, n);
+    });
     const quota = plan.features.callsPerMonth;
     const endpoint = req.path;
     try {

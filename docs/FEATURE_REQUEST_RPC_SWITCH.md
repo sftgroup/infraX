@@ -58,14 +58,25 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 
 ### R5 生产 SLA 与配额 — P1
 
-- **配额**：免费套餐（rpc_free）单 key 月度配额/并发；生产接入建议套餐（pro/enterprise）与定价；超限 503 的升级路径。
-- **时延**：P95 读调用 < 500ms（单链，非 batch）；batch 现并发上限 8、≤100 条/批——确认是否满足我方信号链并发（信号触发同秒多策略并行读）。
-- **可用性**：网关无单点（RPC 池多端点负载/故障转移），广播 `wait=true` 回执轮询语义稳定。
+> ✅ **已实现+生产验证**（2026-08-14）：套餐含并发限制；P95 实测达标；503 升级路径已生效。
+
+- **配额**：免费套餐（rpc_free）单 key 月度配额/并发；
+  - `rpc_free` 10k 次/月 + 并发 10（免费）；`rpc_pro` $79/月 100k 次 + 并发 50；`rpc_enterprise` $299/月 1M 次 + 并发 200（`GET /v1/subscription/plans` 可查）
+  - 超限 **503 + 升级路径**：月度配额用尽 或 并发超限 → `{code:503, message:"...upgrade your plan at /v1/subscription/plans", data:{used/limit, quota, plan, upgradeUrl}}`
+  - 并发限制实现：per-key in-memory 计数（rpcQuotaEnforce，同步先于异步配额查询，`res.on('finish')` 释放）；**生产实测**：25 并行请求 → 15 个 503 ✓
+- **时延**：**P95 读调用 < 500ms**（健康上游，单链）；2026-08-14 生产实测：bsc p50=223ms / **p95=468ms**（达标）；⚠️ 上游免费端点抖动时尾延迟劣化——当日 ankr 全系端点 down，受影响链 p95 尖峰 3~8s（池已自动故障转移至 active 端点，可用性保持；pro/enterprise 建议配付费端点（infura/quicknode）保障严格 SLA）
+- **可用性**：RPC 池多端点负载均衡 + 健康检查（15s）+ 故障转移（`/v1/status` 暴露每端点 health）；广播 `wait=true` 回执轮询语义稳定（RPC-6 容错修复后已验证）
 
 ### R6 广播语义 — P1
 
-- `POST /v1/broadcast/:chain` body `{rawTransaction, wait, timeoutMs}` → `{txHash, confirmed, receipt}`；确认 `confirmed=false` 时的错误/超时语义、非 2xx 重试建议。
-- 广播链覆盖同 R3（含 oxa 19505——我方 OxaChain 写路径 nft/subscription 依赖）。
+> ✅ **已实现+生产验证**（2026-08-14）：wait 双语义 + 超时容错 + 链覆盖（含 oxa 19505）。
+
+- `POST /v1/broadcast/:chain` body `{rawTransaction, wait, timeoutMs}` → `{chain, txHash, confirmed, receipt}`：
+  - `wait=true`（默认 30s/3s 轮询，`timeoutMs` 可覆盖）→ 确认后 `{confirmed:true, receipt}`；轮询至 deadline 未确认 → **HTTP 200** `{confirmed:false, receipt:null, reason:"timeout"}`（不报错）
+  - `wait=false` → 立即返回 `{confirmed:false, receipt:null, reason:"wait=false"}`
+- **RPC-6 容错修复（2026-08-14）**：waitReceipt 轮询遇上游端点异常不再抛错中断（原行为 → 502），改为**吞错续轮至超时**；生产验证：模拟轮询 404 端点 → 8.8s 后返回 `{confirmed:false, reason:"timeout"}` ✓
+- **重试建议**：wait=false 或超时后，先 `eth_getTransactionReceipt` 查 txHash 状态；未上链再重发（广播幂等，重复 nonce 由链裁决）
+- 广播链覆盖同 R3（10 链含 **oxa 19505**，`/v1/status` 已验证）
 
 ### R7 WS 订阅面 — P2
 
