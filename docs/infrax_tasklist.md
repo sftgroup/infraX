@@ -1279,7 +1279,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md` | 行情数据 RPC + DEX 交易执行（AIHunter SaaS） | §9.10 | ⚠️ 已裁定排期（2026-08-12：A-11 DEX P0 排期执行，覆盖 A-6 延后项）；**A-11 已拆 A-11.1~A-11.7（方案 [AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2，2026-08-13 确认 OKX DEX key 由用户提供）**；A-12~A-14 待办 |
 | `docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md` | Session Key 自动交易托管：托管实例 + SDK 封装 + 安全加固（AIHunter SaaS） | §9.10 | 🔲 **待评审 → ✅ 已评审执行中**（2026-08-13 用户确认：A-15~A-18 全做） |
 | `docs/req-04-infrax-mlservice-arch-opt.md` | ml-service 架构优化（Provider 注册表/Device 参数化/因子解耦/统一端点） | §9.15 | ✅ 已实现（2026-08-14 完成；R4-2 用户决策跳过，余全完成并生产验证） |
-| `docs/req-05-auto-find-factor.md` | 自动寻找因子（对话驱动 + 偏好/限制，MCP 工具集） | §9.15 | ✅ 已实现（2026-08-14；R5-3 MCP 生产部署 :3014，R5-4 LLM key 待配置 ⚠️） |
+| `docs/req-05-auto-find-factor.md` | 自动寻找因子（对话驱动 + 偏好/限制，MCP 工具集） | §9.15 | ✅ 已实现（2026-08-14；R5-3 MCP 生产部署 :3014；R5-4 LLM 意图解析生产已配置 deepseek-v4-flash） |
 | `docs/req-06-factor-factory.md` | 因子工厂（挖掘/评估/管理/入库 → data-service `/factors/current`） | §9.15 | ✅ 已实现（2026-08-14；FF-1~FF-3 全绿，FF-4.1 定时触发待做） |
 | `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | ⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化；HW-1） |
 | `docs/INFRAX_REQ_SUMMARY_ARCH_AUTOFIND_FACTORY.md` | 需求 4/5/6 汇总 + 附录 A 复合/非线性因子计算架构 | §9.15 | 汇总文档（同 R4/R5/FF 状态） |
@@ -1614,8 +1614,8 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | R5-3.1 | 架构定位 | 定：独立 Factor-Factory MCP 进程（`mcp-server/src/factor-index.ts`，:3014，systemd `infrax-factor-mcp`） | ✅ | P2 |
 | R5-3.2 | 工具集 | `factor_factory.start/status/result/list/cancel`，接收结构化参数（内核不吃自然语言）；intent 走 ml-service `/mine` | ✅ | P2 |
 | R5-3.3 | 入站鉴权 | inboundAuth 对齐（参考 dc-index/mpc-index 模式） | ✅ | P2 |
-| **R5-4** | LLM 意图解析 + 结果报告 | | ⚠️ | P2 |
-| R5-4.1 | 意图解析 | 自然语言→job spec（DeepSeek API / 本地 V100 LLM，function calling/结构化输出）；代码就绪（`factorengine/intent.py` + `/factor-factory/mine`），**生产 FACTOR_LLM_API_KEY 未配置 → /mine 400**（回退 LLM_BINDING_API_KEY 亦空） | ⚠️ | P2 |
+| **R5-4** | LLM 意图解析 + 结果报告 | | ✅ | P2 |
+| R5-4.1 | 意图解析 | 自然语言→job spec（DeepSeek API / 本地 V100 LLM，function calling/结构化输出）；生产已配置（2026-08-14：复用 ragservicer `LLM_BINDING_API_KEY` → ml `.env` `FACTOR_LLM_API_KEY`，`FACTOR_LLM_MODEL=deepseek-v4-flash`，实测意图"动量波动率 BTC ETH SOL 日线 5个 10分钟"→ spec 正确解析并 COMPLETED） | ✅ | P2 |
 | R5-4.2 | 冲突检测 | 偏好 vs 硬限制冲突回传提示，不静默 | ✅ | P2 |
 | R5-4.3 | 结果报告 | 入选因子/IC/ICIR/独立度/稳定性报告 + 可视化 | ✅ | P2 |
 | **FF-1** | ml-service 因子引擎解耦（承接 R4-4） | | ✅ | P1 |
