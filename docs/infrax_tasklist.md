@@ -1752,3 +1752,22 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - 依赖注入后需回归 consensus 输出结构（`n_symbols/avg_consensus_score/risk_flag`）与现有消费方（data-service collector）兼容。
 
 **验收**：① load 峰值单轮（不再 2×22min 并行）；② volatility/consensus 数据同源；③ 端点 30 天无 null（SWR 兜底）。
+
+---
+
+**9.18 生产扩容迁移（方案 C：整盘迁移 + ML 服务外迁，2026-08-15 定稿，详见 docs/INFRAX_MIGRATION_SCALE_OUT.md）**
+
+> 背景：172（2C3.6G）swap 已用 1.3G、15min load 曾达 3.19（postgres ~60% CPU + ~1.1G 内存为最大户）；新增 43.156.78.59（2C4G Ubuntu 22.04，同地域可挂盘）。**核心决策**：172 数据盘 /dev/vdb（200G）是 postgres 唯一数据目录（10 库全在盘上，含 85G collector 事件库）→ 腾讯云控制台**物理整盘迁移**，零数据传输。
+>
+> 新机环境已核查：2C/3.6G 内存、系统盘 60G（剩 25G）、Python 3.12.3 + Node v22.23.1、内网 10.3.8.6/22 与 172（10.3.8.12）同网段互通（RTT 0.225ms、0% 丢包）；⚠️ 新机预装 postgres 16（172 是 14，需卸载 16 装 14 对齐）、docker/tailscale 已装、/opt/pocketx 残留 mpc-server 旧代码（无关）、.trae-cn-server 16G 占用（无碍）。
+
+| # | 任务 | 内容 | 状态 |
+|---|---|:---:|:---:|
+| M-1 | 阶段 0 准备 | 新机装 postgresql-14（对齐 172）；172 pg_dump 备份 9 小库；rsync ragservicer/ki 代码+venv+units；新机公钥入 5 台出口 authorized_keys | 🔲 |
+| M-2 | 阶段 1 盘迁移（停机 10-30min） | 172 `stop postgresql` → 控制台卸载 vdb → 挂新机 → mount+fstab+符号链接 → postgresql.conf 调优 + pg_hba 放行 172 → 启动验证 10 库齐全 | 🔲 |
+| M-3 | 阶段 2 服务切换 | 172 9 服务连接串 `localhost:5432 → 10.3.8.6:5432`（collector/chain-rpc/dc/vault/waas/mpc/payments/session-key/admin-legacy）；nginx `/api/rag/` → 10.3.8.6:9721；admin-legacy/hub-index env 指新机 rag/ki；新机起 ragservicer+ki+5 条 egress 隧道 | 🔲 |
+| M-4 | 阶段 3 验证 | events 持续写入新机、dc/chain-rpc 查询正常、公网 /api/data、/api/rag、/api/v1 200、172 swap 归零 | 🔲 |
+| M-5 | 验收收尾 | 172 负载降至 ~1.0 确认、tasklist 更新、git 提交 | 🔲 |
+| M-6 | 二期可选 | collector 跟随数据迁新机（跨机 URL 5 处），本次不做 | 🔲 |
+
+> 网络波动评估：唯一敏感链路 collector/chain-rpc/dc → 新机 postgres（内网 0.225ms RTT），collector 写库 ~1 事务/秒批量 INSERT 幂等，断线重连不丢不重；高耦合服务群全留 172 同机，风险可忽略。
