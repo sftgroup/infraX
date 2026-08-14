@@ -71,8 +71,11 @@ def _static_fomc_events() -> list[dict]:
         ).timestamp()
         # 保留未来全部 FOMC（一年 8 次，提前公布）；刚过去的也保留一段以便展示
         if ts >= now - 7 * 86400:
+            desc = _event_description("FOMC Meeting")
             events.append({
                 "name": "FOMC Meeting",
+                "description": desc.get("description"),
+                "description_en": desc.get("description_en"),
                 "timestamp": ts,
                 "date": date_str,
                 "impact": "high",
