@@ -38,7 +38,7 @@ const server = new McpServer({
 const prefsSchema = {
   market_types: z.array(z.enum(["crypto", "us_stock", "hk_stock", "any"])).optional().describe("市场类型，如 crypto / us_stock / hk_stock / any"),
   factor_styles: z.array(z.enum(["momentum", "volatility", "trend", "mean_reversion", "any"])).optional().describe("因子风格，如 momentum / volatility / trend / mean_reversion"),
-  investment_style: z.enum(["value", "growth", "momentum", "balanced"]).optional().describe("投资风格"),
+  investment_style: z.enum(["value", "growth", "momentum", "balanced", "any"]).optional().describe("投资风格"),
   asset_pool: z.array(z.string()).optional().describe("资产池（标的白名单，空=动态拉取）"),
   timeframe: z.enum(["1d", "1h"]).optional().describe("周期"),
   horizon: z.number().int().min(1).max(90).optional().describe("预测周期（日）"),
@@ -57,14 +57,16 @@ const constraintsSchema = {
 
 server.tool(
   "factor_factory_start",
-  "创建因子挖掘任务（结构化 preferences/constraints；偏好与硬限制冲突时返回 400 + conflicts，不静默）。返回 job_id 与初始状态。",
+  "创建因子挖掘任务（结构化 preferences/constraints/formulas；偏好与硬限制冲突时返回 400 + conflicts，不静默）。返回 job_id 与初始状态。",
   {
     preferences: z.object(prefsSchema).optional().describe("偏好（可被硬限制覆盖）"),
     constraints: z.object(constraintsSchema).optional().describe("硬限制（不可被偏好覆盖）"),
-    intent: z.string().optional().describe("自然语言挖掘意图（走 LLM 解析，需 ml-service 配置 FACTOR_LLM_*）"),
+    formulas: z.array(z.string()).max(20).optional().describe("DSL 公式候选（FF-5，最多 20 个；语法见 ml-service dsl.py 白名单：列+向量化方法，如 close.pct_change().rolling(60).std()）"),
+    intent: z.string().optional().describe("自然语言挖掘意图（走 LLM 解析，需 ml-service 配置 FACTOR_LLM_*；LLM 可生成 formulas）"),
   },
-  async ({ preferences, constraints, intent }) => {
+  async ({ preferences, constraints, formulas, intent }) => {
     const payload: any = { preferences: preferences || {}, constraints: constraints || {} };
+    if (formulas && formulas.length) payload.formulas = formulas;
     const path = intent ? "/factor-factory/mine" : "/factor-factory/start";
     if (intent) payload.intent = intent;
     const r = await ml(path, { method: "POST", body: JSON.stringify(payload) });

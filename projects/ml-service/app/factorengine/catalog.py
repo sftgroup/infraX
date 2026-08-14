@@ -115,6 +115,7 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
     """把挖掘任务中 passed 的因子登记进 catalog（inactive，待人工激活）。
 
     返回新登记数。同 key 已存在时仅刷新元数据（不重置 status）。
+    DSL 因子（FF-5，dsl_ 前缀）登记时从注册表带出公式到 name，可追溯可复算。
     """
     store = get_catalog()
     registered = 0
@@ -124,10 +125,11 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
             continue
         key = r["factor_key"]
         existing = store.get(key)
+        fd = _registry_def(key)
         entry = {
             "factor_key": key,
-            "name": f"factor {key}",
-            "category": _category_of(key),
+            "name": fd.name if fd else f"factor {key}",
+            "category": fd.category if fd else _category_of(key),
             "template": None,
             "params": {},
             "description": f"auto-mined by job {job_id} (IC={r.get('ic')}, ICIR={r.get('icir')})",
@@ -141,6 +143,16 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
             registered += 1
         store.upsert(entry)
     return registered
+
+
+def _registry_def(key: str):
+    """因子注册表定义（DSL 因子 name 含公式；内置因子带类别）。"""
+    try:
+        from app.factorengine.factors import FACTOR_REGISTRY
+
+        return FACTOR_REGISTRY.get(key)
+    except Exception:
+        return None
 
 
 def _category_of(key: str) -> str:

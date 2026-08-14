@@ -5,8 +5,11 @@
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ── 参数网格（可调：池大小/覆盖度平衡） ────────────────────
 
@@ -56,6 +59,33 @@ def expand_factor_pool() -> list[FactorCandidate]:
             category=_FIXED_CATEGORY.get(key, ""),
         ))
     return pool
+
+
+def dsl_candidates(formulas: list[str]) -> list[FactorCandidate]:
+    """LLM 生成的 DSL 公式候选（FF-5）：公式 → 稳定 key（category=L5）。
+
+    非法公式跳过（由 runner 的 register_dsl_factor 静默过滤，日志记录）。
+    """
+    from app.factorengine import dsl
+    from app.factorengine.factors import register_dsl_factor
+
+    out: list[FactorCandidate] = []
+    seen: set[str] = set()
+    for formula in formulas:
+        if not isinstance(formula, str) or not formula.strip():
+            continue
+        try:
+            key = register_dsl_factor(formula.strip())
+        except ValueError as exc:
+            logger.warning("dsl candidate skipped (%s): %s", formula[:50], exc)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(FactorCandidate(
+            key=key, template="dsl", params={"formula": formula.strip()}, category="L5",
+        ))
+    return out
 
 
 def _render_key(tpl: str, params: dict[str, Any]) -> str:

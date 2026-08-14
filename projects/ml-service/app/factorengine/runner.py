@@ -20,7 +20,7 @@ import config
 from app import data_client
 from app.factorengine.eval import evaluate_factor, select_factors
 from app.factorengine.factors import compute_factor
-from app.factorengine.pool import expand_factor_pool, filter_pool
+from app.factorengine.pool import dsl_candidates, expand_factor_pool, filter_pool
 from app.factorengine.job import JobSpec
 
 logger = logging.getLogger(__name__)
@@ -63,8 +63,11 @@ def _kline_df(symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
 
 
 def _candidate_keys(spec: JobSpec) -> list[str]:
-    """候选因子：pool 展开 → 偏好/限制过滤。"""
+    """候选因子：DSL 公式（LLM/用户指定，优先） + pool 展开 → 偏好/限制过滤。"""
     pool = expand_factor_pool()
+    # FF-5：LLM 生成的 DSL 公式候选，优先于内置池（指定了就该被评估）
+    dsl_pool = dsl_candidates(spec.formulas)
+    pool = dsl_pool + pool
     # 偏好：风格类别过滤（momentum→L0，volatility→L1，trend→L2，mean_reversion→L0/L4）
     styles = spec.preferences.factor_styles
     if "any" not in styles:

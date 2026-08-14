@@ -35,11 +35,27 @@ _PROMPT = """你是量化因子挖掘需求解析器。把用户的自然语言�
     "max_factors": 20, "max_runtime_min": 60, "max_targets": 50,
     "min_ic": 0.0, "min_icir": 0.3, "max_independence": 0.7,
     "require_monotonicity": false, "blacklist_keys": [], "whitelist_keys": []
-  }}
+  }},
+  "formulas": ["DSL公式1", ...] 或 []
 }}
+可用数据列（K线 + 技术指标）：open, high, low, close, volume,
+  rsi_14, macd_hist, bb_upper, bb_lower, atr_14, ma_5, ma_10, ma_20, ma_30, ma_60
+DSL 公式语法（可选，最多 5 个；只允许上述列 + 这些方法）：
+  方法白名单: abs, pct_change, diff, shift, std, mean, max, min, sum, prod,
+    skew, kurt, rank, quantile, fillna, clip, rolling, ewm
+  函数白名单: log, exp, sqrt, sign, maximum, minimum
+  示例:
+    close.pct_change(20).rolling(60).std() / close
+    (close - close.rolling(20).mean()) / close
+    close.pct_change().ewm(span=20).mean() - close.pct_change().ewm(span=60).mean()
+    (high - low) / close
+  参数必须为数字字面量（rolling(窗口) / ewm(span=)/ewm(alpha=) / pct_change(期数) /
+  shift(期数) / diff(期数) / quantile(分位 0-1) / rank(pct=布尔) / fillna(值) /
+  clip(lower=, upper=)）。不要用白名单外的方法/函数/列。
 规则：
 - 用户表达「必须/不允许/硬性/不能超过」等 → 放 constraints（硬限制，偏好不可覆盖）
 - 用户表达「喜欢/偏好/尽量」等 → 放 preferences（软偏好）
+- 用户要求「自己设计/创新/生成因子公式」等 → 设计符合 DSL 语法的公式放 formulas
 - 未提及的字段给保守默认；不确定市场/风格给 "any"
 - 只输出 JSON，不要任何解释。
 用户输入：{text}
@@ -78,10 +94,11 @@ def _call_llm(text: str) -> str:
         raise IntentError(f"LLM 响应异常: {exc}") from exc
 
 
-def parse_intent(text: str) -> dict[str, dict[str, Any]]:
-    """自然语言 → {"preferences": {...}, "constraints": {...}}。
+def parse_intent(text: str) -> dict[str, Any]:
+    """自然语言 → {"preferences": {...}, "constraints": {...}, "formulas": [...]}。
 
     输出交给 build_spec 生成 JobSpec（spec 校验负责冲突提示/默认值）。
+    formulas：LLM 生成的 DSL 公式（FF-5），逐条白名单校验，非法公式静默丢弃。
     """
     raw = _call_llm(text)
     try:
@@ -97,4 +114,22 @@ def parse_intent(text: str) -> dict[str, dict[str, Any]]:
     allowed_cons = set(FactorConstraints.model_fields)
     prefs = {k: v for k, v in prefs.items() if k in allowed_prefs}
     cons = {k: v for k, v in cons.items() if k in allowed_cons}
-    return {"preferences": prefs, "constraints": cons}
+
+    # FF-5：DSL 公式（最多 5 条；非法公式丢弃）
+    from app.factorengine import dsl
+
+    formulas: list[str] = []
+    raw_formulas = parsed.get("formulas") or []
+    if isinstance(raw_formulas, list):
+        for f in raw_formulas[:5]:
+            if not isinstance(f, str) or not f.strip():
+                continue
+            try:
+                dsl.validate_formula(f.strip())
+            except dsl.DslError as exc:
+                logger.warning("intent formula invalid, dropped (%s): %s", f[:60], exc)
+                continue
+            formulas.append(f.strip())
+    if formulas:
+        logger.info("intent parsed %d DSL formulas", len(formulas))
+    return {"preferences": prefs, "constraints": cons, "formulas": formulas}

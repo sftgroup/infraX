@@ -157,6 +157,42 @@ register_factor("atr_pct", "ATR 占比", "L4", needs=("atr_14",), compute=_atr_p
 register_factor("high_low_range", "高低振幅", "L1", needs=("high", "low"), compute=_high_low_range)
 
 
+# ── DSL 公式因子（FF-5：LLM 生成的新因子，类别 L5） ────────
+
+def dsl_key_for_formula(formula: str) -> str:
+    """公式 → 稳定因子 key（同公式同 key，天然去重）。"""
+    from app.factorengine import dsl
+
+    return dsl.formula_key(formula)
+
+
+def register_dsl_factor(formula: str, available_cols: set[str] | None = None) -> str:
+    """注册 LLM 生成的 DSL 公式因子；返回因子 key。
+
+    同公式幂等（已注册直接返回既有 key）；公式非法抛 ValueError。
+    available_cols 非空时校验列存在性（服务启动已知数据列时可提前拦截）。
+    """
+    from app.factorengine import dsl
+
+    key = dsl_key_for_formula(formula)
+    if key in FACTOR_REGISTRY:
+        return key
+    try:
+        needs = dsl.validate_formula(formula, available_cols)
+    except dsl.DslError as exc:
+        raise ValueError(f"DSL 公式非法: {exc}") from exc
+
+    def _compute(df: pd.DataFrame, _f: str = formula) -> pd.Series:
+        try:
+            return dsl.eval_formula(_f, df)
+        except dsl.DslError:
+            # 运行时缺列/求值失败 → NaN 序列（与 _ma_pct 缺列行为一致，dropna 后自然过滤）
+            return pd.Series(np.nan, index=df.index)
+
+    register_factor(key, f"dsl {formula[:44]}", "L5", needs=needs, compute=_compute)
+    return key
+
+
 # ── 便捷查询 ────────────────────────────────────────────────
 
 def is_template_key(key: str) -> bool:

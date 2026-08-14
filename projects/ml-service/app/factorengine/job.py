@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MarketType = Literal["crypto", "us_stock", "hk_stock", "any"]
 FactorStyle = Literal["momentum", "volatility", "trend", "mean_reversion", "any"]
-InvestmentStyle = Literal["value", "growth", "momentum", "balanced"]
+InvestmentStyle = Literal["value", "growth", "momentum", "balanced", "any"]
 Timeframe = Literal["1d", "1h"]
 
 
@@ -53,6 +53,10 @@ class JobSpec(BaseModel):
 
     preferences: FactorPreferences = FactorPreferences()
     constraints: FactorConstraints = FactorConstraints()
+    formulas: list[str] = Field(
+        default_factory=list,
+        description="LLM/用户指定的 DSL 公式候选（FF-5，与内置池合并评估；非法公式跳过）",
+    )
 
     @model_validator(mode="after")
     def _validate_conflicts(self) -> "JobSpec":
@@ -63,6 +67,8 @@ class JobSpec(BaseModel):
             issues.append("horizon>30 与 max_runtime_min<30 冲突（长周期评估耗时长）")
         if cons.whitelist_keys and len(cons.whitelist_keys) > cons.max_factors:
             issues.append("whitelist_keys 数量超过 max_factors")
+        if len(self.formulas) > cons.max_factors:
+            issues.append(f"formulas 数量({len(self.formulas)})超过 max_factors({cons.max_factors})")
         if issues:
             self._conflict_issues = issues  # type: ignore[attr-defined]
         return self
@@ -73,11 +79,12 @@ class JobSpec(BaseModel):
 
 
 def build_spec(preferences: dict[str, Any] | None = None,
-               constraints: dict[str, Any] | None = None) -> tuple[JobSpec, list[str]]:
-    """生成 job spec（偏好+限制 → 结构化；冲突显式返回提示）。"""
+               constraints: dict[str, Any] | None = None,
+               formulas: list[str] | None = None) -> tuple[JobSpec, list[str]]:
+    """生成 job spec（偏好+限制+DSL 公式 → 结构化；冲突显式返回提示）。"""
     prefs = FactorPreferences(**(preferences or {}))
     cons = FactorConstraints(**(constraints or {}))
-    spec = JobSpec(preferences=prefs, constraints=cons)
+    spec = JobSpec(preferences=prefs, constraints=cons, formulas=formulas or [])
     return spec, spec.conflicts
 
 

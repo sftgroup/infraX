@@ -392,18 +392,20 @@ class _MineRequest(_BaseModel):
     preferences: dict = {}
     constraints: dict = {}
     intent: str | None = None
+    formulas: list[str] = []
 
 
 @app.post("/factor-factory/start")
 def factor_start(req: _MineRequest):
-    """创建挖掘任务（结构化 preferences/constraints）→ 入队执行。
+    """创建挖掘任务（结构化 preferences/constraints/formulas）→ 入队执行。
 
-    body: {"preferences": {...}, "constraints": {...}}（字段见 JobSpec schema）。
-    偏好/硬限制冲突时返回 400 + conflicts（不静默）；成功返回 {job_id, status}。
+    body: {"preferences": {...}, "constraints": {...}, "formulas": ["DSL公式", ...]}
+    （字段见 JobSpec schema）。偏好/硬限制冲突时返回 400 + conflicts（不静默）；
+    成功返回 {job_id, status}。
     """
     try:
         from app.factorengine.job import build_spec
-        spec, conflicts = build_spec(req.preferences, req.constraints)
+        spec, conflicts = build_spec(req.preferences, req.constraints, req.formulas)
         if conflicts:
             return JSONResponse(status_code=400, content={
                 "code": 400, "message": "偏好与硬限制冲突", "data": {"conflicts": conflicts}})
@@ -421,7 +423,8 @@ def factor_start(req: _MineRequest):
 def factor_mine(req: _MineRequest):
     """自然语言挖掘入口（R5-4）：LLM 意图解析 → 建任务。
 
-    body: {"preferences": {...}, "constraints": {...}, "intent": "自然语言描述"}。
+    body: {"preferences": {...}, "constraints": {...}, "intent": "自然语言描述",
+           "formulas": ["DSL公式", ...]}。
     intent 优先走 LLM 解析（缺 LLM key → 400 提示）；否则用结构化字段。
     """
     intent = req.intent
@@ -430,9 +433,10 @@ def factor_mine(req: _MineRequest):
         if intent:
             from app.factorengine.intent import parse_intent
             parsed = parse_intent(str(intent))
-            spec, conflicts = build_spec(parsed["preferences"], parsed["constraints"])
+            spec, conflicts = build_spec(parsed["preferences"], parsed["constraints"],
+                                         parsed.get("formulas"))
         else:
-            spec, conflicts = build_spec(req.preferences, req.constraints)
+            spec, conflicts = build_spec(req.preferences, req.constraints, req.formulas)
         if conflicts:
             return JSONResponse(status_code=400, content={
                 "code": 400, "message": "偏好与硬限制冲突", "data": {"conflicts": conflicts}})
