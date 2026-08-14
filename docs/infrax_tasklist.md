@@ -1755,6 +1755,13 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **验收**：① load 峰值单轮（不再 2×22min 并行）；② volatility/consensus 数据同源；③ 端点 30 天无 null（SWR 兜底）。
 
+**实施与验证记录（✅ 2026-08-14 commit `da04029`）**：
+- C-1 `consensus.py`：`build_consensus(signal_providers=None)` 信号获取解耦为 `_safe_call` + `_default_*` 回调，默认行为不变（向后兼容库调用）
+- C-2 `main.py`：`_compute_consensus()` 注入 providers，tree/volatility/bolt/moirai/timesfm 全走 `_async_runner.get(...)`（SWR：miss 后台触发 + 返回 stale/None 降级不阻塞）；sentiment/macro 保留轻量默认路径
+- C-3 注入模式停用模块级 `_cached`（缓存职责移交外层 AsyncCacheRunner，统一 TTL 1800）
+- C-4 本地验证：单测 4 项全过（注入无缓存 / 全 None / fail-silent 降级 / 聚合结构不变）；2026-08-15 复核同断言通过
+- C-5 生产验证（43.156.25.197，2026-08-14 + 08-15 复核 `/ml/cache/stats`）：consensus `last_compute_ms` **1351839 → 1198.8**（-99.9%）；volatility `computes=27` 独立计算、consensus 不再重复触发 Kronos（每次仅 ~ms 聚合）；六 key 全部 `cached=True`，SWR stale 兜底正常；首轮 volatility 未就绪时 consensus 正常降级（30 符号，avg 0.72）
+
 ---
 
 **9.19 生产扩容迁移（方案 C：整盘迁移 + ML 服务外迁，2026-08-15 定稿，详见 docs/INFRAX_MIGRATION_SCALE_OUT.md）**
