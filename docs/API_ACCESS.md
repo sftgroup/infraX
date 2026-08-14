@@ -44,7 +44,7 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 | `:9104` | MPC | pocketx_mpc | 钱包托管 + **按量计费（MQ-16 T-4）** |
 | `:9107` | Vault | pocketx_vault | Safe 多签保险库 |
 | `:9109` | WAAS | pocketx_waas | B2B 钱包即服务 |
-| `:9130` | Chain RPC | — | 链 RPC 网关 + **RPC 套餐订阅（MQ-16 T-3）** |
+| `:9130` | Chain RPC | — | 链 RPC 网关 + **RPC 套餐订阅（MQ-16 T-3）**（公网入口 `rpc-gw.0xainet.top`，RPC-1） |
 | `:9132` | **Payments（通用支付引擎）** | pocketx_payments | chain/fiat/x402/MPP + **batch/invite/transfer（MQ-16 T-5）** |
 | `:9103` | DC MCP | — | AI Agent 数据 |
 | `:9105` | MPC MCP | — | AI Agent 钱包 |
@@ -242,6 +242,21 @@ Base URL:  https://api.infrax.io
 
 > 信封 `{code, message, data}`；超限返回 **503**。`rx_` key 由 issue-key 签发，读/广播分级。
 
+### 🌐 rpc-gw 公网 HTTPS 入口（`https://rpc-gw.0xainet.top`，RPC-1）
+
+> 2026-08-13 交付：chain-rpc 网关 `:9130` 的公网入口（nginx TLS 反代，certbot 自动续期，客户端体上限 2m）。
+> **鉴权透传**：`X-API-Key`（或 `Authorization: Bearer`）原样转发至 chain-rpc，契约与内网一致（`rx_` 读 key / `cr_` 广播 key 双轨）。
+
+| 路由 | 方法 | 功能 | 鉴权 |
+|------|------|------|------|
+| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（batch 支持，`X-Json-Rpc: raw` 透传） | ✅ 读 key（`rx_`） |
+| `/v1/broadcast/{chain}` | POST | 广播交易（读 key 无法触达） | ✅ 广播 key（`cr_`） |
+| `/v1/ws` | WS | WebSocket（仅 eth_subscribe/unsubscribe，upgrade 支持） | ✅ 读 key |
+| `/v1/subscription/*` | — | RPC 套餐订阅面（plans / issue-key / checkout / payment-check / verify / usage） | ✅ `rx_` key |
+| `/v1/status` `/v1/plans` `/v1/planinfo` `/health` | GET | 公开元信息（免鉴权） | — |
+
+> 其余路径透传 `:9130`；HTTP read timeout 60s，WS 3600s。
+
 ---
 
 ### 💳 Payment — 通用支付引擎 @0xinfrax/payments (`:9132`，MQ-15 T-8 迁移；旧 `:9106 /api/v2/payment/*` 已下线)
@@ -420,6 +435,63 @@ curl -H "x-api-key: YOUR_KEY" \
 curl -H "x-api-key: YOUR_KEY" \
   "https://api.infrax.io/api/v2/data/market/mempump/list?chainIndex=501&protocol=120596&sortBy=volume24h"
 ```
+
+### 1.7 行情 RPC（`POST /v1/market-rpc`，A-12，Collector `:9101`）
+
+> 2026-08-15 交付：与 chain-rpc `/v1/rpc/:chain` 并列的**网关层行情入口**，12 组方法 + 多 token 批量 + 信封 `{code, message, data}`。
+> **鉴权**：`X-API-Key`（或 `Authorization: Bearer` / `X-Rpc-Key`）→ `rx_` 读 key（chain-rpc `rpc_keys` 表 SHA-256 校验）；兼容 collector 既有 `pkx_` api_keys。
+> 同源同缓存（A-13）：与 REST MarketAPI 同一 OKX Market client 单例，口径一致。
+
+```
+POST /v1/market-rpc
+Content-Type: application/json
+X-API-Key: rx_...
+
+{ "method": "tokenSearch", "params": { "keyword": "USDT", "chainIndex": "1", "limit": 20 } }
+```
+
+| 方法 | 必填参数 | 可选参数 | 说明 |
+|------|---------|---------|------|
+| `tokenSearch` | `keyword` | `chainIndex`, `limit`（默认 20） | 关键词搜索代币 |
+| `tokenInfo` | `chainIndex` + `tokenAddress` 或 `tokens[]` | — | 代币基本信息 |
+| `hotTokens` | `chainIndex` | `limit`（默认 50），其余透传 | 热榜代币 |
+| `leaderboard` | `chainIndex` | `sortBy`（默认 1=pnl）, `timeFrame`（默认 4=24h）, `limit`（默认 50） | 排行榜 |
+| `signals` | `chainIndex` | `signalType`, `limit`（默认 50）, `walletType`, `minAmountUsd` | 信号列表 |
+| `mempump` | `chainIndex` + `stage`（`NEW`\|`MIGRATING`\|`MIGRATED`） | `protocol`, `sortBy`（默认 `volume24h`）, `limit`（默认 50） | Meme 币（ETH 不支持，Solana 501 / BNB 56 / Robinhood 4663 等） |
+| `candles` | `chainIndex` + `tokenAddress` 或 `tokens[]` | `period`（默认 `15m`）, `limit`（默认 100） | K 线 |
+| `price` | `chainIndex` + `tokenAddress` 或 `tokens[]` | — | 实时价格 |
+| `balances` | `address` + `chains`（数组或逗号分隔，如 `"1,56,8453"`） | — | 跨链余额 |
+| `transactions` | `address` + `chains` | `limit`（默认 50） | 交易历史 |
+| `trackedTokens` | — | `chain`, `enabled` | 跟踪代币列表（collector 本地表） |
+| `customSigs` | — | `chain`, `enabled` | 自定义事件签名列表（collector 本地表） |
+
+- **多 token 批量**：`tokenInfo` / `price` / `candles` 传 `params.tokens = [addr, ...]`；多元素时返回保序数组 `[{tokenAddress, data}, ...]`，单 token 用 `tokenAddress` 直接返回数据。
+- **x402 支付门控**：上游需 x402 时返回 **HTTP 402** `{code: -1, message: "x402 payment required: ...", code: 402}`（message 含 network/amount/payTo 清单），调用方据其接入 x402。
+- **错误**：参数缺失/非法 → `400`；未知方法 → `404`；上游错误 → `502`。
+
+### 1.8 行情 WebSocket 订阅（`/v1/market-ws`，A-14，Collector `:9101`）
+
+> 2026-08-15 交付：**增量推送**——价格仅变化时推送、K 线仅最后一根 timestamp 变化时推送；对齐低延迟场景。
+> **鉴权**：query `key` = `rx_` 读 key（与 market-rpc 同一校验），如 `wss://…/v1/market-ws?key=rx_...&chainIndex=1`；失败 → HTTP 401 断开。
+
+订阅 / 退订协议：
+
+```
+→ {"op":"subscribe","type":"price","chainIndex":"1","tokens":["0x..", ...]}
+→ {"op":"subscribe","type":"candles","chainIndex":"1","tokens":["0x.."],"period":"15m","limit":4}
+→ {"op":"unsubscribe","type":"price","tokens":[...]}   // 缺 tokens → 该 type 全部退订
+```
+
+服务端推送：
+
+```
+← {"type":"connected","message":"Subscribed to market stream (price/candles)","chainIndex":"1"}  // 连接成功
+← {"type":"price","chainIndex":"1","tokenAddress":"0x..","data":{...}}     // 仅价格变化时
+← {"type":"candles","chainIndex":"1","tokenAddress":"0x..","data":[...]}   // 仅最后一根 K 线变化时
+```
+
+- 订阅即推当前值；轮询频率：**价格 5s / K 线 30s**（全局单实例 Timer，客户端数不影响上游调用频次）。
+- 同源同缓存（A-13）：与 market-rpc / REST MarketAPI 同一 OKX Market client。
 
 ---
 

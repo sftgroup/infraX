@@ -369,6 +369,8 @@ cancel ───────────────────────▶ 
 | `/v1/ws` | WS | WebSocket（仅 eth_subscribe/unsubscribe） | ✅ 读 key |
 | `/v1/subscription/*` | 见 §7.6.3 | 套餐订阅面 | ✅ `rx_` key |
 
+> **公网入口（RPC-1，2026-08-13 交付）**：`https://rpc-gw.0xainet.top`（nginx TLS 反代 `:9130`，certbot 自动续期），上表路由逐一对应；鉴权头 `X-API-Key` / `Authorization: Bearer` 原样透传，契约与内网一致。公开免鉴权路径：`/v1/status`、`/v1/plans`、`/v1/planinfo`、`/health`；`/v1/ws` 支持 upgrade，read timeout 60s（WS 3600s）。
+
 ### 7.6.4 Chain RPC 订阅（:9130，T-3）— `rx_` key 鉴权，信封 `{code,message,data}`，超限 **503**
 
 | 端点 | 方法 | 功能 |
@@ -389,6 +391,50 @@ cancel ───────────────────────▶ 
 | `/api/v2/mpc/ledger-balance` | POST | ledger 余额查询（body: `{token}`，返回 address/balanceWei/fees/topupHint） |
 
 > 计费触发：签名 0.0001 ETH / 写链 0.001 ETH（pay-per-use），余额不足 402 `insufficient_balance`。
+
+### 7.6.6 行情 RPC（collector :9101，A-12）— `POST /v1/market-rpc`
+
+> 2026-08-15 交付：网关层行情入口，12 组方法 + 多 token 批量 + 信封 `{code,message,data}`。
+> **鉴权**：`X-API-Key`（或 `Authorization: Bearer` / `X-Rpc-Key`）→ `rx_` 读 key（chain-rpc `rpc_keys` 表 SHA-256）；兼容 `pkx_` api_keys。同源同缓存（A-13）：与 REST MarketAPI 同一 OKX Market client 单例。
+
+```
+POST /v1/market-rpc
+X-API-Key: rx_...
+{ "method": "tokenSearch", "params": { "keyword": "USDT", "chainIndex": "1", "limit": 20 } }
+```
+
+| 方法 | 必填参数 | 可选参数 | 说明 |
+|---|---|---|---|
+| `tokenSearch` | `keyword` | `chainIndex`, `limit`(20) | 关键词搜索 |
+| `tokenInfo` | `chainIndex` + `tokenAddress`\|`tokens[]` | — | 代币信息（支持批量） |
+| `hotTokens` | `chainIndex` | `limit`(50), 其余透传 | 热榜 |
+| `leaderboard` | `chainIndex` | `sortBy`(1=pnl), `timeFrame`(4=24h), `limit`(50) | 排行榜 |
+| `signals` | `chainIndex` | `signalType`, `limit`(50), `walletType`, `minAmountUsd` | 信号 |
+| `mempump` | `chainIndex` + `stage`(NEW\|MIGRATING\|MIGRATED) | `protocol`, `sortBy`(volume24h), `limit`(50) | Meme 币（ETH 不支持） |
+| `candles` | `chainIndex` + `tokenAddress`\|`tokens[]` | `period`(15m), `limit`(100) | K 线（支持批量） |
+| `price` | `chainIndex` + `tokenAddress`\|`tokens[]` | — | 价格（支持批量） |
+| `balances` | `address` + `chains`(数组或逗号分隔) | — | 跨链余额 |
+| `transactions` | `address` + `chains` | `limit`(50) | 交易历史 |
+| `trackedTokens` | — | `chain`, `enabled` | 跟踪代币（本地表） |
+| `customSigs` | — | `chain`, `enabled` | 自定义事件签名（本地表） |
+
+- **批量**：`tokens[]` 多元素 → 保序 `[{tokenAddress, data}, ...]`；单 token 用 `tokenAddress` 直接返回。
+- **x402 门控**：上游需 x402 → **HTTP 402** `{code:-1, message:"x402 payment required: ...", code:402}`。
+- **错误**：参数缺失 400 / 未知方法 404 / 上游错误 502。
+
+### 7.6.7 行情 WebSocket 订阅（collector :9101，A-14）— `/v1/market-ws`
+
+> 2026-08-15 交付：增量推送（价格仅变化、K 线仅最后一根变化）。鉴权：query `key` = `rx_` 读 key，如 `wss://…/v1/market-ws?key=rx_...&chainIndex=1`；失败 401 断开。
+
+| 方向 | 消息 | 说明 |
+|---|---|---|
+| 订阅 | `{"op":"subscribe","type":"price","chainIndex":"1","tokens":[...]}` | 订阅即推当前值 |
+| 订阅 | `{"op":"subscribe","type":"candles","chainIndex":"1","tokens":[...],"period":"15m","limit":4}` | K 线订阅 |
+| 退订 | `{"op":"unsubscribe","type":"price","tokens":[...]}` | 缺 `tokens` → 该 type 全部退订 |
+| 推送 | `{"type":"price","chainIndex","tokenAddress","data"}` | 仅价格变化时 |
+| 推送 | `{"type":"candles","chainIndex","tokenAddress","data"}` | 仅最后一根 K 线变化时 |
+
+> 轮询频率：价格 5s / K 线 30s（全局单实例 Timer，客户端数不影响上游调用频次）；同源同缓存（A-13）与 market-rpc 同一 client。
 
 ---
 
