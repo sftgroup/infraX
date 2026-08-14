@@ -60,14 +60,16 @@ def should_run(store: Any, interval_s: float) -> bool:
 
 
 def build_default_spec() -> tuple[JobSpec, list[str]]:
-    """构造调度用 JobSpec：INTENT（LLM 解析）优先，否则 SPEC JSON。"""
+    """构造调度用 JobSpec：INTENT（LLM 解析，可含 formulas）优先，否则 SPEC JSON。"""
     if config.FACTOR_MINER_SCHEDULE_INTENT:
         from app.factorengine.intent import parse_intent
         parsed = parse_intent(config.FACTOR_MINER_SCHEDULE_INTENT)
-        return build_spec(parsed["preferences"], parsed["constraints"])
+        return build_spec(parsed["preferences"], parsed["constraints"],
+                          parsed.get("formulas"))
     spec_json = json.loads(config.FACTOR_MINER_SCHEDULE_SPEC)
     return build_spec(spec_json.get("preferences") or {},
-                      spec_json.get("constraints") or {})
+                      spec_json.get("constraints") or {},
+                      spec_json.get("formulas") or [])
 
 
 def miner_schedule_loop(interval_s: float, delay_s: float) -> None:
