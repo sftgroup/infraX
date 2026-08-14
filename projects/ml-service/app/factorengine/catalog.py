@@ -7,10 +7,13 @@ factors_catalog：合格因子登记表（key/公式/数据源/窗口/版本/状
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from typing import Any, Optional
 
 import config
+
+logger = logging.getLogger(__name__)
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS factor_catalog (
@@ -126,12 +129,22 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
         key = r["factor_key"]
         existing = store.get(key)
         fd = _registry_def(key)
+        params: dict[str, Any] = {}
+        if fd is not None and getattr(fd, "template", None):
+            # 模板实例参数（如 mom_10_30 → {"f":10,"s":30}），供复算/进特征
+            params = dict(getattr(fd, "params", {}) or {})
+        if key.startswith("dsl_") and fd is not None:
+            # FF-5：持久化完整公式（name 现在存完整公式），跨进程重注册可复算
+            formula = (getattr(fd, "name", "") or "")
+            if formula.startswith("dsl "):
+                formula = formula[4:]
+            params["formula"] = formula
         entry = {
             "factor_key": key,
             "name": fd.name if fd else f"factor {key}",
             "category": fd.category if fd else _category_of(key),
-            "template": None,
-            "params": {},
+            "template": getattr(fd, "template", None),
+            "params": params,
             "description": f"auto-mined by job {job_id} (IC={r.get('ic')}, ICIR={r.get('icir')})",
             "source": "factor_miner",
             "version": "1.0",
@@ -143,6 +156,48 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
             registered += 1
         store.upsert(entry)
     return registered
+
+
+def auto_activate(job_id: str, results: list[dict[str, Any]]) -> int:
+    """自动闭环（FF-4.3）：任务 passed 因子登记后直接激活（status → active），
+    使其进入 /factors/current 查询名单与模型特征集合。返回激活数（幂等）。"""
+    store = get_catalog()
+    n = 0
+    for r in results:
+        if not r.get("passed"):
+            continue
+        if store.set_status(r["factor_key"], "active"):
+            n += 1
+    if n:
+        logger.info("factor miner auto-activated %d factor(s) from job %s", n, job_id)
+    return n
+
+
+def ensure_dsl_registered() -> int:
+    """服务启动时恢复 catalog 中 DSL 因子的运行时注册（FF-5：进程重启后
+    FACTOR_REGISTRY 为空，需按持久化的公式重注册，特征计算/复算才可用）。
+    返回恢复数；公式缺失/非法跳过（日志告警）。"""
+    from app.factorengine.factors import register_dsl_factor
+
+    n = 0
+    try:
+        for e in get_catalog().list():
+            if not e["factor_key"].startswith("dsl_"):
+                continue
+            formula = (e.get("params") or {}).get("formula") or ""
+            if not formula:
+                logger.warning("ensure_dsl_registered: %s 缺公式，无法恢复", e["factor_key"])
+                continue
+            try:
+                register_dsl_factor(formula)
+                n += 1
+            except Exception as exc:
+                logger.warning("ensure_dsl_registered skip %s: %s", e["factor_key"], exc)
+    except Exception as exc:
+        logger.warning("ensure_dsl_registered failed: %s", exc)
+    if n:
+        logger.info("factor catalog: restored %d DSL factor(s)", n)
+    return n
 
 
 def _registry_def(key: str):

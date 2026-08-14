@@ -116,7 +116,10 @@ class TestJobStore:
         assert got["status"] == JobStatus.CANCELLED.value
 
     def test_run_wrapper_completed_registers_catalog(self, store, monkeypatch):
-        # 回归（FF-3.1）：job 完成 → passed 因子自动登记 catalog（inactive 待激活）
+        # 回归（FF-3.1）：job 完成 → passed 因子登记 catalog。
+        # 关闭自动闭环开关，验证旧语义：登记为 inactive（待人工激活）。
+        monkeypatch.setattr(config, "FACTOR_MINER_AUTO_ACTIVATE", False)
+        monkeypatch.setattr(config, "FACTOR_MINER_AUTO_RETRAIN", False)
         import app.factorengine.jobs as jobs_mod
         monkeypatch.setattr(jobs_mod, "_store", store)
         import app.factorengine.catalog as cat_mod
@@ -142,6 +145,36 @@ class TestJobStore:
         assert row is not None and row["status"] == "inactive"
         assert "auto-mined" in row["description"]
         assert cat.get("vol_20") is None  # 未 passed 不登记
+
+    def test_run_wrapper_auto_closed_loop(self, store, monkeypatch):
+        # 自动闭环（FF-4.3）：passed 因子登记后自动激活 + 置模型过期（下次预测重训）
+        monkeypatch.setattr(config, "FACTOR_MINER_AUTO_ACTIVATE", True)
+        monkeypatch.setattr(config, "FACTOR_MINER_AUTO_RETRAIN", True)
+        import app.factorengine.jobs as jobs_mod
+        monkeypatch.setattr(jobs_mod, "_store", store)
+        import app.factorengine.catalog as cat_mod
+        cat_mod._catalog = None
+        import app.factorengine.runner as runner_mod
+        invalidated = []
+
+        def fake_run(spec, progress=None):
+            for s in ("pool", "eval", "select", "persist"):
+                if progress and not progress(s):
+                    return None
+            return {"results": [
+                {"factor_key": "ret_5", "ic": 0.05, "icir": 0.4, "passed": True},
+            ], "selected": ["ret_5"], "stats": {}}
+
+        monkeypatch.setattr(runner_mod, "run_mine", fake_run)
+        import app.analytics.tree_models as tm_mod
+        monkeypatch.setattr(tm_mod, "invalidate_models",
+                            lambda: invalidated.append(1))
+        spec, _ = build_spec()
+        job = store.create(spec)
+        jobs_mod._run_wrapper(job["job_id"], spec)
+        cat = cat_mod.get_catalog()
+        assert cat.get("ret_5")["status"] == "active"  # 自动激活
+        assert len(invalidated) == 1  # 置模型过期一次
 
 
 # ── CatalogStore（FF-3） ───────────────────────────────────

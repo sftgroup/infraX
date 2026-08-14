@@ -189,7 +189,7 @@ def register_dsl_factor(formula: str, available_cols: set[str] | None = None) ->
             # 运行时缺列/求值失败 → NaN 序列（与 _ma_pct 缺列行为一致，dropna 后自然过滤）
             return pd.Series(np.nan, index=df.index)
 
-    register_factor(key, f"dsl {formula[:44]}", "L5", needs=needs, compute=_compute)
+    register_factor(key, f"dsl {formula}", "L5", needs=needs, compute=_compute)
     return key
 
 

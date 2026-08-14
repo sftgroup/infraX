@@ -31,13 +31,31 @@ def compute_factors(df: pd.DataFrame, keys: Iterable[str]) -> dict[str, pd.Serie
     return out
 
 
+def _active_feature_keys() -> list[str]:
+    """默认特征集合 = LEGACY 17 列 + catalog 激活因子（自动闭环 FF-4.3）。
+
+    挖掘任务 passed 因子激活后自动进入模型特征；catalog 不可用时仅 LEGACY。
+    compute_factor 不可算的 key（缺依赖列/未注册）由 compute_factors 静默跳过。
+    """
+    keys = list(LEGACY_FEATURE_COLUMNS)
+    try:
+        from app.factorengine.catalog import get_catalog
+
+        for k in get_catalog().active_keys():
+            if k not in keys:
+                keys.append(k)
+    except Exception:
+        pass  # catalog 不可用 → 仅 LEGACY（fail-open，行为不变）
+    return keys
+
+
 def build_feature_matrix(df: pd.DataFrame, keys: Iterable[str] | None = None) -> pd.DataFrame:
     """注册表驱动的特征矩阵（与 df index 对齐）。
 
-    keys 缺省 = LEGACY_FEATURE_COLUMNS（旧 17 列，回归兼容）。
+    keys 缺省 = LEGACY 17 列 + catalog 激活因子（自动闭环：新激活因子自动进特征）。
     技术指标列缺失时对应因子列缺失（不产出 NaN 列），与旧实现一致。
     """
-    keys = list(keys) if keys is not None else LEGACY_FEATURE_COLUMNS
+    keys = list(keys) if keys is not None else _active_feature_keys()
     series = compute_factors(df, keys)
     if not series:
         return pd.DataFrame(index=df.index)

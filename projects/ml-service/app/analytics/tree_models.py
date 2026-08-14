@@ -248,6 +248,21 @@ def _load_model(family: str = "lightgbm") -> Optional[Any]:
     return None
 
 
+def invalidate_models() -> None:
+    """置全部家族模型过期（删除 meta）→ 下次 predict 自动用新特征重训。
+
+    自动闭环 FF-4.3：挖掘出新激活因子后调用，训练特征即含新因子。
+    """
+    for family in _FAMILIES:
+        try:
+            p = _family_meta_file(family)
+            if p.exists():
+                p.unlink()
+                logger.info("tree_ml %s meta invalidated (retrain on next predict)", family)
+        except Exception as exc:
+            logger.warning("tree_ml invalidate_models(%s) failed: %s", family, exc)
+
+
 def _is_stale(meta: Optional[dict]) -> bool:
     """无模型或超过重训周期。"""
     if meta is None:

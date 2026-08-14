@@ -271,6 +271,21 @@ def _start_prewarm() -> None:
 
 
 @app.on_event("startup")
+def _restore_catalog_dsl_factors() -> None:
+    """启动时从 catalog 恢复 DSL 因子运行时注册（FF-5 跨进程可复算）。
+
+    挖掘产出的 dsl_* 因子公式持久化在 catalog params；进程重启后注册表为空，
+    需按公式重注册，激活因子才能进模型特征与复算。
+    """
+    try:
+        from app.factorengine.catalog import ensure_dsl_registered
+
+        ensure_dsl_registered()
+    except Exception as exc:
+        logger.warning("restore catalog DSL factors failed: %s", exc)
+
+
+@app.on_event("startup")
 def _start_factor_miner_scheduler() -> None:
     """启动定时挖掘调度线程（FF-4.1）；未启用/配置缺失时 fail-silent。"""
     from app.factorengine.scheduler import start_miner_scheduler

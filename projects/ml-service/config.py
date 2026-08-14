@@ -63,6 +63,10 @@ FACTOR_MINER_SCHEDULE_INTENT = os.getenv("FACTOR_MINER_SCHEDULE_INTENT", "")
 # 如 [{"name":"crypto","preferences":{...},"constraints":{"min_ic":0.03,"min_icir":0.05,...},"formulas":[...]}]
 # 配置时优先于 INTENT/SPEC（单市场回退）；不同市场数据特性不同需独立阈值
 FACTOR_MINER_SCHEDULE_MULTI = os.getenv("FACTOR_MINER_SCHEDULE_MULTI", "")
+# 自动闭环（FF-4.3）：任务 COMPLETED 后，passed 因子自动激活（进 /factors/current
+# 查询与模型特征）+ 置模型过期（下次预测自动用新特征重训）。全链路无需人工。
+FACTOR_MINER_AUTO_ACTIVATE = os.getenv("FACTOR_MINER_AUTO_ACTIVATE", "true").strip().lower() in ("1", "true", "yes", "on")
+FACTOR_MINER_AUTO_RETRAIN = os.getenv("FACTOR_MINER_AUTO_RETRAIN", "true").strip().lower() in ("1", "true", "yes", "on")
 # IC / ICIR 阈值（动态可调）：INTENT 分支强制覆盖 LLM 解析值（LLM 输出数字不确定，
 # 阈值调整只改 .env 这一个数字重启即生效，不依赖意图文案）。联合门槛为
 # 同时满足 min_ic 与 min_icir；crypto 日线短样本下 IC 与 ICIR 往往此消彼长，
