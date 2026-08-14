@@ -742,6 +742,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 > **发布物**（§6.1，随 Phase 2-3 实施）：ClawHub SKILL / MCP Hub = P0；OpenAI GPT Store / Cursor / Claude / GitHub = P1。非功能目标（§8）：hub 启动 <5s、查询 P95<2s、交易 P95<10s、TEE 签名 <500ms。
 
+> **决策确认（2026-08-15 用户）：TEE 维持延后，维持现状**。2.1~2.3 继续 P3 延后（待 TEE 环境审批）；软件侧以真 TSS 分片签名（E-4，cggmp21，签名全程无完整私钥重建）为当前安全基线，已满足现有 B 端需求（AIHunter/PocketX），无需软件替代方案（云 KMS/HSM 等）；如有 B 端客户提出 TEE 合规要求再行评估。
+
 ### 9.7 各模块 SDK / MCP / API 端点能力审查（✅ 完成 2026-08-06）
 
 > 目标：盘点当前各模块对外暴露的集成面（SDK / MCP / REST API），按 5 类消费方核对覆盖度与缺口，输出端点清单 + 差距报告 + 补齐计划。
