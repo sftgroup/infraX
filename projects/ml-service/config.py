@@ -67,6 +67,12 @@ FACTOR_MINER_SCHEDULE_MULTI = os.getenv("FACTOR_MINER_SCHEDULE_MULTI", "")
 # 查询与模型特征）+ 置模型过期（下次预测自动用新特征重训）。全链路无需人工。
 FACTOR_MINER_AUTO_ACTIVATE = os.getenv("FACTOR_MINER_AUTO_ACTIVATE", "true").strip().lower() in ("1", "true", "yes", "on")
 FACTOR_MINER_AUTO_RETRAIN = os.getenv("FACTOR_MINER_AUTO_RETRAIN", "true").strip().lower() in ("1", "true", "yes", "on")
+# 衰退淘汰（FF-4.4）：激活因子用其登记的 asset_pool 定期重新评估 IC/ICIR，
+# |IC| < DEACTIVATE_IC 或 |ICIR| < DEACTIVATE_ICIR 自动停用（滞回：停用阈值
+# 低于激活阈值，避免阈值边界抖动）。挖掘任务 COMPLETED 后触发。
+FACTOR_MINER_DEACTIVATE_ENABLED = os.getenv("FACTOR_MINER_DEACTIVATE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+FACTOR_MINER_DEACTIVATE_IC = float(os.getenv("FACTOR_MINER_DEACTIVATE_IC", "0.01"))
+FACTOR_MINER_DEACTIVATE_ICIR = float(os.getenv("FACTOR_MINER_DEACTIVATE_ICIR", "0.03"))
 # IC / ICIR 阈值（动态可调）：INTENT 分支强制覆盖 LLM 解析值（LLM 输出数字不确定，
 # 阈值调整只改 .env 这一个数字重启即生效，不依赖意图文案）。联合门槛为
 # 同时满足 min_ic 与 min_icir；crypto 日线短样本下 IC 与 ICIR 往往此消彼长，

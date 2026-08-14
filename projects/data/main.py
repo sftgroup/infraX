@@ -18,6 +18,7 @@ import logging
 import time
 import hmac
 import threading
+import asyncio
 
 # ── Load .env (must happen before any app imports) ─────────
 from pathlib import Path
@@ -331,11 +332,16 @@ async def factors_current(
         # DQ-4: 因子新鲜度元数据（age_ms / fresh）随响应返回
         meta = result.pop("_meta", {})
         response = {"ts": result.pop("_ts", 0), "meta": meta, "factors": result}
-        # FF-3.3: 透传 ml-service 因子工厂激活因子（AItrader factor_client 无改动感知新因子）
+        # FF-3.3/3.4: 透传 ml-service 因子工厂激活因子 + 实时值（客户端免复算公式）。
+        # 放线程池执行：ml-service /factors/values 会回调 data-service /bars，
+        # 同步请求在 async 端点里会阻塞事件循环造成跨服务死锁。
         try:
-            from app.ml_client import fetch_factor_factory_activations
-            ff = fetch_factor_factory_activations()
+            from app.ml_client import fetch_factor_factory_activations, fetch_factor_factory_values
+            ff = await asyncio.to_thread(fetch_factor_factory_activations)
             if ff:
+                vals = await asyncio.to_thread(fetch_factor_factory_values, sym_list)
+                if vals:
+                    ff["values"] = vals.get("values", {})
                 response["ml_factory"] = ff
         except Exception:
             pass

@@ -114,15 +114,24 @@ def _now() -> int:
 
 # ── 登记合格因子（FF-3.1：挖掘产出 → catalog 候选） ─────────
 
-def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
-    """把挖掘任务中 passed 的因子登记进 catalog（inactive，待人工激活）。
+def register_qualified(job_id: str, results: list[dict[str, Any]],
+                       spec: Optional["JobSpec"] = None) -> int:
+    """把挖掘任务中 passed 的因子登记进 catalog（inactive，待自动激活）。
 
     返回新登记数。同 key 已存在时仅刷新元数据（不重置 status）。
-    DSL 因子（FF-5，dsl_ 前缀）登记时从注册表带出公式到 name，可追溯可复算。
+    DSL 因子（FF-5，dsl_ 前缀）登记时从注册表带出完整公式到 params，可追溯可复算。
+    spec 可选：登记评估环境（asset_pool/horizon）到 params，供衰退淘汰（FF-4.4）
+    用因子原市场标的重新评估，避免跨市场误停用。
     """
+    from app.factorengine.job import JobSpec  # noqa: F401（类型注解）
+
     store = get_catalog()
     registered = 0
     now = _now()
+    eval_env: dict[str, Any] = {}
+    if spec is not None:
+        eval_env = {"asset_pool": list(getattr(spec.preferences, "asset_pool", None) or []),
+                    "horizon": getattr(spec.preferences, "horizon", 1)}
     for r in results:
         if not r.get("passed"):
             continue
@@ -139,6 +148,9 @@ def register_qualified(job_id: str, results: list[dict[str, Any]]) -> int:
             if formula.startswith("dsl "):
                 formula = formula[4:]
             params["formula"] = formula
+        if eval_env:
+            # 评估环境（asset_pool/horizon）：衰退淘汰用原市场标的重新评估
+            params.update(eval_env)
         entry = {
             "factor_key": key,
             "name": fd.name if fd else f"factor {key}",
@@ -171,6 +183,71 @@ def auto_activate(job_id: str, results: list[dict[str, Any]]) -> int:
     if n:
         logger.info("factor miner auto-activated %d factor(s) from job %s", n, job_id)
     return n
+
+
+def health_check_active() -> int:
+    """衰退淘汰（FF-4.4）：对 catalog 所有 active 因子用各自登记的评估环境
+    （asset_pool/horizon）重新评估 IC/ICIR（最新 K 线），低于停用阈值
+    （FACTOR_MINER_DEACTIVATE_IC / _ICIR）自动停用（inactive + 记录原因）。
+
+    返回停用数。挖掘任务 COMPLETED 后调用（jobs 钩子）。未登记评估环境
+    （旧数据/动态标的池）的因子跳过，不误停用。
+    """
+    import pandas as pd
+
+    from app.factorengine.eval import evaluate_factor
+    from app.factorengine.factors import compute_factor
+    from app.factorengine.runner import _kline_df
+
+    store = get_catalog()
+    active = [e for e in store.list() if e["status"] == "active"]
+    if not active:
+        return 0
+    deactivated = 0
+    for e in active:
+        key = e["factor_key"]
+        params = e.get("params") or {}
+        pool = params.get("asset_pool") or []
+        if not pool:
+            continue  # 未登记评估环境 → 跳过（不误停用）
+        horizon = int(params.get("horizon") or 1)
+        parts = []
+        for sym in pool:
+            df = _kline_df(sym, "1d")
+            if df is None or len(df) <= 120:
+                continue
+            f = compute_factor(key, df)
+            if f is None:
+                continue
+            close = df["close"].astype(float)
+            future_ret = close.shift(-horizon) / close - 1.0
+            panel = pd.concat([f.rename("f"), future_ret.rename("r")], axis=1).dropna()
+            if len(panel) >= 30:
+                parts.append(panel)
+        if not parts:
+            continue
+        allp = pd.concat(parts)
+        if len(allp) < 30:
+            continue
+        ev = evaluate_factor(key, allp["f"], allp["r"])
+        decayed = (ev.ic is None or abs(ev.ic or 0) < config.FACTOR_MINER_DEACTIVATE_IC
+                   or ev.icir is None
+                   or abs(ev.icir or 0) < config.FACTOR_MINER_DEACTIVATE_ICIR)
+        if not decayed:
+            continue
+        store.set_status(key, "inactive")
+        cur = store.get(key) or e
+        cur["description"] = (f"{cur.get('description') or ''} "
+                              f"[FF-4.4 decayed: |IC|={abs(ev.ic or 0):.4f} "
+                              f"|ICIR|={abs(ev.icir or 0):.4f} deactivated]").strip()
+        cur["updated_at"] = _now()
+        store.upsert(cur)
+        logger.info("factor decayed deactivated: %s |IC|=%.4f |ICIR|=%.4f",
+                    key, abs(ev.ic or 0), abs(ev.icir or 0))
+        deactivated += 1
+    if deactivated:
+        logger.info("factor miner decay deactivation: %d factor(s) deactivated", deactivated)
+    return deactivated
 
 
 def ensure_dsl_registered() -> int:

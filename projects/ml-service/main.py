@@ -44,7 +44,7 @@ if _env_path.exists():
                 if key and key not in os.environ:
                     os.environ[key] = val
 
-from fastapi import FastAPI, Request  # noqa: E402
+from fastapi import FastAPI, Request, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
@@ -536,6 +536,48 @@ def factor_deactivate(factor_key: str):
     from app.factorengine.catalog import get_catalog
     ok = get_catalog().set_status(factor_key, "inactive")
     return {"code": 0, "message": "ok", "data": {"updated": ok}}
+
+
+@app.get("/factors/values")
+def factors_values(symbols: str = Query("", description="Comma-separated symbols")):
+    """激活因子当前值（FF-3.4）：对每个 active 因子 × 每个 symbol 计算最新值。
+
+    供 data-service /factors/current 透传，客户端无需复算公式即可拿到
+    挖掘因子的实时值。返回 {"updated_at": ms, "values": {symbol: {factor_key: value}}}；
+    无激活因子 / 无标的时 values 为空对象（fail-silent）。
+    """
+    sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    empty = {"updated_at": _now_ms(), "values": {}}
+    if not sym_list:
+        return {"code": 0, "message": "ok", "data": empty}
+    try:
+        from app.factorengine.catalog import get_catalog
+        from app.factorengine.factors import compute_factor
+        from app.factorengine.runner import _kline_df
+
+        keys = get_catalog().active_keys()
+        if not keys:
+            return {"code": 0, "message": "ok", "data": empty}
+        values: dict[str, dict] = {}
+        for sym in sym_list:
+            df = _kline_df(sym, "1d")
+            if df is None or len(df) < 30:
+                continue
+            row: dict[str, float] = {}
+            for key in keys:
+                f = compute_factor(key, df)
+                if f is None:
+                    continue
+                v = f.dropna()
+                if len(v):
+                    row[key] = round(float(v.iloc[-1]), 8)
+            if row:
+                values[sym] = row
+        return {"code": 0, "message": "ok",
+                "data": {"updated_at": _now_ms(), "values": values}}
+    except Exception as exc:
+        logger.warning("factors/values failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": empty}
 
 
 def _now_ms() -> int:

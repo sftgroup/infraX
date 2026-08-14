@@ -84,6 +84,8 @@ def fetch_consensus() -> dict | None:
 # 因子工厂激活列表 TTL 缓存（/factors/current 请求频繁，避免每请求打 ml-service）
 _FF_CACHE: dict = {}
 _FF_CACHE_TTL_S = 60
+_FF_VALUES_CACHE: dict = {}
+_FF_VALUES_CACHE_TTL_S = 60
 
 
 def fetch_factor_factory_activations() -> dict | None:
@@ -115,6 +117,42 @@ def fetch_factor_factory_activations() -> dict | None:
         return None
     except Exception as exc:
         logger.debug("ml-service /factors/current parse failed: %s", exc)
+        return None
+
+
+def fetch_factor_factory_values(symbols: list[str]) -> dict | None:
+    """拉取 ml-service 激活因子当前值（/factors/values，FF-3.4）。
+
+    返回 {"updated_at", "values": {symbol: {factor_key: value}}} 或 None（fail-silent）。
+    60s TTL 缓存，**按 symbols 集合键控**（不同请求的标的池不同，值必须对应）。
+    data-service /factors/current 将其并入 ml_factory.values，客户端免复算公式。
+    """
+    global _FF_VALUES_CACHE  # 函数内赋值 → 需显式 global
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base or not symbols:
+        return None
+    cache_key = ",".join(sorted(symbols))
+    now = time.time()
+    if (_FF_VALUES_CACHE.get("key") == cache_key
+            and now - _FF_VALUES_CACHE.get("ts", 0) < _FF_VALUES_CACHE_TTL_S):
+        return _FF_VALUES_CACHE.get("data")
+    try:
+        resp = requests.get(f"{base}/factors/values",
+                            params={"symbols": ",".join(symbols)},
+                            headers=_headers(), timeout=30)
+        if resp.status_code != 200:
+            logger.debug("ml-service /factors/values → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict) or not data.get("values"):
+            return None
+        _FF_VALUES_CACHE = {"key": cache_key, "ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ml-service /factors/values request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service /factors/values parse failed: %s", exc)
         return None
 
 

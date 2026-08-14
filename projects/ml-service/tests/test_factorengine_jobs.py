@@ -176,6 +176,38 @@ class TestJobStore:
         assert cat.get("ret_5")["status"] == "active"  # 自动激活
         assert len(invalidated) == 1  # 置模型过期一次
 
+    def test_health_check_active_decays(self, store, monkeypatch):
+        # 衰退淘汰（FF-4.4）：|IC|/|ICIR| 低于停用阈值的激活因子自动停用；
+        # 未登记评估环境（asset_pool）的因子跳过（不误停用）。
+        import numpy as np
+        import pandas as pd
+        import app.factorengine.catalog as cat_mod
+        cat_mod._catalog = None
+        cat = cat_mod.get_catalog()
+        base = {"name": "x", "category": "L0", "template": None,
+                "description": "t", "source": "t", "version": "1.0",
+                "registered_at": 0, "updated_at": 0}
+        cat.upsert({"factor_key": "decay_me", "status": "active",
+                    "params": {"asset_pool": ["X"], "horizon": 1}, **base})
+        cat.upsert({"factor_key": "no_env", "status": "active",
+                    "params": {}, **base})
+        n = 200
+        idx = pd.date_range("2024-01-01", periods=n, freq="D")
+        close = pd.Series(np.arange(n) + np.sin(np.arange(n)), index=idx)
+        df = pd.DataFrame({"close": close.values}, index=idx)
+        # 假因子：与未来收益无相关（IC≈0）→ 衰减停用
+        monkeypatch.setattr("app.factorengine.runner._kline_df",
+                            lambda sym, timeframe="1d": df)
+        monkeypatch.setattr("app.factorengine.factors.compute_factor",
+                            lambda key, d: pd.Series(
+                                np.sin(np.arange(len(d))) * 0.001 + 0.0001,
+                                index=d.index))
+        n_decay = cat_mod.health_check_active()
+        assert n_decay == 1
+        assert cat.get("decay_me")["status"] == "inactive"
+        assert "decayed" in cat.get("decay_me")["description"]
+        assert cat.get("no_env")["status"] == "active"  # 未登记环境跳过
+
 
 # ── CatalogStore（FF-3） ───────────────────────────────────
 
