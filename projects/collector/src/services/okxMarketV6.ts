@@ -131,6 +131,44 @@ export class OkxMarketV6Client {
   private accounts: OkxAccount[] = [];
   private accountIndex = 0;
 
+  // ── A-13 同源同缓存：单例内共享 TTL 缓存（REST MarketAPI 与 /v1/market-rpc 走同一 client
+  //    → 命中同一缓存，口径一致 + 降上游调用成本 + 压低 P95） ──
+  private cache = new Map<string, { value: any; ts: number }>();
+  private static MAX_CACHE_ENTRIES = 5000;
+
+  /** 按 path 返回 TTL（ms）：价格/余额/交易短缓存，K线/热度中缓存，搜索/信号长缓存 */
+  private cacheTtl(path: string): number {
+    if (path.includes('/market/price') || path.includes('/current-price')
+        || path.includes('/balance') || path.includes('/transactions')
+        || path.includes('/trades')) return 2000;
+    if (path.includes('/candles') || path.includes('/toplist') || path.includes('/memepump')) return 5000;
+    if (path.includes('/search') || path.includes('/basic-info')
+        || path.includes('/signal') || path.includes('/leaderboard')
+        || path.includes('/portfolio') || path.includes('/holder') || path.includes('/top-trader')) return 10000;
+    return 5000;
+  }
+
+  private cacheGet(key: string): any | undefined {
+    const hit = this.cache.get(key);
+    if (!hit) return undefined;
+    if (Date.now() - hit.ts >= this.cacheTtl(key.split(' ', 2)[1])) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return hit.value;
+  }
+
+  private cacheSet(key: string, value: any): void {
+    if (this.cache.size >= OkxMarketV6Client.MAX_CACHE_ENTRIES) {
+      const now = Date.now();
+      for (const [k, v] of this.cache) {
+        if (now - v.ts >= 60000) this.cache.delete(k);
+      }
+      if (this.cache.size >= OkxMarketV6Client.MAX_CACHE_ENTRIES) this.cache.clear();
+    }
+    this.cache.set(key, { value, ts: Date.now() });
+  }
+
   private signRequest(account: OkxAccount, method: string, path: string, body: string = ''): Record<string, string> {
     const timestamp = new Date().toISOString();
     const prehash = timestamp + method + path + body;
@@ -149,30 +187,49 @@ export class OkxMarketV6Client {
     const headers = this.signRequest(account, method, path, bodyStr);
     const url = `${config.okxMarket.apiBase}${path}`;
 
-    const resp = await fetch(url, { method, headers, body: bodyStr || undefined });
+    // A-13：命中 TTL 缓存直接返回（同源同缓存，REST/RPC 共享）
+    const cacheKey = `${method} ${path}${bodyStr ? ' ' + bodyStr : ''}`;
+    const cached = this.cacheGet(cacheKey);
+    if (cached !== undefined) return cached;
 
-    if (resp.status === 429) {
-      throw new Error(`OKX Market rate-limited`);
-    }
-    // x402 支付门控（HTTP 402）：保留结构化信息供路由层显式返回 payment_required
-    if (resp.status === 402) {
-      const text = await resp.text();
-      const err: any = new Error(`OKX Market 402: ${text.slice(0, 500)}`);
-      err.status = 402;
-      err.x402 = true;
-      throw err;
-    }
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`OKX Market ${resp.status}: ${text.slice(0, 200)}`);
-    }
+    // RI-3.1：429/5xx 指数退避 + jitter 重试（1s→2s→4s，最多 3 次；402/其他 4xx 不重试）
+    const maxRetries = 3;
+    let attempt = 0;
+    for (;;) {
+      const resp = await fetch(url, { method, headers, body: bodyStr || undefined });
 
-    const json = await resp.json() as any;
-    if (json.code !== '0') {
-      throw new Error(`OKX Market error ${json.code}: ${json.msg}`);
-    }
+      if (resp.status === 429 || resp.status >= 500) {
+        if (attempt >= maxRetries) {
+          const text = await resp.text();
+          throw new Error(`OKX Market ${resp.status} (after ${maxRetries} retries): ${text.slice(0, 200)}`);
+        }
+        const backoff = (1000 * (2 ** attempt)) * (0.6 + Math.random() * 0.8); // 1s→2s→4s + jitter
+        logger.warn(`OKX Market ${resp.status} ${path}, retry ${attempt + 1}/${maxRetries} in ${Math.round(backoff)}ms`);
+        await new Promise(r => setTimeout(r, backoff));
+        attempt++;
+        continue;
+      }
+      // x402 支付门控（HTTP 402）：保留结构化信息供路由层显式返回 payment_required
+      if (resp.status === 402) {
+        const text = await resp.text();
+        const err: any = new Error(`OKX Market 402: ${text.slice(0, 500)}`);
+        err.status = 402;
+        err.x402 = true;
+        throw err;
+      }
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`OKX Market ${resp.status}: ${text.slice(0, 200)}`);
+      }
 
-    return json.data;
+      const json = await resp.json() as any;
+      if (json.code !== '0') {
+        throw new Error(`OKX Market error ${json.code}: ${json.msg}`);
+      }
+
+      this.cacheSet(cacheKey, json.data);
+      return json.data;
+    }
   }
 
   private nextAccount(): OkxAccount | null {

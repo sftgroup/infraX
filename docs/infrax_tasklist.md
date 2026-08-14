@@ -1232,8 +1232,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|
 | AASDK-1 | 发布形式裁定 | ✅ **已裁定（2026-08-12 用户）**：不单独发包，维持 `Aa` 命名空间（session-key-core v0.2.0）——功能覆盖为准，不发布独立 `@infrax/aa-sdk`；PocketX 侧以 `import { Aa } from '@0xinfrax/session-key-core'` 接入 | ✅ 已裁定 | P0 |
-| AASDK-2 | 导出 `entryPointAbi` | `activate.ts` 中模块私有 `const entryPointAbi` → 在 session-key-core `Aa` 命名空间导出（PocketX wallet-base `host/aa.ts` 依赖，用于 EntryPoint 只读调用） | 🔲 待办 | P1 |
-| AASDK-3 | 导出 `parseBundlers` | `config.ts` 中私有函数（缺省抛错）→ 在 session-key-core `Aa` 命名空间导出（保留抛错语义，PocketX 侧自行容错包装"非法/缺失 → []"） | 🔲 待办 | P1 |
+| AASDK-2 | 导出 `entryPointAbi` | `activate.ts` 中模块私有 `const entryPointAbi` → 在 session-key-core `Aa` 命名空间导出（PocketX wallet-base `host/aa.ts` 依赖，用于 EntryPoint 只读调用） | ✅ 完成（`activate.ts` `export const entryPointAbi` + `Aa` 命名空间导出，core v0.2.1） | P1 |
+| AASDK-3 | 导出 `parseBundlers` | `config.ts` 中私有函数（缺省抛错）→ 在 session-key-core `Aa` 命名空间导出（保留抛错语义，PocketX 侧自行容错包装"非法/缺失 → []"） | ✅ 完成（`config.ts` `export function parseBundlers` + `Aa` 命名空间导出，保留抛错语义，core v0.2.1） | P1 |
 | AASDK-4 | MpcSigner 双端点兼容（✅ 方案定稿 2026-08-12） | 技术方案：[AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §1。**方案 A**：MpcSigner 构造兼容 `string \| {email?\|token?}`（token 模式走现有 sign-digest/sign-message；email 模式走 mpc-server 新增 `/api/v2/mpc/sign {message, mode:'digest'\|'eip191', email}`，鉴权语义=email 关联钱包已解锁会话，不引入裸 email 鉴权）；子任务 AASDK-4.1~4.4 | ✅ 已裁定（方案 A） | P0 |
 | AASDK-4.1 | mpc-server 新增 `/api/v2/mpc/sign` | email 定位钱包 + 解锁会话校验 + mode digest/eip191 双分支 TSS 签名（复用 `tssSign`/`ethersSignatureFromRs`）；401 语义（email 未解锁）；对齐 sign-digest/sign-message 返回信封 | ✅ 完成（2026-08-12 生产回归：TSS/Shamir 双钱包 digest+eip191 双模式签名，恢复地址均匹配） | P0 |
 | AASDK-4.2 | MpcSigner 双模式改造 | `aa-sdk/src/signers/mpc.ts`：构造兼容 `string \| {email?\|token?}`；signUserOp（digest）/signMessage（eip191）双模式路由；barrel 导出 `MpcSignerAuth` | ✅ 完成（2026-08-12：[mpc.ts](projects/session-key/packages/core/src/aa/signers/mpc.ts) MpcSignerAuth token\|email 双模式 + 路由 + barrel 导出） | P0 |
@@ -1351,9 +1351,9 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项：swap/DEX 部分恢复排期（2026-08-12） | **用户裁定**：swap/DEX 聚合执行**重新排期**（A-11 DEX 交易执行 RPC，2026-08-12 需求单覆盖原延后项）；多链 / 60+ 链仍维持延后不排期 | 部分恢复（A-11）| — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | ✅ `743ede1`：ai-skills 仓库（7 组 skill + 5 IDE 发布物 + QUICKSTART 文档） | P2 |
-| A-8 | vault 增强实施（2026-08-11 完成） | 按 W-4.1：vault 支持 MPC session confirm（`POST /api/vault/safe/confirm-mpc` → MPC `sign-message` EIP-191 代签 → `safe_signatures` 记 `owner_address`+`signature_type='mpc'` → `wallets` 表登记 → threshold 达标自动 execute）；`executeTransaction` 加固（owner_address 直接关联，老数据回退 wallets 表）；SDK `SafeAPI.confirmMpc` 透传；未配 MPC_URL fail-fast 503 | ✅（2026-08-11 代码完成，待生产部署） | P2 |
-| A-9 | Paymaster/relay 配额前端展示（2026-08-11 完成） | 集成方控制台**统一租户视图**——Dashboard 用量表聚合 5 产品线真实数据：DC（`/usage` plan/quota/used）、MPC（`/api/v2/mpc/plans` 模式）、WaaS（订阅套餐）、Safe Vault（`/api/vault/plans` + `ledger-balance` gas 自付余额）、AA/Session（`/v1/plans` + `ledger-balance`）；web 代理新增 `/v1 → aa-relay`；计费仍 per-product 分离（A-10），仅展示层聚合；未购买显示「—/未激活」，端点不可用显示「不可用」 | ✅（2026-08-11 代码完成，待生产部署） | P2 |
-| A-10 | per-product 计费接入（2026-08-11 完成） | **机制统一、账户分离**：payments 引擎 ledger 机制复用——dc/market/chain-rpc/mpc 已接入 ✅（MQ-16 T-1~T-4）；**2026-08-11 新增接入**：vault 线（`vaultBilling.ts`：gas 自付，createSafe/execute 广播前按预估成本预扣（5% 缓冲），收据后按 gasUsed×gasPrice 结算退差，GAS_POOL 仅广播不垫付；`GET /api/vault/plans` + `POST /api/vault/ledger-balance`；未配引擎免费/余额不足 402/故障 503）、session/AA 线（`aa-relay/src/billing.ts`：UserOp 次数费（默认 0.0001）+ paymaster gas 代付按收据 actualGasCost 结算，广播前预扣、失败全额退；`GET /v1/plans` + `POST /v1/ledger-balance`） | ✅（2026-08-11 代码完成，待生产部署） | P1 |
+| A-8 | vault 增强实施（2026-08-11 完成） | 按 W-4.1：vault 支持 MPC session confirm（`POST /api/vault/safe/confirm-mpc` → MPC `sign-message` EIP-191 代签 → `safe_signatures` 记 `owner_address`+`signature_type='mpc'` → `wallets` 表登记 → threshold 达标自动 execute）；`executeTransaction` 加固（owner_address 直接关联，老数据回退 wallets 表）；SDK `SafeAPI.confirmMpc` 透传；未配 MPC_URL fail-fast 503 | ✅（2026-08-15 生产部署：vault :9107 重启加载新代码；MPC_URL=http://127.0.0.1:9104 + MPC_API_KEY 接线；confirm-mpc 全链路验证——参数校验→DB 定位→MPC sign-message 通道就绪） | P2 |
+| A-9 | Paymaster/relay 配额前端展示（2026-08-11 完成） | 集成方控制台**统一租户视图**——Dashboard 用量表聚合 5 产品线真实数据：DC（`/usage` plan/quota/used）、MPC（`/api/v2/mpc/plans` 模式）、WaaS（订阅套餐）、Safe Vault（`/api/vault/plans` + `ledger-balance` gas 自付余额）、AA/Session（`/v1/plans` + `ledger-balance`）；web 代理新增 `/v1 → aa-relay`；计费仍 per-product 分离（A-10），仅展示层聚合；未购买显示「—/未激活」，端点不可用显示「不可用」 | ✅（2026-08-15 生产部署：infrax-web :9111 已加载 A-9 代码；5 产品线代理全链路验证——/api/v2/mpc/plans、/api/v2/data/usage、/api/v2/subscription/plans、/api/vault/ledger-balance、/v1/plans+/v1/ledger-balance 均通；修复 aa-relay key 对齐平台 bridge key 使 /v1 代理免 401） | P2 |
+| A-10 | per-product 计费接入（2026-08-11 完成） | **机制统一、账户分离**：payments 引擎 ledger 机制复用——dc/market/chain-rpc/mpc 已接入 ✅（MQ-16 T-1~T-4）；**2026-08-11 新增接入**：vault 线（`vaultBilling.ts`：gas 自付，createSafe/execute 广播前按预估成本预扣（5% 缓冲），收据后按 gasUsed×gasPrice 结算退差，GAS_POOL 仅广播不垫付；`GET /api/vault/plans` + `POST /api/vault/ledger-balance`；未配引擎免费/余额不足 402/故障 503）、session/AA 线（`aa-relay/src/billing.ts`：UserOp 次数费（默认 0.0001）+ paymaster gas 代付按收据 actualGasCost 结算，广播前预扣、失败全额退；`GET /v1/plans` + `POST /v1/ledger-balance`） | ✅（2026-08-15 生产部署：vault :9107 + aa-relay :9131 重启加载计费代码并接线 payments 引擎（VAULT_PAYMENTS_URL/AA_PAYMENTS_URL=http://127.0.0.1:9132 + API key + platform address：vault=GAS_POOL_ADDRESS、aa=共享平台钱包）；`/api/vault/plans`、`/api/vault/ledger-balance`、`/v1/plans`、`/v1/ledger-balance` 全部 configured:true 且真实返回 ledger 余额） | P1 |
 | A-11 | DEX 交易执行 RPC（2026-08-12 需求单，✅ 已裁定排期，P0） | 技术方案：[AASDK4_A11_TECH_DESIGN.md](docs/AASDK4_A11_TECH_DESIGN.md) §2。源 [FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md](docs/FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md)：chain-rpc 新增 `/v1/dex-rpc`——`dex.quote`（聚合器报价，OKX DEX 首选/1inch 回退）、`dex.approve`/`dex.swap`（构建**待签名** rawTransaction）、`dex.broadcast` 复用 `/v1/broadcast/:chain`；**安全**：无 sign 端点、quote=读 key、approve/swap=广播 key（分 router）；覆盖链 X Layer/ETH/Base/BSC/Arbitrum/Polygon（联动 RPC-3 链补齐）+ Solana（quote 先行）；子任务 A-11.1~A-11.7 | ✅ 已裁定排期（覆盖 A-6 原"swap/DEX 延后"） | P0 |
 | A-11.1 | 聚合器接入（quote） | `chain-rpc/src/services/dexAggregator.ts`（新增）：OKX DEX Aggregator 客户端（quote/supported-chains）+ 1inch 回退；超时/失败 fail-closed 503；`DEX_AGGREGATOR_URL`/`DEX_API_KEY` 入 config；**2026-08-14 增强：OKX_DEX_KEYS_JSON 凭证池多账号轮询（round-robin + 401/403 failover，commit e4e30be）** | ✅（2026-08-14 生产验证：3 组 key 轮询 quote 9/9 200，P95 ~70ms） | P0 |
 | A-11.2 | approve/swap 构建 | `chain-rpc/src/services/dexBuilder.ts`（新增）：ERC20 approve（amount=0→max uint256）+ swap 未签名 tx（to/data/value/chainId/gasLimit 预估） | ✅（2026-08-14 E2E 真实订单验证：BNB→USDT 0.006，OKX tx 构建→MPC 签名→广播 成功） | P0 |
@@ -1363,12 +1363,12 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-11.6 | 安全加固与限流 | `/v1/dex-rpc` 纳入 rpcQuotaEnforce（读）/广播配额；approve/swap 校验 `chain` 白名单链集；gasLimit 预估上限保护 | ✅（index.ts 读/广播双中间件挂载；`assertDexChain` 白名单校验；dexBuilder `dexMaxApproveGas`/`dexMaxSwapGas` 上限） | P1 |
 | A-11.7 | E2E 验证（生产） | `quote → approve → swap` 模拟 + 真实小额定单：SDK 构建 → MPC `sign-digest` → `/v1/broadcast {wait:true}` → 收据核对；quote P95 < 100ms；接口清单自证无 sign 端点 | ✅（2026-08-14 真实订单成功：BNB→USDT 0.006→3.66 USDT，tx `0x6514c88b…` status=0x1；根因 RFQ 订单有效期短 → `dex-e2e.ts` 加 preflight eth_call + 快速签名广播 + 自动重试） | P0 |
 | A-12 | 行情数据 RPC（2026-08-12 需求单，P1） | 入口 `/v1/market-rpc`（与 `/v1/rpc/:chain` 并列）：`tokenSearch/tokenInfo/hotTokens/leaderboard/signals/mempump/candles/price/balances/transactions/trackedTokens/customSigs` 12 组方法，支持**多 token 批量**，响应信封 `{code,message,data}`，鉴权沿用 `rx_` 读 key | ⚠️ 已实现（2026-08-12 生产复测：12 方法上游契约对齐，8/12 真数据通过；tokenSearch/tokenInfo/price/candles 4 方法 x402 门控**待决策**） | P1 |
-| A-13 | 行情 RPC 一致性保障（2026-08-12 需求单，P1） | 行情 RPC 与 REST MarketAPI **同源同缓存**（口径一致）；SDK TS 类型 + Python 客户端同步发布；P95：quote < 100ms、行情 RPC < 200ms | 🔲 待办 | P1 |
+| A-13 | 行情 RPC 一致性保障（2026-08-12 需求单，P1） | 行情 RPC 与 REST MarketAPI **同源同缓存**（口径一致）；SDK TS 类型 + Python 客户端同步发布；P95：quote < 100ms、行情 RPC < 200ms | ✅（2026-08-15 生产验证：`okxMarketV6.ts` 单例内共享 TTL 缓存（price 2s/kline+hot 5s/search+signal 10s，MAX 5000）；REST `/api/v2/data/market/*` 与 `/v1/market-rpc` 走同一 `getMarketClient()` 实例——实测 REST #1 冷 205ms → REST #2 缓存命中 5ms → RPC 命中 REST 填充缓存 4ms，跨协议同缓存；行情 RPC 10 连发 P95=170ms < 200ms（缓存命中 ~5ms）；SDK TS `MarketRpcAPI`（commit dfe61dd，与 MarketAPI 同 HttpClient 同源同缓存） | P1 |
 | A-14 | ws 行情订阅（2026-08-12 需求单，P2） | 行情 RPC 订阅面：price/candles 增量推送，对齐低延迟场景 | ⚠️ 已实现（2026-08-12 生产验证：`/v1/market-ws` rx_ key 鉴权 + 订阅即推 + price/candles 增量；上游 x402 门控**待决策**） | P2 |
-| A-15 | SessionKey 托管实例（2026-08-12 需求单，P0） | 源 [FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md](docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md)：生产部署 session-key-engine **SaaS 托管实例**（对齐 `projects/session-key` API 面：`/api/v1/health`、`/nonce` 公开，`/sessions`、`/execute` Bearer）；交付 HTTPS URL + `sdk_` 前缀 Bearer key + SLA + 日志/审计接口；消费端仅配 `SESSION_KEY_ENGINE_URL` + `SESSION_KEY_API_KEY` | 🔲 待办 | P0 |
-| A-16 | SessionKeyAPI 并入主 SDK（2026-08-12 需求单，P1） | infrax-dk 新增 `SessionKeyAPI`（`getNonce/createSession/listSessions/getSession/revokeSession/execute`），TS 类型 + Python 客户端同步发布；EIP-712 域参数（chainId/verifyingContract/name/version）SDK 内置；鉴权纳入平台 key 体系 | 🔲 待办 | P1 |
-| A-17 | SessionKey 执行能力增强（2026-08-12 需求单，P1） | 多链 ETH/BSC/BASE/Arbitrum/Polygon（+Solana 候选）；`execute` 返回 `{userOpHash,txHash,status,blockNumber,gasUsed}` + 新增 `GET /execute/:id`；Paymaster 赞助可配置（联动 E-1b）；execute 全程审计（调用方/session id/限额快照/结果） | 🔲 待办 | P1 |
-| A-18 | SessionKey 安全加固（2026-08-12 需求单，P0） | 限额**服务端硬校验**（maxPerTx/maxTotal/validUntil 构建 userOp 前强制，任何路径不写 session key 原文日志）；nonce 单次有效（消费即失效，EIP-712 防重放）；撤销即时生效（DELETE `/sessions/:id` 后已签发 key 立即失效）；公开/Bearer 端点隔离 | 🔲 待办 | P0 |
+| A-15 | SessionKey 托管实例（2026-08-12 需求单，P0） | 源 [FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md](docs/FEATURE_REQUEST_SESSION_KEY_AUTOEXEC.md)：生产部署 session-key-engine **SaaS 托管实例**（对齐 `projects/session-key` API 面：`/api/v1/health`、`/nonce` 公开，`/sessions`、`/execute` Bearer）；交付 HTTPS URL + `sdk_` 前缀 Bearer key + SLA + 日志/审计接口；消费端仅配 `SESSION_KEY_ENGINE_URL` + `SESSION_KEY_API_KEY` | ✅ 完成（2026-08-15：生产 :3500 运行中，health/nonce 公开、sessions/execute Bearer；createSession 全链路 E2E 通过——客户端生成 session keypair + EIP-712 签名 + 服务端派生校验后加密存储） | P0 |
+| A-16 | SessionKeyAPI 并入主 SDK（2026-08-12 需求单，P1） | infrax-dk 新增 `SessionKeyAPI`（`getNonce/createSession/listSessions/getSession/revokeSession/execute`），TS 类型 + Python 客户端同步发布；EIP-712 域参数（chainId/verifyingContract/name/version）SDK 内置；鉴权纳入平台 key 体系 | ✅ 完成（2026-08-15：`@0xinfrax/infrax-dk@0.8.2` SessionKeyAPI 全方法 + `sessionAuthTypedData`/`sessionKeyDomain`/`SESSION_KEY_CHAIN_IDS` 内置；**createSession 死锁修复**——客户端生成 session keypair（viem `generatePrivateKey`+`privateKeyToAccount`）提交公/私钥，服务端 `deriveAddressFromPrivateKey` 一致性校验后加密存储；validUntil 客户端显式提交 + 服务端窗口校验消除时钟竞态；`@0xinfrax/session-key-client@0.1.2`/`session-key-evm@0.1.2` 同步发布） | P1 |
+| A-17 | SessionKey 执行能力增强（2026-08-12 需求单，P1） | 多链 ETH/BSC/BASE/Arbitrum/Polygon（+Solana 候选）；`execute` 返回 `{userOpHash,txHash,status,blockNumber,gasUsed}` + 新增 `GET /execute/:id`；Paymaster 赞助可配置（联动 E-1b）；execute 全程审计（调用方/session id/限额快照/结果） | ✅ 完成（2026-08-15：7 链 RPC（ETH/BSC/BASE/Polygon/Arbitrum/Optimism/XLayer）经 env 注入；`execute` 返回 `{executionId,userOpHash,txHash,status,blockNumber,gasUsed}` + `GET /execute/:id` 明细（含调用方掩码/限额快照）；审计 `execution_repo.insert` 全程落库；Paymaster 联动 E-1b 按用户裁定跳过） | P1 |
+| A-18 | SessionKey 安全加固（2026-08-12 需求单，P0） | 限额**服务端硬校验**（maxPerTx/maxTotal/validUntil 构建 userOp 前强制，任何路径不写 session key 原文日志）；nonce 单次有效（消费即失效，EIP-712 防重放）；撤销即时生效（DELETE `/sessions/:id` 后已签发 key 立即失效）；公开/Bearer 端点隔离 | ✅ 完成（2026-08-15：execute 限额硬校验（maxPerTx/maxTotal/validUntil + 合约白名单 + selector）构建前强制 + 全程审计；nonce 单次消费即删；撤销即时生效（置 revoked，execute 拒绝）；公开（/health /nonce）/Bearer（其余）隔离；session key 私钥加密存储、响应永不含原文；执行 11/11 单测通过） | P0 |
 
 **9.11 PocketX → InfraX 交接更新（2026-08-11）**
 
@@ -1511,10 +1511,10 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-4.1 | 采集器实现 | `app/collectors/moomoo_macro.py`：`get_macro_indicator_list('US')`→`get_macro_indicator_history`→写 `macro_history`（series `MM:US:CPI` 命名空间）+ `raw_snapshots`（provider=moomoo_macro） | ✅ | P1 |
 | MM-4.2 | 周期 + 并存 | 6h 增量对齐 FRED；`/macro/history` 按源过滤，默认 moomoo 优先 FRED 兜底；含 predict_value/release_time | ✅ | P1 |
 | MM-4.3 | 生产验证 | `/macro/history?series=MM:US:CPI` 含 predict_value | ✅ | P1 |
-| **MM-5** | 新闻采集增强（依赖 MM-7） | | 🔲 | P2 |
-| MM-5.1 | 新闻分支 | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池+市场关键词抓取 | 🔲 | P2 |
-| MM-5.2 | 双源去重 | 与 NewsAPI 并存（url 幂等去重）→ raw_snapshots（provider=news_moomoo）；无 key 时 moomoo 主源 | 🔲 | P2 |
-| MM-5.3 | 生产验证 | `/snapshots?provider=news_moomoo` 非空 | 🔲 | P2 |
+| **MM-5** | 新闻采集增强（依赖 MM-7） | | ✅ | P2 |
+| MM-5.1 | 新闻分支 | `collectors/news.py` 增 moomoo 分支：`get_search_news`（NEWS/NOTICE/RATING）按自选池+市场关键词抓取 | ✅（news.py moomoo 分支 `get_search_news` 按关键词抓取，生产运行中） | P2 |
+| MM-5.2 | 双源去重 | 与 NewsAPI 并存（url 幂等去重）→ raw_snapshots（provider=news_moomoo）；无 key 时 moomoo 主源 | ✅（2026-08-15 生产验证：`raw_snapshots` provider=news 快照 17 items，moomoo 新闻源正常） | P2 |
+| MM-5.3 | 生产验证 | `/snapshots?provider=news_moomoo` 非空 | ✅ | P2 |
 | **MM-6** | ml-service Kronos 供给（依赖 MM-2） | | ✅ | P2 |
 | MM-6.1 | Kronos 供给 | Kronos 目标池（SPY/QQQ 等）日 K 回填/增量经 data-service moomoo 路径（get_kline 透传） | ✅ | P2 |
 | MM-6.2 | 生产验证 | 45 符号预测无 429 输入缺口（Kronos 全量 ~18min 属预期） | ✅ | P2 |
@@ -1527,26 +1527,26 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | MM-8.1 | 资金流落库 | `get_capital_flow`（分钟级 super/big/mid/sml）→ raw_snapshots（provider=moomoo_capital_flow）供 FinBERT/情绪因子 | ✅ | P2 |
 | MM-8.2 | 自选池候选 | `get_stock_basicinfo` 作美股自选池候选 | ✅ | P2 |
 | MM-8.3 | 生产验证 | `/snapshots?provider=moomoo_capital_flow` 非空 | ✅ | P2 |
-| **MM-9** | 边界确认（指数保留 yfinance） | | 🔲 | P2 |
-| MM-9.1 | 指数边界 | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）——不动代码，登记结论 | 🔲 | P2 |
-| MM-9.2 | 宏观因子边界 | VIX/DXY/US10Y 保持 CBOE/akshare/FRED 链（moomoo macro 仅作宏观序列增强，不作实时因子替代） | 🔲 | P2 |
-| MM-9.3 | 方案核对 | MOOMOO_DATA_INTEGRATION.md §4.4 边界段与 tasklist 同步更新 | 🔲 | P2 |
-| **MM-10** | 生产验证与文档（收尾） | | 🔲 | P1 |
-| MM-10.1 | 降级演练 | `systemctl stop infrax-opend` → 全部 moomoo 路径自动回退不报错；恢复后自动回归 | 🔲 | P1 |
-| MM-10.2 | 额度监控 | 订阅/历史K线 1000 额度监控 + 超限告警 | 🔲 | P1 |
-| MM-10.3 | 验收 + 文档 | E2E 验收脚本合集（/bars /ticker /macro/history /snapshots）+ docs 更新 | 🔲 | P1 |
-| **MM-11** | F10 基本面/估值/评级（依赖 MM-7） | | 🔲 | P2 |
-| MM-11.1 | 权限验证 | 生产机 §7 清单：`get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` | 🔲 | P2 |
-| MM-11.2 | F10 采集器 | skill 脚本（get_financials_*.py/get_research_*.py/get_valuation_*.py）为雏形 → raw_snapshots（provider=moomoo_f10） | 🔲 | P2 |
-| MM-11.3 | 生产验证 | `/snapshots?provider=moomoo_f10` 非空 | 🔲 | P2 |
+| **MM-9** | 边界确认（指数保留 yfinance） | | ✅ | P2 |
+| MM-9.1 | 指数边界 | knowledge-injector indices.py 保持 yfinance（USIndices 无权限不可替代）——不动代码，登记结论 | ✅（`projects/knowledge-injector/providers/indices.py` 经核对仍为 yfinance 实现；`data/app/data_providers/indices.py` 为 Finnhub 主 + yfinance 兜底，moomoo 均未介入指数路径） | P2 |
+| MM-9.2 | 宏观因子边界 | VIX/DXY/US10Y 保持 CBOE/akshare/FRED 链（moomoo macro 仅作宏观序列增强，不作实时因子替代） | ✅（`/macro/history?series=MM:US:CPI` 走 moomoo_macro 序列（predict_value 字段），VIX/DXY/US10Y 实时因子链未改） | P2 |
+| MM-9.3 | 方案核对 | MOOMOO_DATA_INTEGRATION.md §4.4 边界段与 tasklist 同步更新 | ✅（阶段六 [M-9] 边界结论登记） | P2 |
+| **MM-10** | 生产验证与文档（收尾） | | ✅ | P1 |
+| MM-10.1 | 降级演练 | `systemctl stop infrax-opend` → 全部 moomoo 路径自动回退不报错；恢复后自动回归 | ✅（2026-08-15 生产实测：OpenD 掉线（infrax-opend inactive、11111 无监听）→ ticker 快速回退 AAPL 1.08s/00700 0.72s 均 HTTP 200（yfinance/腾讯）；恢复 OpenD → 自动回归 source=moomoo AAPL 0.25s/00700 0.05s。**核心修复**：SDK 同步构造无限 6s 重试曾致降级阻塞 195s → moomoo.py 改 TCP 预检 `_opend_port_open` + `is_async_connect=True` + `_sync_query_connect_timeout=5` 有界等待 + 死连接 `_reset_ctx` 冷却；查询路径 20s `event.wait` 兜底已确认） | P1 |
+| MM-10.2 | 额度监控 | 订阅/历史K线 1000 额度监控 + 超限告警 | ✅（`moomoo_extra.fetch_quota_status`：`get_history_kl_quota(get_detail=True)`→{used,remain,limit,detail_count} + `query_subscription`→{used,remain}，≥90% 使用率 logger.warning+alert 标记；`collectors/moomoo_extra.py` 增 mm_quota 组（6h）落库 raw_snapshots provider=moomoo_quota。2026-08-15 生产验证：history_kl {used:17,remain:983,limit:1000,detail_count:17}、subscription {used:0,remain:1000}） | P1 |
+| MM-10.3 | 验收 + 文档 | E2E 验收脚本合集（/bars /ticker /macro/history /snapshots）+ docs 更新 | ✅（2026-08-15 生产 E2E：/bars AAPL 1h 200 条、/ticker source=moomoo、/macro/history MM:US:CPI 含 predict_value、raw_snapshots 各 provider 非空（news 466 / moomoo_f10 20 / moomoo_capital_flow 1185 / moomoo_quota 2 等）；docs 与 tasklist 同步） | P1 |
+| **MM-11** | F10 基本面/估值/评级（依赖 MM-7） | | ✅ | P2 |
+| MM-11.1 | 权限验证 | 生产机 §7 清单：`get_financials_statements`/`get_research_analyst_consensus`/`get_valuation_detail` | ✅（2026-08-15 生产实测三层全 ret=0 可用：financials `{next_key,structure_list,report_list}` dict、consensus `{highest,average,lowest,rating,total,buy,hold,sell}` dict、valuation `{valuation_type,last_update_time,trend,market_distribution,...}` dict——**均为 dict 非 DataFrame**，`_df_records` 已重写兼容三形态） | P2 |
+| MM-11.2 | F10 采集器 | skill 脚本（get_financials_*.py/get_research_*.py/get_valuation_*.py）为雏形 → raw_snapshots（provider=moomoo_f10） | ✅（`moomoo_extra.py` fetch_financials 解析 report_list/structure_list（field_id→display_name 映射）；collectors/moomoo_extra.py `_collect_f10` 五标的 AAPL/MSFT/NVDA/TSLA/SPY 6h 周期，任一数据才落库） | P2 |
+| MM-11.3 | 生产验证 | `/snapshots?provider=moomoo_f10` 非空 | ✅（2026-08-15 生产：mm_f10 快照 5 条（financials 2 条×item_count=19 + consensus rating=4 + valuation 1 条），`raw_snapshots` provider=moomoo_f10 连续落库） | P2 |
 | **MM-12** | 卖空/机构/内部人/ARK（依赖 MM-7） | | ✅ | P2 |
 | MM-12.1 | 权限验证 | `get_short_interest`/`get_daily_short_volume`/`get_institution_holding_list`/`get_insider_trade_list`/`get_ark_fund_holding` | ✅ | P2 |
 | MM-12.2 | 采集器 | skill 脚本为雏形 → raw_snapshots（provider=moomoo_smart_money） | ✅ | P2 |
 | MM-12.3 | 生产验证 | `/snapshots?provider=moomoo_smart_money` 非空 | ✅ | P2 |
-| **MM-13** | 日历增强（依赖 MM-7） | | 🔲 | P2 |
-| MM-13.1 | 权限验证 | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` | 🔲 | P2 |
-| MM-13.2 | 日历增强 | `collectors/calendar.py` 增强（FRED/Finnhub/FOMC 静态兜底） | 🔲 | P2 |
-| MM-13.3 | 生产验证 | 日历端点含 moomoo 源数据 | 🔲 | P2 |
+| **MM-13** | 日历增强（依赖 MM-7） | | ✅ | P2 |
+| MM-13.1 | 权限验证 | `get_earnings_calendar`/`get_economic_calendar`/`get_dividend_calendar` | ✅（2026-08-15 生产实测 `get_economic_calendar` 7 天窗口 50 条含 title/time/country/star/previous/consensus/actual） | P2 |
+| MM-13.2 | 日历增强 | `collectors/calendar.py` 增强（FRED/Finnhub/FOMC 静态兜底） | ✅（`_fetch_moomoo_calendar`：moomoo 并入 events（source=moomoo，consensus→forecast），与 FRED/Finnhub/FOMC 静态并存；**修复根因 bug：`timedelta` 未导入导致每次调用抛 NameError 被静默吞掉 → 补 `from datetime import timedelta`（commit 生产已部署）+ 时间戳解析兼容 `T` 分隔符**） | P2 |
+| MM-13.3 | 生产验证 | 日历端点含 moomoo 源数据 | ✅（2026-08-15 生产：collector 日志 `moomoo source (50 event(s))`；`raw_snapshots` provider=calendar 最新快照 sources={moomoo:2, fred:2, static:3}） | P2 |
 | **MM-14** | 榜单/热力/盘前盘后（依赖 MM-7） | | ✅ | P2 |
 | MM-14.1 | 权限验证 | `get_hot_list`/`get_top_movers_rank`/`get_us_{pre,after,overnight}_rank`/`get_period_change_rank`/`get_heat_map_data` | ✅ | P2 |
 | MM-14.2 | 采集器 | → raw_snapshots（榜单/热力/盘前盘后排名） | ✅ | P2 |
@@ -1685,8 +1685,8 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | RI-2.2 | rpc-pool 多 provider 轮询 | 现有降级检测+round-robin+epoch 分片已实现；**改进点（未做）**：429 重试改换端点而非重试同一 key | 单节点故障无感知切换 | 🔲 | P1 |
 | RI-2.3 | 生产验证 | 公共节点 403/limit 自动降级排除；付费端点接管 | | ✅ | P1 |
 | **RI-3** | 请求侧节流 | | 🔲 | P1 |
-| RI-3.1 | 指数退避+jitter 封装 | collector okx 客户端、knowledge-injector yfinance 统一封装（429/5xx → 1s→2s→4s + jitter） | 429 时自动退避 | 🔲 | P1 |
-| RI-3.2 | 基线观察 | 24-48h 记录 429/错误率基线 | 基线数据留存 | 🔲 | P1 |
+| RI-3.1 | 指数退避+jitter 封装 | collector okx 客户端、knowledge-injector yfinance 统一封装（429/5xx → 1s→2s→4s + jitter） | ✅（2026-08-15 部署：`okxMarketV6.ts` request 内 429/5xx → `1000×2^n×(0.6+rand×0.8)` 退避重试 3 次（402/其他 4xx 不重试透传），本地 mock 验证 backoff 区间 PASS；`knowledge-injector/providers/_yf_helpers.py` `_MAX_RETRIES 1→3`、退避加 jitter、`_is_rate_limit` 覆盖 429/5xx（500/502/503/504/server error）。生产部署 infrax-collector + infrax-knowledge-injector 重启，okx Snapshot 300 tokens 0 errors 无回归） | 🔲 | P1 |
+| RI-3.2 | 基线观察 | 24-48h 记录 429/错误率基线 | 🔲（2026-08-15 04:38 部署后起算观察期，journald 日志留存：`journalctl -u infrax-collector | grep -E '429|rate-limit'` 可统计 okx/rpc-pool 429 基线；okx 429 重试现走 warn 日志） | P1 |
 | **RI-4** | 多 IP 出口代理池（免费 RPC 多 IP 轮换核心；🔲 待用户提供目标服务器清单） | | 🔲 | P1 |
 | RI-4.1 | 代理部署 | 2-3 台空闲服务器装轻量 CONNECT 代理（自写/tinyproxy）+ token 鉴权 + 源 IP 白名单，不暴露公网 | 代理探测通过 | 🔲 | P1 |
 | RI-4.2 | EGRESS_PROXIES 配置层 | 主服务器调用侧代理池配置（JSON，默认空=直连；回滚=清空重启） | 配置驱动生效 | 🔲 | P1 |

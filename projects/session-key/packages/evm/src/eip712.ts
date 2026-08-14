@@ -77,3 +77,8 @@ export function generateSessionKey(): { address: string; privateKey: string } {
   const account = privateKeyToAccount(pk);
   return { address: account.address, privateKey: pk };
 }
+
+/** A-16 修复：从私钥派生地址（服务端 create 校验 sessionPublicKey 与提交私钥一致性） */
+export function deriveAddressFromPrivateKey(privateKey: string): string {
+  return privateKeyToAccount(privateKey as `0x${string}`).address;
+}

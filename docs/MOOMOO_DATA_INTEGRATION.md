@@ -134,8 +134,16 @@ infraX data-service（:9112）当前多市场行情源依赖免费/受限渠道�
 - [M-9] knowledge-injector 边界：**指数保持 yfinance**（USIndices 无权限，不可替代）；
   宏观因子（VIX/DXY/US10Y）保持 CBOE/akshare/FRED 链（moomoo macro 只作宏观序列增强，
   不做实时因子替代）。
+  - 2026-08-15 边界结论（登记，不动代码）：`knowledge-injector/providers/indices.py` 仍为 yfinance
+    实现；`data/app/data_providers/indices.py` 为 Finnhub 主 + yfinance 兜底；moomoo 均未介入指数路径。
+    `/macro/history?series=MM:US:CPI` 走 moomoo_macro 序列（含 predict_value），实时因子链未改。
 - [M-10] 生产验证与文档：降级链演练（停 OpenD → 自动回退）、额度监控
   （订阅 1000/历史K线 1000）、`docs/` 更新。
+  - 2026-08-15 验收：OpenD 掉线 → ticker 快速回退（AAPL 1.08s/00700 0.72s，yfinance/腾讯兜底）；
+    恢复 → 自动回归 moomoo（0.05~0.25s）。核心修复：SDK 同步构造无限 6s 重试（曾致降级阻塞 195s）
+    → `moomoo.py` 改 TCP 预检 + `is_async_connect=True` + `_sync_query_connect_timeout=5` + 死连接冷却。
+    额度监控：`moomoo_extra.fetch_quota_status`（历史K线/订阅 used+remain，≥90% 告警）经
+    `mm_quota` 组落库 `raw_snapshots`（provider=moomoo_quota，实测 used 17/983、订阅 0/1000）。
 
 ### 阶段七：moomooapi skill 复用与增量数据（2026-08-12 补充）
 

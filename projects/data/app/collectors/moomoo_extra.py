@@ -56,6 +56,7 @@ class MoomooExtraCollector:
             ("mm_smart_money", 6 * _HOUR, self._collect_smart_money),
             ("mm_hot", 900, self._collect_hot),
             ("mm_screen", 6 * _HOUR, self._collect_screen),
+            ("mm_quota", 6 * _HOUR, self._collect_quota),  # MM-10.2 额度监控
         ]
         for name, interval, fn in groups:
             t = threading.Thread(
@@ -208,6 +209,25 @@ class MoomooExtraCollector:
                 "plates": plates[:100],
                 "industrial_chains": chains,
             },
+            symbol="",
+        )
+        return 1
+
+    def _collect_quota(self) -> int:
+        """额度监控（MM-10.2）：订阅/历史K线额度 → raw_snapshots + 超限告警日志。
+
+        fetch_quota_status 内部已对 >=90% 使用率打 warning 日志；此处落库供
+        观测（raw_snapshots provider=moomoo_quota）。
+        """
+        if not MOOMOO_EXTRA_ENABLED:
+            return 0
+        status = mx.fetch_quota_status()
+        if not status:
+            return 0
+        save_snapshot(
+            provider="moomoo_quota",
+            data_type="mm_quota",
+            data=status,
             symbol="",
         )
         return 1

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import time
 from typing import Any
 
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 # ── 配置 ──────────────────────────────────────────────
 _MIN_DELAY = 1.0       # 请求间最小延迟（秒）
 _MAX_DELAY = 3.0       # 请求间最大延迟（秒）
-_MAX_RETRIES = 1       # 最大重试次数
-_BASE_BACKOFF = 5.0    # 退避基数（秒）
+_MAX_RETRIES = 3       # 最大重试次数（RI-3.1：429/5xx 指数退避 + jitter）
+_BASE_BACKOFF = 1.0    # 退避基数（秒）：1s→2s→4s（含 jitter）
 
 # ── 单例（共享 session，共用 cookie） ──────────────────
 
@@ -48,9 +49,12 @@ def _rate_limit_wait():
 
 
 def _is_rate_limit(exc: Exception) -> bool:
-    """判断是否为 Yahoo 限流异常。"""
+    """判断是否为 Yahoo 限流/服务端错误（RI-3.1：429 与 5xx 均触发退避重试）。"""
     msg = str(exc).lower()
-    return "rate limit" in msg or "too many request" in msg or "429" in msg
+    if "rate limit" in msg or "too many request" in msg or "429" in msg:
+        return True
+    # 5xx 服务端错误（临时故障）同样退避重试
+    return bool(re.search(r"\b(500|502|503|504)\b", msg)) or "server error" in msg or "5xx" in msg
 
 
 def _maybe_refresh():
@@ -70,7 +74,8 @@ def safe_history(symbol: str, period: str = "5d") -> Any | None:
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES + 1):
         if attempt > 0:
-            backoff = _BASE_BACKOFF * (2 ** (attempt - 1))
+            # RI-3.1：指数退避 + jitter（1s→2s→4s × [0.6,1.4)），避免重试风暴
+            backoff = _BASE_BACKOFF * (2 ** (attempt - 1)) * (0.6 + random.random() * 0.8)
             logger.debug("yf retry %d/%d for %s after %.0fs", attempt, _MAX_RETRIES, symbol, backoff)
             time.sleep(backoff)
 

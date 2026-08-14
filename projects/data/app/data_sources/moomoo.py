@@ -23,6 +23,7 @@ moomoo OpenAPI 数据源（MM-1，MooMoo 行情强化）
 from __future__ import annotations
 
 import logging
+import socket
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -43,6 +44,9 @@ _ctx: Any = None
 _ctx_lock = threading.Lock()
 _ctx_failed_until = 0.0  # 失败冷却（monotonic 秒），避免 OpenD 断连时高频重连
 _CONNECT_COOLDOWN_SEC = 30
+# 异步连接模式下查询等待就绪的上限（秒）：OpenD 不可达时查询限时失败走回退，
+# 而非 SDK 默认无限等待（MM-10.1 降级演练曾实测阻塞 195s+）
+_QUERY_CONNECT_TIMEOUT_SEC = 5
 
 # ── ticker 短 TTL 缓存 ──────────────────────────────────────
 _TICKER_TTL_SEC = 10
@@ -91,23 +95,72 @@ def _moomoo_sdk():
     return _sdk
 
 
+def _opend_port_open(timeout: float = 1.0) -> bool:
+    """TCP 预检：OpenD 端口未监听 → 快速失败（避免 SDK 无限重试阻塞）。"""
+    try:
+        with socket.create_connection((MOOMOO_HOST, int(MOOMOO_PORT)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _ctx_ready(ctx) -> bool:
+    """SDK 连接就绪（_status==READY）才可发查询；未就绪（断连/重连中）→ False。"""
+    try:
+        return getattr(ctx, "_status", None) == "READY"
+    except Exception:
+        return False
+
+
 def _get_ctx():
-    """懒加载 OpenQuoteContext 单例；OpenD 不可用时冷却重连。"""
+    """懒加载 OpenQuoteContext 单例；OpenD 不可用时冷却重连。
+
+    MM-10.1 修复：SDK 同步构造器在 OpenD 不可达时无限 6s 重试阻塞数分钟
+    （降级演练实测 195s），且查询路径 `sync_query_processor` 默认无限等待
+    连接就绪。改为：构造前 TCP 预检 + `is_async_connect=True`（构造即时返回）
+    + `_sync_query_connect_timeout`（未就绪查询限时 5s 失败）→ 降级时快速
+    回退，OpenD 恢复后后台自动重连（_auto_reconnect）。
+    """
     global _ctx, _ctx_failed_until
     now = time.monotonic()
     if _ctx_failed_until > now:
         return None
     if _ctx is not None:
-        return _ctx
+        if _ctx_ready(_ctx):
+            return _ctx
+        # 缓存 ctx 已断连（重连中）→ 丢弃并进入冷却，避免每次调用等查询超时
+        _reset_ctx()
+        _ctx_failed_until = now + _CONNECT_COOLDOWN_SEC
+        return None
     with _ctx_lock:
         if _ctx is None and _ctx_failed_until <= now:
+            if not _opend_port_open():
+                _ctx_failed_until = now + _CONNECT_COOLDOWN_SEC
+                return None
             try:
                 sdk = _moomoo_sdk()
                 if sdk is None:
                     _ctx_failed_until = now + _CONNECT_COOLDOWN_SEC
                     return None
-                _ctx = sdk.OpenQuoteContext(host=MOOMOO_HOST, port=MOOMOO_PORT)
-                logger.info("moomoo OpenD connected: %s:%s", MOOMOO_HOST, MOOMOO_PORT)
+                _ctx = sdk.OpenQuoteContext(host=MOOMOO_HOST, port=MOOMOO_PORT, is_async_connect=True)
+                try:
+                    _ctx._sync_query_connect_timeout = _QUERY_CONNECT_TIMEOUT_SEC
+                except Exception:
+                    pass
+                # 等待异步连接就绪（OpenD 在线时通常 <1s，有界 _QUERY_CONNECT_TIMEOUT_SEC）
+                _deadline = time.monotonic() + _QUERY_CONNECT_TIMEOUT_SEC
+                while time.monotonic() < _deadline and not _ctx_ready(_ctx):
+                    time.sleep(0.1)
+                if not _ctx_ready(_ctx):
+                    try:
+                        _ctx.close()
+                    except Exception:
+                        pass
+                    _ctx = None
+                    _ctx_failed_until = time.monotonic() + _CONNECT_COOLDOWN_SEC
+                    logger.warning("moomoo OpenD async connect not ready in %ss", _QUERY_CONNECT_TIMEOUT_SEC)
+                    return None
+                logger.info("moomoo OpenD connected: %s:%s (async)", MOOMOO_HOST, MOOMOO_PORT)
             except Exception as exc:
                 _ctx = None
                 _ctx_failed_until = now + _CONNECT_COOLDOWN_SEC

@@ -15,7 +15,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -340,7 +340,8 @@ def _fetch_moomoo_calendar() -> Optional[list[dict]]:
                 ts = float(ts_raw)
             except (TypeError, ValueError):
                 try:
-                    ts = datetime.strptime(ts_raw[:19], "%Y-%m-%d %H:%M:%S").replace(
+                    # 兼容 "2026-08-16 09:30:00" 与 "2026-08-16T09:30:00"
+                    ts = datetime.strptime(ts_raw[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S").replace(
                         tzinfo=timezone.utc
                     ).timestamp()
                 except Exception:

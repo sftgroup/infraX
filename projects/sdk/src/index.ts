@@ -1194,6 +1194,14 @@ export interface SessionKeyCreateParams {
   maxTotal?: string;
   userAddress: string;
   nonce: string;
+  /** A-16：session key 由客户端本地生成并提交。流程：generatePrivateKey() → privateKeyToAccount(pk)
+   *  → 用 account.address（即 sessionAddress）对 sessionAuthTypedData 签名 → createSession 提交公/私钥。
+   *  服务端校验私钥派生地址 === 公钥后加密存储（私钥永不出现在响应中）。 */
+  sessionPublicKey: string;
+  sessionPrivateKey: string;
+  /** EIP-712 签名时使用的 validUntil（unix 秒），需与 sessionAuthTypedData 传入值一致。
+   *  省略时服务端按 validDays 自行计算（时钟竞态偶发风险）；建议显式传入。 */
+  validUntil?: number;
 }
 export interface SessionKeyInfo {
   id: string;

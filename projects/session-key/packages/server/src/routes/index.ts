@@ -26,8 +26,8 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
 
   // ── Create Session ─────────────────────────────────────────────────
   app.post('/api/v1/sessions', async (req, res) => {
-    const { signature, chain, permissions, validDays, maxPerTx, maxTotal, userAddress, nonce } = req.body as any;
-    if (!signature || !chain || !permissions?.contracts || !userAddress || !nonce) {
+    const { signature, chain, permissions, validDays, maxPerTx, maxTotal, userAddress, nonce, sessionPublicKey, sessionPrivateKey, validUntil } = req.body as any;
+    if (!signature || !chain || !permissions?.contracts || !userAddress || !nonce || !sessionPublicKey || !sessionPrivateKey) {
       return res.status(400).send({ code: 400, message: 'Missing required fields' });
     }
     try {
@@ -38,6 +38,8 @@ export function registerRoutes(app: FastifyInstance, svc: Services) {
         maxPerTx: maxPerTx || DEFAULTS.MAX_PER_TX_USDC,
         maxTotal: maxTotal || DEFAULTS.MAX_TOTAL_USDC,
         userAddress, nonce,
+        sessionPublicKey, sessionPrivateKey,
+        validUntil,
       });
       return res.status(201).send({ code: 201, data: result, message: 'Session created' });
     } catch (err: any) {

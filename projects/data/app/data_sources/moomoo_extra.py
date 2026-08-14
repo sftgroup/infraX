@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from app.data_sources.moomoo import (
     MOOMOO_ENABLED,
+    _ctx_ready,
     _f,
     _get,
     _get_ctx,
@@ -43,35 +44,51 @@ _HOT_AVAILABLE = False
 _F10_AVAILABLE = False
 
 
+def _clean_row(row) -> dict:
+    """单行 dict 清洗：numpy 标量 → python 标量，NaN/NaT → None。"""
+    d = {}
+    for k in (row.keys() if hasattr(row, "keys") else []):
+        v = row[k]
+        if v is None:
+            d[k] = None
+            continue
+        if hasattr(v, "__class__") and v.__class__.__module__ == "numpy":
+            # np.float64 / np.int64 / np.nan / np.datetime64
+            s = str(v)
+            if s in ("nan", "NaT", "inf", "-inf"):
+                d[k] = None
+            else:
+                d[k] = v.item() if hasattr(v, "item") else v
+        elif isinstance(v, (dict, list, tuple)):
+            d[k] = v
+        else:
+            d[k] = v
+    return d
+
+
 def _df_records(data, limit: Optional[int] = None) -> list[dict]:
-    """moomoo DataFrame → dict 列表（NaN/NaT → None，超长截断）。"""
+    """moomoo 返回 → dict 列表（NaN/NaT → None，超长截断）。
+
+    兼容三类形态：DataFrame（多数端点）、dict（valuation/consensus 等
+    单对象端点，MM-11 实测返回 dict 而非 DataFrame）、list[dict]。
+    """
     if data is None:
         return []
     try:
-        n = len(data)
-        if limit:
-            n = min(n, limit)
-        out = []
-        for i in range(n):
-            row = data.iloc[i] if hasattr(data, "iloc") else data[i]
-            d = {}
-            for k in (row.keys() if hasattr(row, "keys") else []):
-                v = row[k]
-                if v is None:
-                    d[k] = None
-                    continue
-                if hasattr(v, "__class__") and v.__class__.__module__ == "numpy":
-                    # np.float64 / np.int64 / np.nan / np.datetime64
-                    s = str(v)
-                    if s in ("nan", "NaT", "inf", "-inf"):
-                        d[k] = None
-                    else:
-                        d[k] = v.item() if hasattr(v, "item") else v
-                elif isinstance(v, (dict, list, tuple)):
-                    d[k] = v
-                else:
-                    d[k] = v
-            out.append(d)
+        if isinstance(data, dict):
+            out = [_clean_row(data)]
+        elif isinstance(data, list):
+            out = [_clean_row(r) for r in data]
+        else:
+            n = len(data)
+            if limit:
+                n = min(n, limit)
+            out = []
+            for i in range(n):
+                row = data.iloc[i] if hasattr(data, "iloc") else data[i]
+                out.append(_clean_row(row))
+        if limit and len(out) > limit:
+            out = out[:limit]
         return out
     except Exception as exc:
         logger.debug("moomoo df_records failed: %s", exc)
@@ -106,6 +123,10 @@ def _call(fn, label: str):
             ret, data = -1, r
         if ret is not None and ret != 0:
             logger.debug("moomoo %s ret=%s（功能权限或参数）", label, ret)
+            # 连接已断（未就绪）→ 丢弃死连接，下次 _get_ctx 走 TCP 预检/冷却快速失败，
+            # 避免每次调用都等 _sync_query_connect_timeout（MM-10.1 降级快速回退）
+            if not _ctx_ready(ctx):
+                _reset_ctx()
             return None, None
         if data is None:
             return None, None
@@ -208,7 +229,12 @@ def fetch_stock_basicinfo(market: str = "US", max_count: int = 3000) -> list[dic
 # ── MM-11 F10（financials/评级/估值；本地 ret=0 空，权限待生产验证） ──
 
 def fetch_financials(code: str, num: int = 4) -> list[dict]:
-    """get_financials_statements：财务报表（income/balance/cashflow 尝试全枚举）。"""
+    """get_financials_statements：财务报表（income/balance/cashflow 尝试全枚举）。
+
+    MM-11 生产实测：返回 {next_key, structure_list, report_list}（dict 而非
+    DataFrame）；report_list 每项含 period 元信息 + item_list（field_id → value），
+    structure_list 提供 field_id → display_name 映射，合并为可读 items。
+    """
     try:
         ctx = _get_ctx()
         if ctx is None:
@@ -219,12 +245,34 @@ def fetch_financials(code: str, num: int = 4) -> list[dict]:
                 kwargs = {"num": num}
                 if ftype:
                     kwargs["financial_type"] = ftype
-                ret, data, _ = ctx.get_financials_statements(code, **kwargs)
-                if ret == 0 and data is not None and len(data):
-                    recs = _df_records(data, num)
-                    for r in recs:
-                        r["_financial_type"] = ftype or "DEFAULT"
-                    results.extend(recs)
+                r = ctx.get_financials_statements(code, **kwargs)
+                ret = r[0] if isinstance(r, tuple) and len(r) > 0 else -1
+                data = r[1] if isinstance(r, tuple) and len(r) > 1 else r
+                if ret != 0 or not isinstance(data, dict):
+                    continue
+                name_map = {
+                    str(s.get("field_id")): str(s.get("display_name") or "")
+                    for s in (data.get("structure_list") or [])
+                    if isinstance(s, dict)
+                }
+                for rep in (data.get("report_list") or []):
+                    if not isinstance(rep, dict):
+                        continue
+                    rec = {k: v for k, v in rep.items() if k not in ("item_list", "structure_list")}
+                    rec["_financial_type"] = ftype or "DEFAULT"
+                    item_list = rep.get("item_list") or []
+                    items: dict = {}
+                    for it in item_list:
+                        if not isinstance(it, dict):
+                            continue
+                        fid = str(it.get("field_id") or it.get("id") or "")
+                        if not fid:
+                            continue
+                        key = name_map.get(fid) or fid
+                        items[key] = _clean_row(it).get("value", it.get("value"))
+                    if items:
+                        rec["items"] = items
+                    results.append(rec)
             except Exception:
                 continue
         return results
@@ -499,3 +547,69 @@ def fetch_industrial_chains(market: str = "US", count: int = 20) -> list[dict]:
     except Exception as exc:
         logger.debug("moomoo fetch_industrial_chains failed: %s", exc)
         return []
+
+
+# ── MM-10.2 额度监控 ─────────────────────────────────────────
+
+# 告警阈值：使用率达到 90%（订阅/历史K线 1000 额度）即告警
+_QUOTA_ALERT_RATIO = 0.9
+
+
+def fetch_quota_status() -> Optional[dict]:
+    """订阅/历史K线额度监控（MM-10.2）。
+
+    查询 `get_history_kl_quota(get_detail=True)`（历史K线：已用/剩余 + 30 天明细）
+    与 `query_subscription`（订阅：used/remain）→ 统一结构，并标记超限告警：
+      {history_kl: {used, remain, limit, detail_count, alert},
+       subscription: {used, remain, limit, alert}, at, alert: bool}
+    任一端点失败 fail-silent → 返回 None。
+    """
+    try:
+        ctx = _get_ctx()
+        if ctx is None:
+            return None
+        out: dict = {"at": int(time.time() * 1000), "alert": False}
+        # 历史K线额度：get_history_kl_quota 返回 (ret, (used, remain, detail_list))
+        try:
+            r = ctx.get_history_kl_quota(get_detail=True)
+            data_q = r[1] if (isinstance(r, tuple) and len(r) >= 2) else None
+            if isinstance(data_q, (tuple, list)) and len(data_q) >= 2:
+                used, remain = data_q[0], data_q[1]
+                detail = data_q[2] if len(data_q) >= 3 else []
+            else:
+                used = remain = None
+                detail = []
+            limit = (used + remain) if used is not None and remain is not None else None
+            hist = {"used": used, "remain": remain, "limit": limit,
+                    "detail_count": len(detail) if detail else 0}
+            hist["alert"] = bool(limit and used is not None and (used / limit) >= _QUOTA_ALERT_RATIO)
+            out["history_kl"] = hist
+        except Exception as exc:
+            logger.debug("moomoo get_history_kl_quota failed: %s", exc)
+        # 订阅额度：query_subscription 返回 dict（total_used/remain）
+        try:
+            r2 = ctx.query_subscription()
+            if isinstance(r2, dict):
+                used2 = r2.get("total_used")
+                remain2 = r2.get("remain")
+            elif isinstance(r2, tuple):
+                used2, remain2 = (r2[1].get("total_used"), r2[1].get("remain")) if len(r2) > 1 else (None, None)
+            else:
+                used2 = remain2 = None
+            limit2 = (used2 + remain2) if used2 is not None and remain2 is not None else None
+            sub = {"used": used2, "remain": remain2, "limit": limit2,
+                   "option_remain": r2.get("option_remain_quota") if isinstance(r2, dict) else None}
+            sub["alert"] = bool(limit2 and used2 is not None and (used2 / limit2) >= _QUOTA_ALERT_RATIO)
+            out["subscription"] = sub
+        except Exception as exc:
+            logger.debug("moomoo query_subscription failed: %s", exc)
+        out["alert"] = bool(out.get("history_kl", {}).get("alert")
+                            or out.get("subscription", {}).get("alert"))
+        if not out.get("history_kl") and not out.get("subscription"):
+            return None
+        if out["alert"]:
+            logger.warning("moomoo quota alert: %s", out)
+        return out
+    except Exception as exc:
+        logger.debug("moomoo fetch_quota_status failed: %s", exc)
+        return None
