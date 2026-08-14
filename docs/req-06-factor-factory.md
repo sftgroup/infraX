@@ -114,11 +114,60 @@
 
 ## 7. 验收标准
 
-- [ ] 因子从硬编码14个升级为可挖掘/评估/管理
-- [ ] 合格因子自动登记 catalog 并在 data-service `/factors/current` 可见
-- [ ] AItrader factor_client 无改动即可消费新因子（全量透传）
-- [ ] 支持对话驱动挖掘（偏好+限制）
-- [ ] 现有 `/ml/*` 预测端点不受影响
+- [x] 因子从硬编码14个升级为可挖掘/评估/管理
+- [x] 合格因子自动登记 catalog 并在 data-service `/factors/current` 可见（FF-3.1/FF-3.3）
+- [x] AItrader factor_client 无改动即可消费新因子（全量透传，`ml_factory` 字段）
+- [x] 支持对话驱动挖掘（R5-4 LLM 意图解析 + 结构化偏好/限制）
+- [x] 现有 `/ml/*` 预测端点不受影响
+
+---
+
+## 8. 实现与验证记录（2026-08-14 生产就绪）
+
+### 8.1 R5-3：Factor-Factory MCP 服务（生产部署 ✅）
+
+| 项 | 值 |
+|---|---|
+| 服务 | `infrax-factor-mcp`（systemd，tsx 直跑 `src/factor-index.ts`，WorkingDirectory `projects/mcp-server`） |
+| 端口 | **3014**（内网；公网测试走 SSH 隧道） |
+| 端点 | `GET /health`（豁免鉴权）；`POST /mcp/message`（MCP streamable HTTP，`enableJsonResponse`，**无状态会话**） |
+| 入站鉴权 | `Authorization: Bearer` / `X-API-Key` / `X-Service-Key` 三选一；key=**MCP_API_KEY**（systemd override Environment，46 字符）或 data 签发 `mx_` key 实时校验；无 key `/mcp/*` → 401 |
+| 出站 | `X-Service-Key`（ML_API_KEY bridge key）→ ml-service :9120 |
+| 工具（5） | `factor_factory_start`（preferences/constraints 结构化 + `intent` 自然语言）/ `status` / `result` / `list` / `cancel` |
+
+> **MCP 客户端调用要点**：请求头必须含 `Accept: application/json, text/event-stream`（MCP SDK 校验，否则 `-32000 Not Acceptable`）；`initialize`（protocolVersion 2025-03-26）→ `notifications/initialized` → `tools/call`。
+
+### 8.2 R5-4：LLM 意图解析（生产配置 ✅）
+
+- ml-service `.env`：`FACTOR_LLM_API_KEY`（复用 ragservicer `LLM_BINDING_API_KEY`，DeepSeek）+ `FACTOR_LLM_MODEL=deepseek-v4-flash`（host 默认 api.deepseek.com/v1，与 ragservicer 一致）
+- 入口：`factor_factory_start` 传 `intent` → 走 `POST /factor-factory/mine`（LLM 解析自然语言 → 自动生成 JobSpec）→ 创建任务
+- 实测：`"动量波动率 BTC ETH SOL 日线 5个 10分钟"` → job `ff_20260814_c10869320f9d` RUNNING→COMPLETED，result 返回 5 个候选因子（意图 spec 未带 `min_ic` 时不过滤质量，属预期）
+
+### 8.3 完整工具测试记录（2026-08-14，全通过）
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | `initialize` | ✅ serverInfo `infrax-factor-mcp v1.0.0` / 2025-03-26 |
+| 2 | `tools/list` | ✅ 5 工具全部注册 |
+| 3 | `factor_factory_start`（结构化 constraints） | ✅ QUEUED |
+| 4 | `factor_factory_status` | ✅ RUNNING → **COMPLETED**（stage persist） |
+| 5 | `factor_factory_result` | ✅ 返回合格因子列表（IC/ICIR） |
+| 6 | `factor_factory_list` | ✅ 历史任务可见（含自动挖掘 ff_20260814_*） |
+| 7 | `factor_factory_start`（R5-4 intent） | ✅ LLM 解析 → RUNNING → COMPLETED |
+| 8 | `factor_factory_cancel` | ✅ `cancelled:true` → status **CANCELLED**（修复后） |
+
+### 8.4 修复的 Bug（commit 88d51ce）
+
+- **问题**：`factor_factory_cancel` 以 **GET** 调 ml-service `/factor-factory/cancel`，但该端点定义为 `@app.post`（main.py:484）→ 恒 **405 Method Not Allowed**
+- **修复**：`projects/mcp-server/src/factor-index.ts` cancel 改 `{ method: "POST" }`（job_id 仍走 query 参数）
+- **验证**：typecheck ✅ → 生产重启 infrax-factor-mcp → start→cancel→`cancelled:true` → status `CANCELLED` ✅
+- **ml-service 路由方法对照**（main.py）：`start`=POST / `status`·`result`·`list`=GET / `cancel`=POST；带 `intent` 的 start 走 `POST /factor-factory/mine`
+
+### 8.5 相关生产配置
+
+- 因子引擎：SQLite `factor_factory.db`（jobs/results/catalog 同库）；`FACTOR_EVAL_BARS=800`
+- 定时挖掘（FF-4.1）：`FACTOR_MINER_SCHEDULE_ENABLED=true / INTERVAL_H=6 / DELAY_S=60 / SPEC=<JSON>`（单 worker + 有任务跳过 + 距上次终态 < interval 跳过）
+- 透传：data-service `/factors/current` 响应附 `ml_factory` 字段（FF-3.3，60s TTL）：`{"updated_at": <ms>, "factors": ["ret_20","vol_20"]}`
 
 ---
 

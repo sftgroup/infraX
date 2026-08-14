@@ -255,6 +255,7 @@ Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get
 - `/factors/current`（任意 symbol）响应顶层 `ml_factory` 字段：`{"updated_at": <ms>, "factors": ["ret_20", "vol_20"]}`（已激活 FF 因子 id 列表）
 - `GET /factor-factory/jobs` / `GET /factor-factory/results` / `GET /factor-factory/catalog`（ml-service :9120）
 - 生产实测：自动挖掘 `ff_20260814_*` COMPLETED；catalog 登记 + activate 后 `/factors/current` 可见
+- **2026-08-14 全工具回归通过**（initialize/tools/list/start/status/result/list/cancel 7 步，R5-4 intent 意图解析→COMPLETED）；修复 `factor_factory_cancel` 405 bug（ml-service cancel 为 POST，commit 88d51ce）——详见 `req-06-factor-factory.md §8`
 
 ---
 
