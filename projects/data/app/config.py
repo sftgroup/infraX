@@ -127,9 +127,9 @@ ONCHAIN_COLLECT_INTERVAL_SEC = int(os.getenv("ONCHAIN_COLLECT_INTERVAL_SEC", "60
 # OKX ChainOS 行情快照（okx_hot_tokens / okx_index_prices）：web3.okx.com 官方 v6
 OKX_CHAINOS_COLLECT_ENABLED = os.getenv("OKX_CHAINOS_COLLECT_ENABLED", "true").lower() == "true"
 # ⚠️ 采集频率受 infrax-collector market 配额约束（market_free 10000 次/月）：
-#    默认 900s（15min）且仅 hot-tokens 时月用量 ≈8640 次，可安全落在免费配额内；
+#    默认 3600s（1h）且仅 hot-tokens 时月用量 ≈2160 次，远低于免费配额；
 #    开启 index/candles 或缩短 interval 会显著超配额 → 503 停摆（2026-08-14 实测耗尽）。
-OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "900"))
+OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "3600"))
 # 链 ID：Ethereum=1, BSC=56, Base=8453（v6 官方链 ID，字符串）
 OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453")
 OKX_HOT_LIMIT = int(os.getenv("OKX_HOT_LIMIT", "10"))       # 每链热门代币数
