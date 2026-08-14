@@ -39,8 +39,8 @@ function matchLocal(key: string, allowed: string[]): boolean {
   return allowed.some((k) => k && timingSafeEqualStr(k, key));
 }
 
-/** 外部签发 key 实时校验：POST {verifyUrl}/api-keys/verify（fail-closed） */
-async function matchExternal(key: string, scope: string): Promise<boolean> {
+/** 外部签发 key 实时校验：POST {verifyUrl}/api-keys/verify（fail-closed）。RPC-7 WS 复用。 */
+export async function matchExternal(key: string, scope: string): Promise<boolean> {
   if (!config.verifyUrl || !config.verifyKey) return false;
   try {
     const ctrl = new AbortController();

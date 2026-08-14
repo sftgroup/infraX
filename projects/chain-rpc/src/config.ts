@@ -79,6 +79,14 @@ export const config = {
   // ── 端点级开关 ───────────────────────────────────────
   enableExternalVerify: boolOr(process.env.CHAIN_RPC_ENABLE_EXTERNAL_VERIFY, false),
 
+  // ── RPC-7: WebSocket 订阅面 ──────────────────────────
+  // 慢消费者驱逐阈值（字节）：客户端 send 缓冲超过即 close(4004)（防高频事件内存放大）
+  wsMaxBufferBytes: parseInt(process.env.WS_MAX_BUFFER_BYTES || String(1024 * 1024), 10),
+  // 每客户端订阅数上限（防单连接刷海量订阅）
+  wsMaxSubsPerClient: parseInt(process.env.WS_MAX_SUBS_PER_CLIENT || '32', 10),
+  // rx_ 订阅 key 并发连接数上限开关（默认开；连接数按套餐 concurrent 限制）
+  wsEnableQuota: boolOr(process.env.WS_ENABLE_QUOTA, true),
+
   // ── 可观测（DC-9） ────────────────────────────────────
   // 请求日志端点细分：是否记录 RPC 方法名 / params（含地址哈希，默认关）/ 跳过 /health
   logMethod: boolOr(process.env.CHAIN_RPC_LOG_METHOD, true),

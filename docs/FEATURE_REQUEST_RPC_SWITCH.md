@@ -81,6 +81,14 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 ### R7 WS 订阅面 — P2
 
 - `/v1/ws`（`eth_subscribe`）链覆盖与配额；我方高频链上事件订阅（预留，非当前阻塞）。
+- ✅ **实现 + 本地验证（2026-08-14）**：
+  - **性能瓶颈修复**（原 DC-5 纯透传：1 客户端 = 1 上游 WS 连接 + 1 上游订阅，N 客户端同事件 = N 倍上游负载/带宽/内存放大；且无背压、无订阅清理跟踪）：
+    - [wsHub.ts](../projects/chain-rpc/src/services/wsHub.ts)：订阅去重注册表——相同 (chain, method, params) 的客户端共享**一条**上游订阅，事件只拉一份、网关内扇出；最后一位客户端离开才向上游 `eth_unsubscribe`；孤儿订阅（确认前客户端全部离开）由 `confirmUpstream=false` 兜底补发取消。
+    - 背压：广播时 `bufferedAmount` 超阈值（默认 1MB）的慢消费者被 `close(4004)` 驱逐并摘除，防高频事件内存放大。
+  - **链覆盖与配额**（[ws.ts](../projects/chain-rpc/src/routes/ws.ts) 重写）：每链共享一条上游连接（refcount）；鉴权分级与 HTTP 读端点一致（本地 bridge key / `rx_` 订阅 key / 外部 data key scope=rpc）；`rx_` key 连接数按套餐 `concurrent` 限制（free 10 / pro 50 / enterprise 200，超限 `close 4005`）；每次订阅计入 `rpc_usage`；每客户端订阅数上限（`WS_MAX_SUBS_PER_CLIENT`，默认 32）。
+  - **配置**：`WS_MAX_BUFFER_BYTES` / `WS_MAX_SUBS_PER_CLIENT` / `WS_ENABLE_QUOTA`。
+  - **单测 21/21 全绿**（`npm test`，node:test + tsx）：订阅去重 isNew 语义 / 共享广播一次事件两客户端收到 / 最后离开释放上游 / 断开补发 `eth_unsubscribe` / 孤儿 confirm=false / 背压 4004 / 配额并发上限 / 4001/4002/4003/-32602 错误码。
+  - ⚠️ 生产部署待执行。
 
 ## 四、验收标准
 
