@@ -220,7 +220,35 @@ def _fetch_moomoo(symbol: str, market: str) -> Optional[dict]:
 
 
 def _fetch_yfinance(symbol: str) -> Optional[dict]:
-    """yfinance fast_info 实时行情（美股/外汇/期货）。限流失败返回 None。"""
+    """实时行情（美股/外汇/期货）。美股/外汇优先 Twelve Data/frankfurter（yf_alt，
+    Yahoo 段限流替代），失败回退 yfinance；期货（=F）无法替换，直接走 yfinance。"""
+    # 美股/外汇（无 =F 期货后缀、非 ^ 指数）：yf_alt 优先
+    if not symbol.endswith("=F") and not symbol.startswith("^"):
+        try:
+            from app.yf_alt import get_latest_close, get_history, to_fx_pair
+            alt = to_fx_pair(symbol) or symbol
+            price = get_latest_close(alt)
+            if price:
+                prev_close = None
+                hist = get_history(alt, interval="1d", days=3)
+                if hist is not None and len(hist) >= 2:
+                    prev_close = float(hist["Close"].iloc[-2])
+                prev_close = prev_close or price
+                change = round(price - prev_close, 8)
+                change_pct = round((price - prev_close) / prev_close * 100, 4) if prev_close else None
+                return {
+                    "symbol": symbol,
+                    "price": round(price, 8),
+                    "change": change,
+                    "changePercent": change_pct,
+                    "high": None,
+                    "low": None,
+                    "open": None,
+                    "previousClose": round(prev_close, 8),
+                    "ts": int(time.time() * 1000),
+                }
+        except Exception as exc:
+            logger.debug("yf_alt ticker failed %s: %s", symbol, exc)
     try:
         import yfinance as yf
         t = yf.Ticker(symbol)

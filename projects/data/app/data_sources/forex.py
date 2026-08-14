@@ -282,11 +282,35 @@ class ForexDataSource(BaseDataSource):
         return None
 
     def _get_ticker_yfinance(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch forex quote from yfinance (Tier 3 fallback)."""
+        """Fetch forex quote via Twelve Data/frankfurter（yf_alt），回退 yfinance (Tier 3)."""
         yf_sym = _YF_SYMBOL_MAP.get(symbol.upper())
         if not yf_sym:
             s = symbol.upper()
             yf_sym = f"{s}=X" if len(s) == 6 and not s.endswith("=X") else s
+        # yf_alt：外汇对 → frankfurter（免费无配额）→ Twelve Data
+        try:
+            from app.yf_alt import get_latest_close, get_history, to_fx_pair
+            pair = to_fx_pair(yf_sym)
+            if pair:
+                current = get_latest_close(pair)
+                prev = None
+                if current:
+                    hist = get_history(pair, interval="1d", days=3)
+                    if hist is not None and len(hist) >= 2:
+                        prev = float(hist["Close"].iloc[-2])
+                    prev = prev or current
+                    change = current - prev
+                    change_pct = (change / prev * 100) if prev else 0
+                    return {
+                        "last": round(current, 5),
+                        "change": round(change, 5),
+                        "changePercent": round(change_pct, 2),
+                        "previousClose": round(prev, 5),
+                        "symbol": symbol,
+                    }
+        except Exception as e:
+            logger.debug("yf_alt forex ticker failed %s: %s", symbol, e)
+        # 回退 yfinance
         try:
             t = yf.Ticker(yf_sym)
             hist = t.history(period="2d", interval="1d")
@@ -683,26 +707,58 @@ class ForexDataSource(BaseDataSource):
             start_dt = end_dt - timedelta(seconds=tf_seconds * limit * 1.5)
             end_dt_inclusive = end_dt + timedelta(days=1)
 
-            t = yf.Ticker(yf_sym)
-            df = t.history(start=start_dt, end=end_dt_inclusive, interval=yf_interval)
-            if df is None or df.empty:
-                return []
+            # yf_alt：外汇对日线走 frankfurter（免费）；非日线 interval 返回 None → 回退 yfinance
+            try:
+                from app.yf_alt import get_history, to_fx_pair
+                pair = to_fx_pair(yf_sym)
+                if pair:
+                    df = get_history(pair, interval=yf_interval,
+                                     start_ts=start_dt.timestamp(),
+                                     end_ts=end_dt.timestamp())
+                    if df is not None and not df.empty:
+                        klines = []
+                        for idx, row in df.iterrows():
+                            klines.append({
+                                'time': int(idx.timestamp()),
+                                'open': float(row['Open']),
+                                'high': float(row['High']),
+                                'low': float(row['Low']),
+                                'close': float(row['Close']),
+                                'volume': float(row.get('Volume', 0) or 0),
+                            })
+                        klines.sort(key=lambda x: x['time'])
+                        if len(klines) > limit:
+                            klines = klines[-limit:]
+                        logger.debug("yf_alt forex kline %s %s: %d bars", yf_sym, timeframe, len(klines))
+                        return klines
+            except Exception as e:
+                logger.debug("yf_alt forex kline failed %s: %s", symbol, e)
 
-            klines = []
-            for idx, row in df.iterrows():
-                klines.append({
-                    'time': int(idx.timestamp()),
-                    'open': float(row['Open']),
-                    'high': float(row['High']),
-                    'low': float(row['Low']),
-                    'close': float(row['Close']),
-                    'volume': float(row.get('Volume', 0) or 0),
-                })
-            klines.sort(key=lambda x: x['time'])
-            if len(klines) > limit:
-                klines = klines[-limit:]
-            logger.debug("yfinance forex kline %s %s: %d bars", yf_sym, timeframe, len(klines))
-            return klines
+            # yfinance fallback（Tier 3）
+            try:
+                t = yf.Ticker(yf_sym)
+                df = t.history(start=start_dt, end=end_dt_inclusive, interval=yf_interval)
+                if df is None or df.empty:
+                    return []
+
+                klines = []
+                for idx, row in df.iterrows():
+                    klines.append({
+                        'time': int(idx.timestamp()),
+                        'open': float(row['Open']),
+                        'high': float(row['High']),
+                        'low': float(row['Low']),
+                        'close': float(row['Close']),
+                        'volume': float(row.get('Volume', 0) or 0),
+                    })
+                klines.sort(key=lambda x: x['time'])
+                if len(klines) > limit:
+                    klines = klines[-limit:]
+                logger.debug("yfinance forex kline %s %s: %d bars", yf_sym, timeframe, len(klines))
+                return klines
+            except Exception as e:
+                logger.debug("yfinance forex kline failed %s: %s", symbol, e)
+                return []
         except Exception as e:
-            logger.debug("yfinance forex kline failed %s: %s", symbol, e)
+            logger.debug("_get_kline_yfinance failed %s %s: %s", symbol, timeframe, e)
             return []

@@ -106,6 +106,27 @@ class USStockDataSource(BaseDataSource):
                 else:
                     logger.warning(f"Finnhub quote failed for {symbol}: {e}")
         
+        # 降级 1：Twelve Data（yf_alt，Yahoo 段限流替代）
+        try:
+            from app.yf_alt import get_latest_close, get_history
+            last = get_latest_close(symbol)
+            if last:
+                prev_close = None
+                hist = get_history(symbol, interval='1d', days=3)
+                if hist is not None and len(hist) >= 2:
+                    prev_close = float(hist['Close'].iloc[-2])
+                prev_close = prev_close or last
+                change = (last - prev_close) if prev_close else 0
+                return {
+                    'last': float(last),
+                    'change': round(change, 4),
+                    'changePercent': round((change / prev_close * 100), 2) if prev_close else 0,
+                    'high': float(last), 'low': float(last), 'open': float(last),
+                    'previousClose': float(prev_close) if prev_close else 0
+                }
+        except Exception as e:
+            logger.debug(f"yf_alt ticker failed for {symbol}: {e}")
+        
         # 降级使用 yfinance
         try:
             ticker = yf.Ticker(symbol)
@@ -249,7 +270,18 @@ class USStockDataSource(BaseDataSource):
         return klines
     
     def _fetch_yfinance(self, symbol: str, interval: str, start_date: datetime, end_date: datetime):
-        """使用 yfinance 获取数据"""
+        """美股 K 线：优先 Twelve Data（yf_alt，规避 Yahoo 段限流），失败回退 yfinance。"""
+        try:
+            from app.yf_alt import get_history
+            df = get_history(
+                symbol, interval=interval,
+                start_ts=start_date.timestamp(),
+                end_ts=(end_date + timedelta(days=1)).timestamp(),
+            )
+            if df is not None and not df.empty:
+                return df
+        except Exception:
+            pass
         try:
             ticker = yf.Ticker(symbol)
             

@@ -67,43 +67,63 @@ def _fetch_td(pairs: list) -> List[Dict[str, Any]]:
 
 
 def _fetch_yf(pairs: list) -> List[Dict[str, Any]]:
-    """Fetch forex quotes from yfinance (fallback)."""
-    try:
-        import yfinance as yf
-        symbols = [p["yf"] for p in pairs]
-        tickers = yf.Tickers(" ".join(symbols))
-        result = []
-        for pair in pairs:
-            try:
-                ticker = tickers.tickers.get(pair["yf"])
-                if ticker:
-                    hist = ticker.history(period="2d")
-                    if len(hist) >= 2:
-                        prev_close = hist["Close"].iloc[-2]
-                        current = hist["Close"].iloc[-1]
-                        change = ((current - prev_close) / prev_close) * 100
-                    elif len(hist) == 1:
-                        current = hist["Close"].iloc[-1]
-                        change = 0
-                    else:
-                        continue
-                    result.append({
-                        "symbol": pair["td"],
-                        "name": pair["td"],
-                        "name_cn": pair["name_cn"],
-                        "name_en": pair["name_en"],
-                        "price": round(current, 5),
-                        "change": round(change, 2),
-                        "base": pair["base"],
-                        "quote": pair["quote"],
-                        "category": "forex",
-                    })
-            except Exception as e:
-                logger.debug("yfinance forex %s failed: %s", pair["yf"], e)
-        return result
-    except Exception as e:
-        logger.error("yfinance forex batch failed: %s", e)
-        return []
+    """Fetch forex quotes via Twelve Data/frankfurter（yf_alt），回退 yfinance (fallback)."""
+    result: List[Dict[str, Any]] = []
+    for pair in pairs:
+        try:
+            from app.yf_alt import get_latest_close, get_history, to_fx_pair
+            alt = to_fx_pair(pair["yf"])
+            current = get_latest_close(alt) if alt else None
+            prev_close = None
+            if current:
+                hist = get_history(alt, interval="1d", days=3)
+                if hist is not None and len(hist) >= 2:
+                    prev_close = float(hist["Close"].iloc[-2])
+            if current:
+                prev_close = prev_close or current
+                change = ((current - prev_close) / prev_close) * 100 if prev_close else 0
+                result.append({
+                    "symbol": pair["td"],
+                    "name": pair["td"],
+                    "name_cn": pair["name_cn"],
+                    "name_en": pair["name_en"],
+                    "price": round(current, 5),
+                    "change": round(change, 2),
+                    "base": pair["base"],
+                    "quote": pair["quote"],
+                    "category": "forex",
+                })
+                continue
+        except Exception as e:
+            logger.debug("yf_alt forex %s failed: %s", pair.get("yf"), e)
+        # 回退 yfinance 单对
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(pair["yf"])
+            hist = ticker.history(period="2d")
+            if len(hist) >= 2:
+                prev_close = hist["Close"].iloc[-2]
+                current = hist["Close"].iloc[-1]
+                change = ((current - prev_close) / prev_close) * 100
+            elif len(hist) == 1:
+                current = hist["Close"].iloc[-1]
+                change = 0
+            else:
+                continue
+            result.append({
+                "symbol": pair["td"],
+                "name": pair["td"],
+                "name_cn": pair["name_cn"],
+                "name_en": pair["name_en"],
+                "price": round(current, 5),
+                "change": round(change, 2),
+                "base": pair["base"],
+                "quote": pair["quote"],
+                "category": "forex",
+            })
+        except Exception as e:
+            logger.debug("yfinance forex %s failed: %s", pair["yf"], e)
+    return result
 
 
 def _fetch_tiingo(pairs: list) -> List[Dict[str, Any]]:
