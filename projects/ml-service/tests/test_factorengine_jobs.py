@@ -181,6 +181,8 @@ class TestJobStore:
         # 未登记评估环境（asset_pool）的因子跳过（不误停用）。
         import numpy as np
         import pandas as pd
+        import app.factorengine.jobs as jobs_mod
+        monkeypatch.setattr(jobs_mod, "_store", store)  # 隔离真实 DB，防污染生产 catalog
         import app.factorengine.catalog as cat_mod
         cat_mod._catalog = None
         cat = cat_mod.get_catalog()
