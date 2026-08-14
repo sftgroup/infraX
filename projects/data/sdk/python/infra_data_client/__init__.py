@@ -28,7 +28,7 @@ from typing import Any, Optional, Union
 import requests
 import urllib3
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # 平台统一鉴权头（data-service 接受 X-Service-Key / Bearer / X-API-Key 任一）
 _API_KEY_HEADER = "X-Service-Key"
@@ -194,6 +194,18 @@ class InfraDataClient:
             return None
         return body.get("factors") if isinstance(body, dict) else body
 
+    def _current_factors_body(
+        self, symbols: Union[str, list] = "BTC", category: Optional[str] = None
+    ) -> Optional[dict]:
+        """`GET /factors/current` 完整响应体（含 ml_factory，FF-3.3/3.4）。"""
+        if isinstance(symbols, (list, tuple)):
+            symbols = ",".join(str(s) for s in symbols)
+        params: dict[str, Any] = {"symbols": symbols}
+        if category is not None:
+            params["category"] = category
+        body = self._request("GET", "/factors/current", params=params)
+        return body if isinstance(body, dict) else None
+
     def get_current_factors(
         self,
         symbols: Union[str, list] = "BTC",
@@ -203,17 +215,38 @@ class InfraDataClient:
 
         symbols: "BTC,ETH" 或 ["BTC", "ETH"]
         category: external/sentiment/news/opportunities/heatmap/calendar/snapshot/ml 等
-        返回 {ts, factors: {SYMBOL: {fid: val}, "_complex": {...}}}
+        返回 {SYMBOL: {fid: val}, "_complex": {...}}（裁剪了 meta/ml_factory；
+        需要完整响应含因子工厂 ml_factory 时用 get_current_factors_full）
         """
-        if isinstance(symbols, (list, tuple)):
-            symbols = ",".join(str(s) for s in symbols)
-        params: dict[str, Any] = {"symbols": symbols}
-        if category is not None:
-            params["category"] = category
-        body = self._request("GET", "/factors/current", params=params)
+        body = self._current_factors_body(symbols, category)
         if body is None:
             return None
-        return body.get("factors") if isinstance(body, dict) and "factors" in body else body
+        return body.get("factors") if "factors" in body else body
+
+    def get_current_factors_full(
+        self,
+        symbols: Union[str, list] = "BTC",
+        category: Optional[str] = None,
+    ) -> Optional[dict]:
+        """最新因子**完整响应**（与 /factors/current 原样一致，FF-3.4）。
+
+        返回 {ts, meta, factors: {SYMBOL: {fid: val}}, ml_factory?}——
+        ml_factory = {updated_at, factors: [key...], values: {SYMBOL: {key: val}}}
+        （因子工厂激活因子列表 + ml-service 算好的实时值，客户端直接取用免复算公式）。
+        """
+        return self._current_factors_body(symbols, category)
+
+    def get_ml_factory(self, symbols: Union[str, list] = "BTC") -> Optional[dict]:
+        """因子工厂激活因子列表 + 实时值（FF-3.3/3.4，ml_factory 字段）。
+
+        返回 {updated_at, factors: [key...], values: {SYMBOL: {key: val}}} 或 None
+        （fail-silent：服务不可用 / 响应无 ml_factory 时返回 None）。
+        示例：mf["factors"]、mf["values"]["BTC/USDT"]["ret_1"]。
+        """
+        body = self._current_factors_body(symbols)
+        if body is None:
+            return None
+        return body.get("ml_factory")
 
     def get_history_factors(
         self,

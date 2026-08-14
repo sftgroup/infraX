@@ -241,7 +241,7 @@ Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get
                         ▼
               data /factors/current 附 ml_factory.factors + ml_factory.values（60s TTL）
                         ▼
-              AItrader factor_client 直接可用（免复算公式）
+              任意客户端直接读 ml_factory.factors / ml_factory.values（免复算公式）
 ```
 
 **能力清单**：

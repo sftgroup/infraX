@@ -50,7 +50,9 @@ hits = client.search_symbols("btc", market="crypto", limit=10)
 |---|---|---|
 | `get_bars(symbol, timeframe, market_type, start, end, limit)` | `GET /bars` | OHLCV + 指标 + 外部因子，ts 毫秒升序 |
 | `get_factor_catalog()` | `GET /factors/catalog` | 因子目录（含 ML category="ml"） |
-| `get_current_factors(symbols, category)` | `GET /factors/current` | 最新因子（symbols 支持 `"BTC,ETH"` 或 `["BTC","ETH"]`） |
+| `get_current_factors(symbols, category)` | `GET /factors/current` | 最新因子（symbols 支持 `"BTC,ETH"` 或 `["BTC","ETH"]`；返回 `{SYMBOL: {fid: val}}`，不含 ml_factory） |
+| `get_current_factors_full(symbols, category)` | `GET /factors/current` | 最新因子**完整响应**（`{ts, meta, factors, ml_factory}`，0.3.0） |
+| `get_ml_factory(symbols)` | `GET /factors/current` | **因子工厂激活因子列表 + 实时值**（FF-3.3/3.4，0.3.0）：`{updated_at, factors: [key...], values: {SYMBOL: {key: val}}}`；无 ml_factory 返回 None |
 | `get_history_factors(symbol, timeframe, ids, start, end, limit)` | `GET /factors/history` | 逐 bar 因子历史（asof 对齐，回测无未来函数） |
 | `get_snapshots(snapshot_type)` | `GET /snapshots` | 板块快照（heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain/commodities/forex_pairs/market_overview） |
 | `get_ticker(symbol, market_type, exchange_id, market)` | `GET /ticker` | 实时报价 |
@@ -87,7 +89,7 @@ python examples/ml_predictions_integration.py --symbol BTC/USDT --model bolt \
 ```bash
 cd projects/data/sdk/python
 pip install build
-python -m build        # 产出 dist/infra_data_client-0.2.0-*.whl / .tar.gz
+python -m build        # 产出 dist/infra_data_client-0.3.0-*.whl / .tar.gz
 # 上传到私有 pip 源，或直接分发 wheel
 ```
 
