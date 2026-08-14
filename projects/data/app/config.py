@@ -126,15 +126,18 @@ ONCHAIN_COLLECT_INTERVAL_SEC = int(os.getenv("ONCHAIN_COLLECT_INTERVAL_SEC", "60
 
 # OKX ChainOS 行情快照（okx_hot_tokens / okx_index_prices）：web3.okx.com 官方 v6
 OKX_CHAINOS_COLLECT_ENABLED = os.getenv("OKX_CHAINOS_COLLECT_ENABLED", "true").lower() == "true"
-OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "60"))
+# ⚠️ 采集频率受 infrax-collector market 配额约束（market_free 10000 次/月）：
+#    默认 900s（15min）且仅 hot-tokens 时月用量 ≈8640 次，可安全落在免费配额内；
+#    开启 index/candles 或缩短 interval 会显著超配额 → 503 停摆（2026-08-14 实测耗尽）。
+OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "900"))
 # 链 ID：Ethereum=1, BSC=56, Base=8453（v6 官方链 ID，字符串）
 OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453")
 OKX_HOT_LIMIT = int(os.getenv("OKX_HOT_LIMIT", "10"))       # 每链热门代币数
-OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "3"))  # 每链补指数价格的头部代币数
+OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "0"))  # 每链补指数价格的头部代币数（配额内默认 0=关）
 
 # DQ-7: okx candles 快照（经旧栈 /api/v2/data/market/candles 拉取头部代币 K 线）
-OKX_CANDLE_ENABLED = os.getenv("OKX_CANDLE_ENABLED", "true").lower() == "true"
-OKX_CANDLE_TOKENS = int(os.getenv("OKX_CANDLE_TOKENS", "3"))  # 每链补 candles 的头部代币数
+OKX_CANDLE_ENABLED = os.getenv("OKX_CANDLE_ENABLED", "false").lower() == "true"
+OKX_CANDLE_TOKENS = int(os.getenv("OKX_CANDLE_TOKENS", "0"))  # 每链补 candles 的头部代币数（配额内默认 0=关）
 OKX_CANDLE_PERIOD = os.getenv("OKX_CANDLE_PERIOD", "15m")
 OKX_CANDLE_LIMIT = int(os.getenv("OKX_CANDLE_LIMIT", "50"))   # 每代币拉取的 K 线根数
 
