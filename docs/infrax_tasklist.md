@@ -1630,7 +1630,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | FF-3.1 | catalog | `factor_catalog` DB 表：定义（key/公式/数据源/窗口/版本）+ 状态（active/inactive）；job 完成自动 `register_qualified`（2026-08-14 接线） | ✅ | P1 |
 | FF-3.2 | 管理端点 | `GET /factors/catalog` + `POST /factors/{key}/activate|deactivate`（生产实测激活生效） | ✅ | P1 |
 | FF-3.3 | 入库 data-service | 合格因子自动登记 → data-service `/factors/current` 附 `ml_factory` 字段（AItrader factor_client 无改动全量透传；60s TTL 缓存；生产实测 `["ret_20","vol_20"]`） | ✅ | P1 |
-| FF-3.4 | 因子值暴露 | ml-service `GET /factors/values?symbols=` 按 active 因子 × symbol 算最新值；data `/factors/current` 透传 `ml_factory.values`（客户端免复算公式；data 侧 60s TTL 按 symbols 键控防串值；跨服务回调用 `asyncio.to_thread` 防死锁；commit c3e7f66） | ✅ | P1 |
+| FF-3.4 | 因子值暴露 | ml-service `GET /factors/values?symbols=` 按 active 因子 × symbol 算最新值；data `/factors/current` 透传 `ml_factory.values`（客户端免复算公式；data 侧 60s TTL 按 symbols 键控防串值；跨服务回调用 `asyncio.to_thread` 防死锁；commit c3e7f66）；**官方 SDK infra-data-client 0.3.0** 新增 `get_ml_factory`/`get_current_factors_full`（旧方法向后兼容），生产 data venv 已装并验证（6 因子 × BTC/USDT+SPY，commit 077ca6e + 0bc58f2） | ✅ | P1 |
 | **FF-4** | 对话驱动 + 自动挖掘验证（依赖 R5） | | ✅ | P1 |
 | FF-4.1 | 触发方式 | 定时/手动触发挖掘；2026-08-14 实现进程内调度线程（`factorengine/scheduler.py`，仿 prewarm_loop）：`.env` `FACTOR_MINER_SCHEDULE_ENABLED/INTERVAL_H(6h)/DELAY_S(60)/SPEC/INTENT`；负载控制=单 worker + 活跃任务跳过 + 距上次终态不足 interval 跳过 + interval 下限 1h；生产实测自动触发 `job=ff_20260814_b27353f68ab2` COMPLETED（动态池 10 标的） | ✅ | P1 |
 | FF-4.2 | 对话集成 | R5-3 MCP 入口接入（生产实测 start→COMPLETED） | ✅ | P1 |
