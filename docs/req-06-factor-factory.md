@@ -1,6 +1,6 @@
 # 需求文档 6：因子工厂（Factor Factory）— InfraX ml-service 因子引擎
 
-> 需求方：Steven ｜ 归档：**InfraX** ｜ 日期：2026-08-09 ｜ 状态：待开发
+> 需求方：Steven ｜ 归档：**InfraX** ｜ 日期：2026-08-09 ｜ 状态：✅ 已实现（2026-08-14；挖掘/评估/管理/入库链路生产就绪，FF-4.1 定时挖掘、R5-4 LLM 意图解析；落地明细见 `infrax_tasklist.md §9.15` 与 `DATA_SERVICE_CATALOG.md §3.4`）
 > 定位：**优化 InfraX 的 ml-service / data-service 因子链路，构建「因子工厂」**：负责因子挖掘、评估、管理、入库，并把合格因子提供给 data-service `/factors/current`（供下游如 AItrader 策略工厂消费）。
 > 承接：〔需求5 自动寻找因子〕（对话+偏好限制）作为因子挖掘的入口；〔需求4 ml-service 架构优化〕的 Provider/因子工程解耦。
 
