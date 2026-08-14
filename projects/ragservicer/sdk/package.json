@@ -1,8 +1,30 @@
 {
   "name": "@0xinfrax/ragservicer-sdk",
   "version": "2.0.0",
-  "description": "TypeScript client SDK for InfraX RAGservicer",
-  "main": "index.ts",
-  "types": "index.ts",
-  "license": "MIT"
+  "description": "InfraX RAGservicer TypeScript client SDK — document insert/delete/query/retrieve, tenant & API key admin, instances/tasks, health. Envelope {code,message,data} aware.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "infrax",
+    "rag",
+    "ragservicer",
+    "lightrag",
+    "sdk"
+  ],
+  "publishConfig": { "access": "public" },
+  "license": "MIT",
+  "author": "InfraX",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
 }

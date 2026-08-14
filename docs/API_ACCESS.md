@@ -772,6 +772,26 @@ if (r.code === 0) {
 | `.data` / `.ml` | Data :9112 / ml :9120 | 9 + 9 |
 | `SessionKeyClient` | Session Key :3500 | 7 |
 
+### 已发布包清单（npm，2026-08-15 全量核验）
+
+| 包 | 版本 | 说明 |
+|----|------|------|
+| `@0xinfrax/infrax-dk` | 0.8.2 | 全功能聚合 SDK（wallet/mpc/vault/dc/market/chainRpc/payment/data/ml/sub） |
+| `@0xinfrax/ragservicer-sdk` | 2.0.0 | **RAGservicer（LightRAG）TS 客户端**（2026-08-15 新发布；Python 侧为 PyPI `lightrag-client` 2.0.0） |
+| `@0xinfrax/mpc-sdk` | 0.3.0 | MPC 钱包 |
+| `@0xinfrax/session-key-core` | 0.2.1 | Session Key 核心 |
+| `@0xinfrax/session-key-client` | 0.1.2 | Session Key 客户端 |
+| `@0xinfrax/session-key-server` | 0.1.1 | Session Key 服务端 |
+| `@0xinfrax/session-key-evm` | 0.1.2 | Session Key EVM |
+| `@0xinfrax/payments` | 0.1.3 | 通用支付引擎 |
+| `@0xinfrax/waas-sdk` | 0.1.0 | WAAS |
+| `@0xinfrax/chain-rpc-sdk` | 0.1.0 | Chain RPC 网关 |
+| `@0xinfrax/dc-sdk` | 0.1.0 | DC |
+| `@0xinfrax/data-sdk` | 0.1.0 | Data |
+| `@0xinfrax/market-sdk` | 0.1.0 | Market |
+| `@0xinfrax/vault-sdk` | 0.1.0 | Vault |
+| `@0xinfrax/infrax-cp-server` | 1.1.0 | 控制平面服务器 |
+
 ---
 
 ## 四、支持的区块链
