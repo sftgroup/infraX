@@ -232,11 +232,16 @@ Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get
                         │ SQLite factor_factory.db（jobs/results/catalog 同库）
                         ▼
               register_qualified（FF-3.1）→ catalog 登记（inactive）
-                        │ POST /factors/{key}/activate 激活
+                        │ 自动激活（FF-4.3）或 POST /factors/{key}/activate
                         ▼
-              data /factors/current 响应附 ml_factory 字段（FF-3.3，60s TTL）
+              active 因子 = /factors/current 的 ml_factory.factors（FF-3.3）
+                        │ 挖掘完成自动重评估，|IC|/|ICIR| 衰减 → 自动停用（FF-4.4）
                         ▼
-              AItrader factor_client 直接可用
+              ml-service 按请求 symbols 算最新值 /factors/values（FF-3.4）
+                        ▼
+              data /factors/current 附 ml_factory.factors + ml_factory.values（60s TTL）
+                        ▼
+              AItrader factor_client 直接可用（免复算公式）
 ```
 
 **能力清单**：
@@ -249,12 +254,15 @@ Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get
 | 因子池 | 动态池 + 白名单池；裸符号 `BTC` 自动补 `/USDT` 回退 |
 | 评估 | `factor_eval` IC（Spearman 对齐 fail-open）/ 超额 / 稳定性；`FACTOR_EVAL_BARS=800` |
 | 生命周期 | `recover()` 懒加载（重启后首次访问标 FAILED）；job 失败标 FAILED（原永久 RUNNING bug 已修） |
-| 激活 | `POST /factors/{key}/activate` → `/factors/current` 可见 |
+| 激活 | 自动激活（FF-4.3，默认开）或 `POST /factors/{key}/activate` → `/factors/current` 可见 |
+| 值暴露（FF-3.4） | ml-service `GET /factors/values?symbols=` 按 active 因子 × symbol 算最新值（compute_factor + 最新 bar）；data `/factors/current` 透传为 `ml_factory.values`，客户端免复算公式 |
+| 衰退淘汰（FF-4.4） | 挖掘任务 COMPLETED 后对 active 因子用**登记评估环境**（asset_pool/horizon）重评估，`abs(IC)<0.01 或 abs(ICIR)<0.03` 自动停用（`FACTOR_MINER_DEACTIVATE_IC/ICIR/ENABLED` 可调）；未登记环境跳过防跨市场误停 |
 
-**查询方式**：
-- `/factors/current`（任意 symbol）响应顶层 `ml_factory` 字段：`{"updated_at": <ms>, "factors": ["ret_20", "vol_20"]}`（已激活 FF 因子 id 列表）
+**查询方式**（客户端取因子值**直接读 `ml_factory.values`**，无需复算公式）：
+- `/factors/current?symbols=` 响应顶层 `ml_factory`：`{"updated_at": <ms>, "factors": ["ret_1","ret_10","ret_20","ret_3","ret_5","vol_20"], "values": {"BTC/USDT": {"ret_1": -0.00076, ...}, "SPY": {...}}}`——`factors`=已激活 FF 因子 id 列表；`values`=按请求 symbols 算好的最新值（data 侧 60s TTL）
+- `GET /factors/values?symbols=`（ml-service :9120 直连，实时计算）
 - `GET /factor-factory/jobs` / `GET /factor-factory/results` / `GET /factor-factory/catalog`（ml-service :9120）
-- 生产实测：自动挖掘 `ff_20260814_*` COMPLETED；catalog 登记 + activate 后 `/factors/current` 可见
+- 生产实测：自动挖掘 `ff_20260814_*` COMPLETED；catalog 登记 + 激活后 `/factors/current` 可见；FF-3.4 值暴露 + FF-4.4 衰退淘汰生产端到端验证通过（commit c3e7f66）
 - **2026-08-14 全工具回归通过**（initialize/tools/list/start/status/result/list/cancel 7 步，R5-4 intent 意图解析→COMPLETED）；修复 `factor_factory_cancel` 405 bug（ml-service cancel 为 POST，commit 88d51ce）——详见 `req-06-factor-factory.md §8`
 
 ---

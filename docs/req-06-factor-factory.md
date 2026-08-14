@@ -167,7 +167,8 @@
 
 - 因子引擎：SQLite `factor_factory.db`（jobs/results/catalog 同库）；`FACTOR_EVAL_BARS=800`
 - 定时挖掘（FF-4.1）：`FACTOR_MINER_SCHEDULE_ENABLED=true / INTERVAL_H=6 / DELAY_S=60 / SPEC=<JSON>`（单 worker + 有任务跳过 + 距上次终态 < interval 跳过）
-- 透传：data-service `/factors/current` 响应附 `ml_factory` 字段（FF-3.3，60s TTL）：`{"updated_at": <ms>, "factors": ["ret_20","vol_20"]}`
+- 透传：data-service `/factors/current` 响应附 `ml_factory` 字段（FF-3.3/3.4，60s TTL）：`{"updated_at": <ms>, "factors": [...], "values": {symbol: {factor_key: value}}}`——`values` 由 ml-service `GET /factors/values?symbols=` 按请求 symbols 实时计算（FF-3.4），客户端直接取 `ml_factory.values[symbol][factor_key]` 免复算公式；生产实测 `factors=["ret_1","ret_10","ret_20","ret_3","ret_5","vol_20"]`（commit c3e7f66）
+- 衰退淘汰（FF-4.4）：挖掘任务 COMPLETED 后对 active 因子用**登记评估环境**（`register_qualified` 存入 params 的 asset_pool/horizon）重新评估，`abs(IC)<0.01 或 abs(ICIR)<0.03` 自动停用并记录 `[FF-4.4 decayed...]`；阈值 `FACTOR_MINER_DEACTIVATE_IC/ICIR/ENABLED` 可调，未登记环境（旧数据/动态池）跳过防误停
 
 ---
 

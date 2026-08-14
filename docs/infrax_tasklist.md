@@ -1630,10 +1630,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | FF-3.1 | catalog | `factor_catalog` DB 表：定义（key/公式/数据源/窗口/版本）+ 状态（active/inactive）；job 完成自动 `register_qualified`（2026-08-14 接线） | ✅ | P1 |
 | FF-3.2 | 管理端点 | `GET /factors/catalog` + `POST /factors/{key}/activate|deactivate`（生产实测激活生效） | ✅ | P1 |
 | FF-3.3 | 入库 data-service | 合格因子自动登记 → data-service `/factors/current` 附 `ml_factory` 字段（AItrader factor_client 无改动全量透传；60s TTL 缓存；生产实测 `["ret_20","vol_20"]`） | ✅ | P1 |
+| FF-3.4 | 因子值暴露 | ml-service `GET /factors/values?symbols=` 按 active 因子 × symbol 算最新值；data `/factors/current` 透传 `ml_factory.values`（客户端免复算公式；data 侧 60s TTL 按 symbols 键控防串值；跨服务回调用 `asyncio.to_thread` 防死锁；commit c3e7f66） | ✅ | P1 |
 | **FF-4** | 对话驱动 + 自动挖掘验证（依赖 R5） | | ✅ | P1 |
 | FF-4.1 | 触发方式 | 定时/手动触发挖掘；2026-08-14 实现进程内调度线程（`factorengine/scheduler.py`，仿 prewarm_loop）：`.env` `FACTOR_MINER_SCHEDULE_ENABLED/INTERVAL_H(6h)/DELAY_S(60)/SPEC/INTENT`；负载控制=单 worker + 活跃任务跳过 + 距上次终态不足 interval 跳过 + interval 下限 1h；生产实测自动触发 `job=ff_20260814_b27353f68ab2` COMPLETED（动态池 10 标的） | ✅ | P1 |
 | FF-4.2 | 对话集成 | R5-3 MCP 入口接入（生产实测 start→COMPLETED） | ✅ | P1 |
 | FF-4.3 | 端到端验证 | 自动挖掘→登记 catalog→/factors/current 可见（生产全链路验证通过）；现有 `/ml/*` 不受影响 | ✅ | P1 |
+| FF-4.4 | 衰退淘汰 | 挖掘 COMPLETED 后对 active 因子用登记评估环境（asset_pool/horizon）重评估，`abs(IC)<0.01 或 abs(ICIR)<0.03` 自动停用（`FACTOR_MINER_DEACTIVATE_IC/ICIR/ENABLED` 可调；未登记环境跳过防误停；单测 test_health_check_active_decays；commit c3e7f66） | ✅ | P1 |
 | **HW-1** | 因子工厂硬件评估/采购 | 双路 E5-2683v4 + 64G + V100 32G（阶段一/二）；**⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化）**；附录 A 结论：复合/非线性因子=向量化矩阵计算，无需 vLLM | ⏸️ 延后 | P2 |
 
 **验收标准（对齐三需求文档）**：
