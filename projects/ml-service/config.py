@@ -59,6 +59,10 @@ FACTOR_MINER_SCHEDULE_INTERVAL_H = float(os.getenv("FACTOR_MINER_SCHEDULE_INTERV
 FACTOR_MINER_SCHEDULE_DELAY_S = float(os.getenv("FACTOR_MINER_SCHEDULE_DELAY_S", "60"))
 FACTOR_MINER_SCHEDULE_SPEC = os.getenv("FACTOR_MINER_SCHEDULE_SPEC", "")
 FACTOR_MINER_SCHEDULE_INTENT = os.getenv("FACTOR_MINER_SCHEDULE_INTENT", "")
+# 多市场定时挖掘（FF-4.2）：JSON 数组，每市场独立 preferences/constraints/formulas，
+# 如 [{"name":"crypto","preferences":{...},"constraints":{"min_ic":0.03,"min_icir":0.05,...},"formulas":[...]}]
+# 配置时优先于 INTENT/SPEC（单市场回退）；不同市场数据特性不同需独立阈值
+FACTOR_MINER_SCHEDULE_MULTI = os.getenv("FACTOR_MINER_SCHEDULE_MULTI", "")
 # IC / ICIR 阈值（动态可调）：INTENT 分支强制覆盖 LLM 解析值（LLM 输出数字不确定，
 # 阈值调整只改 .env 这一个数字重启即生效，不依赖意图文案）。联合门槛为
 # 同时满足 min_ic 与 min_icir；crypto 日线短样本下 IC 与 ICIR 往往此消彼长，

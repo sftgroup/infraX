@@ -6,10 +6,11 @@ interval 触发一次 start_job（入同一单 worker 池执行）。负载控�
   - 距上次终态任务不足 interval → 跳过（重启后不立即重复跑）
   - interval 下限 1h（防误配高频空转）；spec 上限约束在 env 侧保守配置
 
-默认 spec 来源（二选一，INTENT 优先）：
+默认 spec 来源（多市场优先，INTENT 次之）：
+  - FACTOR_MINER_SCHEDULE_MULTI：JSON 数组，每市场独立 preferences/constraints/formulas（FF-4.2）
   - FACTOR_MINER_SCHEDULE_INTENT：自然语言 → LLM 意图解析（R5-4）
   - FACTOR_MINER_SCHEDULE_SPEC：结构化 JSON {"preferences": {...}, "constraints": {...}}
-未启用 / 两者均未配置 / 解析失败 → 线程不启动（fail-silent，日志告警）。
+未启用 / 均未配置 / 解析失败 → 线程不启动（fail-silent，日志告警）。
 """
 from __future__ import annotations
 
@@ -60,7 +61,7 @@ def should_run(store: Any, interval_s: float) -> bool:
 
 
 def build_default_spec() -> tuple[JobSpec, list[str]]:
-    """构造调度用 JobSpec：INTENT（LLM 解析，可含 formulas）优先，否则 SPEC JSON。
+    """构造单市场调度 spec：INTENT（LLM 解析，可含 formulas）优先，否则 SPEC JSON。
 
     INTENT 分支用 .env 的 FACTOR_MINER_SCHEDULE_MIN_IC / MIN_ICIR 强制覆盖 LLM
     解析出的 min_ic / min_icir（LLM 输出数字不确定，阈值调整只改 env 数字重启即生效）。
@@ -78,20 +79,46 @@ def build_default_spec() -> tuple[JobSpec, list[str]]:
                       spec_json.get("formulas") or [])
 
 
+def build_specs() -> list[tuple[str, JobSpec]]:
+    """调度用 spec 列表：FACTOR_MINER_SCHEDULE_MULTI（多市场，每市场独立
+    preferences/constraints/formulas，阈值按市场数据特性单独配）优先；
+    否则回退单市场 INTENT/SPEC。返回 [(市场名, JobSpec), ...]；
+    构造失败抛异常（调用方 fail-silent 不启动调度线程）。
+    """
+    if config.FACTOR_MINER_SCHEDULE_MULTI:
+        markets = json.loads(config.FACTOR_MINER_SCHEDULE_MULTI)
+        if not isinstance(markets, list):
+            raise ValueError("FACTOR_MINER_SCHEDULE_MULTI 需为 JSON 数组")
+        out: list[tuple[str, JobSpec]] = []
+        for m in markets:
+            name = str(m.get("name") or m.get("market") or "market")
+            spec, conflicts = build_spec(m.get("preferences") or {},
+                                         m.get("constraints") or {},
+                                         m.get("formulas") or [])
+            if conflicts:
+                logger.warning("factor miner market %s spec 冲突，跳过: %s", name, conflicts)
+                continue
+            out.append((name, spec))
+        if not out:
+            raise ValueError("多市场配置为空或全部冲突")
+        return out
+    spec, conflicts = build_default_spec()
+    if conflicts:
+        raise ValueError(f"默认 spec 冲突: {conflicts}")
+    return [("default", spec)]
+
+
 def miner_schedule_loop(interval_s: float, delay_s: float) -> None:
     """调度循环：构造/触发单次异常仅告警，不中断后续 tick。"""
     from app.factorengine.jobs import get_store, start_job
 
     try:
-        spec, conflicts = build_default_spec()
+        specs = build_specs()
     except Exception as exc:
         logger.warning("factor miner scheduler disabled: 默认 spec 构造失败: %s", exc)
         return
-    if conflicts:
-        logger.warning("factor miner scheduler disabled: 默认 spec 冲突: %s", conflicts)
-        return
-    logger.info("factor miner scheduler started (interval=%.0fs delay=%.0fs, spec ok)",
-                interval_s, delay_s)
+    logger.info("factor miner scheduler started (markets=%d, interval=%.0fs delay=%.0fs, spec ok)",
+                len(specs), interval_s, delay_s)
     time.sleep(max(0.0, delay_s))
     while True:
         try:
@@ -99,8 +126,9 @@ def miner_schedule_loop(interval_s: float, delay_s: float) -> None:
             if not should_run(store, interval_s):
                 logger.info("factor miner: 活跃任务或距上次终态不足 interval，跳过本 tick")
             else:
-                job = start_job(spec)
-                logger.info("factor miner: 触发定时挖掘 job=%s", job["job_id"])
+                for name, spec in specs:
+                    job = start_job(spec)
+                    logger.info("factor miner: 触发定时挖掘 [%s] job=%s", name, job["job_id"])
         except Exception as exc:
             logger.warning("factor miner tick failed: %s", exc)
         time.sleep(max(0.0, interval_s))
@@ -112,8 +140,9 @@ def start_miner_scheduler() -> Optional[threading.Thread]:
         return None
     interval_s = max(_MIN_INTERVAL_S, config.FACTOR_MINER_SCHEDULE_INTERVAL_H * 3600.0)
     delay_s = max(0.0, config.FACTOR_MINER_SCHEDULE_DELAY_S)
-    if not (config.FACTOR_MINER_SCHEDULE_INTENT or config.FACTOR_MINER_SCHEDULE_SPEC):
-        logger.warning("factor miner scheduler enabled but SPEC/INTENT 均未配置，调度未启动")
+    if not (config.FACTOR_MINER_SCHEDULE_MULTI
+            or config.FACTOR_MINER_SCHEDULE_INTENT or config.FACTOR_MINER_SCHEDULE_SPEC):
+        logger.warning("factor miner scheduler enabled but MULTI/SPEC/INTENT 均未配置，调度未启动")
         return None
     t = threading.Thread(target=miner_schedule_loop, args=(interval_s, delay_s),
                          name="factor-miner-scheduler", daemon=True)
