@@ -1,6 +1,6 @@
 # PocketX → InfraX 物料索取 — OxaChain Paymaster 对接清单
 
-> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：📤 待发送（2026-08-12 用户确认发送，渠道待执行）/ 待对方回传物料｜ 2026-08-16 用户裁定：**催 PocketX 物料（走官方 sponsor 服务路径，不自建）**
+> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：✅ **已闭环（2026-08-16）**：PocketX 回复澄清——不运营 Paymaster、AA 链上栈归 InfraX 维护、OxaChain Pimlico 官方不支持（既定约束）→ 催料路径关闭，转 **B-4 自建 verifying paymaster** 实施（用户 2026-08-16 裁定启动）。对方确认：EntryPoint v0.7 `0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（08-07 部署 eth_getCode 通过）+ 直接主网小额联调（PocketX 提供小额 OXA）+ 降级"用户自充"已设计。
 
 ## 背景
 
