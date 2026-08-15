@@ -1787,3 +1787,21 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **阶段 2**：9 服务连接串 `localhost:5432 → 10.3.8.6:5432`（collector/dc/vault/waas/mpc/payments/session-key/admin-legacy 直接 sed unit；chain-rpc 主 unit 已改但**被 drop-in `payments.conf` 覆盖**——需同改 drop-in；session-key 在 `.env`）；nginx `/api/rag/` → 10.3.8.6:9721；admin `RAGSERVICER_BASE/INJECTOR_BASE`、hub-index `RAG_URL/INJECTOR_URL` → 新机；172 旧 rag/ki disable
 - **新机服务**：ragservicer:9721 + knowledge-injector:9113（补 rsync `projects/shared` 共享 metrics 模块）+ 5 条 egress 隧道（18848~18852，新机公钥入 5 台出口 authorized_keys，https 出口 IP 逐一验证）
 - **阶段 3**：collector 持续向新机 INSERT/UPDATE/VACUUM events（~90.6 万行）；公网 `infrax.app/api/rag/v1/health`、`/api/data/health`、`/api/v1/health` 全部 200；172 loadavg 3.19→0.87、swap 1.3G→513M 并回落
+
+**迁移效果实测（✅ 2026-08-16 迁移完成后）**：
+
+| 指标 | 迁移前 | 迁移后 |
+|---|---|---|
+| 172 loadavg（15min） | 3.19 | **0.56~0.76**（↓76%） |
+| 172 swap 已用 | 1.3G | **504M**（↓61%，持续回落） |
+| 172 postgres | ~1.1G 内存 + ~60% CPU | 已迁新机；`postgresql@14-main` failed（数据目录空）→ 已 `disable` 防开机误启 |
+| 172 核心服务 | — | 11 个全部 active（collector/chain-rpc/dc/vault/waas/mpc/payments/session-key/admin-legacy/hub-index/web） |
+| 172 系统盘 | 90G+ 被 pgdata 占用 | 31G/59G（26G 可用） |
+| 新机 postgres | — | active，vdb 196G（已用 92G），collector 持续批量 INSERT events |
+| 新机 rag :9721 / ki :9113 | — | active（`/api/v1/health`、`/api/v1/health` 200） |
+| 新机 egress 隧道 ×5 | — | 全通，5 个独立出口 IP（18848~18852） |
+| 新机 loadavg | — | 1.23（1min）/3.48（15min，启动期 autovacuum/索引预热高峰，正在回落） |
+| 新机内存 | — | 2.2G/3.6G，swap 158M |
+| 公网入口 | — | `/api/rag/v1/health`、`/api/data/health`、`/api/v1/health`、`/api/v2/data/stats` 全部 200 |
+
+> 📌 观察项：新机 loadavg 属迁移后首小时后台恢复期（autovacuum/索引预热），建议 24h 后复核稳定值。
