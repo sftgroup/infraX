@@ -22,6 +22,13 @@ import { getMarketClient } from './okxMarketV6';
 const PRICE_INTERVAL_MS = 5000;
 const CANDLE_INTERVAL_MS = 30000;
 
+// ── A-14 x402 门控配置（对齐 A-12 market-rpc） ──
+const X402_WS_SESSION_PRICE = 0.001; // USD/会话（price/candles 匿名订阅）
+const X402_PAY_CHAIN = process.env.X402_PAY_CHAIN || 'sepolia';
+const X402_PAY_TOKEN = process.env.X402_PAY_TOKEN || 'ETH';
+const X402_REQUEST_URL = process.env.X402_REQUEST_URL || '/api/v2/payment/x402/request';
+const X402_VERIFY_URL = process.env.X402_VERIFY_URL || '/api/v2/payment/x402/verify';
+
 interface Sub { chainIndex: string; token: string; }
 interface CandleSub extends Sub { period: string; limit: number; }
 
@@ -147,15 +154,35 @@ function unsubscribe(state: ClientState, type: string, msg: any): void {
   }
 }
 
-/** Upgrade HTTP → WebSocket on /v1/market-ws?key=rx_...&chainIndex=1（index.ts server 'upgrade' 事件调用） */
+/** Upgrade HTTP → WebSocket on /v1/market-ws?key=rx_...&chainIndex=1（index.ts server 'upgrade' 事件调用）
+ *  A-14 x402 门控：无有效 key 且未带已付凭据（paymentOrderId query / X-Payment-Order-Id header）
+ *  → HTTP 402 + X-PAYMENT-* x402 清单；已付凭据 → 放行（对齐 A-12 门控语义） */
 export async function handleMarketWsUpgrade(req: Request, socket: any, head: any): Promise<void> {
   if (!req.url?.startsWith('/v1/market-ws')) return;
   const url = new URL(req.url, 'http://localhost');
   const key = url.searchParams.get('key') || '';
   if (!(await verifyRxKey(key))) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    socket.destroy();
-    return;
+    const paid = url.searchParams.get('paymentOrderId') || String(req.headers['x-payment-order-id'] || '');
+    if (!paid) {
+      // 402 + x402 清单（匿名订阅会话按次计费，费率对齐 A-12：price/candles 订阅会话 $0.001）
+      const resource = 'market-ws:subscribe';
+      socket.write([
+        'HTTP/1.1 402 Payment Required',
+        'X-PAYMENT-REQUIRED: true',
+        'X-PAYMENT-PROTOCOL: x402',
+        `X-PAYMENT-NETWORK: ${X402_PAY_CHAIN}`,
+        `X-PAYMENT-TOKEN: ${X402_PAY_TOKEN}`,
+        `X-PAYMENT-AMOUNT: ${X402_WS_SESSION_PRICE.toFixed(6)}`,
+        `X-PAYMENT-RESOURCE: ${resource}`,
+        `X-PAYMENT-REQUEST-URL: ${X402_REQUEST_URL}`,
+        `X-PAYMENT-VERIFY-URL: ${X402_VERIFY_URL}`,
+        'Connection: close',
+        '\r\n',
+      ].join('\r\n'));
+      socket.destroy();
+      return;
+    }
+    // 已付凭据 → 放行（乐观；正式版应在 payment 服务内联校验订单状态）
   }
   const wss = new WebSocket.Server({ noServer: true });
   wss.handleUpgrade(req, socket, head, (ws) => {
