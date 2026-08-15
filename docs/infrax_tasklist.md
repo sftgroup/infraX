@@ -1340,7 +1340,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 - **广度三项延后（用户决策）**：swap/DEX 聚合执行、钱包多链广度（20+/60+ 链）、多链矩阵扩展 —— 不排期
 - **AI 生态 Skills 插件**：✅ 已实现（A-7，commit `743ede1`：ai-skills 仓库 7 组 skill + 5 IDE 发布物 + QUICKSTART 文档；§9.6 需求 6.0 子任务 6.1~6.3 见 §9.6）
-- **Paymaster**：自建方案 + 用户自充可选模式；OxaChain 已有 AA 栈（EntryPoint/Kernel/Bundler 已部署）；**阻塞 = 等对方项目 Paymaster 合约地址 + 服务 URL** → 配置 `AA_OXACHAIN_PAYMASTER_URL` 打通 aa-relay `/v1/paymaster`
+- **Paymaster**：自建方案 + 用户自充可选模式；OxaChain 已有 AA 栈（EntryPoint/Kernel/Bundler 已部署）；**2026-08-16 已闭环**：自建 verifying paymaster 全链路落地（合约 + signer 服务 :9134 + aa-relay 接线 `AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134` + E2E 5/5，见 §9.10 A-4 / §9.11 B-4）
 
 **任务拆解（2026-08-11 登记）**
 
@@ -1349,7 +1349,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | ✅（2026-08-11 完成） | P1 |
 | A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4.1 定稿）：**MPC 路径优先（现成可用）+ session-key 扩展备选** | ✅（2026-08-11 方案定稿） | P2 |
 | A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
-| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并发出（2026-08-12）→ **PocketX 2026-08-16 回复澄清**：不运营 Paymaster、按交接约定 AA 链上栈（含 Paymaster）由 InfraX 维护，OxaChain 19505 Pimlico 官方不支持（既定约束），物料须自建侧补齐；对方确认 EntryPoint v0.7=`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（08-07 部署 eth_getCode 通过）+ 主网小额联调 + 降级"用户自充"已设计 → **用户裁定：启动自建 verifying paymaster（2026-08-16）**，拆 P-1~P-6 实施（见 §9.11 B-4）；接入侧已就绪（aa-sdk `PaymasterClient` + aa-relay `/v1/paymaster` 代理均 E-1a 实现，只差自建 URL+合约） | 🔲 自建实施中 | P1 |
+| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并发出（2026-08-12）→ **PocketX 2026-08-16 回复澄清**：不运营 Paymaster、按交接约定 AA 链上栈（含 Paymaster）由 InfraX 维护，OxaChain 19505 Pimlico 官方不支持（既定约束），物料须自建侧补齐；对方确认 EntryPoint v0.7=`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（08-07 部署 eth_getCode 通过）+ 主网小额联调 + 降级"用户自充"已设计 → **用户裁定：启动自建 verifying paymaster（2026-08-16）**，拆 P-1~P-6 实施（见 §9.11 B-4）。**2026-08-16 自建全链路闭环**：合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33`（部署 tx `0x70709923…`，EntryPoint v0.7 存款 1 OXA）+ signer 服务 :9134（systemd）+ aa-relay drop-in 接线（`AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134`）+ E2E 主网实测 5/5（代付上链 success、sender 余额不变、EntryPoint balanceOf(paymaster) 减少）；paymaster 代付 gas 成本按文档 §7 payments ledger 结算 | ✅ **已闭环（2026-08-16）** | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项：swap/DEX 部分恢复排期（2026-08-12） | **用户裁定**：swap/DEX 聚合执行**重新排期**（A-11 DEX 交易执行 RPC，2026-08-12 需求单覆盖原延后项）；多链 / 60+ 链仍维持延后不排期 | 部分恢复（A-11）| — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | ✅ `743ede1`：ai-skills 仓库（7 组 skill + 5 IDE 发布物 + QUICKSTART 文档） | P2 |
@@ -1395,7 +1395,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | # | 事项 | 状态 | 优先级 |
 |---|---|---|---|
 | B-1 | Paymaster 对接物料索取（PocketX → InfraX 清单） | ✅ **已归档（2026-08-16 对方回复）**：PocketX 澄清不运营 Paymaster、AA 链上栈归 InfraX 维护、OxaChain Pimlico 不支持（既定约束）→ 物料须自建侧补齐；对方确认 EntryPoint v0.7 地址 + 主网小额联调 + 降级"用户自充"。催料路径关闭，转入 B-4 自建实施 | — |
-| B-4 | **自建 verifying paymaster（A-4 闭环，2026-08-16 用户裁定启动）**：P-1 部署 VerifyingPaymaster 合约（19505，生产机 vendor/aa-contracts，缺则引标准实现）→ P-2 `EntryPoint.depositTo` 充值非零（避 AA31）→ P-3 signer 后端（Pimlico 协议 stubData/data，服务端持验证人私钥，chainId=19505 + entryPoint=0x97e4cddc…）→ P-4 接线（aa-relay 配 `AA_OXACHAIN_PAYMASTER_URL` + systemd）→ P-5 E2E 主网小额实测（PocketX 提供小额 OXA）→ P-6 文档闭环（tasklist/AA_SDK_TECH_DESIGN/归档物料清单）。**前置待用户**：部署钱包 + OXA gas、signer 私钥保管位置；sponsor gas 成本归属按文档 §7（payments ledger 对账） | 🔲 未启动 | P1 |
+| B-4 | **自建 verifying paymaster（A-4 闭环，2026-08-16 用户裁定启动）**：P-1 部署 VerifyingPaymaster 合约（19505，生产机 vendor/aa-contracts，缺则引标准实现）→ P-2 `EntryPoint.depositTo` 充值非零（避 AA31）→ P-3 signer 后端（Pimlico 协议 stubData/data，服务端持验证人私钥，chainId=19505 + entryPoint=0x97e4cddc…）→ P-4 接线（aa-relay 配 `AA_OXACHAIN_PAYMASTER_URL` + systemd）→ P-5 E2E 主网小额实测 → P-6 文档闭环（tasklist/AA_SDK_TECH_DESIGN/归档物料清单）。**前置待用户**：部署钱包 + OXA gas、signer 私钥保管位置；sponsor gas 成本归属按文档 §7（payments ledger 对账） | ✅ **已完成（2026-08-16）**：P-1 合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33`（`@account-abstraction/contracts` 0.7.0 标准 VerifyingPaymaster，signer=部署钱包派生）→ P-2 EntryPoint v0.7 `depositTo` 充值 1 OXA → P-3 signer 服务 :9134（aa-paymaster，`pimlico_getPaymasterStubData/Data` 协议，systemd `infrax-aa-paymaster.service`）→ P-4 aa-relay drop-in `paymaster.conf`（`AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134`，relay 代理链路 curl 验证）→ P-5 E2E 5/5（`scripts/aa-e2e-paymaster.ts`：stub 填充→260 字符 paymasterAndData→签名→bundler 广播 receipt success→sender 余额不变→EntryPoint balanceOf(paymaster) 减少；tx `0xed508087…`）→ P-6 本表闭环 + commit `af3496a` 登记 | P1 |
 | B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 **运营动作**（2026-08-11 标注）：链上资金操作，需运营/用户执行——从部署钱包/金库向 executor 地址转入 OXA（建议 ≥ 1 OXA，覆盖多批 UserOp gas），随后 aa-relay 生产 E2E 验证；代码侧无待办 | P1 |
 | B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | ✅ 规范已归档 `docs/AA_NEW_CHAIN_DEPLOYMENT.md`（流程/前置/验证清单/注意事项）；BSC/ETH/BASE 实际部署需在生产机 vendor 目录执行（本地无 vendor），见规范 | P2 |
 

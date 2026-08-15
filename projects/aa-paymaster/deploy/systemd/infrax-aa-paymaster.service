@@ -1,0 +1,17 @@
+[Unit]
+Description=InfraX AA Paymaster signer (VerifyingPaymaster, OxaChain 19505)
+After=network.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/infraX-1/projects/aa-paymaster
+Environment="PAYMASTER_ADDRESS=__PAYMASTER_ADDR__"
+Environment="PAYMASTER_SIGNER_PK=__SIGNER_PK__"
+Environment="PAYMASTER_PORT=9134"
+Environment="PAYMASTER_ENTRYPOINT=0x97e4cddcffeaf4580bc6315fee512f2b2d82798a"
+ExecStart=/home/ubuntu/infraX-1/projects/aa-paymaster/node_modules/.bin/tsx src/index.ts
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target

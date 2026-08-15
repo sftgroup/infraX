@@ -666,7 +666,7 @@ AA_OXACHAIN_RPC_URL=https://rpc-oxa.0xainet.top
 AA_OXACHAIN_FACTORY=0x...            # KernelFactory（OxaChain 待部署登记）
 AA_OXACHAIN_IMPLEMENTATION=0x...     # Kernel v3 implementation（OxaChain 待部署登记）
 AA_OXACHAIN_BUNDLERS=[{"url":"...","priority":0}]
-AA_OXACHAIN_PAYMASTER_URL=...        # Pimlico 不支持 OxaChain，需第三方或自建
+AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134  # ✅ 自建 verifying paymaster signer（2026-08-16，aa-paymaster :9134）
 
 # --- Session Key Engine（P3）---
 SESSION_KEY_ENGINE_URL=http://129.226.202.72:3500
@@ -681,7 +681,7 @@ AA_RELAY_API_KEY=xxx                 # Pimlico apikey，仅服务端可见
 | 链 | EntryPoint | Bundler | Paymaster | 说明 |
 |----|-----------|---------|-----------|------|
 | Base Sepolia | v0.7 | Pimlico | Pimlico VP | ✅ 测试首链 |
-| **OxaChain（L1, 19505）** | **✅ v0.7 已部署**（`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`） | **✅ 自建 Alto**（`http://43.159.60.46:4338`，2026-08-07） | **❌ 未部署** | ⭐ **目标主网**，原生代币 OXA；RPC `rpc-oxa.0xainet.top` ✅ 可达；**ERC-4337 合约全栈 + 自建 Bundler 已就绪**（2026-08-07），P0.2 链上实测最后前置已消除 |
+| **OxaChain（L1, 19505）** | **✅ v0.7 已部署**（`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`） | **✅ 自建 Alto**（`http://43.159.60.46:4338`，2026-08-07） | **✅ 自建 VerifyingPaymaster**（合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33` + signer :9134，2026-08-16 E2E 5/5） | ⭐ **目标主网**，原生代币 OXA；RPC `rpc-oxa.0xainet.top` ✅ 可达；**ERC-4337 合约全栈 + 自建 Bundler + 自建 Paymaster 已就绪** |
 | Base | v0.7 | Pimlico | Pimlico VP | ✅ 主网上线 |
 | **BSC** | v0.7 | 待部署（可复用自建 Alto） | 待定 | 🟢 **多网络 session（2026-08-07 新增）**：`CHAIN_ALIASES` 已含 `bsc:56`，合约/Bundler 待部署 |
 | Arbitrum | v0.7 | Pimlico | Pimlico VP | ✅ 备选主网 |
@@ -744,7 +744,7 @@ AA_OXACHAIN_FACTORY=0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1
 AA_OXACHAIN_ECDSA_VALIDATOR=0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c
 AA_OXACHAIN_SESSION_MODULE=0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74  # ✅ P0.12 增强 Session 模块（2026-08-07 ABI 修复重部署，§7.5/§7.6）
 AA_OXACHAIN_BUNDLERS=http://43.159.60.46:4338  # ✅ 自建 Alto（2026-08-07），安全组放行后外部可用
-AA_OXACHAIN_PAYMASTER_URL=<Paymaster URL>         # 可选
+AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134  # ✅ 自建 verifying paymaster signer（2026-08-16，aa-paymaster :9134）
 ```
 
 ---

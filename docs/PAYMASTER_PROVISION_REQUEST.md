@@ -47,10 +47,12 @@
 
 ## 六、我方收到后立即执行（无需贵方配合）
 
-1. 验证 URL 可达 + Pimlico 协议响应
-2. 验证 EntryPoint v0.7 兼容 + Paymaster 存款非零
-3. 实现 aa-sdk PaymasterClient（stubData / data，P0.3 待办）+ aa-relay `/v1/paymaster` 服务端代理（apikey 服务端注入）→ 配置 `AA_OXACHAIN_PAYMASTER_URL` 打通
-4. 端到端验证（带 paymaster 的 UserOp 主网实测）→ tasklist A-4 闭环 + 文档更新
+> **2026-08-16 全部完成**（自建路径，见 §9.10 A-4 / §9.11 B-4）：对方澄清后物料转自建侧补齐，以下 4 项均已落地并验证。
+
+1. ✅ 验证 URL 可达 + Pimlico 协议响应 → 自建 signer 服务 `http://127.0.0.1:9134`（aa-paymaster，systemd `infrax-aa-paymaster.service`），health 正常
+2. ✅ 验证 EntryPoint v0.7 兼容 + Paymaster 存款非零 → 自建合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33` 对接 EntryPoint v0.7 `0x97e4cddc…`，`depositTo` 充值 1 OXA（非零，避 AA31）
+3. ✅ 实现 aa-sdk PaymasterClient（stubData / data）+ aa-relay `/v1/paymaster` 服务端代理 → `AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134` 已接线（aa-relay drop-in），代理链路 curl 验证通过
+4. ✅ 端到端验证（带 paymaster 的 UserOp 主网实测）→ E2E 5/5 通过（`scripts/aa-e2e-paymaster.ts`：stub 填充 → 260 字符 paymasterAndData → 签名 → bundler 广播 receipt success → sender 余额不变 → EntryPoint balanceOf(paymaster) 减少，tx `0xed508087…`）→ tasklist A-4 已闭环
 
 ---
 

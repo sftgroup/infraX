@@ -1,0 +1,22 @@
+{
+  "name": "infrax-aa-paymaster",
+  "version": "1.0.0",
+  "private": true,
+  "description": "InfraX 自建 VerifyingPaymaster（OxaChain 19505）— Pimlico 协议 signer 服务 + 部署脚本（B-4）",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "deploy": "node scripts/deploy.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@account-abstraction/contracts": "0.7.0",
+    "express": "^4.18.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "viem": "^2.55.10"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0"
+  }
+}
