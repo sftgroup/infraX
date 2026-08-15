@@ -1339,7 +1339,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 **W-5 体验对齐结论（对标 OKX OnchainOS，2026-08-11）**
 
 - **广度三项延后（用户决策）**：swap/DEX 聚合执行、钱包多链广度（20+/60+ 链）、多链矩阵扩展 —— 不排期
-- **AI 生态 Skills 插件**：已登记 §9.6 需求 6.0（🔲 待排期）
+- **AI 生态 Skills 插件**：✅ 已实现（A-7，commit `743ede1`：ai-skills 仓库 7 组 skill + 5 IDE 发布物 + QUICKSTART 文档；§9.6 需求 6.0 子任务 6.1~6.3 见 §9.6）
 - **Paymaster**：自建方案 + 用户自充可选模式；OxaChain 已有 AA 栈（EntryPoint/Kernel/Bundler 已部署）；**阻塞 = 等对方项目 Paymaster 合约地址 + 服务 URL** → 配置 `AA_OXACHAIN_PAYMASTER_URL` 打通 aa-relay `/v1/paymaster`
 
 **任务拆解（2026-08-11 登记）**
