@@ -22,6 +22,8 @@ export class RpcPoolManager {
   private healthCheckTimer: NodeJS.Timeout | null = null;
   // Round-robin cursor per chain
   private roundRobin: Map<string, number> = new Map();
+  // RI-2.2: 429 failover cursor per chain（选下一个不同端点，避免每次都切到同一个）
+  private failoverCursor: Map<string, number> = new Map();
 
   constructor(config: RpcPoolConfig) {
     this.config = config;
@@ -81,7 +83,26 @@ export class RpcPoolManager {
   }
 
   // ================================================================
-  // Public: fetch a range of blocks with full logs
+  // Internal (RI-2.2): pick a healthy alternative endpoint on the same
+  // chain, excluding the rate-limited one (round-robin across the rest)
+  // ================================================================
+  private pickAlternativeEndpoint(chain: string, excludeKey: string): RpcEndpoint | null {
+    const activeEps = this.activeEndpoints(chain);
+    if (activeEps.length <= 1) return null;
+    const cursor = this.failoverCursor.get(chain) || 0;
+    for (let i = 0; i < activeEps.length; i++) {
+      const idx = (cursor + i) % activeEps.length;
+      const ep = activeEps[idx];
+      if (ep.key !== excludeKey) {
+        this.failoverCursor.set(chain, idx + 1);
+        return ep;
+      }
+    }
+    return null;
+  }
+
+  // ================================================================
+  // Internal: fetch a range of blocks with full logs
   // ================================================================
   async fetchBlockRange(
     endpoint: RpcEndpoint,
@@ -90,12 +111,12 @@ export class RpcPoolManager {
     toBlock: number
   ): Promise<any[]> {
     if (chain === 'solana') {
-      return this.fetchSolanaBlocks(endpoint, fromBlock, toBlock);
+      return this.fetchSolanaBlocks(endpoint, fromBlock, toBlock, chain);
     }
     const blocks: any[] = [];
     for (let bn = fromBlock; bn <= toBlock; bn++) {
       try {
-        const block = await this.fetchBlockWithRetry(endpoint, bn);
+        const block = await this.fetchBlockWithRetry(endpoint, bn, chain);
         if (block) blocks.push(block);
       } catch (err: any) {
         logger.warn(`[rpc-pool] Failed to fetch block ${bn} on ${chain} via ${endpoint.key}`, {
@@ -112,7 +133,8 @@ export class RpcPoolManager {
   private async fetchSolanaBlocks(
     endpoint: RpcEndpoint,
     fromSlot: number,
-    toSlot: number
+    toSlot: number,
+    chain?: string
   ): Promise<any[]> {
     const blocks: any[] = [];
     for (let slot = fromSlot; slot <= toSlot; slot++) {
@@ -124,7 +146,7 @@ export class RpcPoolManager {
             transactionDetails: 'full',
             rewards: false,
           } as any,
-        ]);
+        ], chain);
         if (result) {
           blocks.push(result);
         }
@@ -147,9 +169,10 @@ export class RpcPoolManager {
       topics?: string[];
       fromBlock: number;
       toBlock: number;
-    }
+    },
+    chain?: string
   ): Promise<any[]> {
-    return this.rpcCall(endpoint, 'eth_getLogs', [params]);
+    return this.rpcCall(endpoint, 'eth_getLogs', [params], chain);
   }
 
   // ================================================================
@@ -161,9 +184,9 @@ export class RpcPoolManager {
       throw new Error(`No active RPC endpoints for chain ${chain}`);
     }
     if (chain === 'solana') {
-      return this.rpcCall(activeEps[0], 'getSlot', []).then((r: any) => parseInt(r, 10) || 0);
+      return this.rpcCall(activeEps[0], 'getSlot', [], chain).then((r: any) => parseInt(r, 10) || 0);
     }
-    return this.rpcCall(activeEps[0], 'eth_blockNumber', []).then(
+    return this.rpcCall(activeEps[0], 'eth_blockNumber', [], chain).then(
       (hex: string) => parseInt(hex, 16)
     );
   }
@@ -176,7 +199,7 @@ export class RpcPoolManager {
     if (activeEps.length === 0) {
       throw new Error(`No active RPC endpoints for chain ${chain}`);
     }
-    return this.rpcCall(activeEps[0], 'eth_getBalance', [address, 'latest']);
+    return this.rpcCall(activeEps[0], 'eth_getBalance', [address, 'latest'], chain);
   }
 
   // ================================================================
@@ -192,25 +215,27 @@ export class RpcPoolManager {
 
   // ================================================================
   // Internal: RPC JSON-RPC call with retry
+  //  RI-2.2: 429（限流）时切换到同链其他健康端点重试，而非退避重试同一端点
   // ================================================================
-  private async rpcCall(endpoint: RpcEndpoint, method: string, params: any[]): Promise<any> {
+  private async rpcCall(endpoint: RpcEndpoint, method: string, params: any[], chain?: string): Promise<any> {
     let lastError: Error | null = null;
+    let current = endpoint; // 429 failover 时可切换到同链其他端点
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         // Check rate limit
-        if (endpoint.tokens.remaining <= 0) {
-          const resetDelay = endpoint.tokens.resetAt - Date.now();
+        if (current.tokens.remaining <= 0) {
+          const resetDelay = current.tokens.resetAt - Date.now();
           if (resetDelay > 0) {
-            logger.debug(`[rpc-pool] Rate limited on ${endpoint.key}, waiting ${resetDelay}ms`);
+            logger.debug(`[rpc-pool] Rate limited on ${current.key}, waiting ${resetDelay}ms`);
             await sleep(Math.min(resetDelay, 5000));
           }
-          endpoint.tokens.remaining = endpoint.rateLimit.rpd;
-          endpoint.tokens.resetAt = Date.now() + 86400_000;
+          current.tokens.remaining = current.rateLimit.rpd;
+          current.tokens.resetAt = Date.now() + 86400_000;
         }
 
         const response = await axios.post(
-          endpoint.url,
+          current.url,
           {
             jsonrpc: '2.0',
             id: Date.now(),
@@ -227,8 +252,8 @@ export class RpcPoolManager {
         );
 
         // Update rate limit tokens
-        endpoint.tokens.remaining--;
-        endpoint.status = 'healthy'; // Request succeeded → mark healthy
+        current.tokens.remaining--;
+        current.status = 'healthy'; // Request succeeded → mark healthy
 
         if (response.data.error) {
           throw new Error(`RPC error: ${response.data.error.message || JSON.stringify(response.data.error)}`);
@@ -240,8 +265,18 @@ export class RpcPoolManager {
         const status = err.response?.status;
 
         if (status === 429) {
-          // Rate limited — back off
-          logger.warn(`[rpc-pool] 429 on ${endpoint.key}, retrying in ${attempt * 2}s`);
+          // RI-2.2: 限流发生在单端点 → 优先切换同链其他健康端点绕过；
+          // 无替代端点才退避重试当前端点
+          if (chain) {
+            const next = this.pickAlternativeEndpoint(chain, current.key);
+            if (next) {
+              logger.warn(`[rpc-pool] 429 on ${current.key} → failover to ${next.key} (${chain})`);
+              current = next;
+              await sleep(250); // 极短延迟，避免多个扫描线程同时切走
+              continue;
+            }
+          }
+          logger.warn(`[rpc-pool] 429 on ${current.key}, no alternative → retrying in ${attempt * 2}s`);
           await sleep(attempt * 2000);
           continue;
         }
@@ -253,20 +288,20 @@ export class RpcPoolManager {
     }
 
     // All retries exhausted → mark endpoint as degraded/down
-    this.markEndpointDegraded(endpoint);
+    this.markEndpointDegraded(current);
     throw lastError || new Error(`RPC call ${method} failed after ${MAX_RETRIES} attempts`);
   }
 
   // ================================================================
   // Internal: fetch block with retry
   // ================================================================
-  private async fetchBlockWithRetry(endpoint: RpcEndpoint, blockNumber: number): Promise<any> {
+  private async fetchBlockWithRetry(endpoint: RpcEndpoint, blockNumber: number, chain?: string): Promise<any> {
     const hexBlock = '0x' + blockNumber.toString(16);
 
     // Fetch block + logs in parallel
     const [block, logs] = await Promise.all([
-      this.rpcCall(endpoint, 'eth_getBlockByNumber', [hexBlock, true]),
-      this.rpcCall(endpoint, 'eth_getLogs', [{ fromBlock: hexBlock, toBlock: hexBlock }]),
+      this.rpcCall(endpoint, 'eth_getBlockByNumber', [hexBlock, true], chain),
+      this.rpcCall(endpoint, 'eth_getLogs', [{ fromBlock: hexBlock, toBlock: hexBlock }], chain),
     ]);
 
     return { block, logs, blockNumber };
@@ -304,7 +339,7 @@ export class RpcPoolManager {
         try {
           // Solana uses getHealth, EVM uses eth_blockNumber
           const method = chain === 'solana' ? 'getHealth' : 'eth_blockNumber';
-          const result = await this.rpcCall(ep, method, []);
+          const result = await this.rpcCall(ep, method, [], chain);
           if (chain === 'solana') {
             if (result === 'ok') {
               if (ep.status !== 'healthy') {

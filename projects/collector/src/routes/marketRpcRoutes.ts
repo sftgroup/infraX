@@ -54,10 +54,12 @@ export async function verifyRxKey(key: string): Promise<boolean> {
   }
 }
 
-/** 鉴权：rx_ → rpc_keys（chain-rpc 库）；其余回退 collector api_keys（pkx_） */
+/** 鉴权：rx_ → rpc_keys（chain-rpc 库）；其余回退 collector api_keys（pkx_）；
+ *  匿名（无 key）→ 放行并标记 req.anon=true，由 handler 的 x402 门控决定
+ *  收费方法 402 / 非收费方法 401（A-12 x402 门控） */
 export async function marketRpcAuth(req: any, res: any, next: any): Promise<void> {
   const key = extractApiKey(req);
-  if (!key) { res.status(401).json({ code: -1, message: 'Missing API key' }); return; }
+  if (!key) { req.anon = true; return next(); }
   if (key.startsWith('rx_')) {
     if (await verifyRxKey(key)) {
       req.apiKey = { id: 0, label: `rx_${key.slice(2, 10)}`, marketPlanId: null, source: 'rpc' };
@@ -103,12 +105,71 @@ function parseChains(v: any): string[] | undefined {
 }
 
 // ================================================================
+// A-12 x402 门控：4 个收费方法（tokenSearch/tokenInfo/price/candles）
+// 匿名调用（无有效 rx_/pkx_ key）→ HTTP 402 + x402 清单；
+// 已持有效 key → 配额内放行；已付凭据回放（X-Payment-Order-Id）→ 放行。
+// 费率 USD/次；token 维度方法按批量 token 数倍增。
+// ================================================================
+const X402_PAID_METHODS: Record<string, number> = {
+  tokenSearch: 0.002,
+  tokenInfo: 0.001,
+  price: 0.0005,
+  candles: 0.001,
+};
+const X402_PAY_CHAIN = process.env.X402_PAY_CHAIN || 'sepolia';
+const X402_PAY_TOKEN = process.env.X402_PAY_TOKEN || 'ETH';
+const X402_REQUEST_URL = process.env.X402_REQUEST_URL || '/api/v2/payment/x402/request';
+const X402_VERIFY_URL = process.env.X402_VERIFY_URL || '/api/v2/payment/x402/verify';
+
+/** 返回 true = 已响应（调用方应 return），false = 放行继续处理 */
+function x402Gate(req: any, res: any, method: string, params: any): boolean {
+  if (!req.anon) return false; // 已持有效 key（rx_/pkx_）→ 配额内放行
+  const unit = X402_PAID_METHODS[method];
+  if (unit === undefined) {
+    // 非收费方法匿名调用 → 保持原 401 语义
+    res.status(401).json({ code: -1, message: 'Missing API key' });
+    return true;
+  }
+  // 已付凭据回放（X-Payment-Order-Id，由 payment /x402/verify 响应返回；
+  // 正式版应内联校验 payment_orders 订单状态，此处乐观放行）
+  if (req.headers['x-payment-order-id']) return false;
+  const count = tokenList(params)?.length || 1;
+  const amount = unit * count;
+  const resource = `market-rpc:${method}`;
+  res.status(402).set({
+    'X-PAYMENT-REQUIRED': 'true',
+    'X-PAYMENT-PROTOCOL': 'x402',
+    'X-PAYMENT-NETWORK': X402_PAY_CHAIN,
+    'X-PAYMENT-TOKEN': X402_PAY_TOKEN,
+    'X-PAYMENT-AMOUNT': amount.toFixed(6),
+    'X-PAYMENT-RESOURCE': resource,
+    'X-PAYMENT-REQUEST-URL': X402_REQUEST_URL,
+    'X-PAYMENT-VERIFY-URL': X402_VERIFY_URL,
+    'Access-Control-Expose-Headers': 'X-PAYMENT-REQUIRED, X-PAYMENT-PROTOCOL, X-PAYMENT-NETWORK, X-PAYMENT-TOKEN, X-PAYMENT-AMOUNT, X-PAYMENT-RESOURCE, X-PAYMENT-REQUEST-URL, X-PAYMENT-VERIFY-URL',
+  }).json(apiResponse({
+    protocol: 'x402',
+    method,
+    resource,
+    amount,
+    currency: 'USD',
+    network: X402_PAY_CHAIN,
+    token: X402_PAY_TOKEN,
+    requestUrl: X402_REQUEST_URL,
+    verifyUrl: X402_VERIFY_URL,
+    retryHeader: 'X-Payment-Order-Id',
+  }, 'x402 payment required', 402));
+  return true;
+}
+
+// ================================================================
 // POST /v1/market-rpc — method 分发
 // ================================================================
 router.post('/', asyncHandler(async (req, res) => {
   const body = req.body || {};
   const method = body.method;
   const p = body.params || {};
+  // A-12 x402 门控：收费方法匿名调用 → 402；非收费方法匿名 → 401
+  if (x402Gate(req, res, method, p)) return;
   let data: any;
   try {
     switch (method) {
