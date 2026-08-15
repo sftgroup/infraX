@@ -1349,7 +1349,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | A-1 | 文档定位纠正 | 修正 waas.md / vault.md / mpc.md / SDK_INTEGRATION.md / README 对比表中"集成方/用户需签名"偏差表述（按 W-1~W-3） | ✅（2026-08-11 完成） | P1 |
 | A-2 | L1 方案重写 | session-key 签名代理范围收缩为 vault 增强（W-4.1 定稿）：**MPC 路径优先（现成可用）+ session-key 扩展备选** | ✅（2026-08-11 方案定稿） | P2 |
 | A-3 | MPC 作为 Safe owner 接入评估 | 可行性 ✅：vault confirm 验签 = EIP-191 personal_sign，与 MPC `sign-message` 格式匹配、零改造；Safe owner 兼容普通 EOA；集成点 = vault `wallets` 表登记 MPC 地址 / executeTransaction 加固 | ✅（2026-08-11 评估完成） | P2 |
-| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并确认发送（2026-08-12，§9.11 B-1 ⚠️）——发送渠道待用户执行，收到回传后立即：验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（aa-relay `/v1/paymaster` 端点已实现，08-11 重启生效）。**多调用者通用化设计已补入文档 §7**：成本归属（payments ledger 对账）/ 策略隔离（policyId）/ 多服务商容灾 / relay 配额 | 🔲 挂起 | P1 |
+| A-4 | Paymaster 对接 | 物料清单已定稿（docs/PAYMASTER_PROVISION_REQUEST.md）并确认发送（2026-08-12，§9.11 B-1 ⚠️）——**2026-08-16 用户裁定：催 PocketX 物料（走对方官方 sponsor 服务路径，不自建）**；发送渠道待用户执行，收到回传后立即：验证 EntryPoint v0.7 兼容+存款 → 配 `AA_OXACHAIN_PAYMASTER_URL` → 端到端实测（aa-sdk PaymasterClient + aa-relay `/v1/paymaster` 代理均已实现 E-1a，只差 URL+合约地址）。**多调用者通用化设计已补入文档 §7**：成本归属（payments ledger 对账）/ 策略隔离（policyId）/ 多服务商容灾 / relay 配额 | 🔲 挂起等物料 | P1 |
 | A-5 | mpc-sdk 发布核查 | `@0xinfrax/mpc-sdk` 0.3.0 = npm 最新 ✅（已归档，无需操作） | ✅ | — |
 | A-6 | 广度项：swap/DEX 部分恢复排期（2026-08-12） | **用户裁定**：swap/DEX 聚合执行**重新排期**（A-11 DEX 交易执行 RPC，2026-08-12 需求单覆盖原延后项）；多链 / 60+ 链仍维持延后不排期 | 部分恢复（A-11）| — |
 | A-7 | AI 生态 Skills 插件 | §9.6 需求 6.0（已登记，子任务 6.1~6.3 见 §9.6） | ✅ `743ede1`：ai-skills 仓库（7 组 skill + 5 IDE 发布物 + QUICKSTART 文档） | P2 |
@@ -1394,7 +1394,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 事项 | 状态 | 优先级 |
 |---|---|---|---|
-| B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | ⚠️（2026-08-12 物料清单 [PAYMASTER_PROVISION_REQUEST.md](docs/PAYMASTER_PROVISION_REQUEST.md) 定稿、用户确认发送；发送渠道待用户执行，收到物料后即闭环 A-4） | P1 |
+| B-1 | Paymaster 对接物料索取：PocketX 已备好第三方对接物料（链上登记 + EntryPoint 兼容性声明 + 验证流程）→ 索取后闭环 A-4 | ⚠️（2026-08-12 物料清单 [PAYMASTER_PROVISION_REQUEST.md](docs/PAYMASTER_PROVISION_REQUEST.md) 定稿、用户确认发送；**2026-08-16 用户裁定催对方物料、不自建**；发送渠道待用户执行，收到物料后即闭环 A-4） | P1 |
 | B-2 | Alto executor（生产部署钱包）余额 ≈ **0.0193 OXA**，运营充值 | 🔲 **运营动作**（2026-08-11 标注）：链上资金操作，需运营/用户执行——从部署钱包/金库向 executor 地址转入 OXA（建议 ≥ 1 OXA，覆盖多批 UserOp gas），随后 aa-relay 生产 E2E 验证；代码侧无待办 | P1 |
 | B-3 | 新链部署规范：以 vendor/aa-contracts deploy 脚本为基准（BSC/ETH/BASE 待部署） | ✅ 规范已归档 `docs/AA_NEW_CHAIN_DEPLOYMENT.md`（流程/前置/验证清单/注意事项）；BSC/ETH/BASE 实际部署需在生产机 vendor 目录执行（本地无 vendor），见规范 | P2 |
 
