@@ -1772,11 +1772,18 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | # | 任务 | 内容 | 状态 |
 |---|---|:---:|:---:|
-| M-1 | 阶段 0 准备 | 新机装 postgresql-14（对齐 172）；172 pg_dump 备份 9 小库；rsync ragservicer/ki 代码+venv+units；新机公钥入 5 台出口 authorized_keys | 🔲 |
-| M-2 | 阶段 1 盘迁移（停机 10-30min） | 172 `stop postgresql` → 控制台卸载 vdb → 挂新机 → mount+fstab+符号链接 → postgresql.conf 调优 + pg_hba 放行 172 → 启动验证 10 库齐全 | 🔲 |
-| M-3 | 阶段 2 服务切换 | 172 9 服务连接串 `localhost:5432 → 10.3.8.6:5432`（collector/chain-rpc/dc/vault/waas/mpc/payments/session-key/admin-legacy）；nginx `/api/rag/` → 10.3.8.6:9721；admin-legacy/hub-index env 指新机 rag/ki；新机起 ragservicer+ki+5 条 egress 隧道 | 🔲 |
-| M-4 | 阶段 3 验证 | events 持续写入新机、dc/chain-rpc 查询正常、公网 /api/data、/api/rag、/api/v1 200、172 swap 归零 | 🔲 |
-| M-5 | 验收收尾 | 172 负载降至 ~1.0 确认、tasklist 更新、git 提交 | 🔲 |
+| M-1 | 阶段 0 准备 | 新机装 postgresql-14（对齐 172）；172 pg_dump 备份 9 小库；rsync ragservicer/ki 代码+venv+units；新机公钥入 5 台出口 authorized_keys | ✅ |
+| M-2 | 阶段 1 盘迁移（停机 10-30min） | 172 `stop postgresql` → 控制台卸载 vdb → 挂新机 → mount+fstab+符号链接 → postgresql.conf 调优 + pg_hba 放行 172 → 启动验证 10 库齐全 | ✅ |
+| M-3 | 阶段 2 服务切换 | 172 9 服务连接串 `localhost:5432 → 10.3.8.6:5432`（collector/chain-rpc/dc/vault/waas/mpc/payments/session-key/admin-legacy）；nginx `/api/rag/` → 10.3.8.6:9721；admin-legacy/hub-index env 指新机 rag/ki；新机起 ragservicer+ki+5 条 egress 隧道 | ✅ |
+| M-4 | 阶段 3 验证 | events 持续写入新机、dc/chain-rpc 查询正常、公网 /api/data、/api/rag、/api/v1 200、172 swap 归零 | ✅ |
+| M-5 | 验收收尾 | 172 负载降至 ~1.0 确认、tasklist 更新、git 提交 | ✅ |
 | M-6 | 二期可选 | collector 跟随数据迁新机（跨机 URL 5 处），本次不做 | 🔲 |
 
 > 网络波动评估：唯一敏感链路 collector/chain-rpc/dc → 新机 postgres（内网 0.225ms RTT），collector 写库 ~1 事务/秒批量 INSERT 幂等，断线重连不丢不重；高耦合服务群全留 172 同机，风险可忽略。
+
+**实际执行记录（✅ 2026-08-16，安全组放行后整体切换）**：
+- **阶段 1**：172 16 个写库服务 + postgres 停止 → vdb 卸载挂新机（盘热拔触发 postgres PANIC，WAL 完整在 172 系统盘 `/var/lib/pgdata_wal` 4.1G，内网 12s 传新机完成 crash recovery，10 库齐全）
+- **新机 postgres 排障链**：UID 对齐（172 postgres 112:113 vs 新机 111:112 → usermod/groupmod）→ 配置/日志/`/var/run/postgresql` 属主 → pg_wal 符号链接失效（补传 WAL）→ 权限 → 启动成功
+- **阶段 2**：9 服务连接串 `localhost:5432 → 10.3.8.6:5432`（collector/dc/vault/waas/mpc/payments/session-key/admin-legacy 直接 sed unit；chain-rpc 主 unit 已改但**被 drop-in `payments.conf` 覆盖**——需同改 drop-in；session-key 在 `.env`）；nginx `/api/rag/` → 10.3.8.6:9721；admin `RAGSERVICER_BASE/INJECTOR_BASE`、hub-index `RAG_URL/INJECTOR_URL` → 新机；172 旧 rag/ki disable
+- **新机服务**：ragservicer:9721 + knowledge-injector:9113（补 rsync `projects/shared` 共享 metrics 模块）+ 5 条 egress 隧道（18848~18852，新机公钥入 5 台出口 authorized_keys，https 出口 IP 逐一验证）
+- **阶段 3**：collector 持续向新机 INSERT/UPDATE/VACUUM events（~90.6 万行）；公网 `infrax.app/api/rag/v1/health`、`/api/data/health`、`/api/v1/health` 全部 200；172 loadavg 3.19→0.87、swap 1.3G→513M 并回落
