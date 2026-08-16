@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem';
 import type { Signer } from '../types.js';
+import { isHttpOk, postJson } from '../utils/rpc.js';
 
 // ============================================================================
 // Session Key 签名器（P3.1）：对接 InfraX Session Key Engine execute 接口
@@ -102,39 +103,18 @@ export class SessionKeySigner implements Signer {
       data: params.data,
     };
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let res: Response;
-    try {
-      res = await fetch(`${this.engineUrl.replace(/\/+$/, '')}/api/v1/execute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`[aa-sdk] SessionKeySigner.execute: timeout after ${this.timeoutMs}ms`);
-      }
-      throw new Error(
-        `[aa-sdk] SessionKeySigner.execute: network error: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
+    const { status, json: payload } = await postJson<ApiResponse<ExecuteResult>>(
+      `${this.engineUrl.replace(/\/+$/, '')}/api/v1/execute`,
+      body,
+      {
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : undefined,
+        timeoutMs: this.timeoutMs,
+        label: 'SessionKeySigner.execute',
+      },
+    );
 
-    let payload: ApiResponse<ExecuteResult>;
-    try {
-      payload = (await res.json()) as ApiResponse<ExecuteResult>;
-    } catch {
-      throw new Error(`[aa-sdk] SessionKeySigner.execute: invalid response (HTTP ${res.status})`);
-    }
-
-    if (!res.ok || payload.code !== 200 || payload.data?.status !== 'success') {
-      const reason = payload.data?.errorReason ?? payload.message ?? `HTTP ${res.status}`;
+    if (!isHttpOk(status) || !payload || payload.code !== 200 || payload.data?.status !== 'success') {
+      const reason = payload?.data?.errorReason ?? payload?.message ?? `HTTP ${status}`;
       throw new Error(`[aa-sdk] SessionKeySigner.execute failed: ${reason}`);
     }
     if (!payload.data?.txHash) {

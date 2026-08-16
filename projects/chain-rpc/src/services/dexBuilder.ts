@@ -27,8 +27,8 @@ const ERC20_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
 ];
 
-/** 预估地址（调用方未传时）：EVM 对零地址的 estimateGas 基本等价 */
-const DUMMY_FROM = '0x0000000000000000000000000000000000000001';
+/** 预估地址（调用方未传时）：EVM 对零地址的 estimateGas 基本等价；dexAggregator 亦复用 */
+export const DUMMY_FROM = '0x0000000000000000000000000000000000000001';
 
 /**
  * 链上 gas 预估（eth_estimateGas，走池）。失败返回 null（上层回退保守默认）。

@@ -2,12 +2,16 @@ import type { Address } from 'viem';
 import type { BundlerConfig, ChainAAConfig, PaymasterConfig } from './types.js';
 
 // ============================================================================
-// 链配置 + 环境变量加载（对齐 docs/AA_SDK_TECH_DESIGN.md §8，零硬编码）
-// 所有地址/URL 均从环境变量读取，禁止在代码中写死。
+// 链配置 + 环境变量加载（对齐 docs/AA_SDK_TECH_DESIGN.md §8）
+// 链地址/URL 均从环境变量读取；内置缺省值（EntryPoint 地址 / bundler 超时 /
+// 默认链别名）集中在本文件显式定义，业务代码禁止散落写死。
 // ============================================================================
 
 export const DEFAULT_ENTRYPOINT_V07: Address =
   '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
+
+/** bundler 端点 HTTP 超时缺省（ms） */
+const DEFAULT_BUNDLER_TIMEOUT_MS = 30_000;
 
 /** 环境变量链别名 → chainId（§8.2 上线链矩阵） */
 export const CHAIN_ALIASES: Record<string, number> = {
@@ -87,13 +91,13 @@ export function parseBundlers(raw: string | undefined, chainAlias: string): Bund
     return parsed.map((b, i) => ({
       url: b.url ?? '',
       priority: b.priority ?? i,
-      timeoutMs: b.timeoutMs ?? 30_000,
+      timeoutMs: b.timeoutMs ?? DEFAULT_BUNDLER_TIMEOUT_MS,
       headers: b.headers,
     }));
   } catch {
     // 纯 URL 容错：http(s):// 开头 → 单端点
     if (/^https?:\/\//.test(raw.trim())) {
-      return [{ url: raw.trim(), priority: 0, timeoutMs: 30_000 }];
+      return [{ url: raw.trim(), priority: 0, timeoutMs: DEFAULT_BUNDLER_TIMEOUT_MS }];
     }
     throw new Error(`[aa-sdk] invalid AA_${chainAlias.toUpperCase()}_BUNDLERS JSON`);
   }

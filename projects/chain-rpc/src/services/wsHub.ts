@@ -14,7 +14,6 @@
  *
  * 本模块不依赖 ws 库实例（客户端以 WsClient 接口注入），可纯逻辑单测。
  */
-import { WebSocket } from 'ws';
 
 export interface WsClient {
   readonly id: number;

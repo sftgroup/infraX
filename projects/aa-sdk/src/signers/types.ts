@@ -1,6 +1,7 @@
 import type { Address, Hex } from 'viem';
 import type { Signer } from '../types.js';
 import type { EIP1193Provider } from './external-wallet.js';
+import type { SessionKeySignerOptions } from './session-key.js';
 
 export type { Signer };
 
@@ -21,15 +22,7 @@ export interface SignerOptions {
     url?: string;
     /** Engine 鉴权 token（缺省读 SESSION_KEY_ENGINE_TOKEN env） */
     token?: string;
-    /** Engine 会话 id（POST /api/v1/execute 必填；可后置 setSession 注入） */
-    sessionId?: string;
-    /** 目标链（缺省 'eth'，对齐 Engine Chain 枚举） */
-    chain?: string;
-    /** 缺省执行目标（缺省用 session key 地址） */
-    to?: Address;
-    /** HTTP 超时（缺省 15s） */
-    timeoutMs?: number;
-  };
+  } & SessionKeySignerOptions;
   /** 外部钱包签名（P0.13）：MetaMask/OKX 等浏览器钱包（EIP-1193 provider） */
   externalWallet?: {
     provider: EIP1193Provider;

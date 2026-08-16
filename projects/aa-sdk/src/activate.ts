@@ -3,6 +3,7 @@ import type { ChainAAConfig, Signer, UserOperationV7 } from './types.js';
 import { createKernelAccount, createAAClient } from './smart-account.js';
 import { buildUserOp, signUserOp } from './userop.js';
 import { BundlerClient } from './bundler.js';
+import { rootNonceKey } from './nonce.js';
 
 // ============================================================================
 // 智能账户激活编排（对齐 §5.2 完整执行流程 + AA_UI_STATE_MACHINE 状态机）
@@ -59,6 +60,9 @@ const FALLBACK_GAS = {
   preVerificationGas: 50_000n,
 } as const;
 
+/** baseFee / gas price 估算兜底（1 gwei；避免 fee 为零被 bundler 拒绝） */
+const DEFAULT_GAS_PRICE = 1_000_000_000n;
+
 /** 从链上读取 EIP-1559 fee（eth_maxPriorityFeePerGas + latest block baseFee） */
 export async function estimateFeesPerGas(
   chainConfig: ChainAAConfig,
@@ -70,7 +74,7 @@ export async function estimateFeesPerGas(
     method: 'eth_getBlockByNumber',
     params: ['latest', false],
   })) as { baseFeePerGas?: Hex } | null;
-  const baseFee = block?.baseFeePerGas ? BigInt(block.baseFeePerGas) : 1_000_000_000n;
+  const baseFee = block?.baseFeePerGas ? BigInt(block.baseFeePerGas) : DEFAULT_GAS_PRICE;
   const maxPriorityFeePerGas = BigInt(tip);
   return { maxFeePerGas: baseFee * 2n + maxPriorityFeePerGas, maxPriorityFeePerGas };
 }
@@ -91,13 +95,13 @@ export async function activateSmartAccount(
   );
   const { address, factory, factoryData } = account;
 
-  // ② nonce（EntryPoint 管理的常规序列 key=0）
+  // ② nonce（EntryPoint 管理的常规序列 key=0，即 ROOT validator nonce key）
   const client = createAAClient(chainConfig, params.transport);
   const nonce = (await client.readContract({
     address: chainConfig.entryPoint,
     abi: entryPointAbi,
     functionName: 'getNonce',
-    args: [address, 0n],
+    args: [address, rootNonceKey],
   })) as bigint;
 
   // ③ 默认调用：空转账给自己（仅触发部署；Kernel 不限制 self call）
@@ -125,7 +129,7 @@ export async function activateSmartAccount(
     const fee = await estimateFeesPerGas(chainConfig, params.transport);
     op = { ...op, ...fee };
   } catch {
-    op = { ...op, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
+    op = { ...op, maxFeePerGas: DEFAULT_GAS_PRICE, maxPriorityFeePerGas: DEFAULT_GAS_PRICE };
   }
 
   // ⑥ 签名（owner 对 EIP-712 userOpHash 签名）

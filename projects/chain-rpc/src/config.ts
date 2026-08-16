@@ -15,6 +15,9 @@ function boolOr(v: string | undefined, def: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
 }
 
+const supportedChains = (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana,polygon,arbitrum,optimism,xlayer')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 export const config = {
   port: parseInt(process.env.PORT || '9130', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -28,8 +31,9 @@ export const config = {
 
   // ── RPC 端点池 ───────────────────────────────────────
   // 端点来源：rpc-pool.json 基线 → 链 env URL（SEPOLIA/ETH/BSC/BASE/OXA/SOLANA_RPC_URL）→ INFRAX_RPC_POOL 全量覆盖
-  supportedChains: (process.env.CHAIN_RPC_CHAINS || 'sepolia,ethereum,bsc,base,oxa,solana,polygon,arbitrum,optimism,xlayer')
-    .split(',').map((s) => s.trim()).filter(Boolean),
+  supportedChains,
+  // 缺省链（未指定 chain 时的兜底；默认取 supportedChains[0]）
+  defaultChain: process.env.CHAIN_RPC_DEFAULT_CHAIN || supportedChains[0] || 'sepolia',
 
   // ── 广播确认轮询 ─────────────────────────────────────
   broadcastWaitSec: parseFloat(process.env.CHAIN_RPC_WAIT_SEC || '30'),
@@ -78,6 +82,19 @@ export const config = {
 
   // ── 端点级开关 ───────────────────────────────────────
   enableExternalVerify: boolOr(process.env.CHAIN_RPC_ENABLE_EXTERNAL_VERIFY, false),
+
+  // ── MQ-16 T-3: 支付引擎（订阅套餐计费，:9132） ─────────────
+  payments: {
+    baseUrl: (process.env.PAYMENTS_URL || '').replace(/\/+$/, ''),
+    apiKey: process.env.PAYMENTS_API_KEY || '',
+    webhookSecret: process.env.PAYMENTS_WEBHOOK_SECRET || '',
+    defaultChain: process.env.PAYMENTS_CHAIN || 'oxachain',
+    defaultRail: process.env.PAYMENTS_DEFAULT_RAIL || 'chain',
+    fiatPeriod: process.env.PAYMENTS_FIAT_PERIOD || 'month',
+    corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:9111',
+    // 链上套餐 → RPC 套餐对齐表（planId 为 SubscriptionManager.getPlan 的 id）
+    planIdMap: JSON.parse(process.env.PAYMENTS_PLAN_ID_MAP || '{"rpc_pro":5,"rpc_enterprise":6}') as Record<string, number>,
+  },
 
   // ── RPC-7: WebSocket 订阅面 ──────────────────────────
   // 慢消费者驱逐阈值（字节）：客户端 send 缓冲超过即 close(4004)（防高频事件内存放大）

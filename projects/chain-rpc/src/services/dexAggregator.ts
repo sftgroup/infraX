@@ -13,6 +13,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { ChainRpcError } from './rpcPool';
 import { CHAIN_IDS, normalizeChain } from './rpcPoolConfig';
+import { DUMMY_FROM } from './dexBuilder';
 
 /** 聚合器原生币地址约定（OKX/1inch 通用） */
 export const NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
@@ -255,8 +256,8 @@ async function okxSwap(params: DexQuoteParams): Promise<DexSwapResult> {
         slippagePercent: String(Math.round((params.slippage ?? 0.005) * 10000) / 100),
         fromTokenAddress: tokenIn,
         toTokenAddress: tokenOut,
-        userWalletAddress: params.from || '0x0000000000000000000000000000000000000001',
-        receiver: params.recipient || params.from || '0x0000000000000000000000000000000000000001',
+        userWalletAddress: params.from || DUMMY_FROM,
+        receiver: params.recipient || params.from || DUMMY_FROM,
       });
       // 调用方显式覆盖 gasLimit（防 OKX RFQ 路径估算偏低导致 OOG）
       if (params.gasLimit && /^\d+$/.test(String(params.gasLimit))) sQs.set('gasLimit', String(params.gasLimit));
@@ -338,7 +339,7 @@ async function inchSwap(params: DexQuoteParams): Promise<DexSwapResult> {
     src: t(params.tokenIn),
     dst: t(params.tokenOut),
     amount: params.amountIn,
-    from: params.from || '0x0000000000000000000000000000000000000001',
+    from: params.from || DUMMY_FROM,
     slippage: String(params.slippage ?? 0.005),
   });
   if (params.recipient) qs.set('receiver', params.recipient);

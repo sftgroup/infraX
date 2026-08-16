@@ -13,21 +13,14 @@
  *   时，支持 data 服务统一签发的 dx_/mx_ 等外部 key（scope=rpc 读 / rpc_broadcast 广播）。
  * /health 豁免。
  */
-import crypto from 'crypto';
 import { config } from '../config';
 import { findRpcKeyByRaw } from '../services/rpcSubscription';
+import { timingSafeEqualStr } from '../utils/timingSafe';
 
 export function extractApiKey(req: any): string {
   const auth = (req.headers['authorization'] || '').trim();
   if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
   return (req.headers['x-api-key'] || req.headers['x-service-key'] || '').trim();
-}
-
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
 }
 
 function isExempt(p: string): boolean {

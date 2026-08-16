@@ -1,6 +1,7 @@
 import { toHex, type Address, type Hex } from 'viem';
 import type { PaymasterConfig, UserOperationV7 } from './types.js';
-import { userOpToRpc } from './bundler.js';
+import { userOpToRpc } from './userop.js';
+import { isHttpOk, postJson } from './utils/rpc.js';
 
 // ============================================================================
 // Verifying Paymaster 对接（对齐 §5.5，Pimlico 默认 + 服务端代理隐藏 apikey）
@@ -88,23 +89,21 @@ export class PaymasterClient {
     const params: unknown[] = [userOpToRpc(op), ctx.entryPoint, toHex(ctx.chainId)];
     if (ctx.policyId) params.push(ctx.policyId);
 
-    const url = this.endpoint;
     const body = this.relayBaseUrl
       ? { chain: ctx.chain, method, params }
       : { method, params };
 
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(this.headers ?? {}), ...(this.config.headers ?? {}) },
-      body: JSON.stringify(body),
+    const { status, json } = await postJson<Record<string, unknown>>(this.endpoint, body, {
+      headers: { ...(this.headers ?? {}), ...(this.config.headers ?? {}) },
+      label: `paymaster ${method}`,
     });
-    const json = await resp.json().catch(() => null);
-    if (!resp.ok || !json) {
+    if (!isHttpOk(status) || !json) {
+      const errBody = json as { message?: string; error?: { message?: string } } | null;
       throw new Error(
-        `[aa-sdk] paymaster ${method} failed (${resp.status}): ${json?.message || json?.error?.message || 'non-json response'}`,
+        `[aa-sdk] paymaster ${method} failed (${status}): ${errBody?.message || errBody?.error?.message || 'non-json response'}`,
       );
     }
-    const result = json.result ?? json.data ?? null;
+    const result = (json.result ?? json.data) as PaymasterRpcData | undefined;
     if (!result) {
       throw new Error(`[aa-sdk] paymaster ${method} returned no result: ${JSON.stringify(json).slice(0, 300)}`);
     }

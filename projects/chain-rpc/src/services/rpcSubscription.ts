@@ -13,15 +13,24 @@
  */
 import crypto from 'crypto';
 import { Pool } from 'pg';
+import { config } from '../config';
+import { logger } from '../logger';
+
+export const RPC_FREE_PLAN_ID = 'rpc_free';
 
 export const RPC_PLANS = [
-  { id: 'rpc_free', name: 'RPC Free', price: 0, billingCycle: 'monthly',
+  { id: RPC_FREE_PLAN_ID, name: 'RPC Free', price: 0, billingCycle: 'monthly',
     features: { callsPerMonth: 10000, bandwidth: '5GB', concurrent: 10 } },
   { id: 'rpc_pro', name: 'RPC Pro', price: 79, billingCycle: 'monthly',
     features: { callsPerMonth: 100000, bandwidth: '50GB', concurrent: 50 } },
   { id: 'rpc_enterprise', name: 'RPC Enterprise', price: 299, billingCycle: 'monthly',
     features: { callsPerMonth: 1000000, bandwidth: '500GB', concurrent: 200 } },
 ];
+
+/** 按套餐 id 查目录（未知 id → undefined，上层回退 RPC_PLANS[0] 免费档）。 */
+export function planById(id: string | undefined | null): (typeof RPC_PLANS)[number] | undefined {
+  return RPC_PLANS.find((p) => p.id === id);
+}
 
 // ─── DB Pool（独立库，表结构自举） ─────────────────────────────
 export const rpcPool = new Pool({
@@ -39,7 +48,7 @@ export async function initRpcTables(): Promise<void> {
       key_hash TEXT NOT NULL UNIQUE,       -- SHA-256 hex，不存明文
       key_prefix TEXT NOT NULL,            -- 前 8 位，掩码展示
       key_tail TEXT NOT NULL,              -- 后 4 位，掩码展示
-      rpc_plan_id TEXT NOT NULL DEFAULT 'rpc_free',
+      rpc_plan_id TEXT NOT NULL DEFAULT '${RPC_FREE_PLAN_ID}',
       rpc_sub_status VARCHAR(20) NOT NULL DEFAULT 'active',   -- free→pending→active
       rpc_payment_method VARCHAR(20),
       rpc_payment_ref VARCHAR(200),
@@ -90,28 +99,16 @@ export class PaymentsError extends Error {
   }
 }
 
-const PAYMENTS = {
-  baseUrl: (process.env.PAYMENTS_URL || '').replace(/\/+$/, ''),
-  apiKey: process.env.PAYMENTS_API_KEY || '',
-  webhookSecret: process.env.PAYMENTS_WEBHOOK_SECRET || '',
-  defaultChain: process.env.PAYMENTS_CHAIN || 'oxachain',
-  defaultRail: process.env.PAYMENTS_DEFAULT_RAIL || 'chain',
-  fiatPeriod: process.env.PAYMENTS_FIAT_PERIOD || 'month',
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:9111',
-  // 链上套餐 → RPC 套餐对齐表（planId 为 SubscriptionManager.getPlan 的 id）
-  planIdMap: JSON.parse(process.env.PAYMENTS_PLAN_ID_MAP || '{"rpc_pro":5,"rpc_enterprise":6}') as Record<string, number>,
-};
-
 async function paymentsCall<T = any>(path: string, init?: RequestInit): Promise<T> {
-  if (!PAYMENTS.baseUrl) {
+  if (!config.payments.baseUrl) {
     throw new PaymentsError('PAYMENTS_URL is not configured', 503, 'PAYMENTS_NOT_CONFIGURED');
   }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  if (PAYMENTS.apiKey) headers['X-Service-Key'] = PAYMENTS.apiKey;
-  const resp = await fetch(`${PAYMENTS.baseUrl}${path}`, { ...init, headers, signal: AbortSignal.timeout(10_000) });
+  if (config.payments.apiKey) headers['X-Service-Key'] = config.payments.apiKey;
+  const resp = await fetch(`${config.payments.baseUrl}${path}`, { ...init, headers, signal: AbortSignal.timeout(10_000) });
   if (!resp.ok) {
     let message = `payments ${path} failed (${resp.status})`;
     try {
@@ -124,11 +121,6 @@ async function paymentsCall<T = any>(path: string, init?: RequestInit): Promise<
 }
 
 export const paymentsApi = {
-  async price(planId: number, chain: string) {
-    return paymentsCall<{ planId: number; price: string; period: string; active: boolean; trialDays: number; payToken: string }>(
-      `/payments/price?planId=${planId}&chain=${encodeURIComponent(chain)}`
-    );
-  },
   async chainInfo(chain: string) {
     return paymentsCall<{ chain: string; chainId: number; subscriptionManager: string; nativeAsset: string }>(
       `/payments/chain-info/${encodeURIComponent(chain)}`
@@ -142,7 +134,7 @@ export const paymentsApi = {
       method: 'POST',
       body: JSON.stringify({
         subscriber: input.subscriber,
-        chain: PAYMENTS.defaultChain,
+        chain: config.payments.defaultChain,
         planId: input.planId,
         period: input.period,
         metadata: input.metadata,
@@ -155,7 +147,7 @@ export const paymentsApi = {
   async verify(txHash: string, chain?: string) {
     return paymentsCall<{ verified: boolean; reference?: string; payer?: string; creditedWei?: string; asset?: string; chain?: string }>('/payments/verify', {
       method: 'POST',
-      body: JSON.stringify({ txHash, chain: chain ?? PAYMENTS.defaultChain }),
+      body: JSON.stringify({ txHash, chain: chain ?? config.payments.defaultChain }),
     });
   },
   async info() {
@@ -181,17 +173,6 @@ export async function findRpcKeyByRaw(raw: string): Promise<any | null> {
   return r.rows[0] || null;
 }
 
-/** 免费套餐直通：签发/升级为指定免费套餐（幂等）。返回完整 key（仅首次可见）。 */
-export async function activateFreePlan(keyId: number, planId: string, raw?: string): Promise<void> {
-  await rpcPool.query(
-    `UPDATE rpc_keys
-     SET rpc_plan_id = $2, rpc_sub_status = 'active', rpc_payment_method = COALESCE(rpc_payment_method, 'free'),
-         rpc_sub_updated_at = NOW(), updated_at = NOW()
-     WHERE id = $1`,
-    [keyId, planId]
-  );
-}
-
 /** 引擎支付确认后激活订阅（pending→active，幂等）。 */
 export async function activateRpcSubscription(keyId: number, method?: string, ref?: string): Promise<void> {
   const row = await rpcPool.query('SELECT rpc_sub_status, rpc_plan_id FROM rpc_keys WHERE id = $1', [keyId]);
@@ -208,10 +189,27 @@ export async function activateRpcSubscription(keyId: number, method?: string, re
   console.log(`[chain-rpc] rpc subscription activated key=${keyId} plan=${row.rows[0].rpc_plan_id} method=${method ?? ''}`);
 }
 
+/**
+ * 请求级用量记账（rpc_usage 明细 + rpc_usage_daily 日聚合 upsert）。
+ * HTTP /v1/rpc 读配额与 WS 订阅共用；fire-and-forget，记账故障不阻断业务（仅告警）。
+ */
+export function recordRpcUsage(keyId: number, endpoint: string): void {
+  rpcPool
+    .query('INSERT INTO rpc_usage (key_id, endpoint) VALUES ($1, $2)', [keyId, endpoint])
+    .then(() => rpcPool.query(
+      `INSERT INTO rpc_usage_daily (key_id, date, endpoint, total_calls)
+       VALUES ($1, CURRENT_DATE, $2, 1)
+       ON CONFLICT (key_id, date, endpoint)
+       DO UPDATE SET total_calls = rpc_usage_daily.total_calls + 1`,
+      [keyId, endpoint]
+    ))
+    .catch((e: any) => logger.warn(`[chain-rpc] rpc usage record failed: ${e.message}`));
+}
+
 /** 订阅回调签名校验（HMAC-SHA256，与引擎 webhook 一致）。 */
 export function verifyWebhookSignature(payload: Buffer, signature: string | undefined): boolean {
-  if (!PAYMENTS.webhookSecret || !signature) return false;
-  const expected = crypto.createHmac('sha256', PAYMENTS.webhookSecret).update(payload).digest('hex');
+  if (!config.payments.webhookSecret || !signature) return false;
+  const expected = crypto.createHmac('sha256', config.payments.webhookSecret).update(payload).digest('hex');
   const received = signature;
   if (expected.length !== received.length) return false;
   let diff = 0;

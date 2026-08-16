@@ -86,7 +86,7 @@ describe('SessionKeySigner', () => {
       data: USER_OP_HASH,
     });
     const headers = calls[0].init?.headers as Record<string, string>;
-    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['content-type']).toBe('application/json');
     expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
   });
 

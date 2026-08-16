@@ -113,15 +113,6 @@ export interface UserOperationV7 {
   signature: Hex;
 }
 
-/** 构建 UserOp 所需的链上上下文（provider 由调用方传入） */
-export interface UserOpBuildContext {
-  chainId: number;
-  sender: Address;
-  nonce: bigint;
-  factory?: Address;
-  factoryData?: Hex;
-}
-
 /** UserOp 发送结果 */
 export interface UserOpResult {
   userOpHash: Hex;
@@ -138,16 +129,3 @@ export interface UserOpReceipt {
   actualGasUsed: bigint;
   logs: unknown[];
 }
-
-// ============================================================================
-// 部署 / 恢复
-// ============================================================================
-
-/** 社交恢复模块（MVP 后置，接口预留） */
-export interface RecoveryConfig {
-  moduleAddress: Address;
-  guardians: Address[];
-  threshold: number;
-}
-
-export type ChainId = number;

@@ -8,33 +8,16 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { CHAIN_IDS } from '../services/rpcPoolConfig';
 import {
-  RPC_PLANS, rpcPool, paymentsApi, PaymentsError,
+  RPC_PLANS, RPC_FREE_PLAN_ID, rpcPool, paymentsApi, PaymentsError,
   generateRpcKey, findRpcKeyByRaw, activateRpcSubscription,
   verifyWebhookSignature, monthStart,
 } from '../services/rpcSubscription';
+import { timingSafeEqualStr } from '../utils/timingSafe';
 
 const router = Router();
 
-const PAYMENTS = {
-  baseUrl: (process.env.PAYMENTS_URL || '').replace(/\/+$/, ''),
-  webhookSecret: process.env.PAYMENTS_WEBHOOK_SECRET || '',
-  defaultChain: process.env.PAYMENTS_CHAIN || 'oxachain',
-  defaultRail: process.env.PAYMENTS_DEFAULT_RAIL || 'chain',
-  fiatPeriod: process.env.PAYMENTS_FIAT_PERIOD || 'month',
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:9111',
-  // 链上套餐 → RPC 套餐对齐表（planId 为 SubscriptionManager.getPlan 的 id）
-  planIdMap: JSON.parse(process.env.PAYMENTS_PLAN_ID_MAP || '{"rpc_pro":5,"rpc_enterprise":6}') as Record<string, number>,
-};
-
 function asyncHandler(fn: (req: any, res: any, next: any) => Promise<any>) {
   return (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
 }
 
 /** rx_ 订阅 key 鉴权：X-RPC-Key / X-API-Key / Authorization / body.api_key */
@@ -70,7 +53,7 @@ router.post('/issue-key', asyncHandler(async (req, res) => {
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   const r = await rpcPool.query(
     `INSERT INTO rpc_keys (label, key_hash, key_prefix, key_tail, rpc_plan_id, rpc_sub_status)
-     VALUES ($1, $2, $3, $4, 'rpc_free', 'active')
+     VALUES ($1, $2, $3, $4, '${RPC_FREE_PLAN_ID}', 'active')
      RETURNING id, rpc_plan_id`,
     [label || `${kKind} rpc key`, hash, raw.slice(0, 8), raw.slice(-4)]
   );
@@ -100,16 +83,16 @@ router.post('/checkout', rpcKeyAuth, asyncHandler(async (req, res) => {
     );
     return res.json({ code: 0, message: 'ok', data: { keyId: rpcKey.id, planId: plan.id, rpcSubStatus: 'active', free: true } });
   }
-  const resourceId = PAYMENTS.planIdMap[plan.id];
+  const resourceId = config.payments.planIdMap[plan.id];
   if (!resourceId) {
     return res.status(400).json({ detail: `Plan ${plan.id} has no on-chain mapping (configure PAYMENTS_PLAN_ID_MAP)`, code: 1002 });
   }
-  const selectedRail = rail || PAYMENTS.defaultRail;
+  const selectedRail = rail || config.payments.defaultRail;
   const subscriberKey = (typeof subscriber === 'string' && subscriber) ? subscriber : `rpclin:${rpcKey.id}`;
   const payment: any = { rail: selectedRail };
   try {
     if (selectedRail === 'chain') {
-      const info = await paymentsApi.chainInfo(PAYMENTS.defaultChain);
+      const info = await paymentsApi.chainInfo(config.payments.defaultChain);
       payment.chainId = info.chainId;
       payment.subscriptionManager = info.subscriptionManager;
       payment.nativeAsset = info.nativeAsset;
@@ -119,11 +102,11 @@ router.post('/checkout', rpcKeyAuth, asyncHandler(async (req, res) => {
       const checkout = await paymentsApi.checkout({
         subscriber: subscriberKey,
         planId: resourceId,
-        period: PAYMENTS.fiatPeriod,
+        period: config.payments.fiatPeriod,
         metadata: { product: 'rpc-subscription', planId: plan.id, planName: plan.name, keyId: rpcKey.id },
         clientReference: `rpclin:${rpcKey.id}`,
-        successUrl: `${PAYMENTS.corsOrigin}/#/rpc?sub=success`,
-        cancelUrl: `${PAYMENTS.corsOrigin}/#/rpc?sub=cancelled`,
+        successUrl: `${config.payments.corsOrigin}/#/rpc?sub=success`,
+        cancelUrl: `${config.payments.corsOrigin}/#/rpc?sub=cancelled`,
       });
       payment.sessionUrl = checkout.sessionUrl;
       payment.paymentId = checkout.paymentId;
@@ -174,7 +157,7 @@ router.post('/payment-check', rpcKeyAuth, asyncHandler(async (req, res) => {
     try {
       const resourceId = Number(key.rpc_payment_ref);
       const sub = typeof subscriber === 'string' && subscriber ? subscriber : `rpclin:${rpcKey.id}`;
-      const { active } = await paymentsApi.hasActiveSubscription(PAYMENTS.defaultChain, sub, resourceId);
+      const { active } = await paymentsApi.hasActiveSubscription(config.payments.defaultChain, sub, resourceId);
       if (active) {
         await activateRpcSubscription(rpcKey.id, 'chain', key.rpc_payment_ref);
         return res.json({ code: 0, message: 'ok', data: { status: 'active' } });
@@ -188,7 +171,7 @@ router.post('/payment-check', rpcKeyAuth, asyncHandler(async (req, res) => {
 
 // POST /v1/subscription/payment-callback — 引擎出站事件回调（HMAC-SHA256 验签，rpclin: 前缀）
 router.post('/payment-callback', asyncHandler(async (req, res) => {
-  if (!PAYMENTS.webhookSecret) {
+  if (!config.payments.webhookSecret) {
     console.warn('[chain-rpc] payment-callback: PAYMENTS_WEBHOOK_SECRET not configured');
     return res.status(503).json({ detail: 'webhook secret not configured', code: 1003 });
   }

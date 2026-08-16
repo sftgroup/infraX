@@ -38,6 +38,14 @@ const SUPPORTED_KERNEL_VERSIONS = ['0.3.0-beta', '0.3.1', '0.3.2', '0.3.3'] as c
 /** ValidationId 前缀：VALIDATOR 类型（0x01，permissionless Kernel constants） */
 const VALIDATOR_TYPE_VALIDATOR = '0x01' as Hex;
 
+/**
+ * Kernel v3.1 默认 ECDSA validator（permissionless 内置地址；对齐 config.ts
+ * 「ECDSA root validator 可空：缺省用 permissionless 内置 v3 默认地址」约定）。
+ * 其他版本（0.3.0-beta 等自建链）无内置默认，必须显式配置 AA_{CHAIN}_ECDSA_VALIDATOR。
+ */
+const DEFAULT_ECDSA_VALIDATOR_V31 =
+  '0x845ADb2C711129d4f3966735eD98a9F09fC4cE57' as Address;
+
 export interface KernelAccount {
   address: Address;
   owner: Signer;
@@ -55,8 +63,6 @@ export interface CreateAccountParams {
   chainConfig: ChainAAConfig;
   /** create2 salt（默认 = 0） */
   salt?: bigint;
-  /** 可选：vault 地址等自定义部署参数（暂不支持，保留接口） */
-  factoryData?: Hex;
 }
 
 /** 构造链上 client（transport 可注入，供测试 mock） */
@@ -151,7 +157,7 @@ export function encodeKernelInitialize(
   ownerAddress: Address,
   version: string,
 ): Hex {
-  const validator = chainConfig.validatorAddress;
+  const validator = chainConfig.validatorAddress ?? (version === '0.3.1' ? DEFAULT_ECDSA_VALIDATOR_V31 : undefined);
   if (!validator) {
     throw new Error(`[aa-sdk] missing ECDSA validator for chain ${chainConfig.chainId} (set AA_*_ECDSA_VALIDATOR)`);
   }

@@ -116,6 +116,36 @@ export async function signUserOp(
   return { ...op, signature };
 }
 
+// --- UserOp v0.7 → bundler / paymaster RPC 参数 ------------------------------
+
+/**
+ * UserOp v0.7 → RPC 参数（bigint → hex；paymaster 字段缺省剔除）。
+ * 供 bundler eth_sendUserOperation / eth_estimateUserOperationGas 与
+ * paymaster pimlico_getPaymaster* 共用。
+ */
+export function userOpToRpc(op: UserOperationV7): Record<string, string | undefined> {
+  const rpc: Record<string, string | undefined> = {
+    sender: op.sender,
+    nonce: toHex(op.nonce),
+    factory: op.factory,
+    factoryData: op.factoryData,
+    callData: op.callData,
+    callGasLimit: toHex(op.callGasLimit),
+    verificationGasLimit: toHex(op.verificationGasLimit),
+    preVerificationGas: toHex(op.preVerificationGas),
+    maxFeePerGas: toHex(op.maxFeePerGas),
+    maxPriorityFeePerGas: toHex(op.maxPriorityFeePerGas),
+    signature: op.signature,
+  };
+  if (op.paymaster) {
+    rpc.paymaster = op.paymaster;
+    if (op.paymasterVerificationGasLimit !== undefined) rpc.paymasterVerificationGasLimit = toHex(op.paymasterVerificationGasLimit);
+    if (op.paymasterPostOpGasLimit !== undefined) rpc.paymasterPostOpGasLimit = toHex(op.paymasterPostOpGasLimit);
+    rpc.paymasterData = op.paymasterData;
+  }
+  return rpc;
+}
+
 // --- v0.7 PackedUserOperation（EntryPoint.handleOps / v0.7 bundler RPC） -------
 
 /**

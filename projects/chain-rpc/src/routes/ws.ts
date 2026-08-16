@@ -11,45 +11,28 @@
  * 订阅 id 语义：客户端只见网关签发的本地 subId（单调递增）；上游 subId 仅内部路由用。
  */
 import http from 'http';
-import crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from '../config';
 import { logger } from '../logger';
 import { RpcPoolManager } from '../services/rpcPool';
 import { normalizeChain } from '../services/rpcPoolConfig';
-import { findRpcKeyByRaw, rpcPool, RPC_PLANS } from '../services/rpcSubscription';
+import { findRpcKeyByRaw, RPC_PLANS, RPC_FREE_PLAN_ID, planById, recordRpcUsage } from '../services/rpcSubscription';
 import { matchExternal } from '../middleware/auth';
+import { timingSafeEqualStr } from '../utils/timingSafe';
 import { WsSubHub, WsClient, WsConnQuota } from '../services/wsHub';
+import { WsUpstreamManager } from '../services/wsUpstream';
 
 const SUB_METHODS = new Set(['eth_subscribe', 'eth_unsubscribe']);
 const ALLOWED_SUB_TYPES = new Set(['newHeads', 'newPendingTransactions', 'logs', 'syncing']);
-// 上游连接未就绪期间的订阅请求缓冲上限（防无界堆积）
-const WS_PENDING_CAP = 200;
-
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const ha = crypto.createHash('sha256').update(a).digest();
-  const hb = crypto.createHash('sha256').update(b).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
 
 type Auth =
   | { type: 'local' }
   | { type: 'rx'; keyId: number; planId: string }
   | { type: 'external' };
 
-interface ChainUpstream {
-  up: WebSocket;
-  refs: number;
-  open: boolean;
-  pending: string[]; // 未就绪缓冲的订阅请求
-  pendingUp: Map<number, { chain: string; subKey: string }>; // 上游请求 id → 订阅（confirm 路由）
-  upSeq: number;
-}
-
 // ── 模块级状态（单进程） ────────────────────────────────
 const hub = new WsSubHub({ maxBufferBytes: config.wsMaxBufferBytes });
 const quota = new WsConnQuota(); // rx_ key 并发连接计数（配额）
-const chains = new Map<string, ChainUpstream>(); // chain → 共享上游
 const chainClients = new Map<string, Set<number>>(); // chain → 连接的 clientId
 const clientChains = new Map<number, Set<string>>(); // clientId → 所在 chains
 const clientSubCount = new Map<number, number>(); // clientId → 订阅数
@@ -60,11 +43,11 @@ let clientSeq = 1;
 async function resolveAuth(key: string): Promise<Auth | null> {
   if (key && config.readKey && timingSafeEqualStr(key, config.readKey)) return { type: 'local' };
   if (key && config.broadcastKey && timingSafeEqualStr(key, config.broadcastKey)) return { type: 'local' };
-  if (key.startsWith('rx_')) {
+  // rx_/bx_ 订阅 key（与 HTTP 读端点一致：仅要求 enabled，free→active 状态机由支付引擎推进）
+  if (key.startsWith('rx_') || key.startsWith('bx_')) {
     const rk = await findRpcKeyByRaw(key);
-    // 与 HTTP 读端点一致：仅要求 enabled（free→active 状态机由支付引擎推进）
     if (rk && rk.enabled !== false) {
-      return { type: 'rx', keyId: rk.id, planId: rk.rpc_plan_id || 'rpc_free' };
+      return { type: 'rx', keyId: rk.id, planId: rk.rpc_plan_id || RPC_FREE_PLAN_ID };
     }
     return null;
   }
@@ -76,8 +59,8 @@ async function resolveAuth(key: string): Promise<Auth | null> {
 // 导出供单元测试直接校验（纯计数逻辑，见 wsHub.WsConnQuota）
 export function tryAcquireConn(auth: Auth): { ok: true } | { ok: false; limit: number } {
   if (!config.wsEnableQuota || auth.type !== 'rx') return { ok: true };
-  const plan = RPC_PLANS.find((p) => p.id === auth.planId) || RPC_PLANS[0];
-  const limit = plan.features.concurrent || 10;
+  const plan = planById(auth.planId) || RPC_PLANS[0];
+  const limit = plan.features.concurrent;
   return quota.tryAcquire(auth.keyId, limit) ? { ok: true } : { ok: false, limit };
 }
 
@@ -86,53 +69,7 @@ export function releaseConn(auth: Auth): void {
   quota.release(auth.keyId);
 }
 
-// 订阅计费（fire-and-forget，失败仅 warn，与 HTTP 读配额一致）
-function recordUsage(keyId: number): void {
-  rpcPool
-    .query('INSERT INTO rpc_usage (key_id, endpoint) VALUES ($1, $2)', [keyId, '/v1/ws'])
-    .then(() =>
-      rpcPool.query(
-        `INSERT INTO rpc_usage_daily (key_id, date, endpoint, total_calls)
-         VALUES ($1, CURRENT_DATE, $2, 1)
-         ON CONFLICT (key_id, date, endpoint)
-         DO UPDATE SET total_calls = rpc_usage_daily.total_calls + 1`,
-        [keyId, '/v1/ws']
-      )
-    )
-    .catch((e: any) => logger.warn(`[chain-rpc] ws usage record failed: ${e.message}`));
-}
-
-// ── 上游连接管理（每链共享） ────────────────────────────
-function sendUpstream(chain: string, data: string): boolean {
-  const cu = chains.get(chain);
-  if (!cu) return false;
-  if (!cu.open) {
-    if (cu.pending.length >= WS_PENDING_CAP) return false;
-    cu.pending.push(data);
-    return true;
-  }
-  cu.up.send(data);
-  return true;
-}
-
-function releaseUpstream(chain: string): void {
-  const cu = chains.get(chain);
-  if (!cu) return;
-  cu.refs -= 1;
-  if (cu.refs <= 0) {
-    try {
-      cu.up.close();
-    } catch {
-      /* noop */
-    }
-    chains.delete(chain);
-  }
-}
-
-/**
- * 上游连接断开/出错：兜底关闭该链全部客户端（4006），并清除失效上游条目，
- * 保证下一个客户端连接时重建共享上游。客户端状态清理由其 close 事件处理器完成。
- */
+// ── 上游断开兜底（WsUpstreamManager 已清理条目，此处仅关闭该链客户端） ──
 function closeChainClients(chain: string): void {
   const ids = chainClients.get(chain);
   if (ids) {
@@ -147,19 +84,16 @@ function closeChainClients(chain: string): void {
       }
     }
   }
-  const cu = chains.get(chain);
-  if (cu) {
-    try {
-      cu.up.close();
-    } catch {
-      /* noop */
-    }
-    chains.delete(chain);
-  }
 }
 
 export function attachWs(server: http.Server, pool: RpcPoolManager): void {
   const wss = new WebSocketServer({ server, path: '/v1/ws' });
+  // 每网关独立上游管理器（测试可挂多个网关，各持各自的池）
+  const upstream = new WsUpstreamManager(
+    pool,
+    (chain, raw) => handleUpstreamMessage(upstream, chain, raw),
+    (chain) => closeChainClients(chain),
+  );
 
   wss.on('connection', async (ws, req) => {
     const q = new URL(req.url || '/', 'http://internal').searchParams;
@@ -183,46 +117,19 @@ export function attachWs(server: http.Server, pool: RpcPoolManager): void {
     }
 
     // ── 链校验 + 共享上游 ──
-    const chain = q.get('chain') || 'sepolia';
+    const chain = q.get('chain') || config.defaultChain;
     const norm = normalizeChain(chain);
     if (!norm) {
       releaseConn(auth);
       ws.close(4002, `unsupported chain: ${chain}`);
       return;
     }
-    const upUrl = pool.getWsEndpoint(norm);
-    if (!upUrl) {
+    const cu = upstream.acquire(norm);
+    if (!cu) {
       releaseConn(auth);
-      ws.close(4003, `no active endpoint for ${norm}`);
+      ws.close(4003, 'upstream unavailable');
       return;
     }
-
-    let cu = chains.get(norm);
-    if (!cu) {
-      cu = { up: null as unknown as WebSocket, refs: 0, open: false, pending: [], pendingUp: new Map(), upSeq: 1 };
-      try {
-        const up = new WebSocket(upUrl);
-        cu.up = up;
-        up.on('open', () => {
-          cu!.open = true;
-          while (cu!.pending.length) {
-            const m = cu!.pending.shift();
-            if (m) cu!.up.send(m);
-          }
-          logger.info('[chain-rpc] ws upstream connected', { chain: norm });
-        });
-        up.on('message', (data) => handleUpstreamMessage(norm, data.toString()));
-        up.on('error', () => closeChainClients(norm));
-        up.on('close', () => closeChainClients(norm));
-        chains.set(norm, cu);
-      } catch (e: any) {
-        logger.warn(`[chain-rpc] ws upstream create failed (${norm}): ${e?.message}`);
-        releaseConn(auth);
-        ws.close(4003, 'upstream unavailable');
-        return;
-      }
-    }
-    cu.refs += 1;
 
     // ── 客户端注册 ──
     const clientId = clientSeq++;
@@ -258,8 +165,8 @@ export function attachWs(server: http.Server, pool: RpcPoolManager): void {
         }));
         return;
       }
-      if (method === 'eth_subscribe') handleSubscribe(norm, clientId, ws, wsClient, auth, msg);
-      else handleUnsubscribe(norm, clientId, ws, wsClient, msg);
+      if (method === 'eth_subscribe') handleSubscribe(upstream, norm, clientId, ws, wsClient, auth, msg);
+      else handleUnsubscribe(upstream, norm, clientId, ws, wsClient, msg);
     });
 
     // ── 客户端断开 ──
@@ -270,9 +177,9 @@ export function attachWs(server: http.Server, pool: RpcPoolManager): void {
         const { release } = hub.removeClient(c, wsClient);
         for (const r of release) {
           // 该订阅最后一位客户端离开 → 向上游补发 eth_unsubscribe（带确认后的上游订阅 id）
-          sendUpstream(c, JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'eth_unsubscribe', params: [r.upSubId] }));
+          upstream.send(c, JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'eth_unsubscribe', params: [r.upSubId] }));
         }
-        releaseUpstream(c);
+        upstream.release(c);
       }
       clientChains.delete(clientId);
       clientSubCount.delete(clientId);
@@ -287,6 +194,7 @@ export function attachWs(server: http.Server, pool: RpcPoolManager): void {
 
 // ── 订阅处理 ────────────────────────────────────────────
 function handleSubscribe(
+  upstream: WsUpstreamManager,
   chain: string,
   clientId: number,
   ws: WebSocket,
@@ -305,7 +213,7 @@ function handleSubscribe(
     ws.send(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32602, message: 'too many subscriptions' } }));
     return;
   }
-  if (auth.type === 'rx') recordUsage(auth.keyId);
+  if (auth.type === 'rx') recordRpcUsage(auth.keyId, '/v1/ws');
 
   const { localSubId, isNew } = hub.subscribe(chain, wsClient, subType, params.slice(1));
   clientSubCount.set(clientId, (clientSubCount.get(clientId) || 0) + 1);
@@ -313,27 +221,27 @@ function handleSubscribe(
   ws.send(JSON.stringify({ jsonrpc: '2.0', id, result: localSubId }));
 
   if (isNew) {
-    const cu = chains.get(chain);
+    const cu = upstream.get(chain);
     if (!cu) return;
     const upReqId = cu.upSeq++;
     cu.pendingUp.set(upReqId, { chain, subKey: WsSubHub.subKey(subType, params.slice(1)) });
-    sendUpstream(chain, JSON.stringify({ jsonrpc: '2.0', id: upReqId, method: 'eth_subscribe', params }));
+    upstream.send(chain, JSON.stringify({ jsonrpc: '2.0', id: upReqId, method: 'eth_subscribe', params }));
   }
 }
 
-function handleUnsubscribe(chain: string, clientId: number, ws: WebSocket, wsClient: WsClient, msg: any): void {
+function handleUnsubscribe(upstream: WsUpstreamManager, chain: string, clientId: number, ws: WebSocket, wsClient: WsClient, msg: any): void {
   const id = msg?.id ?? null;
   const subId = Number(msg?.params?.[0]);
   const { ok, releaseUpstream: needRelease, upSubId } = hub.unsubscribe(chain, wsClient, subId);
   if (ok) clientSubCount.set(clientId, Math.max(0, (clientSubCount.get(clientId) || 0) - 1));
   ws.send(JSON.stringify({ jsonrpc: '2.0', id, result: ok }));
   if (needRelease && upSubId) {
-    sendUpstream(chain, JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'eth_unsubscribe', params: [upSubId] }));
+    upstream.send(chain, JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'eth_unsubscribe', params: [upSubId] }));
   }
 }
 
 // ── 上游消息 ────────────────────────────────────────────
-function handleUpstreamMessage(chain: string, raw: string): void {
+function handleUpstreamMessage(upstream: WsUpstreamManager, chain: string, raw: string): void {
   let msg: any;
   try {
     msg = JSON.parse(raw);
@@ -342,7 +250,7 @@ function handleUpstreamMessage(chain: string, raw: string): void {
   }
   // 订阅确认（响应 eth_subscribe）
   if (msg.id !== undefined && !msg.error) {
-    const cu = chains.get(chain);
+    const cu = upstream.get(chain);
     const upReq = cu?.pendingUp.get(msg.id);
     if (upReq) {
       cu!.pendingUp.delete(msg.id);
@@ -350,7 +258,7 @@ function handleUpstreamMessage(chain: string, raw: string): void {
         const exists = hub.confirmUpstream(chain, upReq.subKey, msg.result);
         if (!exists) {
           // 孤儿订阅（客户端在确认前全部离开）→ 补发取消，防上游泄漏
-          sendUpstream(chain, JSON.stringify({ jsonrpc: '2.0', id: cu!.upSeq++, method: 'eth_unsubscribe', params: [msg.result] }));
+          upstream.send(chain, JSON.stringify({ jsonrpc: '2.0', id: cu!.upSeq++, method: 'eth_unsubscribe', params: [msg.result] }));
         }
       }
     }
@@ -358,7 +266,7 @@ function handleUpstreamMessage(chain: string, raw: string): void {
   }
   // 上游拒绝订阅（error 响应）→ 仅清理 pendingUp 防堆积（客户端侧已按网关 subId 持有，由显式取消兜底）
   if (msg.id !== undefined && msg.error) {
-    const cu = chains.get(chain);
+    const cu = upstream.get(chain);
     if (cu?.pendingUp.delete(msg.id)) {
       logger.warn(`[chain-rpc] ws upstream subscribe rejected (${chain}): ${msg.error?.message || JSON.stringify(msg.error)}`);
     }

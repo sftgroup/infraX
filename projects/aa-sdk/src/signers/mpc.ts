@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem';
 import type { Signer } from '../types.js';
+import { isHttpOk, postJson } from '../utils/rpc.js';
 
 /**
  * MpcSigner 认证形态（AASDK-4）：token 模式（现有）或 email 模式（PocketX）。
@@ -65,14 +66,15 @@ export class MpcSigner implements Signer {
   }
 
   private async post(path: string, body: unknown): Promise<any> {
-    const resp = await fetch(`${this.serviceUrl.replace(/\/+$/, '')}${path}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const json = await resp.json().catch(() => null);
-    if (!resp.ok) {
-      throw new Error(`[aa-sdk] MPC ${path} failed (${resp.status}): ${json?.message || json?.error?.message || ''}`);
+    const { status, json } = await postJson<Record<string, any>>(
+      `${this.serviceUrl.replace(/\/+$/, '')}${path}`,
+      body,
+      { label: `MPC ${path}` },
+    );
+    if (!isHttpOk(status)) {
+      throw new Error(
+        `[aa-sdk] MPC ${path} failed (${status}): ${json?.message || json?.error?.message || ''}`,
+      );
     }
     return json;
   }

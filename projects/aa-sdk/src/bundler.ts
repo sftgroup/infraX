@@ -1,6 +1,7 @@
-import { createClient, http, toHex, type Address, type Hex } from 'viem';
+import { createClient, http, type Address, type Hex } from 'viem';
 import type { BundlerConfig, ChainAAConfig, UserOpReceipt, UserOperationV7, UserOpResult } from './types.js';
 import { BundlerError, toAAError } from './errors.js';
+import { userOpToRpc } from './userop.js';
 
 // ============================================================================
 // Bundler 客户端：多端点 + 容灾（对齐 §5.6，v1.42 实现真实 RPC）
@@ -24,30 +25,6 @@ export interface BundlerSendOptions {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-/** UserOp v0.7 → bundler RPC 参数（bigint → hex；paymaster 字段缺省剔除） */
-export function userOpToRpc(op: UserOperationV7): Record<string, string | undefined> {
-  const rpc: Record<string, string | undefined> = {
-    sender: op.sender,
-    nonce: toHex(op.nonce),
-    factory: op.factory,
-    factoryData: op.factoryData,
-    callData: op.callData,
-    callGasLimit: toHex(op.callGasLimit),
-    verificationGasLimit: toHex(op.verificationGasLimit),
-    preVerificationGas: toHex(op.preVerificationGas),
-    maxFeePerGas: toHex(op.maxFeePerGas),
-    maxPriorityFeePerGas: toHex(op.maxPriorityFeePerGas),
-    signature: op.signature,
-  };
-  if (op.paymaster) {
-    rpc.paymaster = op.paymaster;
-    if (op.paymasterVerificationGasLimit !== undefined) rpc.paymasterVerificationGasLimit = toHex(op.paymasterVerificationGasLimit);
-    if (op.paymasterPostOpGasLimit !== undefined) rpc.paymasterPostOpGasLimit = toHex(op.paymasterPostOpGasLimit);
-    rpc.paymasterData = op.paymasterData;
-  }
-  return rpc;
-}
 
 /** 宽松 RPC client（bundler 自定义方法超出 viem 强类型集合，断言为最小接口） */
 type RpcClient = {
@@ -83,13 +60,14 @@ export class BundlerClient {
         const receipt = await this.waitForReceipt(ep, userOpHash, options?.waitTimeoutMs ?? 120_000);
         return { userOpHash, bundlerUrl: ep.url, receipt };
       } catch (e) {
-        if (toAAError(e).isIdempotent) {
+        const aaErr = toAAError(e);
+        if (aaErr.isIdempotent) {
           // AA10: 同 nonce 已处理 → 视为成功（幂等返回，不回滚业务）
           return { userOpHash: '0x' as Hex, bundlerUrl: ep.url };
         }
-        if (!toAAError(e).retriable) {
+        if (!aaErr.retriable) {
           // 业务错误（AA24 需重签 / AA31-33 paymaster 拒绝）→ 直接抛出
-          throw toAAError(e);
+          throw aaErr;
         }
         lastError.push(e);
         // 网络类错误 → 切换下一个端点

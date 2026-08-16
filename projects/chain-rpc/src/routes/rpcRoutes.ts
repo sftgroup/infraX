@@ -17,7 +17,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { RpcPoolManager, ChainRpcError } from '../services/rpcPool';
 import { normalizeChain } from '../services/rpcPoolConfig';
-import { isReadMethod } from '../services/whitelist';
+import { isReadMethod, isBroadcastMethod } from '../services/whitelist';
 
 /** 读 router：POST /rpc/:chain + GET /status */
 export function createRpcRouter(pool: RpcPoolManager): Router {
@@ -107,7 +107,7 @@ export function createBroadcastRouter(pool: RpcPoolManager): Router {
       }
 
       if (raw) {
-        if (body.method !== 'eth_sendRawTransaction' && body.method !== 'sendTransaction') {
+        if (!isBroadcastMethod(body.method)) {
           res.status(400).json({ jsonrpc: '2.0', id: body.id ?? null, error: { code: -32601, message: `method ${body.method} is not allowed on broadcast endpoint` } });
           return;
         }

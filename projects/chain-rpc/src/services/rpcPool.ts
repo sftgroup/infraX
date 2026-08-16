@@ -64,6 +64,8 @@ export class RpcPoolManager {
 
   constructor(config: RpcPoolConfig, options: RpcPoolManagerOptions = {}) {
     this.config = config;
+    // 生产入口 index.ts 总是显式传入 config.ts（CHAIN_RPC_HEALTH_INTERVAL_MS/MAX_RETRIES/REQUEST_TIMEOUT_MS，
+    // env 为池参数唯一来源）；下方仅作库级兜底默认，避免双源漂移。
     this.healthIntervalMs = options.healthIntervalMs ?? 30_000;
     this.maxRetries = options.maxRetries ?? 3;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
@@ -80,14 +82,6 @@ export class RpcPoolManager {
     return eps.filter((ep) => ep.status !== 'down' && ep.status !== 'degraded');
   }
 
-  totalActiveEndpoints(): number {
-    let count = 0;
-    for (const chain of Object.keys(this.config)) {
-      count += this.activeEndpoints(chain).length;
-    }
-    return count;
-  }
-
   pickEndpoint(chain: string): RpcEndpoint {
     const activeEps = this.activeEndpoints(chain);
     if (activeEps.length === 0) {
@@ -98,56 +92,6 @@ export class RpcPoolManager {
     this.roundRobin.set(chain, cursor + 1);
     return activeEps[idx];
   }
-
-  splitBlocksAcrossEndpoints(chain: string, blocks: number[]): Array<{ endpoint: RpcEndpoint; blocks: number[] }> {
-    const activeEps = this.activeEndpoints(chain);
-    if (activeEps.length === 0) {
-      throw new ChainRpcError(`No active RPC endpoints for chain ${chain}`, 'no_active_endpoint', 503);
-    }
-    const size = Math.ceil(blocks.length / activeEps.length);
-    return activeEps.map((ep, i) => ({
-      endpoint: ep,
-      blocks: blocks.slice(i * size, (i + 1) * size),
-    }));
-  }
-
-  async fetchBlockRange(endpoint: RpcEndpoint, chain: string, fromBlock: number, toBlock: number): Promise<any[]> {
-    if (chain === 'solana') {
-      return this.fetchSolanaBlocks(endpoint, fromBlock, toBlock);
-    }
-    const blocks: any[] = [];
-    for (let bn = fromBlock; bn <= toBlock; bn++) {
-      try {
-        const block = await this.fetchBlockWithRetry(endpoint, bn);
-        if (block) blocks.push(block);
-      } catch (err: any) {
-        logger.warn(`[rpc-pool] Failed to fetch block ${bn} on ${chain} via ${endpoint.key}`, { error: err.message });
-      }
-    }
-    return blocks;
-  }
-
-  async fetchLogs(endpoint: RpcEndpoint, params: { address?: string; topics?: string[]; fromBlock: number; toBlock: number }): Promise<any[]> {
-    return this.rpcCall(endpoint, 'eth_getLogs', [params]);
-  }
-
-  async getLatestBlock(chain: string): Promise<number> {
-    const norm = normalizeChain(chain);
-    if (!norm) {
-      throw new ChainRpcError(`Unsupported chain: ${chain}`, 'unsupported_chain', 400);
-    }
-    const activeEps = this.activeEndpoints(norm);
-    if (activeEps.length === 0) {
-      throw new ChainRpcError(`No active RPC endpoints for chain ${chain}`, 'no_active_endpoint', 503);
-    }
-    // DC-8: 链类型查表（EVM→eth_blockNumber，Solana→getSlot）
-    const p = profileFor(norm);
-    return this.rpcCall(activeEps[0], p.latestBlockMethod, []).then((r) => p.latestBlockParse(r));
-  }
-
-  // ================================================================
-  // 网关扩展：通用读调用 / 广播 / 确认 / 状态
-  // ================================================================
 
   /**
    * 通用 JSON-RPC 读调用：round-robin 选端点 → 自动重试 → 降级。
@@ -261,31 +205,6 @@ export class RpcPoolManager {
   // ================================================================
   // 内部
   // ================================================================
-
-  private async fetchSolanaBlocks(endpoint: RpcEndpoint, fromSlot: number, toSlot: number): Promise<any[]> {
-    const blocks: any[] = [];
-    for (let slot = fromSlot; slot <= toSlot; slot++) {
-      try {
-        const result = await this.rpcCall(endpoint, 'getBlock', [
-          slot,
-          { maxSupportedTransactionVersion: 0, transactionDetails: 'full', rewards: false } as any,
-        ]);
-        if (result) blocks.push(result);
-      } catch (err: any) {
-        logger.warn(`[rpc-pool] Failed to fetch solana slot ${slot} via ${endpoint.key}`, { error: err.message });
-      }
-    }
-    return blocks;
-  }
-
-  private async fetchBlockWithRetry(endpoint: RpcEndpoint, blockNumber: number): Promise<any> {
-    const hexBlock = '0x' + blockNumber.toString(16);
-    const [block, logs] = await Promise.all([
-      this.rpcCall(endpoint, 'eth_getBlockByNumber', [hexBlock, true]),
-      this.rpcCall(endpoint, 'eth_getLogs', [{ fromBlock: hexBlock, toBlock: hexBlock }]),
-    ]);
-    return { block, logs, blockNumber };
-  }
 
   private async rpcCall(endpoint: RpcEndpoint, method: string, params: any[]): Promise<any> {
     let lastError: Error | null = null;
