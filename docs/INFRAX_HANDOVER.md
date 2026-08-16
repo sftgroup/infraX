@@ -7,6 +7,7 @@
 > **v1.1 变更**: P0.2 链上实测通过（首笔 UserOp 经自建 Alto 上链）+ Alto 模拟解码定制补丁 + aa-sdk Bundler receipt 解析修复 + 自建链配置经验（§5/§8）
 > **v1.2 变更**: §6.1 新增 Session Key Engine 接口契约（`@0xinfrax/session-key-client` / `session-key-core` v0.1.0 已发布 npm，字段级契约 + aa-sdk 对接映射）
 > **v1.3 变更**: ① aa-sdk 源码已移交至本仓库 `projects/aa-sdk/`（白标 `@infrax/aa-sdk` 0.1.0，含完整 src + 6 测试文件，79/79 绿）② §6.1 交付状态更新——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute` 接口（P3.1 完成，14 条单测）
+> **v1.4 变更**: ① aa-sdk 已公开发布 **`@0xinfrax/aa-sdk@0.1.0`**（`@infrax` scope 私有发布需付费，改 `@0xinfrax` scope + `--access public`）② `entryPointAbi` / `parseBundlers` 已导出（PocketX 需求单三.1/三.2）③ aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 已上线（PocketX 三项阻塞全部就绪，详见 `PAYMASTER_PROVISION_REQUEST.md` 八）
 
 ---
 

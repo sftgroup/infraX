@@ -1,14 +1,18 @@
 {
-  "name": "@infrax/aa-sdk",
+  "name": "@0xinfrax/aa-sdk",
   "version": "0.1.0",
-  "private": true,
   "description": "InfraX 共享 ERC-4337 Smart Account SDK（白标自 PocketX @pocketx/aa-sdk）— Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "permissionless": ">=0.2.0",

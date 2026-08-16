@@ -1232,6 +1232,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 **9.8.11 PocketX aa-sdk 发布（2026-08-12 需求登记；源：docs/FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md，PocketX 提出）**
 
 > ⚠️ **与 §9.11 白标决策关系（2026-08-12 用户裁定）**：**不单独发布 `@infrax/aa-sdk`**，维持 §9.11 决策（并入 `@0xinfrax/session-key-core` v0.2.0 以 `Aa` 命名空间导出，✅ 已发布）——**要求功能覆盖** PocketX 需求单 3 处兼容（AASDK-2/3/4 在现有包内补齐，见下）。关联 E-1（aa-sdk 三缺口）与 tasklist A-4（Paymaster）。
+> ✅ **2026-08-16 补充（PocketX 三项阻塞响应）**：PocketX 反馈 `@infrax/aa-sdk` 与 `session-key-core` registry 404 无法安装。已按对方要求另行发布**独立 SDK `@0xinfrax/aa-sdk@0.1.0`**（`@infrax` scope 私有发布需付费 E402，改 `@0xinfrax` scope + `--access public`；`npm install @0xinfrax/aa-sdk`）——与 `Aa` 命名空间（session-key-core）双通道并存，PocketX 可任选；`@0xinfrax/session-key-core@0.2.1` 本就已发布（对方误查无 scope 名）。aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 同步就绪，三项阻塞全部关闭（详见 `docs/PAYMASTER_PROVISION_REQUEST.md` 八）。
 
 | 编号 | 任务 | 说明 | 状态 | 优先级 |
 |---|---|---|---|---|

@@ -77,3 +77,58 @@
 4. **配额与限流**：aa-relay `/v1/paymaster` 按调用者 API Key 做配额/限流，防止单一调用者挤占其他（对齐现有 1 分钟滑动窗口限流模式）
 
 > 上述 1-4 均落在平台侧（aa-relay / payments），SDK 与调用方接口不变。
+
+---
+
+## 八、PocketX 三项接入阻塞响应（2026-08-16，全部就绪 ✅）
+
+PocketX 链上核实确认（合约 `0xc894ef…852f33` / EntryPoint v0.7 `0x97e4cddc…` / balanceOf≈1 OXA / chainId 19505 / E2E 5/5）后提出 3 项接入阻塞，均已解决：
+
+### ① SDK 发布 ✅ → `@0xinfrax/aa-sdk@0.1.0`
+
+- 原 `@infrax/aa-sdk` 404：`@infrax` scope 私有包发布需付费（E402），改 **`@0xinfrax` scope + `--access public`** 发布
+- `https://registry.npmjs.org/@0xinfrax/aa-sdk/-/aa-sdk-0.1.0.tgz`（43 files，`type: module`，peer: viem ≥2 / permissionless ≥0.2）
+- `@0xinfrax/session-key-core@0.2.1` 亦已发布（PocketX 误查无 scope 名才 404）
+- 若需 git 依赖形式：`https://github.com/sftgroup/infraX` `projects/aa-sdk/`
+
+### ② 导出补齐 ✅（3 处全齐，需求单三.1/三.2/三.3）
+
+- 三.1 `entryPointAbi`：`activate.ts` `export const`（EntryPoint v0.7 getNonce ABI）✅
+- 三.2 `parseBundlers`：`config.ts` `export function`（JSON 数组 / URL 容错 / 缺失抛错语义保留）✅
+- 三.3 `MpcSigner` 双模式（email/token）——方案 A，PocketX 已确认 ✅
+- 产物验证：`dist/index.d.ts` barrel 导出 `config.js`/`activate.js`，`import { entryPointAbi, parseBundlers } from '@0xinfrax/aa-sdk'` 可达
+
+### ③ aa-relay 公网入口 ✅（端口澄清 + 对外 URL）
+
+**端口澄清**（通知中 9134 与 systemd 9131 不一致的原因）：
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| **9131** | aa-relay 网关 | **对外入口**（systemd `infrax-aa-relay`，`PORT=9131`）——PocketX 应对接这里 |
+| 9134 | 内部 signer | aa-paymaster 签名服务（`infrax-aa-paymaster.service`），**仅内网**，不可直连；aa-relay 经 `AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134` 代理 |
+
+**公网入口**：`https://rpc-gw.0xainet.top/aa-relay/`（nginx 172 `rpc-gw` vhost 新增 `/aa-relay/` → `127.0.0.1:9131`）
+
+> 注：`infrax.0xainet.top` 域 CF Worker 层存在既有 502（非本次引入，影响该域全部路径含 /mcp/），故 aa-relay 入口落在 CF→172 可达的 `rpc-gw` 域；infrax 域 nginx 亦已加同款 `/aa-relay/` 代理，待 CF 修复后可直接切换。
+
+| 端点 | 契约 |
+|------|------|
+| `GET /aa-relay/health` | 健康检查（免鉴权） |
+| `POST /aa-relay/v1/userops` | `{chain, op, wait?}` → `{userOpHash, bundlerUrl, receipt}`（wait 轮询 120s） |
+| `GET /aa-relay/v1/userops/:hash?chain=oxachain` | 收据查询 |
+| `POST /aa-relay/v1/estimate` | `{chain, op}` → gas 估算 |
+| `POST /aa-relay/v1/paymaster` | `{chain, method, params}` → Pimlico paymaster 代理（隐藏 apikey） |
+
+**鉴权**：`X-API-Key: infrax-bridge-2fd4fbe0d33805362ac980fde74c86b2`（或 `X-Service-Key` / `Authorization: Bearer`）——所有 `/v1/*` 必须携带，否则 401。
+
+**配置示例（PocketX 侧 aa-sdk env）**：
+
+```bash
+AA_OXACHAIN_PAYMASTER_URL=https://rpc-gw.0xainet.top/aa-relay/v1/paymaster
+AA_OXACHAIN_BUNDLERS=[{"url":"http://43.159.60.46:4338","priority":0}]
+# 入口（userops/estimate）指向：https://rpc-gw.0xainet.top/aa-relay
+```
+
+**公网验证（2026-08-16）**：`/aa-relay/health` 200；无 key `/v1/userops` 401；带 key 契约校验 400；`/v1/paymaster` stub 请求返回 paymaster `0xc894ef…852f33` + stub data（全链路 公网→CF→nginx→aa-relay:9131→signer:9134 打通）。
+
+**PocketX 后续动作**：切换依赖 → 配置 `AA_OXACHAIN_PAYMASTER_URL` 与 aa-relay 入口 → 带 paymaster 的 UserOp 主网端到端实测 → 闭环归档。
