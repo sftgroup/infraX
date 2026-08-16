@@ -2,7 +2,7 @@
 
 > **用途**：记录生产环境访问凭证与服务密钥，供授权运维/开发人员本地查阅。
 > **安全提示**：本文件含真实密钥，禁止外泄、禁止推送公开仓库；如需分享请走安全渠道。
-> **最后更新**：2026-08-10（从生产机 `systemctl cat` 取回）
+> **最后更新**：2026-08-16（§5 aa-relay env 对齐生产：relay key 轮换 + M-3 迁移 DB + drop-in 补录）
 
 ---
 
@@ -73,21 +73,25 @@
 
 ---
 
-## 5. aa-relay（:9131）env
+## 5. aa-relay（:9131）env（✅ 2026-08-16 对齐生产）
 
-| 变量 | 值 |
-|---|---|
-| AA_RELAY_API_KEY | e04234964df7c9185ce9cdb0eece4f36 |
-| AA_ENABLED_CHAINS | oxachain |
-| AA_OXACHAIN_RPC_URL | https://rpc-oxa.0xainet.top |
-| AA_OXACHAIN_ENTRYPOINT_V07 | 0x97e4cddcffeaf4580bc6315fee512f2b2d82798a |
-| AA_OXACHAIN_IMPLEMENTATION | 0x5131d75af2126eba05edbb6bc24902c42d1b52b4 |
-| AA_OXACHAIN_FACTORY | 0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1 |
-| AA_OXACHAIN_ECDSA_VALIDATOR | 0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c |
-| AA_OXACHAIN_SESSION_MODULE | 0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74 |
-| AA_OXACHAIN_BUNDLERS | [{"url":"http://43.159.60.46:4338","priority":0}] |
-| PORT | 9131 |
-| DATABASE_URL | postgresql://postgres:postgres@localhost:5432/pocketx_mpc |
+| 变量 | 值 | 来源 |
+|---|---|---|
+| AA_RELAY_API_KEY | infrax-bridge-2fd4fbe0d33805362ac980fde74c86b2 | 主 unit（2026-08-16 核验；旧值 e0423496… 已废弃） |
+| AA_ENABLED_CHAINS | oxachain | 主 unit |
+| AA_OXACHAIN_RPC_URL | https://rpc-oxa.0xainet.top | 主 unit |
+| AA_OXACHAIN_ENTRYPOINT_V07 | 0x97e4cddcffeaf4580bc6315fee512f2b2d82798a | 主 unit |
+| AA_OXACHAIN_IMPLEMENTATION | 0x5131d75af2126eba05edbb6bc24902c42d1b52b4 | 主 unit |
+| AA_OXACHAIN_FACTORY | 0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1 | 主 unit |
+| AA_OXACHAIN_ECDSA_VALIDATOR | 0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c | 主 unit |
+| AA_OXACHAIN_SESSION_MODULE | 0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74 | 主 unit |
+| AA_OXACHAIN_BUNDLERS | [{"url":"http://43.159.60.46:4338","priority":0}] | 主 unit |
+| PORT | 9131 | 主 unit |
+| DATABASE_URL | postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc | drop-in `override.conf`（M-3 迁移修正，原 localhost） |
+| AA_PAYMENTS_URL | http://127.0.0.1:9132 | drop-in `override.conf` |
+| AA_PAYMENTS_API_KEY | e56159786fe107b808c29c3c75cd098a31ba58d97772dea3 | drop-in `override.conf` |
+| AA_PLATFORM_ADDRESS | 0x5682e2d55770e46ad24b92e51d6d0a3b629fa0b3 | drop-in `override.conf`（x402 充值收款平台钱包，EOA → 托管合约见 tasklist §9.20） |
+| AA_OXACHAIN_PAYMASTER_URL | http://127.0.0.1:9134 | drop-in `paymaster.conf`（自建 verifying paymaster :9134） |
 
 ---
 

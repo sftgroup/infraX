@@ -5,7 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/infraX/projects/aa-relay
+# 生产实际路径 /home/ubuntu/infraX-1/projects/aa-relay（2026-08-16 对齐；其余多数 unit 模板仍为 /opt/infraX 旧约定，部署时按实际路径替换）
+WorkingDirectory=/home/ubuntu/infraX-1/projects/aa-relay
 # ── 入站 apikey 校验（E-1c，✅ 已启用 2026-08-16）──
 # 启用状态：生产 AA_RELAY_API_KEY 已配置（真实值在服务器 unit，勿提交 git；部署前替换 CHANGE_ME_*）。
 # 校验语义：每个入站请求校验 Bearer / X-API-Key / X-Service-Key 三选一，等于 AA_RELAY_API_KEY 才放行；
@@ -15,16 +16,28 @@ WorkingDirectory=/opt/infraX/projects/aa-relay
 #    集成（见 PocketX 需求单 2026-08-16 需求 3，当前仅静态 AA_RELAY_API_KEY 校验）。
 Environment="AA_RELAY_API_KEY=CHANGE_ME_AA_RELAY_API_KEY"
 Environment="PORT=9131"
-# E-3：session 持久化（与 infrax-mpc 同库）
-Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_mpc"
-# 启用链（多链逗号分隔）+ 每链 RPC/bundler/paymaster（示例仅 base-sepolia；其余链逐链追加）
-Environment="AA_ENABLED_CHAINS=base-sepolia"
-Environment="AA_BASE_SEPOLIA_RPC_URL=https://sepolia.base.org"
-Environment="AA_BASE_SEPOLIA_BUNDLERS=[{\"url\":\"https://api.pimlico.io/v2/84532/rpc?apikey=CHANGE_ME_PIMLICO\",\"priority\":0,\"timeoutMs\":30000}]"
+# E-3：session 持久化（与 infrax-mpc 同库；生产实际为 2026-08-16 迁移后新机 postgres 10.3.8.6，见 tasklist §9.19 M-3 补记）
+Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc"
+# 启用链（多链逗号分隔）+ 每链 RPC/合约/bundler；生产实际为 oxachain（2026-08-16 对齐实值）
+Environment="AA_ENABLED_CHAINS=oxachain"
+Environment="AA_OXACHAIN_RPC_URL=https://rpc-oxa.0xainet.top"
+Environment="AA_OXACHAIN_ENTRYPOINT_V07=0x97e4cddcffeaf4580bc6315fee512f2b2d82798a"
+Environment="AA_OXACHAIN_IMPLEMENTATION=0x5131d75af2126eba05edbb6bc24902c42d1b52b4"
+Environment="AA_OXACHAIN_FACTORY=0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1"
+Environment="AA_OXACHAIN_ECDSA_VALIDATOR=0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c"
+Environment="AA_OXACHAIN_SESSION_MODULE=0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74"
+Environment="AA_OXACHAIN_BUNDLERS=[{\"url\":\"http://43.159.60.46:4338\",\"priority\":0}]"
 # E-1a：paymaster 代理（隐藏 apikey；URL 含 apikey 仅服务端持有，勿下发客户端）
-#Environment="AA_BASE_SEPOLIA_PAYMASTER_URL=https://api.pimlico.io/v2/84532/rpc?apikey=CHANGE_ME_PIMLICO"
-Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/aa-relay/node_modules/.bin:$PATH"
-ExecStart=/opt/infraX/projects/aa-relay/node_modules/.bin/tsx src/index.ts
+# ── 生产 drop-in（systemd override，覆盖主 unit 同名项；密钥勿入库，模板仅注释留档）──
+#   /etc/systemd/system/infrax-aa-relay.service.d/override.conf：
+#     Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc"   （M-3 迁移补记，2026-08-16 人工修正）
+#     Environment="AA_PAYMENTS_URL=http://127.0.0.1:9132"
+#     Environment="AA_PAYMENTS_API_KEY=CHANGE_ME_PAYMENTS_API_KEY"
+#     Environment="AA_PLATFORM_ADDRESS=0x5682e2d55770e46ad24b92e51d6d0a3b629fa0b3"
+#   /etc/systemd/system/infrax-aa-relay.service.d/paymaster.conf：
+#     Environment="AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134"   （自建 verifying paymaster，aa-paymaster :9134）
+Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/home/ubuntu/infraX-1/projects/aa-relay/node_modules/.bin:$PATH"
+ExecStart=/home/ubuntu/infraX-1/projects/aa-relay/node_modules/.bin/tsx src/index.ts
 Restart=on-failure
 RestartSec=5
 
