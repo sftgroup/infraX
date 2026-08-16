@@ -28,6 +28,32 @@ router.get('/market/index-price', asyncHandler(async (req, res) => {
   res.json(apiResponse(data));
 }));
 
+/**
+ * POST /api/v2/data/market/index-price-batch — batch index prices
+ * body: [{ chainIndex, tokenAddress }]（tokenAddress 兼容 tokenContractAddress）
+ * 每链 1 次调用拿多 token 价格，配额友好（对比逐 token GET index-price）。
+ * 供 data 服务 okx_chainos 采集器按轮批量拉取头部代币指数价格。
+ */
+router.post('/market/index-price-batch', asyncHandler(async (req, res) => {
+  const body = req.body as Array<{ chainIndex?: string | number; tokenAddress?: string; tokenContractAddress?: string }>;
+  if (!Array.isArray(body) || body.length === 0) {
+    res.status(400).json(apiResponse(null, 'body must be a non-empty array of { chainIndex, tokenAddress }'));
+    return;
+  }
+  const normalized = body
+    .filter((it) => it && it.chainIndex != null && (it.tokenAddress || it.tokenContractAddress))
+    .map((it) => ({
+      chainIndex: String(it.chainIndex),
+      tokenContractAddress: it.tokenContractAddress || it.tokenAddress!,
+    }));
+  if (normalized.length === 0) {
+    res.status(400).json(apiResponse(null, 'each item requires chainIndex and tokenAddress'));
+    return;
+  }
+  const data = await m().getIndexPriceBatch(normalized);
+  res.json(apiResponse(data));
+}));
+
 /** GET /api/v2/data/market/index-price-history */
 router.get('/market/index-price-history', asyncHandler(async (req, res) => {
   const { chainIndex, tokenAddress, limit } = req.query as any;

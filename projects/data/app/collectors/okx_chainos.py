@@ -3,7 +3,7 @@
 后台线程：每 OKX_CHAINOS_COLLECT_INTERVAL_SEC（默认 60s）从旧栈 collector
 （COLLECTOR_URL，Express :9101）拉取：
   GET /api/v2/data/market/hot-tokens?chainIndex={id}&limit={n}  → 每链热门代币行情
-  GET /api/v2/data/market/index-price?chainIndex={id}&tokenAddress={addr}  → 头部代币指数价格
+  POST /api/v2/data/market/index-price-batch  → 头部代币指数价格（每链 1 次批量调用）
   GET /api/v2/data/market/candles?chainIndex={id}&tokenAddress={addr}  → 头部代币 K 线（DQ-7）
 
 写入 raw_snapshots：
@@ -115,19 +115,18 @@ class OkxChainosCollector:
             # 控制 raw_snapshots 行体积（默认 10/链 → 30 项/轮）
             hot = hot[: OKX_HOT_LIMIT]
             hot_items.extend(hot)
-            # 头部代币补指数价格（原始高精度字符串价格保留）
-            for tok in hot[: OKX_INDEX_TOKENS]:
-                addr = tok.get("tokenAddress")
-                if not addr:
-                    continue
+            # 头部代币补指数价格（batch：每链 1 次调用替代逐 token GET，配额友好；
+            # 原始高精度字符串价格保留透传）
+            addrs = [tok.get("tokenAddress") for tok in hot[: OKX_INDEX_TOKENS] if tok.get("tokenAddress")]
+            if addrs:
                 try:
-                    index_items.extend(self._fetch_index_price(base, chain, addr))
+                    index_items.extend(self._fetch_index_prices(base, chain, addrs))
                 except (requests.Timeout, requests.RequestException) as exc:
                     logger.debug(
-                        "okx_chainos index-price chain=%s addr=%s failed: %s",
-                        chain, addr, exc,
+                        "okx_chainos index-price chain=%s (%d tokens) failed: %s",
+                        chain, len(addrs), exc,
                     )
-                time.sleep(_INDEX_CALL_DELAY)
+                time.sleep(_INDEX_CALL_DELAY)  # 链间间隔，防密集打旧栈
             # DQ-7: 头部代币补 K 线 candles（经旧栈 /market/candles）
             if OKX_CANDLE_ENABLED:
                 for tok in hot[: OKX_CANDLE_TOKENS]:
@@ -175,15 +174,24 @@ class OkxChainosCollector:
             it.setdefault("chain", chain)
         return items
 
-    def _fetch_index_price(self, base: str, chain: str, token_address: str) -> list[dict]:
-        resp = requests.get(
-            f"{base}/api/v2/data/market/index-price",
-            params={"chainIndex": chain, "tokenAddress": token_address},
+    def _fetch_index_prices(self, base: str, chain: str, token_addresses: list[str]) -> list[dict]:
+        """批量拉取指数价格：POST /api/v2/data/market/index-price-batch（每链 1 次）。
+
+        body: [{chainIndex, tokenAddress}]；返回项透传旧栈/OKX v6 原样
+        （含 chainIndex / tokenContractAddress / price 高精度字符串等）。
+        """
+        resp = requests.post(
+            f"{base}/api/v2/data/market/index-price-batch",
+            json=[{"chainIndex": chain, "tokenAddress": addr} for addr in token_addresses],
             headers=_headers(),
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
-        return _parse_list(resp)
+        items = _parse_list(resp)
+        # 归一化：补 chain 字段（与 hot-tokens 口径一致）
+        for it in items:
+            it.setdefault("chain", chain)
+        return items
 
     def _fetch_candles(self, base: str, chain: str, token_address: str) -> list[dict]:
         """DQ-7: 经旧栈 /api/v2/data/market/candles 拉取 K 线（返回项含 timestamp/open/high/low/close/volume）。"""

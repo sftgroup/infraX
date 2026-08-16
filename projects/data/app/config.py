@@ -126,14 +126,16 @@ ONCHAIN_COLLECT_INTERVAL_SEC = int(os.getenv("ONCHAIN_COLLECT_INTERVAL_SEC", "60
 
 # OKX ChainOS 行情快照（okx_hot_tokens / okx_index_prices）：web3.okx.com 官方 v6
 OKX_CHAINOS_COLLECT_ENABLED = os.getenv("OKX_CHAINOS_COLLECT_ENABLED", "true").lower() == "true"
-# ⚠️ 采集频率受 infrax-collector market 配额约束（market_free 10000 次/月）：
-#    默认 3600s（1h）且仅 hot-tokens 时月用量 ≈2160 次，远低于免费配额；
-#    开启 index/candles 或缩短 interval 会显著超配额 → 503 停摆（2026-08-14 实测耗尽）。
-OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "3600"))
-# 链 ID：Ethereum=1, BSC=56, Base=8453（v6 官方链 ID，字符串）
-OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453")
+# 采集频率：60s（需求方建议 ≤60s；DEX 分钟级行情）。调用量（index-price 已 batch 化，
+#   每轮 链数×2 次）：60s × 4 链 ≈ 11.5k 次/天 ≈ 34.6 万次/月 → 旧栈需 ≥2 个 OKX 账号
+#   轮换（admin_okx_accounts 已内置 round-robin，单账号官方免费 20 万/月不够）；
+#   且旧栈 marketQuotaEnforce 仍超 market_free（1 万/月）→ data 服务 key 需
+#   market_enterprise（100 万/月）级别，否则 503（2026-08-14 曾因 market_free 耗尽停摆）。
+OKX_CHAINOS_COLLECT_INTERVAL_SEC = int(os.getenv("OKX_CHAINOS_COLLECT_INTERVAL_SEC", "60"))
+# 链 ID：Ethereum=1, BSC=56, Base=8453, Solana=501（v6 官方链 ID，字符串）
+OKX_CHAINS = os.getenv("OKX_CHAINS", "1,56,8453,501")
 OKX_HOT_LIMIT = int(os.getenv("OKX_HOT_LIMIT", "10"))       # 每链热门代币数
-OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "0"))  # 每链补指数价格的头部代币数（配额内默认 0=关）
+OKX_INDEX_TOKENS = int(os.getenv("OKX_INDEX_TOKENS", "10")) # 每链补指数价格的头部代币数（batch 拉取，每链仅 1 次调用）
 
 # DQ-7: okx candles 快照（经旧栈 /api/v2/data/market/candles 拉取头部代币 K 线）
 OKX_CANDLE_ENABLED = os.getenv("OKX_CANDLE_ENABLED", "false").lower() == "true"
