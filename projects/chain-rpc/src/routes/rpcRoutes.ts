@@ -24,19 +24,24 @@ export function createRpcRouter(pool: RpcPoolManager): Router {
   const router = Router();
 
   router.post('/:chain', async (req, res) => {
-    // X-Json-Rpc: raw → 标准 JSON-RPC 透传（viem/ethers 直连消费）
-    const raw = (req.headers['x-json-rpc'] || '').toString().toLowerCase() === 'raw';
+    const body = req.body;
+    // 内容协商：显式 header `X-Json-Rpc: raw` **或** 标准 JSON-RPC body（含 jsonrpc:"2.0"）
+    // → 标准 JSON-RPC 透传（viem/ethers/http transport 零改动直连）；
+    // 信封 body（{method,params}，无 jsonrpc 字段）→ 兼容旧信封格式（waas/dc/mcp-server/sdk）。
+    const isJsonRpcBody = (b: any): boolean =>
+      (Array.isArray(b) && b.length > 0 && typeof b[0] === 'object' && b[0]?.jsonrpc === '2.0') ||
+      (!!b && typeof b === 'object' && !Array.isArray(b) && (b as any).jsonrpc === '2.0');
+    const raw = (req.headers['x-json-rpc'] || '').toString().toLowerCase() === 'raw' || isJsonRpcBody(body);
     try {
       const norm = normalizeChain(req.params.chain);
       if (!norm) {
         if (raw) {
-          res.status(400).json({ jsonrpc: '2.0', id: (req.body && req.body.id) ?? null, error: { code: -32602, message: `unsupported chain: ${req.params.chain}` } });
+          res.status(400).json({ jsonrpc: '2.0', id: body?.id ?? null, error: { code: -32602, message: `unsupported chain: ${req.params.chain}` } });
         } else {
           res.status(400).json({ detail: `unsupported chain: ${req.params.chain}` });
         }
         return;
       }
-      const body = req.body;
 
       // DC-6: JSON-RPC batch（数组请求）——单次 HTTP 完成多条读，降低高频读的请求数
       if (Array.isArray(body)) {
@@ -89,13 +94,34 @@ export function createBroadcastRouter(pool: RpcPoolManager): Router {
   const router = Router();
 
   router.post('/:chain', async (req, res) => {
+    const body = req.body || {};
+    // 内容协商同读端点：标准 JSON-RPC body（{jsonrpc,id,method:"eth_sendRawTransaction",params:["0x..."]}）
+    // → 标准响应 {jsonrpc,id,result:"0xtxhash"}（viem/ethers 兼容；确认语义走后置 eth_getTransactionReceipt）；
+    // 信封 body（{rawTransaction,wait,timeoutMs}）→ 兼容旧广播契约（wait 确认扩展语义保留）。
+    const raw = (req.headers['x-json-rpc'] || '').toString().toLowerCase() === 'raw' || body.jsonrpc === '2.0';
     try {
       const norm = normalizeChain(req.params.chain);
       if (!norm) {
-        res.status(400).json({ detail: `unsupported chain: ${req.params.chain}` });
+        res.status(400).json(raw ? { jsonrpc: '2.0', id: body.id ?? null, error: { code: -32602, message: `unsupported chain: ${req.params.chain}` } } : { detail: `unsupported chain: ${req.params.chain}` });
         return;
       }
-      const { rawTransaction, wait, timeoutMs } = req.body || {};
+
+      if (raw) {
+        if (body.method !== 'eth_sendRawTransaction' && body.method !== 'sendTransaction') {
+          res.status(400).json({ jsonrpc: '2.0', id: body.id ?? null, error: { code: -32601, message: `method ${body.method} is not allowed on broadcast endpoint` } });
+          return;
+        }
+        const rawTx = Array.isArray(body.params) ? body.params[0] : undefined;
+        if (!rawTx || typeof rawTx !== 'string') {
+          res.status(400).json({ jsonrpc: '2.0', id: body.id ?? null, error: { code: -32602, message: 'rawTransaction (params[0]) is required' } });
+          return;
+        }
+        const txHash = await pool.broadcast(norm, rawTx);
+        res.json({ jsonrpc: '2.0', id: body.id ?? null, result: txHash });
+        return;
+      }
+
+      const { rawTransaction, wait, timeoutMs } = body;
       const txHash = await pool.broadcast(norm, rawTransaction);
 
       if (wait) {
@@ -110,7 +136,7 @@ export function createBroadcastRouter(pool: RpcPoolManager): Router {
       }
       res.json({ code: 0, message: 'ok', data: { chain: norm, txHash, confirmed: false, receipt: null, reason: 'wait=false' } });
     } catch (err: any) {
-      handleError(res, err, 'broadcast');
+      handleError(res, err, 'broadcast', raw, body.id ?? null);
     }
   });
 

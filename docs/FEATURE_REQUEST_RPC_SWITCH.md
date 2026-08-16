@@ -143,6 +143,30 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 - **oxa 链双端点容灾**：oxa 池由单端点 `https://rpc-oxa.0xainet.top` 增加裸节点 `http://43.156.99.215:18545`（同节点双入口，round-robin + 健康检查），避免单端点间歇超时导致整链 503；`/v1/status` 实测 oxa total=2 active=2。
 - **公网 20 连发压测**：oxa `eth_blockNumber` 20/20 全 200（此前单端点时段歇 503）。
 
+---
+
+## 七之二、2026-08-16（二）：标准 JSON-RPC 2.0 兼容端点（AIHunter 追加需求）
+
+> AIHunter 实测网关返回自定义包装 `{code,message,data}`（读）与自定义 body（广播），标准 JSON-RPC 客户端（ethers/viem/Web3.py）无法解析，要求零改动直连。
+
+**实现：内容协商（向后兼容，现有信封调用方零影响）**——`POST /v1/rpc/{chain}` 与 `POST /v1/broadcast/{chain}` 自动识别请求体：
+
+| 请求体特征 | 模式 | 响应 |
+|-----------|------|------|
+| 含 `"jsonrpc":"2.0"`（单条）或数组首元素含（batch） | **标准 JSON-RPC 透传** | `{"jsonrpc":"2.0","id":...,"result":...}` / 错误 `{"jsonrpc":"2.0","id":...,"error":{code,message}}`；batch 返回标准数组 |
+| 无 `jsonrpc` 字段（`{method,params}` / `{rawTransaction,wait}`） | 信封（旧契约，waas/dc/mcp-server/sdk 用） | `{code,message,data:{...}}`（不变） |
+| 显式 `X-Json-Rpc: raw` header | 强制标准透传 | 同标准模式 |
+
+**广播标准语义**：body `{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["0x..."]}` → `result: "0xtxhash"`（viem/ethers 兼容）；确认语义走后置 `eth_getTransactionReceipt`（信封模式 `wait` 扩展保留）；方法级错误 → HTTP 200 + `error:{code:-32000,message:节点消息}`；非法方法 → `-32601`；读 key → 401。
+
+**公网验收（2026-08-16，AIHunter 口径逐项实测通过）**：
+- ethers v6 `JsonRpcProvider(FetchRequest.setHeader('X-API-Key',...))`：`eth_chainId`=0x4c31(19505) ✓、`eth_call` ✓
+- viem `createPublicClient(http(url,{fetchOptions:{headers}}))`：`getChainId`=19505 ✓、`getBlockNumber`=111833 ✓
+- batch：`[{jsonrpc,id,result}×3]` HTTP 200、数组/result/jsonrpc 齐全 ✓
+- 标准错误：`eth_sign` → 403 `{jsonrpc:"2.0",id,error:{code:-32601}}` ✓
+- 广播标准：bx_ 无效 tx → 200 `{jsonrpc,id,error:{code:-32000,message:"invalid sender"}}` ✓；rx_ → 401 ✓；非法方法 → `-32601` ✓
+- 信封兼容回归：`{method,params}` → 仍 `{code:0,data:{...}}` ✓（现有调用方零影响）
+
 **验收状态**：网关侧全部就绪（公网 URL + 双 key + 10 链 + 白名单 + 配额 + 广播语义）。AIHunter 侧待执行：env 切换（`INFRAX_API_URL=https://rpc-gw.0xainet.top` + 双 key）→ 重建 gateway/chain-sync/broadcast-service → 24h 无 RPC 错误 → 功能回归（风控链读/链同步入库/NFT 铸造/订阅校验/广播兜底）。
 
 ---
