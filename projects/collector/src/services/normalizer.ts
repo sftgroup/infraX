@@ -81,6 +81,16 @@ function safeBigInt(hex: string): bigint {
   try { return isEmptyHex(hex) ? 0n : BigInt(hex); } catch { return 0n; }
 }
 
+/**
+ * Safe wrapper around ethers.formatUnits — chain logs can carry amounts
+ * exceeding uint256 (formatUnits enforces fromValue overflow check), which
+ * would abort the whole reclassify batch. Clamp such abnormal amounts to '0';
+ * amount_raw keeps the original value.
+ */
+function safeFormatUnits(value: bigint, decimals: number): string {
+  try { return ethers.formatUnits(value, decimals); } catch { return '0'; }
+}
+
 /** Safely parse a hex string to a number — returns 0 for empty/invalid hex */
 function safeParseInt(hex: string): number {
   try { return isEmptyHex(hex) ? 0 : parseInt(hex, 16); } catch { return 0; }
@@ -171,7 +181,7 @@ export function normalizeBlock(rawBlock: any, chain: string): NormalizedEvent[] 
         token_address: '',
         token_symbol: nativeToken(chain),
         token_id: '',
-        amount: ethers.formatEther(valueWei),
+        amount: safeFormatUnits(valueWei, 18),
         amount_raw: valueWei.toString(),
         event_data: {
           gas: safeParseInt(tx.gas || FALLBACK_HEX),
@@ -273,7 +283,7 @@ export function classifyLog(
           token_address: safeChecksum(log.address),
           token_symbol: '',
           token_id: '',
-          amount: ethers.formatUnits(safeBigInt(log.data), 0),
+          amount: safeFormatUnits(safeBigInt(log.data), 0),
           amount_raw: safeBigInt(log.data).toString(),
           topic_hash: topic0,
           event_data: { blockTimestamp, logIndex, removed: log.removed || false },
@@ -300,7 +310,7 @@ export function classifyLog(
           from_address: topics.length > 1 ? topicToAddress(topics[1]) : '',
           to_address: topics.length > 2 ? topicToAddress(topics[2]) : '',
           token_address: safeChecksum(log.address),
-          amount: safeBigInt(log.data || FALLBACK_HEX) > 0n ? ethers.formatUnits(safeBigInt(log.data), 0) : '0',
+          amount: safeBigInt(log.data || FALLBACK_HEX) > 0n ? safeFormatUnits(safeBigInt(log.data), 0) : '0',
           amount_raw: safeBigInt(log.data || FALLBACK_HEX).toString(),
           topic_hash: topic0,
           event_data: { blockTimestamp, logIndex, note: 'degraded_transfer' },
@@ -332,7 +342,7 @@ export function classifyLog(
         from_address: '',
         to_address: topicToAddress(topics[1]),
         token_address: safeChecksum(log.address),
-        amount: ethers.formatEther(safeBigInt(log.data || FALLBACK_HEX)),
+        amount: safeFormatUnits(safeBigInt(log.data || FALLBACK_HEX), 18),
         amount_raw: safeBigInt(log.data || FALLBACK_HEX).toString(),
         topic_hash: topic0,
         event_data: { blockTimestamp, logIndex, dst: topicToAddress(topics[1]), wad: safeBigInt(log.data || FALLBACK_HEX).toString() },
@@ -345,7 +355,7 @@ export function classifyLog(
         from_address: topicToAddress(topics[1]),
         to_address: '',
         token_address: safeChecksum(log.address),
-        amount: ethers.formatEther(safeBigInt(log.data || FALLBACK_HEX)),
+        amount: safeFormatUnits(safeBigInt(log.data || FALLBACK_HEX), 18),
         amount_raw: safeBigInt(log.data || FALLBACK_HEX).toString(),
         topic_hash: topic0,
         event_data: { blockTimestamp, logIndex, src: topicToAddress(topics[1]), wad: safeBigInt(log.data || FALLBACK_HEX).toString() },
@@ -362,7 +372,7 @@ export function classifyLog(
           from_address: topicToAddress(topics[1]),
           to_address: topicToAddress(topics[2]),
           token_address: safeChecksum(log.address),
-          amount: vals[2] > 0n ? ethers.formatUnits(vals[2], 0) : ethers.formatUnits(vals[3], 0),
+          amount: safeFormatUnits(vals[2] > 0n ? vals[2] : vals[3], 0),
           amount_raw: (vals[2] > 0n ? vals[2] : vals[3]).toString(),
           topic_hash: topic0,
           event_data: {
@@ -392,7 +402,7 @@ export function classifyLog(
           from_address: topicToAddress(topics[1]),
           to_address: topicToAddress(topics[2]),
           token_address: safeChecksum(log.address),
-          amount: ethers.formatUnits(amt0Abs > 0n ? amt0Abs : amt1Abs, 0),
+          amount: safeFormatUnits(amt0Abs > 0n ? amt0Abs : amt1Abs, 0),
           amount_raw: (amt0Abs > 0n ? amt0Abs : amt1Abs).toString(),
           topic_hash: topic0,
           event_data: {
@@ -453,7 +463,7 @@ export function classifyLog(
         from_address: '',
         to_address: topicToAddress(topics[1]),
         token_address: safeChecksum(log.address),
-        amount: ethers.formatUnits(safeBigInt(log.data || FALLBACK_HEX), 0),
+        amount: safeFormatUnits(safeBigInt(log.data || FALLBACK_HEX), 0),
         amount_raw: safeBigInt(log.data || FALLBACK_HEX).toString(),
         topic_hash: topic0,
         event_data: { blockTimestamp, logIndex, to: topicToAddress(topics[1]), value: safeBigInt(log.data || FALLBACK_HEX).toString() },
@@ -466,7 +476,7 @@ export function classifyLog(
         from_address: topicToAddress(topics[1]),
         to_address: '',
         token_address: safeChecksum(log.address),
-        amount: ethers.formatUnits(safeBigInt(log.data || FALLBACK_HEX), 0),
+        amount: safeFormatUnits(safeBigInt(log.data || FALLBACK_HEX), 0),
         amount_raw: safeBigInt(log.data || FALLBACK_HEX).toString(),
         topic_hash: topic0,
         event_data: { blockTimestamp, logIndex, from: topicToAddress(topics[1]), value: safeBigInt(log.data || FALLBACK_HEX).toString() },
