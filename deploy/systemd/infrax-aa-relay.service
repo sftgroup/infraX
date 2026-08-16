@@ -6,7 +6,13 @@ After=network.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/opt/infraX/projects/aa-relay
-# ── 部署前必填：替换 CHANGE_ME_* 为真实密钥（勿提交真实密钥到 git） ──
+# ── 入站 apikey 校验（E-1c，✅ 已启用 2026-08-16）──
+# 启用状态：生产 AA_RELAY_API_KEY 已配置（真实值在服务器 unit，勿提交 git；部署前替换 CHANGE_ME_*）。
+# 校验语义：每个入站请求校验 Bearer / X-API-Key / X-Service-Key 三选一，等于 AA_RELAY_API_KEY 才放行；
+# 未配置时开放（开发模式）。/health 免鉴权。
+# ⚠️ E-1c「外部 apikey 实时校验（data /api-keys/verify）」为可选增强、尚未实现——
+#    若需启用（校验集成方使用 InfraX 签发的 key），需 aa-relay 新增对 data /api-keys/verify 的实时校验
+#    集成（见 PocketX 需求单 2026-08-16 需求 3，当前仅静态 AA_RELAY_API_KEY 校验）。
 Environment="AA_RELAY_API_KEY=CHANGE_ME_AA_RELAY_API_KEY"
 Environment="PORT=9131"
 # E-3：session 持久化（与 infrax-mpc 同库）

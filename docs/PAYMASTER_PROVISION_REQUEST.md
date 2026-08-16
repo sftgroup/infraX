@@ -132,3 +132,48 @@ AA_OXACHAIN_BUNDLERS=[{"url":"http://43.159.60.46:4338","priority":0}]
 **公网验证（2026-08-16）**：`/aa-relay/health` 200；无 key `/v1/userops` 401；带 key 契约校验 400；`/v1/paymaster` stub 请求返回 paymaster `0xc894ef…852f33` + stub data（全链路 公网→CF→nginx→aa-relay:9131→signer:9134 打通）。
 
 **PocketX 后续动作**：切换依赖 → 配置 `AA_OXACHAIN_PAYMASTER_URL` 与 aa-relay 入口 → 带 paymaster 的 UserOp 主网端到端实测 → 闭环归档。
+
+---
+
+## 九、测试额度预存操作记录（2026-08-16 PocketX 需求单 需求1）
+
+> 背景：PocketX relay 广播至 `/v1/userops` 被 A-10 计费 402 拦截（subscriber ledger 余额 0）。
+> 采用方案 A：payments 引擎 ledger 预存 1 OXA 测试额度（联调专用，勿用于生产）。
+> 预存对象（Subscriber/sender）：`0x121E843DA317522634a0b64f3305cD03337f1a83`
+> （联调固定测试私钥推导；运营钱包 `0x52Ec58…8e06` 已直调 factory 预部署，code 61 B）
+
+**执行位置**：生产机 payments DB（systemd 配置 `postgresql://postgres:postgres@localhost:5432/pocketx_payments`；payments 引擎无预存 REST 端点，入账仅 x402 verify，故走 DB 直写）。
+
+```sql
+BEGIN;
+-- 台账（幂等：reference 唯一，重复执行不重复入账）
+INSERT INTO payment_credits (reference, payer, amount_wei, asset, chain_id, metadata)
+VALUES ('topup-pocketx-test-20260816-1oxa',
+        '0x121e843da317522634a0b64f3305cd03337f1a83',
+        '1000000000000000000',                                  -- 1 OXA
+        '0x0000000000000000000000000000000000000000',          -- 原生资产
+        19505,                                                 -- oxachain
+        '{"purpose":"PocketX P0.3 relay test topup (1 OXA)","requested":"2026-08-16"}'::jsonb)
+ON CONFLICT (reference) DO NOTHING;
+-- 余额（幂等累加：重复执行只加一次）
+INSERT INTO payment_balances (address, asset, balance_wei)
+VALUES ('0x121e843da317522634a0b64f3305cd03337f1a83',
+        '0x0000000000000000000000000000000000000000',
+        '1000000000000000000')
+ON CONFLICT (address, asset)
+DO UPDATE SET balance_wei = payment_balances.balance_wei + EXCLUDED.balance_wei,
+              updated_at = NOW();
+COMMIT;
+```
+
+**验证**：
+
+```bash
+# ① DB 直查（期望 1000000000000000000）
+psql "postgresql://postgres:postgres@localhost:5432/pocketx_payments" -tAc \
+  "SELECT balance_wei FROM payment_balances WHERE address='0x121e843da317522634a0b64f3305cd03337f1a83';"
+# ② 引擎 REST（aa-relay A-10 计费实际查询路径）
+curl -s "http://127.0.0.1:9132/payments/balance?address=0x121E843DA317522634a0b64f3305cD03337f1a83"
+```
+
+**执行状态**：⬜ 待生产执行（2026-08-16 预存 SQL 交付；执行后回填此状态 + 确认时间，并回复 PocketX）。
