@@ -176,4 +176,25 @@ psql "postgresql://postgres:postgres@localhost:5432/pocketx_payments" -tAc \
 curl -s "http://127.0.0.1:9132/payments/balance?address=0x121E843DA317522634a0b64f3305cD03337f1a83"
 ```
 
-**执行状态**：⬜ 待生产执行（2026-08-16 预存 SQL 交付；执行后回填此状态 + 确认时间，并回复 PocketX）。
+**执行状态**：✅ 已执行（2026-08-16 预存 SQL 在生产 ledger DB 执行成功；`payment_balances` 入账 1 OXA = 1,000,000,000,000,000,000 wei，`payment_credits` 台账 reference=`topup-pocketx-test-20260816-1oxa`，均验证通过；已回复 PocketX 确认，等待其重跑 relay 广播回传 txHash + 存款扣减验证）。
+
+> 注：首次执行曾因 `balance_wei` 为 text 类型、`text + text` 无累加运算符报错回滚；修正为 `(balance_wei::numeric + EXCLUDED.balance_wei::numeric)::text` 后执行成功。链上转账（PocketX 已转 10 OXA）只增链上原生余额，不计入 ledger；ledger 仅 DB 直插或 x402 verify 入账。
+
+### 补充：为什么计费用 ledger 而非直接读链上余额
+
+- **原子预扣**：ledger 预扣是账本内记账（防并发超扣）；链上余额只能读不能冻结，并发 userop 会超卖。
+- **零 gas 结算**：ledger 结算（平台 ↔ subscriber 划转、退款）是 DB 行更新，零 gas、可回滚；链上结算需真实转账 tx（gas + 失败重试）。
+- **平台可动用性**：subscriber 链上余额归用户控制，平台无法自主扣款；ledger 由平台托管。
+
+### 正式充值路径（x402，生产推荐，替代 DB 直插）
+
+链上资产 → ledger 的自动入账桥（[billing.ts](https://github.com/sftgroup/infraX/blob/main/projects/aa-relay/src/billing.ts) 充值提示即此路径）：
+
+```text
+1. 用户从 subscriber 地址向平台钱包转入 OXA
+   平台钱包（AA_PLATFORM_ADDRESS）: 0x5682e2d55770e46ad24b92e51d6d0a3b629fa0b3
+2. 调用引擎 POST {AA_PAYMENTS_URL}/payments/verify { txHash }
+3. 自动入账到转出方（subscriber）对应的 ledger 账户，与 DB 直插等效
+```
+
+> 2026-08-16 联调实测：PocketX 将 10 OXA 转给 subscriber **自身智能账户**（链上原生余额），未走上述桥（转平台钱包 + verify），故 ledger 仍为 0。正确做法是转给平台钱包后调 verify，即自动入账；已预存 1 OXA 足够本次联调（需求 0.00466 OXA）。
