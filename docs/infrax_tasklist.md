@@ -1823,8 +1823,8 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 |---|---|---|---|---|
 | OE-1 | Escrow 合约开发 + 测试 | `IInfraXEscrow` 实现（balances 记账/dailyCharged 限额/relayer 授权/ReentrancyGuard/UUPS 升级/pause）+ 单元测试（Hardhat/Foundry） | ✅（2026-08-16：合约 + 接口 + mocks + Hardhat 测试 26/26 全绿；OZ 5.6.1 UUPS + 手写 nonReentrant（OZ ReentrancyGuard 带 constructor 不满足升级安全）） | P1 |
 | OE-2 | 第三方安全审计 | 重入/权限/限额/升级安全审计（上线前置） | 🔲（需第三方审计方，外部排期） | P1 |
-| OE-3 | Escrow 部署（无多签，合约直接治理） | 直接部署 Escrow（oxachain 19505），**owner = 平台管理地址**（密钥 HSM/轮换，不引入外部多签；治理全部由合约机制承担：pause 冻结计费 + 限额兜底 + 升级需先暂停） | 🔲（部署脚本 `projects/escrow/scripts/deploy.ts` 就绪；待平台管理地址/部署执行，运维项） | P1 |
-| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → **直接注资 Escrow/paymaster**（无多签环节）；EOA 提现清零、私钥作废 | 🔲（待 OE-3 部署完成，运维项） | P1 |
+| OE-3 | Escrow 部署（无多签，合约直接治理） | 直接部署 Escrow（oxachain 19505），**owner = 平台管理地址**（密钥 HSM/轮换，不引入外部多签；治理全部由合约机制承担：pause 冻结计费 + 限额兜底 + 升级需先暂停） | ✅（2026-08-16：已部署 oxachain 主网，proxy `0x8Bf8Ffee86F1D4a160f0953Eb13BEDcBF99eaF9E`，implementation `0x954940235982EE3F8D17EBF2e1E30bDdAC9c0153`，owner=`0x257a0E…BbF4`（AA_PAYMASTER_DEPLOY_PK），perTx/perDay 默认 1/10 OXA；ERC-1967 验证通过） | P1 |
+| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → **直接注资 Escrow/paymaster**（无多签环节）；EOA 提现清零、私钥作废 | 🔲（待用户确认迁移额度与执行，运维项） | P1 |
 | OE-5 | x402 充值目标切换 | `AA_PLATFORM_ADDRESS` → Escrow；verify 解析 Escrow deposit 入账事件 | ✅（2026-08-16：payments `X402Adapter` 新增 escrow deposit 解析（Deposited 事件 → ledger 索引），server.ts `X402_ESCROW_ADDRESS` 装配；aa-relay `topupHint/aaPlansInfo` escrow 模式指向托管合约；测试 130/130 全绿（含 4 例 escrow deposit）） | P1 |
 | OE-6 | aa-relay escrowMode 双轨计费 | `billing.ts` charge/refund 走 Escrow（feature flag），ledger 保留 fallback | ✅（2026-08-16：`billing.ts` 新增 AA_ESCROW 配置 + escrowCharge/Refund/Balance（viem 链上原子 charge/refund，402/503 语义对齐 ledger）；`chargeUserOp/settleUserOp/aaLedgerBalance/aaPlansInfo` escrow 优先分支；typecheck ✅） | P1 |
 | OE-7 | 并发/退差对账测试 | 100 并发 userOp 无超扣（合约原子）；收据退差与 ledger 结果一致（差异=0） | ✅（2026-08-16：合约层 100 并发 charge 无超扣 + 多笔 charge/refund 退差后链上余额 == ledger 期望（差异=0）+ 当日累计回退一致） | P1 |
