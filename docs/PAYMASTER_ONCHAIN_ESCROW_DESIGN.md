@@ -39,7 +39,7 @@
 
 ## 2. 设计目标与原则
 
-1. **资金安全**：平台托管资金从 EOA 迁入**智能合约（多签可控）**，消除私钥单点；用户存管资金合约可验证。
+1. **资金安全**：平台托管资金从 EOA 迁入**智能合约托管**，消除私钥单点；用户存管资金合约可验证。**治理不依赖外部多签**——全部由合约机制承担（owner 密钥 HSM/轮换 + pause 冻结计费 + 限额兜底 + 升级需先暂停）。
 2. **计费链上化**：原子预扣、扣款、退款在**链上合约记账**（storage 操作），不依赖 DB 事务保证资金语义。
 3. **零信任边界**：任何"资金状态"均可在链上校验；ledger 降级为索引/对账层。
 4. **向后兼容**：迁移期间 ledger 与合约双轨（feature flag），现有 PocketX 调用不改协议。
@@ -54,7 +54,7 @@
    │ ① deposit/锁定（存管到 Escrow）
    ▼
 ┌─────────────────────────┐
-│  InfraX Escrow（托管记账合约） │   ← 平台多签 owner 治理
+│  InfraX Escrow（托管记账合约） │   ← 合约内 owner 治理（密钥 HSM/轮换，无多签）
 │  balances[user]           │   charge/refund：storage 原子记账
 │  allowances[spender]      │   withdraw：仅本人（账户/EOA 签名）
 └─────────────────────────┘
@@ -92,7 +92,7 @@ interface IInfraXEscrow {
     function charge(address user, uint256 amount, string calldata ref) external returns (uint256 newBal);
     function refund(address user, uint256 amount, string calldata ref) external returns (uint256 newBal);
 
-    // ---- 治理侧（仅 owner 多签） ----
+    // ---- 治理侧（仅 owner，智能合约直接治理） ----
     function setRelayer(address relayer, bool enabled) external;
     function setChargeLimit(address user, uint256 perTx, uint256 perDay) external; // 限额
     function pause() external; function unpause() external;
@@ -112,15 +112,15 @@ interface IInfraXEscrow {
 |---|---|---|
 | 用户 | deposit / withdraw / balanceOf | withdraw 仅限本人；ERC-7579 账户场景由 owner 经 execute 调 |
 | Relayer（aa-relay 签名服务） | charge / refund | 受 `perTx/perDay` 限额约束；密钥走 HSM/轮换 |
-| Owner（平台多签，≥2/3） | setRelayer / setChargeLimit / pause / 升级 | 治理不影响用户资金 |
+| Owner（平台管理地址，密钥 HSM/轮换） | setRelayer / setChargeLimit / pause / 升级 | 治理不影响用户资金；升级需先 pause |
 
 ### 4.4 安全要点
 
 1. **重入防护**：charge/refund 无外部转账（纯 storage），天然低危；提现走 CEI（Checks-Effects-Interactions）+ `ReentrancyGuard`。
 2. **限额**：单笔/单日扣款上限（默认 perTx ≤ 1 OXA、perDay ≤ 10 OXA 可配），防 relay 密钥失陷。
-3. **升级**：UUPS 代理（proxy + implementation），owner 多签发起；升级时暂停计费。
+3. **升级**：UUPS 代理（proxy + implementation），owner 发起（需先 pause，暂停时冻结计费）。
 4. **暂停开关**：`pause()` 冻结 charge/refund，存管/提现不受阻（用户资产随时可取）。
-5. **资金隔离**：Escrow 托管资金与运营资金分账户；paymaster EP deposit 由平台多签独立注资。
+5. **资金隔离**：Escrow 托管资金与运营资金分账户；paymaster EP deposit 由平台 owner 独立注资。
 6. **审计**：上线前第三方审计（重入、权限、限额、升级安全）。
 
 ### 4.5 成本评估
@@ -142,8 +142,8 @@ interface IInfraXEscrow {
 
 ### 阶段 1：托管合约落地 + 资金迁入（解决 P1 单点风险）
 
-1. 部署 `InfraXEscrow`（oxachain 19505）于平台多签地址（Gnosis Safe ≥2/3 或平台既有多签）。
-2. 平台 EOA `0x5682e2…fa0b3` 资金迁移：EOA → 多签 → 按需注资 Escrow/paymaster；**EOA 提现清零、私钥作废**。
+1. 部署 `InfraXEscrow`（oxachain 19505），**owner = 平台管理地址**（密钥 HSM/轮换，不引入外部多签；治理全部由合约机制承担：pause 冻结计费 + 限额兜底 + 升级需先暂停）。
+2. 平台 EOA `0x5682e2…fa0b3` 资金迁移：EOA → **直接注资 Escrow/paymaster**（无多签环节）；**EOA 提现清零、私钥作废**。
 3. x402 充值目标切换：`AA_PLATFORM_ADDRESS` 指向 Escrow（`deposit()` 兼作入账：verify 解析 Escrow 入账事件）。
 4. **验收**：用户向 Escrow 存款后 `balanceOf` 链上可见；EOA 余额为 0；充值/提现端到端通过。
 
@@ -166,20 +166,20 @@ interface IInfraXEscrow {
 | 维度 | ledger（现状） | Escrow 合约（本设计） |
 |---|---|---|
 | 资金可验证性 | ❌ 仅 DB | ✅ 链上可查 |
-| 平台单点风险 | EOA 私钥 | ✅ 多签 + 合约 |
+| 平台单点风险 | EOA 私钥 | ✅ 合约托管（余额链上可查，治理由合约机制承担） |
 | 扣款成本 | 零 | ~21k–50k gas/次（可批量摊薄） |
 | 并发防超扣 | DB 事务 | ✅ 链上原子 |
 | 结算灵活性（退款/多资产） | 高 | 中（需合约内实现） |
 | 开发/审计成本 | 已投产 | 需合约开发 + 审计 |
 
-**结论**：当前（联调/小规模 B 端）ledger 仍是最优解；**P1 面向公开市场前**落地 Escrow 迁移，重点优先做**阶段 1（EOA → 多签 + 托管合约）**以消除资金单点风险，阶段 2/3 视规模按需推进。
+**结论**：当前（联调/小规模 B 端）ledger 仍是最优解；**P1 面向公开市场前**落地 Escrow 迁移，重点优先做**阶段 1（EOA → 托管合约）**以消除资金单点风险，阶段 2/3 视规模按需推进。治理不依赖外部多签，由智能合约直接承担。
 
 ---
 
 ## 7. 待办（Backlog）
 
 - [ ] 阶段 1：Escrow 合约代码 + 测试（Hardhat/Foundry）+ 安全要点逐项实现
-- [ ] 阶段 1：平台多签地址确定与 EOA 资金迁移
+- [ ] 阶段 1：Escrow 部署（owner=平台管理地址，密钥 HSM/轮换）与 EOA 资金迁移
 - [ ] 阶段 2：aa-relay `escrowMode` 双轨计费实现 + 并发/对账测试
 - [ ] 阶段 3：对账作业（ledger ↔ 链上）与存量结算
 - [ ] 第三方安全审计（阶段 1 上线前）

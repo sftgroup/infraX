@@ -49,7 +49,7 @@ interface IInfraXEscrow {
     /// @notice 链上原子退差（storage 记账，同时回退当日累计），返回扣后余额
     function refund(address user, uint256 amount, string calldata ref) external returns (uint256 newBal);
 
-    // ---- 治理侧（仅 Owner 多签） ----
+    // ---- 治理侧（仅 Owner，智能合约直接治理，无外部多签） ----
     /// @notice 授权/撤销 relayer 扣款权
     function setRelayer(address relayer, bool enabled) external;
 

@@ -1292,7 +1292,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | `docs/FACTOR_FACTORY_HW_EVOLUTION.md` | 因子工厂硬件进化方案（双路 2683v4+64G+V100 32G，两阶段） | §9.15 | ⏸️ 延后（2026-08-12 用户决策：硬件升级延后，先做当前阶段 CPU 优化；HW-1） |
 | `docs/INFRAX_REQ_SUMMARY_ARCH_AUTOFIND_FACTORY.md` | 需求 4/5/6 汇总 + 附录 A 复合/非线性因子计算架构 | §9.15 | 汇总文档（同 R4/R5/FF 状态） |
 | `docs/MOOMOO_DATA_INTEGRATION.md` | MooMoo 行情强化接入（K线/宏观/新闻/资金流/F10/卖空/日历/榜单/筛选，15 任务） | §9.14 | 🔲 **待评审 → ✅ 已评审执行中**（2026-08-13 用户确认：全量接入 MM-1~MM-10，含新闻/资金流/Kronos 供给；MM-7 OpenD 生产化 P0 前置） |
-| `docs/PAYMASTER_ONCHAIN_ESCROW_DESIGN.md` | 平台钱包 EOA → 托管合约 + 计费链上化（Escrow 记账合约 + 多签 + relay 双轨 + 对账，P1） | §9.20 | 🔲 **已登记**（2026-08-16：OE-1~OE-8，阶段 1 优先消除 EOA 资金单点风险） |
+| `docs/PAYMASTER_ONCHAIN_ESCROW_DESIGN.md` | 平台钱包 EOA → 托管合约 + 计费链上化（Escrow 记账合约 + relay 双轨 + 对账，P1） | §9.20 | 🔲 **已登记**（2026-08-16：OE-1~OE-8，阶段 1 优先消除 EOA 资金单点风险；治理不引入外部多签，由智能合约直接承担） |
 
 **9.10 微服务定位纠正与体验对齐（2026-08-11 商业评审，对标 OKX OnchainOS）**
 
@@ -1823,15 +1823,15 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 |---|---|---|---|---|
 | OE-1 | Escrow 合约开发 + 测试 | `IInfraXEscrow` 实现（balances 记账/dailyCharged 限额/relayer 授权/ReentrancyGuard/UUPS 升级/pause）+ 单元测试（Hardhat/Foundry） | ✅（2026-08-16：合约 + 接口 + mocks + Hardhat 测试 26/26 全绿；OZ 5.6.1 UUPS + 手写 nonReentrant（OZ ReentrancyGuard 带 constructor 不满足升级安全）） | P1 |
 | OE-2 | 第三方安全审计 | 重入/权限/限额/升级安全审计（上线前置） | 🔲（需第三方审计方，外部排期） | P1 |
-| OE-3 | 平台多签 + Escrow 部署 | 确定平台多签（Gnosis Safe ≥2/3 或既有多签）→ 部署 Escrow（oxachain 19505）→ owner 移交多签 | 🔲（部署脚本 `projects/escrow/scripts/deploy.ts` 就绪；待多签确定后执行，运维项） | P1 |
-| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → 多签 → 按需注资 Escrow/paymaster；EOA 提现清零、私钥作废 | 🔲（待 OE-3 部署完成，运维项） | P1 |
+| OE-3 | Escrow 部署（无多签，合约直接治理） | 直接部署 Escrow（oxachain 19505），**owner = 平台管理地址**（密钥 HSM/轮换，不引入外部多签；治理全部由合约机制承担：pause 冻结计费 + 限额兜底 + 升级需先暂停） | 🔲（部署脚本 `projects/escrow/scripts/deploy.ts` 就绪；待平台管理地址/部署执行，运维项） | P1 |
+| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → **直接注资 Escrow/paymaster**（无多签环节）；EOA 提现清零、私钥作废 | 🔲（待 OE-3 部署完成，运维项） | P1 |
 | OE-5 | x402 充值目标切换 | `AA_PLATFORM_ADDRESS` → Escrow；verify 解析 Escrow deposit 入账事件 | ✅（2026-08-16：payments `X402Adapter` 新增 escrow deposit 解析（Deposited 事件 → ledger 索引），server.ts `X402_ESCROW_ADDRESS` 装配；aa-relay `topupHint/aaPlansInfo` escrow 模式指向托管合约；测试 130/130 全绿（含 4 例 escrow deposit）） | P1 |
 | OE-6 | aa-relay escrowMode 双轨计费 | `billing.ts` charge/refund 走 Escrow（feature flag），ledger 保留 fallback | ✅（2026-08-16：`billing.ts` 新增 AA_ESCROW 配置 + escrowCharge/Refund/Balance（viem 链上原子 charge/refund，402/503 语义对齐 ledger）；`chargeUserOp/settleUserOp/aaLedgerBalance/aaPlansInfo` escrow 优先分支；typecheck ✅） | P1 |
 | OE-7 | 并发/退差对账测试 | 100 并发 userOp 无超扣（合约原子）；收据退差与 ledger 结果一致（差异=0） | ✅（2026-08-16：合约层 100 并发 charge 无超扣 + 多笔 charge/refund 退差后链上余额 == ledger 期望（差异=0）+ 当日累计回退一致） | P1 |
 | OE-8 | ledger 转索引/对账层 | 新用户默认 Escrow；ledger 事件索引 + 日终对账（ledger sum == 链上扣减）；存量余额（联调 1 OXA）结算清零 | ⚠️ 部分完成（2026-08-16：对账脚本 `projects/escrow/scripts/reconcile.ts` 落地（链上 balanceOf/chargedToday + 事件聚合 vs ledger payment_credits/payment_balances，守恒+索引+余额三断言，exit 0/1）；ledger 事件索引 = OE-5 verify 入账；新用户默认 Escrow = ESCROW_MODE=true 时双轨切换；存量 1 OXA 结算清零待 OE-3 部署后运维） | P2 |
 
 > 阶段划分：OE-1~OE-5 = 阶段 1（优先，消除资金单点风险）；OE-6~OE-7 = 阶段 2（计费链上化双轨）；OE-8 = 阶段 3（ledger 转对账层）。每阶段可独立验收/回滚。
-> **执行记录（2026-08-16）**：OE-1/5/6/7 代码完成（本地验证全绿）；OE-8 对账脚本完成（生产排期）；OE-2/3/4 为运维/外部项（第三方审计、多签、资金迁移），待 OE-3 前置排期执行。
+> **执行记录（2026-08-16）**：OE-1/5/6/7 代码完成（本地验证全绿）；OE-8 对账脚本完成（生产排期）；OE-2/3/4 为运维/外部项（第三方审计、Escrow 部署、资金迁移）。**治理决策（2026-08-16）：不引入外部多签**，由智能合约直接承担（owner=平台管理地址密钥 HSM/轮换 + pause 冻结计费 + 限额兜底 + 升级需先暂停）。
 
 **9.21 部署文档三台架构同步 + systemd unit 清单补全（2026-08-16 执行）**
 

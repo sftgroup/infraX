@@ -13,7 +13,8 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deployer:", deployer.address);
 
-  // 部署 proxy + implementation（owner 先设为 deployer，随后移交平台多签）
+  // 部署 proxy + implementation（owner 先设为 deployer，随后移交平台管理地址；
+  // 治理不引入外部多签，全部由合约机制承担：pause 冻结计费 + 限额兜底 + 升级需先暂停）
   const Escrow = await ethers.getContractFactory("InfraXEscrow");
   const escrow = await upgrades.deployProxy(Escrow, [deployer.address], { kind: "uups" });
   await escrow.waitForDeployment();
@@ -26,8 +27,8 @@ async function main() {
   console.log("Default per-tx limit:", await escrow.defaultPerTxLimit());
   console.log("Default per-day limit:", await escrow.defaultPerDayLimit());
 
-  // OE-3 提醒：上线前将 owner 移交平台多签
-  // await escrow.transferOwnership("0x<多签地址>");
+  // OE-3 提醒：上线前将 owner 移交平台管理地址（密钥 HSM/轮换，无需多签）
+  // await escrow.transferOwnership("0x<平台管理地址>");
 }
 
 main().catch((error) => {

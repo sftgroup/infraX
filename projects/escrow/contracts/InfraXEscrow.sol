@@ -14,7 +14,7 @@ import {IInfraXEscrow} from "./interfaces/IInfraXEscrow.sol";
  * @notice InfraX 平台托管记账合约（OE-1，2026-08-16）
  *
  * 设计要点（docs/PAYMASTER_ONCHAIN_ESCROW_DESIGN.md §4）：
- *  1. 资金安全：平台托管资金从 EOA 迁入本合约（多签 Owner 治理），消除私钥单点。
+ *  1. 资金安全：平台托管资金从 EOA 迁入本合约（Owner 治理，密钥 HSM/轮换，无外部多签），消除私钥单点。
  *  2. 计费链上化：charge/refund 纯 storage 记账（无真实转账），原子防超扣。
  *  3. 零信任边界：资金状态链上可校验；ledger 降级为索引/对账层。
  *  4. 向后兼容：escrowMode feature flag 双轨，ledger 保留 fallback。
@@ -180,7 +180,7 @@ contract InfraXEscrow is
     }
 
     // ================================================================
-    // 治理侧（仅 Owner 多签）
+    // 治理侧（仅 Owner，智能合约直接治理，无外部多签）
     // ================================================================
     function setRelayer(address relayer, bool enabled) external override onlyOwner {
         require(relayer != address(0), "ESCROW: zero relayer");
