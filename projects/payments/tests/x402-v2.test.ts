@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createWalletClient, http } from 'viem'
+import { createWalletClient, encodeAbiParameters, encodeEventTopics, http, parseAbi } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { X402Adapter } from '../src/adapters/x402'
 import { X402Client } from '../src/client'
@@ -136,6 +136,89 @@ describe('X402Adapter.verifyPaymentSignature', () => {
     const schemes = challenge.accepts.map((a) => a.scheme)
     expect(schemes).toEqual(['exact', 'upto'])
     expect(challenge.accepts[1].amount).toBe((PRICE_WEI * 10n).toString())
+  })
+})
+
+// ── OE-5: verify 解析 Escrow deposit 入账事件 ──────────────────────────────
+const ESCROW = '0x' + '33'.repeat(20)
+const depositEvent = parseAbi(['event Deposited(address indexed user, uint256 amount, address token)'])
+const depositTopic0 = encodeEventTopics({ abi: depositEvent, eventName: 'Deposited', args: {} })[0]
+const padded = (a: string) => ('0x' + a.slice(2).padStart(64, '0'))
+const depositLog = (user: string, amount: bigint, token: string = '0x' + '0'.repeat(40)) => ({
+  address: ESCROW,
+  topics: [depositTopic0, padded(user)],
+  data: encodeAbiParameters(
+    [
+      { type: 'uint256', name: 'amount' },
+      { type: 'address', name: 'token' },
+    ],
+    [amount, token as `0x${string}`]
+  ),
+})
+
+describe('X402Adapter.verifyAndCredit (OE-5 escrow deposit)', () => {
+  it('credits the depositor when the tx deposits native funds into the escrow contract', async () => {
+    const store = makeStore()
+    const adapter = new X402Adapter(
+      { enabled: true, payTo: PAY_TO, priceWei: PRICE_WEI.toString(), chain: 'sepolia', escrow: { address: ESCROW } },
+      {
+        store,
+        chainIdOf: () => 11155111,
+        getClient: () =>
+          ({
+            getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
+            getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, 5n * 10n ** 18n)] }),
+          }) as any,
+      }
+    )
+    const res = await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')
+    expect(res).not.toBeNull()
+    expect(res!.payer.toLowerCase()).toBe(account.address.toLowerCase())
+    expect(res!.creditedWei).toBe((5n * 10n ** 18n).toString())
+    expect(store.credit).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: '0x' + '11'.repeat(32), payer: account.address.toLowerCase(), amountWei: (5n * 10n ** 18n).toString() })
+    )
+  })
+
+  it('ignores a deposit below the price threshold', async () => {
+    const adapter = new X402Adapter(
+      { enabled: true, payTo: PAY_TO, priceWei: PRICE_WEI.toString(), chain: 'sepolia', escrow: { address: ESCROW } },
+      {
+        store: makeStore(),
+        chainIdOf: () => 11155111,
+        getClient: () =>
+          ({
+            getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
+            getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, PRICE_WEI - 1n)] }),
+          }) as any,
+      }
+    )
+    expect(await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')).toBeNull()
+  })
+
+  it('ignores an ERC20 deposit into escrow (native only)', async () => {
+    const token = '0x' + '44'.repeat(20)
+    const adapter = new X402Adapter(
+      { enabled: true, payTo: PAY_TO, priceWei: PRICE_WEI.toString(), chain: 'sepolia', escrow: { address: ESCROW } },
+      {
+        store: makeStore(),
+        chainIdOf: () => 11155111,
+        getClient: () =>
+          ({
+            getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
+            getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, 10n ** 18n, token)] }),
+          }) as any,
+      }
+    )
+    expect(await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')).toBeNull()
+  })
+
+  it('returns null when no escrow configured (native path only)', async () => {
+    const { adapter, store } = makeAdapter()
+    const res = await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')
+    // tx.to == PAY_TO native transfer → native path credit
+    expect(res).not.toBeNull()
+    expect(store.credit).toHaveBeenCalledTimes(1)
   })
 })
 

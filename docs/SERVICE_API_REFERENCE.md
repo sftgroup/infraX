@@ -259,6 +259,8 @@ cancel ───────────────────────▶ 
 
 **回滚预案（T-10）**：waas 侧恢复"直接订阅逻辑"（subscribe 直接 active，回退到 MQ-12 前的简化行为）+ payments rails 停用（不配置 `PAYMENTS_URL`/`DEFAULT_RAIL` 或 payments 服务下线）即整体回退——waas 与 payments 业务零耦合（仅 HTTP 调用），互不影响。
 
+**第三方路径访问控制（T-4，2026-08-16 并入）**：非 waas 业务层路径（第三方服务/中继不经 `/api/v2/subscription/me` 直接检查套餐）统一走 payments 引擎 `POST /payments/access`（body `{subscriber, resource, chain?}` → `{active}`）——resource 为业务侧 opaque 资源标识，由各引擎注入的 `PaymentStore.resolveAccess` 判定（通用部署 = `payment_access` 表，订阅激活时由 host 回调/幂等写入）。waas `/api/v2/subscription/me` 直查 `subscriptions` 已一致（回调落库，无需自定义 PaymentStore）。契约与端点定义见 §7.5.1。
+
 **MCP**：无专属 MCP（`infrax-wallet-mcp` 代理 waas，需 `WAAS_API_KEY`，见 MCP 文档）。
 
 ---

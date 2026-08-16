@@ -10,7 +10,7 @@
 // ledger (idempotent per txHash) and consumed per request via deduct.
 // ---------------------------------------------------------------------------
 
-import type { PublicClient } from 'viem'
+import { parseAbi, parseEventLogs, type PublicClient } from 'viem'
 import { NATIVE_ASSET } from '../types'
 import type { ChainKey, VerifiedPayment } from '../types'
 import type { PaymentStore } from '../store'
@@ -32,7 +32,15 @@ export interface X402Config {
   maxAmountWei?: string
   /** Stablecoin accept + verification (P3). */
   stablecoin?: StablecoinConfig
+  /** OE-5: Escrow 托管合约（x402 充值目标 = AA_PLATFORM_ADDRESS → Escrow）。
+   *   verify 时解析 deposit() 的 Deposited 事件入账 ledger（索引/对账层）。 */
+  escrow?: { address: string }
 }
+
+/** InfraXEscrow.deposit() 事件（native deposit: token = address(0)）。 */
+const escrowDepositAbi = parseAbi([
+  'event Deposited(address indexed user, uint256 amount, address token)',
+])
 
 export interface X402Deps {
   store: PaymentStore
@@ -185,6 +193,13 @@ export class X402Adapter {
     const native = await this.verifyNativeTx(txHash, c)
     if (native) return native
 
+    // OE-5: Escrow deposit path — a deposit() into the escrow contract is the
+    // credential for a top-up (balance lives on-chain; ledger keeps an index).
+    if (this.cfg.escrow?.address) {
+      const escrow = await this.verifyEscrowDepositTx(txHash, c)
+      if (escrow) return escrow
+    }
+
     // Stablecoin rail: a Transfer(from → payTo, value ≥ price) on the token.
     if (this.stablecoinAvailable()) {
       const verified = await this.stablecoin!.verifyAndCredit(txHash, this.cfg.payTo, c)
@@ -226,6 +241,47 @@ export class X402Adapter {
       chainId: this.deps.chainIdOf(c),
     })
     return { reference: txHash.toLowerCase(), payer: from, creditedWei: amount.toString(), asset: NATIVE_ASSET, chain: c }
+  }
+
+  /**
+   * OE-5: Escrow deposit path. tx.to == escrow.address + native Deposited event
+   * (token == address(0)) + amount ≥ price → credit the depositor (ledger 索引).
+   * The authoritative balance stays on-chain (InfraXEscrow.balanceOf); the
+   * ledger entry is the index/reconciliation layer (OE-8).
+   */
+  private async verifyEscrowDepositTx(txHash: string, c: ChainKey): Promise<VerifiedPayment | null> {
+    const escrow = this.cfg.escrow!.address.toLowerCase()
+    const client = this.deps.getClient(c)
+    const hash = txHash as `0x${string}`
+    const [receipt, tx] = await Promise.all([
+      client.getTransactionReceipt({ hash }).catch(() => null),
+      client.getTransaction({ hash }).catch(() => null),
+    ])
+    if (!receipt || receipt.status !== 'success' || !tx) return null
+    if ((tx.to ?? '').toLowerCase() !== escrow) return null
+
+    const logs = parseEventLogs({
+      abi: escrowDepositAbi,
+      eventName: 'Deposited',
+      logs: receipt.logs.filter((l) => l.address.toLowerCase() === escrow),
+    })
+    if (logs.length === 0) return null
+
+    const deposited = logs[0].args
+    const user = (deposited.user as string).toLowerCase()
+    const amount = deposited.amount as bigint
+    const token = (deposited.token as string).toLowerCase()
+    // native deposit only (token == address(0)); ERC20 deposit 走 stablecoin rail
+    if (token !== `0x${'0'.repeat(40)}` || amount < this.priceWei()) return null
+
+    await this.deps.store.credit({
+      reference: txHash.toLowerCase(),
+      payer: user,
+      amountWei: amount.toString(),
+      asset: NATIVE_ASSET,
+      chainId: this.deps.chainIdOf(c),
+    })
+    return { reference: txHash.toLowerCase(), payer: user, creditedWei: amount.toString(), asset: NATIVE_ASSET, chain: c }
   }
 
   async balanceOf(address: string): Promise<bigint> {

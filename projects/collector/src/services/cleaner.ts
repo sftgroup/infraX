@@ -93,6 +93,15 @@ export class DataCleaner {
         });
       }
 
+      // 分区感知清理：events 为分区父表（relkind='p'）时，整分区早于保留窗口
+      // 直接 DROP TABLE（物理删除文件，无死元组），仅残余行走分批 DELETE。
+      const isPartitioned = await this.isPartitioned();
+      if (isPartitioned) {
+        const dropped = await this.dropExpiredPartitions(retentionHours);
+        deletedTotal += dropped;
+        logger.info('[cleaner] Partition-aware cleanup', { droppedPartitions: dropped });
+      }
+
       for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch++) {
         // 分批 DELETE：PG 的 DELETE 不支持 LIMIT，用 ctid 子查询控制每批行数
         const result = await pool.query(
@@ -109,8 +118,8 @@ export class DataCleaner {
         if (deleted === 0) break; // 没有更老的数据了
       }
 
-      // 非 FULL VACUUM：回收死元组空间（不锁表、不占用额外磁盘空间）
-      if (deletedTotal > 0) {
+      // 非 FULL VACUUM：仅普通表需要回收死元组空间；分区表已 DROP 物理回收
+      if (deletedTotal > 0 && !isPartitioned) {
         await pool.query('VACUUM events');
       }
 
@@ -125,6 +134,63 @@ export class DataCleaner {
       logger.error('[cleaner] Cleanup failed', { error: err.message });
     } finally {
       this.cleaning = false;
+    }
+  }
+
+  /**
+   * events 是否为分区父表（native partition，relkind='p'）。
+   * TimescaleDB hypertable 的 relkind 为 'r'，不会被误判。
+   */
+  private async isPartitioned(): Promise<boolean> {
+    try {
+      const { rows } = await pool.query(
+        `SELECT c.relkind FROM pg_class c WHERE c.relname = 'events' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())`
+      );
+      return rows.length > 0 && rows[0].relkind === 'p';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * DROP 整分区早于保留窗口的 events 子分区（物理回收，无死元组）。
+   * @returns 删除的分区数
+   */
+  private async dropExpiredPartitions(retentionHours: number): Promise<number> {
+    try {
+      const { rows } = await pool.query(
+        `SELECT c.relname AS part
+           FROM pg_inherits i
+           JOIN pg_class c  ON c.oid = i.inhrelid
+           JOIN pg_class p  ON p.oid = i.inhparent
+           JOIN pg_namespace n ON n.oid = p.relnamespace
+          WHERE p.relname = 'events' AND n.nspname = current_schema()`
+      );
+      if (rows.length === 0) return 0;
+
+      let dropped = 0;
+      for (const { part } of rows) {
+        const maxRow = await pool.query(
+          `SELECT max(collected_at) AS max_ts FROM ${part}`
+        );
+        const maxTs: Date | null = maxRow.rows[0]?.max_ts ?? null;
+        if (!maxTs) {
+          // 空分区也直接回收
+          await pool.query(`DROP TABLE IF EXISTS ${part}`);
+          dropped++;
+          continue;
+        }
+        const boundary = new Date(Date.now() - retentionHours * 3_600_000);
+        if (maxTs.getTime() < boundary.getTime()) {
+          await pool.query(`DROP TABLE IF EXISTS ${part}`);
+          dropped++;
+          logger.info('[cleaner] Dropped expired partition', { partition: part, maxCollectedAt: maxTs.toISOString() });
+        }
+      }
+      return dropped;
+    } catch (err: any) {
+      logger.warn('[cleaner] Partition drop failed, falling back to row DELETE', { error: err.message });
+      return 0;
     }
   }
 

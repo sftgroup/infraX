@@ -155,6 +155,8 @@ const payments = new PaymentsService({
         payTo: process.env.X402_PAY_TO as string,
         priceWei: process.env.X402_PRICE_WEI as string,
         chain: (process.env.X402_CHAIN ?? 'oxachain') as never,
+        // OE-5: x402 充值目标切换 AA_PLATFORM_ADDRESS → Escrow（verify 解析 Deposited 事件入账）
+        escrow: process.env.X402_ESCROW_ADDRESS ? { address: process.env.X402_ESCROW_ADDRESS } : undefined,
       }
     : undefined,
   mpp: process.env.MPP_ENABLED === 'true'

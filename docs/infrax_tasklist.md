@@ -1692,7 +1692,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | RI-1.3 | 生产验证 | 34 端点加载；ethereum/bsc/base/sepolia 均经 Infura/Alchemy 持续出数（块号前进）；残余 429 为 Infura 免费 key 突发限额（单 key ~3-5 req/s），重试自愈；公共节点 403 已降级排除 | | ✅ | P0 |
 | **RI-2** | 免费节点多提供商池（failover 备选） | | 🔲 | P1 |
 | RI-2.1 | 多 provider 列表 | rpc-pool 本已含多 provider（publicnode/llamarpc/ankr/dataseed）并实现轮询+健康检查+故障切换（rpcPool.ts 既有能力）；本次补齐 solana（alchemy×2+public）并入 static 过滤（rpcPoolConfig.ts activeChains 已加 solana） | 列表入配置 | ✅ | P1 |
-| RI-2.2 | rpc-pool 多 provider 轮询 | 现有降级检测+round-robin+epoch 分片已实现；**改进点（未做）**：429 重试改换端点而非重试同一 key | 单节点故障无感知切换 | 🔲 | P1 |
+| RI-2.2 | rpc-pool 多 provider 轮询 | 现有降级检测+round-robin+epoch 分片已实现；**改进点（2026-08-16 确认，commit e80af2c 已实现）**：429 重试改换端点而非重试同一 key（`rpcPool.ts` `pickAlternativeEndpoint` 按链 failoverCursor 轮换到同链其他健康端点，无可用端点才退避重试同一 key） | 单节点故障无感知切换 | ✅ | P1 |
 | RI-2.3 | 生产验证 | 公共节点 403/limit 自动降级排除；付费端点接管 | | ✅ | P1 |
 | **RI-3** | 请求侧节流 | | 🔲 | P1 |
 | RI-3.1 | 指数退避+jitter 封装 | collector okx 客户端、knowledge-injector yfinance 统一封装（429/5xx → 1s→2s→4s + jitter） | ✅（2026-08-15 部署：`okxMarketV6.ts` request 内 429/5xx → `1000×2^n×(0.6+rand×0.8)` 退避重试 3 次（402/其他 4xx 不重试透传），本地 mock 验证 backoff 区间 PASS；`knowledge-injector/providers/_yf_helpers.py` `_MAX_RETRIES 1→3`、退避加 jitter、`_is_rate_limit` 覆盖 429/5xx（500/502/503/504/server error）。生产部署 infrax-collector + infrax-knowledge-injector 重启，okx Snapshot 300 tokens 0 errors 无回归） | 🔲 | P1 |
@@ -1821,16 +1821,17 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 内容 | 状态 | 优先级 |
 |---|---|---|---|---|
-| OE-1 | Escrow 合约开发 + 测试 | `IInfraXEscrow` 实现（balances 记账/dailyCharged 限额/relayer 授权/ReentrancyGuard/UUPS 升级/pause）+ 单元测试（Hardhat/Foundry） | 🔲 | P1 |
-| OE-2 | 第三方安全审计 | 重入/权限/限额/升级安全审计（上线前置） | 🔲 | P1 |
-| OE-3 | 平台多签 + Escrow 部署 | 确定平台多签（Gnosis Safe ≥2/3 或既有多签）→ 部署 Escrow（oxachain 19505）→ owner 移交多签 | 🔲 | P1 |
-| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → 多签 → 按需注资 Escrow/paymaster；EOA 提现清零、私钥作废 | 🔲 | P1 |
-| OE-5 | x402 充值目标切换 | `AA_PLATFORM_ADDRESS` → Escrow；verify 解析 Escrow deposit 入账事件 | 🔲 | P1 |
-| OE-6 | aa-relay escrowMode 双轨计费 | `billing.ts` charge/refund 走 Escrow（feature flag），ledger 保留 fallback | 🔲 | P1 |
-| OE-7 | 并发/退差对账测试 | 100 并发 userOp 无超扣（合约原子）；收据退差与 ledger 结果一致（差异=0） | 🔲 | P1 |
-| OE-8 | ledger 转索引/对账层 | 新用户默认 Escrow；ledger 事件索引 + 日终对账（ledger sum == 链上扣减）；存量余额（联调 1 OXA）结算清零 | 🔲 | P2 |
+| OE-1 | Escrow 合约开发 + 测试 | `IInfraXEscrow` 实现（balances 记账/dailyCharged 限额/relayer 授权/ReentrancyGuard/UUPS 升级/pause）+ 单元测试（Hardhat/Foundry） | ✅（2026-08-16：合约 + 接口 + mocks + Hardhat 测试 26/26 全绿；OZ 5.6.1 UUPS + 手写 nonReentrant（OZ ReentrancyGuard 带 constructor 不满足升级安全）） | P1 |
+| OE-2 | 第三方安全审计 | 重入/权限/限额/升级安全审计（上线前置） | 🔲（需第三方审计方，外部排期） | P1 |
+| OE-3 | 平台多签 + Escrow 部署 | 确定平台多签（Gnosis Safe ≥2/3 或既有多签）→ 部署 Escrow（oxachain 19505）→ owner 移交多签 | 🔲（部署脚本 `projects/escrow/scripts/deploy.ts` 就绪；待多签确定后执行，运维项） | P1 |
+| OE-4 | 平台 EOA 资金迁移清零 | EOA `0x5682e2…fa0b3` 10 OXA → 多签 → 按需注资 Escrow/paymaster；EOA 提现清零、私钥作废 | 🔲（待 OE-3 部署完成，运维项） | P1 |
+| OE-5 | x402 充值目标切换 | `AA_PLATFORM_ADDRESS` → Escrow；verify 解析 Escrow deposit 入账事件 | ✅（2026-08-16：payments `X402Adapter` 新增 escrow deposit 解析（Deposited 事件 → ledger 索引），server.ts `X402_ESCROW_ADDRESS` 装配；aa-relay `topupHint/aaPlansInfo` escrow 模式指向托管合约；测试 130/130 全绿（含 4 例 escrow deposit）） | P1 |
+| OE-6 | aa-relay escrowMode 双轨计费 | `billing.ts` charge/refund 走 Escrow（feature flag），ledger 保留 fallback | ✅（2026-08-16：`billing.ts` 新增 AA_ESCROW 配置 + escrowCharge/Refund/Balance（viem 链上原子 charge/refund，402/503 语义对齐 ledger）；`chargeUserOp/settleUserOp/aaLedgerBalance/aaPlansInfo` escrow 优先分支；typecheck ✅） | P1 |
+| OE-7 | 并发/退差对账测试 | 100 并发 userOp 无超扣（合约原子）；收据退差与 ledger 结果一致（差异=0） | ✅（2026-08-16：合约层 100 并发 charge 无超扣 + 多笔 charge/refund 退差后链上余额 == ledger 期望（差异=0）+ 当日累计回退一致） | P1 |
+| OE-8 | ledger 转索引/对账层 | 新用户默认 Escrow；ledger 事件索引 + 日终对账（ledger sum == 链上扣减）；存量余额（联调 1 OXA）结算清零 | ⚠️ 部分完成（2026-08-16：对账脚本 `projects/escrow/scripts/reconcile.ts` 落地（链上 balanceOf/chargedToday + 事件聚合 vs ledger payment_credits/payment_balances，守恒+索引+余额三断言，exit 0/1）；ledger 事件索引 = OE-5 verify 入账；新用户默认 Escrow = ESCROW_MODE=true 时双轨切换；存量 1 OXA 结算清零待 OE-3 部署后运维） | P2 |
 
 > 阶段划分：OE-1~OE-5 = 阶段 1（优先，消除资金单点风险）；OE-6~OE-7 = 阶段 2（计费链上化双轨）；OE-8 = 阶段 3（ledger 转对账层）。每阶段可独立验收/回滚。
+> **执行记录（2026-08-16）**：OE-1/5/6/7 代码完成（本地验证全绿）；OE-8 对账脚本完成（生产排期）；OE-2/3/4 为运维/外部项（第三方审计、多签、资金迁移），待 OE-3 前置排期执行。
 
 **9.21 部署文档三台架构同步 + systemd unit 清单补全（2026-08-16 执行）**
 

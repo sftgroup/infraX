@@ -38,6 +38,7 @@ PREFIX_BY_SCOPE = {
     "mpc": "mp_",       # mpc 服务
     "chain-rpc": "cr_", # chain-rpc 网关（读/广播）
     "waas": "wa_",      # waas 服务
+    "aa-relay": "ar_",  # E-1c: aa-relay 入站 key（UserOp 转发网关外部调用方）
     "rpc": "cr_",           # chain-rpc 读校验 scope（RPC-2：外部 key 可读；AIHunter 读 key 走 chain-rpc rx_ 订阅 key）
     "rpc_broadcast": "cr_", # chain-rpc 广播 key（RPC-2：可读可广播，与 rpc 家族互认）
 }

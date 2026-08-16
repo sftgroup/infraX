@@ -1,0 +1,25 @@
+{
+  "name": "infrax-escrow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "InfraX Escrow 托管记账合约（OE-1，2026-08-16）",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "reconcile": "hardhat run scripts/reconcile.ts",
+    "test:concurrency": "hardhat run scripts/concurrency-test.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.3.0",
+    "hardhat": "^2.22.17",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.2.0",
+    "@openzeppelin/contracts-upgradeable": "^5.2.0",
+    "pg": "^8.13.0"
+  }
+}
