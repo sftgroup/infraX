@@ -1,0 +1,20 @@
+[Unit]
+Description=InfraX Market MCP (:3013, market-index, MQ-16 T-2)
+After=network.target infrax-collector.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/mcp-server
+Environment="PORT=3013"
+# 数据面/订阅面均经 collector :9101（/api/v2/data/market/*、/api/v2/market/*）
+Environment="DC_URL=http://localhost:9101"
+# DC_API_KEY（collector 数据面 X-API-Key）经 drop-in 注入，不入 git：
+#   /etc/systemd/system/infrax-market-mcp.service.d/dc-api-key.conf
+#   （模板见 deploy/overrides/templates/dc-mcp-key.conf.template，注明 market-mcp 同理）
+ExecStart=/home/ubuntu/infraX-1/projects/mcp-server/node_modules/.bin/tsx src/market-index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

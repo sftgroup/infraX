@@ -1831,3 +1831,16 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | OE-8 | ledger 转索引/对账层 | 新用户默认 Escrow；ledger 事件索引 + 日终对账（ledger sum == 链上扣减）；存量余额（联调 1 OXA）结算清零 | 🔲 | P2 |
 
 > 阶段划分：OE-1~OE-5 = 阶段 1（优先，消除资金单点风险）；OE-6~OE-7 = 阶段 2（计费链上化双轨）；OE-8 = 阶段 3（ledger 转对账层）。每阶段可独立验收/回滚。
+
+**9.21 部署文档三台架构同步 + systemd unit 清单补全（2026-08-16 执行）**
+
+> 触发：对照生产部署文档核查 25 个 systemd 服务 → 源码映射，发现 `deploy/systemd` 缺 8 个 unit 且 DEPLOYMENT.md 仍为单机版（2026-08-11 v0.7.0，与 8-16 三台迁移后实际不符）。
+
+| 编号 | 任务 | 内容 | 状态 |
+|---|---|---|---|
+| U-1 | DEPLOYMENT.md 彻底更新 | 单机版 → **v0.8.0-20260816** 三台架构（43.163.105.172 主 23 服务 + 43.156.78.59 新机 postgres/rag/ki/egress + 43.156.25.197 ML 机）；DB 连接串全量 10.3.8.6；nginx `/api/rag/` → 新机；公网主域 infrax.app（迁移后全 200）；防火墙/健康检查/负载参考按服务器分区；修复备忘新增 v0.8.0 迁移条目 | ✅ |
+| U-2 | cleanup 脚本连接串同步 | `deploy/infrax-cleanup.sh` 从 `sudo -u postgres psql`（本地 socket）改为 `psql -h 10.3.8.6 -U postgres`（迁移后 PG 在新机），bash -n 校验通过 | ✅ |
+| U-3 | 缺失 unit 补全 ×8 | data/knowledge-injector/ragservicer/session-key 复用项目内现成 unit；rpc-mcp/market-mcp/session-key-mcp/admin-legacy 从模板推演新增；session-key-mcp 端口修正 **9111→3011**（源码默认）；敏感值统一走 drop-in（不入 git） | ✅ |
+| U-4 | 三端代码一致性核验 | 本地 / 101.33.109.117（历史生产源码机）/ GitHub(sftgroup/infraX) master 全为 7f341d3；30 项目源码树逐项比对一致（远程多出文件均为 .gitignore 排除项） | ✅ |
+
+> 生产三台实机（172/78.59/25.197）代码版本未经 SSH 直接核验（无凭证）；101.33.109.117 源码副本与 GitHub 完全一致。部署文档健康检查、端口、DB 连接等信息以 §9.19 迁移记录与迁移文档（INFRAX_MIGRATION_SCALE_OUT.md）为准。

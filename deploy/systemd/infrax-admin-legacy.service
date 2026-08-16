@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX Admin Legacy (:3002, 冗余实例已停用)
+# 2026-08-11 双实例收敛：admin :9100（infrax-admin）为唯一实例，:3002 冗余已停用
+# （见 docs/services/README.md「admin 双实例已收敛」）；保留 unit 仅为映射 DEPLOYMENT.md 服务清单。
+# 如需重新启用：与 infrax-admin.service 同源（server/index.ts，仅 PORT 不同）；
+# 敏感 env（ADMIN_PASS / MPC_ENCRYPTION_SECRET 等）经 drop-in 注入，勿在 git 写明文。
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/admin
+Environment="PORT=3002"
+ExecStart=/usr/bin/tsx server/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

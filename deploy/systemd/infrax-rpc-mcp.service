@@ -1,0 +1,19 @@
+[Unit]
+Description=InfraX Chain-RPC MCP (:3012, rpc-index, MQ-10 补充 B)
+After=network.target infrax-chain-rpc.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/mcp-server
+Environment="PORT=3012"
+Environment="CHAIN_RPC_URL=http://localhost:9130"
+# CHAIN_RPC_READ_KEY / CHAIN_RPC_BROADCAST_KEY（出站 X-Service-Key）与
+# MCP_API_KEY（入站 inboundAuth）经 drop-in 注入，不入 git：
+#   /etc/systemd/system/infrax-rpc-mcp.service.d/override.conf
+ExecStart=/home/ubuntu/infraX-1/projects/mcp-server/node_modules/.bin/tsx src/rpc-index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

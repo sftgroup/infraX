@@ -1,0 +1,20 @@
+[Unit]
+Description=InfraX Session Key Engine (SaaS 托管实例, A-15)
+# 依赖 DB/Redis 就绪后启动；OpenD 行情网关与本服务无关
+After=network.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=ubuntu
+# A-15: 消费端仅配 SESSION_KEY_ENGINE_URL + SESSION_KEY_API_KEY（sdk_ 前缀 Bearer）
+WorkingDirectory=/opt/infrax/session-key/packages/server
+# 敏感配置（DB 密码 / ENCRYPTION_KEY / JWT_SECRET / API_TOKENS / 链 RPC URL）集中在
+# /etc/infrax/session-key.env（权限 600，不入 git；本文件保持占位不变）
+EnvironmentFile=/etc/infrax/session-key.env
+ExecStart=/usr/bin/env node /opt/infrax/session-key/packages/server/dist/index.js
+Restart=always
+RestartSec=10
+# 日志全部走 journald（A-18: 服务端审计已掩码调用方 key，session key 私钥原文绝不落日志）
+
+[Install]
+WantedBy=multi-user.target

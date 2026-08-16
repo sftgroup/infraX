@@ -5,31 +5,35 @@
 LOG="/var/log/infrax-cleanup.log"
 echo "[$(date)] Starting cleanup, keeping last 5 days..." >> "$LOG"
 
+# 2026-08-16 迁移后 postgres 位于新机 43.156.78.59（内网 10.3.8.6）
+PG="psql -h 10.3.8.6 -U postgres"
+export PGPASSWORD=postgres
+
 # Collecter events: 删除 5 天前的数据
-DELETED=$(sudo -u postgres psql -d pocketx_collector -t -A -c \
+DELETED=$($PG -d pocketx_collector -t -A -c \
   "WITH deleted AS (DELETE FROM events WHERE collected_at < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $DELETED events older than 5 days" >> "$LOG"
 
 # Payment events cleanup (uses created_at) — payment_events lives in the
 # payment engine db (pocketx_payments, migration 004), not the collector db.
-PAY_DELETED=$(sudo -u postgres psql -d pocketx_payments -t -A -c \
+PAY_DELETED=$($PG -d pocketx_payments -t -A -c \
   "WITH deleted AS (DELETE FROM payment_events WHERE created_at < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $PAY_DELETED payment_events older than 5 days" >> "$LOG"
 
 # OKX token snapshots cleanup
-OKX_DELETED=$(sudo -u postgres psql -d pocketx_collector -t -A -c \
+OKX_DELETED=$($PG -d pocketx_collector -t -A -c \
   "WITH deleted AS (DELETE FROM okx_token_snapshots WHERE collected_at < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $OKX_DELETED okx_token_snapshots older than 5 days" >> "$LOG"
 
 # Binance futures prices cleanup (uses bucket)
-BNB_DELETED=$(sudo -u postgres psql -d pocketx_collector -t -A -c \
+BNB_DELETED=$($PG -d pocketx_collector -t -A -c \
   "WITH deleted AS (DELETE FROM binance_futures_prices WHERE bucket < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $BNB_DELETED binance_futures_prices older than 5 days" >> "$LOG"
 
 # VACUUM to reclaim disk space
-sudo -u postgres psql -d pocketx_collector -c "VACUUM ANALYZE events" >> "$LOG" 2>&1
+$PG -d pocketx_collector -c "VACUUM ANALYZE events" >> "$LOG" 2>&1
 echo "[$(date)] VACUUM complete" >> "$LOG"

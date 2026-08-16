@@ -1,0 +1,20 @@
+[Unit]
+Description=InfraX Session Key MCP Server (:3011)
+After=network.target infrax-session-key.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/mcp-server
+Environment="PORT=3011"
+Environment="SESSION_KEY_URL=http://localhost:3500"
+# SESSION_KEY_API_KEY（sdk_ 前缀）经 drop-in 注入：
+#   /etc/systemd/system/infrax-session-key-mcp.service.d/sk-key.conf（不入 git）
+ExecStart=/home/ubuntu/infraX-1/projects/mcp-server/node_modules/.bin/tsx src/session-key-index.ts
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/infraX-1/logs/session-key-mcp.log
+StandardError=append:/home/ubuntu/infraX-1/logs/session-key-mcp.error.log
+
+[Install]
+WantedBy=multi-user.target

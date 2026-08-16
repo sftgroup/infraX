@@ -1,0 +1,18 @@
+[Unit]
+Description=InfraX Data Service — K-line + factor API (:9112)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/infraX-1/projects/data
+Environment=PYTHONPATH=/home/ubuntu/infraX-1/projects/data
+Environment=DATA_SERVICE_PORT=9112
+ExecStart=/home/ubuntu/infraX-1/projects/data/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/infraX-1/projects/data/service.log
+StandardError=append:/home/ubuntu/infraX-1/projects/data/service.log
+
+[Install]
+WantedBy=multi-user.target
