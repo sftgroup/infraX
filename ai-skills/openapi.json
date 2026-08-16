@@ -1,0 +1,362 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "InfraX Hub MCP API",
+    "version": "1.1.0",
+    "description": "InfraX Hub MCP — unified market-data / ML / RAG knowledge-graph API (13 tools aggregated from data :9112, injector :9113, ragservicer :9721). Call tools via MCP Streamable HTTP (POST /mcp/message, JSON-RPC: methods/tools-call)."
+  },
+  "servers": [
+    {
+      "url": "https://mcp.0xainet.top"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Service health check",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/mcp/message": {
+      "post": {
+        "operationId": "mcpMessage",
+        "summary": "MCP Streamable HTTP message (JSON-RPC 2.0): tools/list, tools/call, resources/read, prompts/get",
+        "description": "Body: {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"<tool>\",\"arguments\":{...}}}. Supported tools (13) are listed under x-mcp-tools with their input schemas.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "enum": [
+                      "2.0"
+                    ]
+                  },
+                  "id": {},
+                  "method": {
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MCP result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "InfraX API key (Authorization: Bearer also accepted)"
+      }
+    }
+  },
+  "x-mcp-tools": [
+    {
+      "name": "data_bars",
+      "description": "Query OHLCV kline bars from the InfraX market data service. Supports stocks, forex, crypto (spot/swap) and A-share symbols.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading symbol, e.g. BTC/USDT, BTCUSDT, AAPL, EURUSD, 600519, GC=F"
+          },
+          "timeframe": {
+            "type": "string",
+            "description": "Bar timeframe, e.g. 1d, 4h, 1m (default: 1d)"
+          },
+          "start": {
+            "type": "number",
+            "description": "Start time in epoch milliseconds"
+          },
+          "end": {
+            "type": "number",
+            "description": "End time in epoch milliseconds"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max bars to return (default 500)"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "data_ticker",
+      "description": "Get the latest market ticker (price) for a symbol from the InfraX market data service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading symbol, e.g. BTC/USDT, AAPL, EURUSD"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "data_factors",
+      "description": "Query technical / macro / on-chain factors for a symbol (current values).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading symbol, e.g. BTC/USDT, AAPL"
+          },
+          "factor": {
+            "type": "string",
+            "description": "Specific factor id (see /factors/catalog), e.g. us10y, rsi14; omit for all"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "data_factors_history",
+      "description": "Query historical factor series for a symbol over a time window.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading symbol, e.g. BTC/USDT, AAPL"
+          },
+          "factor": {
+            "type": "string",
+            "description": "Factor id (see /factors/catalog), e.g. us10y"
+          },
+          "start": {
+            "type": "number",
+            "description": "Start time in epoch milliseconds"
+          },
+          "end": {
+            "type": "number",
+            "description": "End time in epoch milliseconds"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max points (default 500)"
+          }
+        },
+        "required": [
+          "symbol",
+          "factor"
+        ]
+      }
+    },
+    {
+      "name": "data_snapshots",
+      "description": "Query snapshot data (macro, crypto, onchain, defi, indices...) by type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Snapshot type, e.g. onchain (BTC sub-types), macro, indices, defi_tvl"
+          },
+          "date": {
+            "type": "string",
+            "description": "Date filter (YYYY-MM-DD)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max records (default 100)"
+          }
+        }
+      }
+    },
+    {
+      "name": "data_symbols",
+      "description": "List or search supported trading symbols in the InfraX market data service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keyword, e.g. BTC or 600519; omit to list all"
+          },
+          "market": {
+            "type": "string",
+            "description": "Market: crypto (default), usstock, forex, futures, cnstock, hkstock"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          }
+        }
+      }
+    },
+    {
+      "name": "ml_predictions",
+      "description": "Get model predictions for a symbol from the InfraX ML pipeline (tree / direction models).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Trading symbol, e.g. BTC/USDT, 000333"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "data_symbol_search",
+      "description": "Fuzzy-search supported symbols across markets (crypto / usstock / forex / futures / cnstock / hkstock).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "Fuzzy keyword, e.g. btc, eth, apple, 600519"
+          },
+          "market": {
+            "type": "string",
+            "description": "Market: crypto (default), usstock, forex, futures, cnstock, hkstock"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      }
+    },
+    {
+      "name": "data_symbol_resolve",
+      "description": "Resolve a raw symbol keyword to the canonical trading symbol (e.g. BTC -> BTCUSDT).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "Symbol keyword, e.g. BTC, BTC/USDT, EURUSD=X, apple"
+          },
+          "market": {
+            "type": "string",
+            "description": "Market: crypto (default), usstock, forex, futures, cnstock, hkstock"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    },
+    {
+      "name": "data_broker_policy",
+      "description": "Get the broker market policy (which exchanges are the primary trading venue per market).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "data_stats",
+      "description": "Get InfraX data service database stats (kline rows, snapshot rows, symbol count, coverage range).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "injector_trigger",
+      "description": "Trigger a manual data injection into the knowledge graph (fetches + embeds a data source). Write op: runs background ingestion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Injector source, e.g. macro, sentiment, crypto_overview, onchain, defi_tvl, news_sentiment"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
+    {
+      "name": "rag_query",
+      "description": "Query the InfraX RAG knowledge base (vector + graph + keyword hybrid search). Returns relevant context from indexed documents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "description": "Namespace/collection to query, e.g. market, onchain"
+          },
+          "query": {
+            "type": "string",
+            "description": "Natural language query"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Search mode (default mix)",
+            "enum": [
+              "mix",
+              "local",
+              "global",
+              "hybrid",
+              "naive"
+            ]
+          }
+        },
+        "required": [
+          "namespace",
+          "query"
+        ]
+      }
+    }
+  ]
+}

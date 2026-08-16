@@ -16,6 +16,7 @@
     "dev:vault": "tsx src/vault-index.ts",
     "dev:market": "tsx src/market-index.ts",
     "dev:hub": "tsx src/hub-index.ts",
+    "gen:openapi": "tsx scripts/gen-openapi.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },

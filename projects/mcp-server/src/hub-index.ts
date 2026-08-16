@@ -15,6 +15,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { z } from "zod";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseToolsFromSource, buildOpenApiSpec } from "./openapi-spec.js";
 
 // ── Upstream services (env-configurable, no hardcoded secrets) ──
 const DATA_URL = process.env.DATA_URL || process.env.DATA_API_URL || "http://localhost:9112";
@@ -306,10 +310,10 @@ server.tool(
 const app = express();
 app.use(express.json());
 
-// 入站鉴权中间件（豁免 /health 与 / 信息页）
+// 入站鉴权中间件（豁免 /health、/ 信息页与 /openapi.json 公开文档）
 app.use(async (req: any, res: any, next: any) => {
   const p = req.path || "/";
-  if (p === "/health" || p === "/") return next();
+  if (p === "/health" || p === "/" || p === "/openapi.json") return next();
   try {
     if (!(await verifyInboundKey(extractInboundKey(req)))) {
       return res.status(401).json({ error: "unauthorized" });
@@ -321,6 +325,13 @@ app.use(async (req: any, res: any, next: any) => {
 });
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "infrax-hub-mcp", uptime: process.uptime() }));
+
+// OpenAPI 3.1 spec：从本文件源码解析已注册工具动态生成（Phase 3.2，单源）
+app.get("/openapi.json", (_req, res) => {
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "hub-index.ts"), "utf8");
+  const spec = buildOpenApiSpec(parseToolsFromSource(src), process.env.HUB_BASE_URL || `http://localhost:${PORT}`);
+  res.json(spec);
+});
 
 app.post("/mcp/message", async (req, res) => {
   const transport = new StreamableHTTPServerTransport({

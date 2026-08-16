@@ -734,11 +734,11 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 
 | # | 任务 | 估计 | 状态 |
 |:---:|------|:---:|:---:|
-| 3.1 | SKILL.md + mcp-config.json 编写 | 1d | 🔲 |
-| 3.2 | OpenAPI 3.1 自动生成（从 hub-index.ts） | 1d | 🔲 |
-| 3.3 | ClawHub 发布 | 0.5d | 🔲 |
-| 3.4 | MCP Hub (mcp.so) 注册 | 0.5d | 🔲 |
-| 3.5 | 其他市场适配 | 1d | 🔲 |
+| 3.1 | SKILL.md + mcp-config.json 编写 | 1d | ✅（2026-08-16 修正：与 §6.1 产物重叠，`ai-skills/skills/{7 组}/SKILL.md` + `shared/mcp-config.json` 均已存在） |
+| 3.2 | OpenAPI 3.1 自动生成（从 hub-index.ts） | 1d | ✅（2026-08-16）`src/openapi-spec.ts`（源码解析 13 工具）+ `GET /openapi.json`（hub :3008，鉴权豁免）+ `npm run gen:openapi` → 产物 `ai-skills/openapi.json`；本地验证 openapi 3.1.0 / 13 tools / paths=/health,/mcp/message / 无鉴权 200 |
+| 3.3 | ClawHub 发布 | 0.5d | 🔲（外部市场发布，需 ClawHub 账号 + 打包上传 + 审核，运营动作待排期） |
+| 3.4 | MCP Hub (mcp.so) 注册 | 0.5d | 🔲（外部市场注册，需 mcp.so 账号，运营动作待排期） |
+| 3.5 | 其他市场适配 | 1d | ✅（2026-08-16 修正：与 §6.2 产物重叠，5 IDE 插件发布物已存在：`.claude-plugin` / `cursor` / `opencode` / `codex` / `openclaw`） |
 
 > **发布物**（§6.1，随 Phase 2-3 实施）：ClawHub SKILL / MCP Hub = P0；OpenAI GPT Store / Cursor / Claude / GitHub = P1。非功能目标（§8）：hub 启动 <5s、查询 P95<2s、交易 P95<10s、TEE 签名 <500ms。
 
