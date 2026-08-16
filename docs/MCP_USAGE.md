@@ -57,7 +57,7 @@ curl -s -X POST http://<host>:3008/mcp/message \
 
 | MCP 服务 | 入站鉴权 | 说明 |
 |---|---|---|
-| **hub-index** | ✅ | `MCP_API_KEY` 白名单（逗号分隔，常量时间比较）或 data 签发 `mx_` 前缀 key（`scope=mcp`）经 `/api-keys/verify` 实时校验；请求头三选一 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key`；豁免 `/health` `/` |
+| **hub-index** | ✅ | `MCP_API_KEY` 白名单（逗号分隔，常量时间比较）或 data 签发 `mx_` 前缀 key（`scope=mcp`）经 `/api-keys/verify` 实时校验；请求头三选一 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key`；豁免 `/health` `/` `/openapi.json` |
 | wallet-mcp / vault-mcp / chain-rpc-mcp / mpc-mcp / session-key-mcp / dc-mcp | ✅（挂 `inboundAuth`） | 复用 `mcp-auth.ts` 同一入站中间件：`MCP_API_KEY` 白名单或 data `mx_` key 实时校验；三 header 三选一；豁免 `/health` `/`。⚠️ **注意**：生产须注入 `MCP_API_KEY`（或 `DATA_URL`+`DATA_API_KEY`），否则白名单为空 → 全部请求 401（fail-closed 误锁，2026-08-08 wallet-mcp 曾遇） |
 
 ### 2.3 出站鉴权（MCP → 后端）
@@ -78,6 +78,8 @@ curl -s -X POST http://<host>:3008/mcp/message \
 ## 3. hub-index — 统一入口（:3008，13 工具）
 
 聚合数据栈三大服务（data/injector/rag）于一个 MCP 端点，**推荐外部 AI Agent 首选接入**。
+
+> **OpenAPI 3.1（2026-08-16，Phase 3.2）**：`GET /openapi.json`（鉴权豁免）从源码动态生成全部工具 spec（`x-mcp-tools` 扩展），离线产物见 `ai-skills/openapi.json`；再生成 `npm run gen:openapi`。
 
 ### 3.1 DATA 行情/因子/ML（data :9112）
 

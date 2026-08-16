@@ -294,6 +294,13 @@ export class HttpClient {
     return r.json();
   }
 
+  /** POST + 状态/头元数据（market-rpc x402 门控等需要感知 HTTP 402 与 X-Payment-* 头的场景） */
+  async postWithMeta<T = any>(path: string, body?: any, headers?: Record<string, string>) {
+    const r = await this.fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, headers });
+    const json = await r.json().catch(() => ({}));
+    return { status: r.status, headers: r.headers, body: json as T };
+  }
+
   async patch<T>(path: string, body?: any, headers?: Record<string, string>): Promise<InfraXResponse<T>> {
     const r = await this.fetch(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined, headers });
     return r.json();
@@ -755,6 +762,24 @@ export class MarketAPI {
 // ═══════════════ MarketRpc — 行情数据 RPC（A-12/13：/v1/market-rpc，与 REST MarketAPI 同源同缓存） ═══════════════
 // 12 组方法 + 多 token 批量（tokens 数组）+ 信封 {code,message,data}；rx_ 读 key 鉴权。
 // 同源同缓存：与 MarketAPI 走同一 HttpClient（同 collector 实例），口径一致。
+// x402 门控（A-12，2026-08-16）：匿名调用 tokenSearch/tokenInfo/price/candles →
+// HTTP 402 + X-Payment-* 头；SDK 抛 X402RequiredError（携带支付清单），调用方接入 x402 支付后
+// 回放请求携带 X-Payment-Order-Id 放行。
+
+export class X402RequiredError extends Error {
+  constructor(
+    public readonly orderId: string,
+    public readonly resource: string,
+    public readonly amount: string,
+    public readonly network: string,
+    public readonly payTo: string,
+    public readonly verifyUrl: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "X402RequiredError";
+  }
+}
 
 export interface MarketRpcTokenParams {
   chainIndex?: string;
@@ -780,9 +805,23 @@ export interface MarketRpcBatchItem<T = any> { tokenAddress: string; data: T; }
 export class MarketRpcAPI {
   constructor(private http: HttpClient) {}
 
-  /** 通用调用（method 见下方类型化方法） */
+  /** 通用调用（method 见下方类型化方法）。遇 x402 门控（HTTP 402）抛 X402RequiredError */
   async call<T = any>(method: string, params: Record<string, any> = {}) {
-    return this.http.post<T>('/v1/market-rpc', { method, params });
+    const res = await this.http.postWithMeta<InfraXResponse<T>>("/v1/market-rpc", { method, params });
+    if (res.status === 402) {
+      const h = (k: string) => (res.headers.get ? res.headers.get(k) || "" : "");
+      const err = res.body as any;
+      throw new X402RequiredError(
+        h("x-payment-order-id"),
+        h("x-payment-resource"),
+        h("x-payment-amount"),
+        h("x-payment-network"),
+        h("x-payment-payto"),
+        h("x-payment-verify-url"),
+        err?.message || "x402 payment required",
+      );
+    }
+    return res.body;
   }
 
   async tokenSearch(params: { keyword: string; chainIndex?: string; limit?: number }) {

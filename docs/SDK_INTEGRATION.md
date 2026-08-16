@@ -8,7 +8,7 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | **0.7.1** | ✅ 已发布（2026-08-12，registry 验证；0.7.0 首发、0.7.1 补 dc.balance） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** |
+| `@0xinfrax/infrax-dk`（npm） | **0.8.3** | ✅ 已发布（2026-08-12，registry 验证；0.7.0 首发、0.7.1 补 dc.balance；0.8.3 **MarketRpc 402 门控支持：`X402RequiredError` + `postWithMeta`**） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** / **MarketRpc（/v1/market-rpc 12 组方法 + 批量 + x402 门控）** |
 | `@0xinfrax/mpc-sdk`（npm，独立轻量） | **0.3.0** | ✅ 已发布（npm registry 已验证，2026-08） + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC **16 方法**：钱包模块 6（sendCode/register/recover/status/listWallets/createWallet）+ 会话模块 3（unlock/lock/status）+ **链上模块 7（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，E-5d 已随 0.3.0 发布）** |
 | `@0xinfrax/session-key-core` / `-client` / `-evm` / `-server`（npm，独立 4 包） | **0.2.0** / 0.1.0 / 0.1.1 / 0.1.1 | ✅ 已发布（2026-07-31 ~ 08-07） | Session Key 引擎（EIP-712 授权 + 受限代执行）；**core 0.2.0 并入 aa-sdk（`Aa` 命名空间：BundlerClient / PaymasterClient / SessionKeySigner / MpcSigner / KernelV3SessionDataBuilder，含 oxachain:19505）** |
 | `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
@@ -95,9 +95,28 @@ const infrax = new InfraX({
 | **DC 链上数据** | `dc.events()`、`dc.stats()`、`dc.tokens()`、`dc.chains()`、`dc.price()`；**MQ-16 订阅**：`dc.subscribe(params, walletAddress)`、`dc.paymentCheck(walletAddress)`、`dc.verify(txHash, walletAddress)`、`dc.usage(walletAddress)` | DC :9102 |
 | **OKX ChainOS 市场** | `market.tokenInfo()`、`market.candles()`、`market.balance()`、`market.txHistory()`、`market.smartMoneySignals()`、`market.leaderboard()` 等；**MQ-16 订阅**：`market.plans()`、`market.checkout(params)`、`market.paymentCheck()`、`market.verify(txHash)`、`market.usage()` | DC :9102（数据面）/ Collector :9101（订阅面 `/api/v2/market/*`） |
 | **chain-rpc 网关** | `chainRpc.call()`（读）、`chainRpc.broadcast()`（广播，需 `chainRpcBroadcastKey`）、`chainRpc.status()`、`chainRpc.health()`；**MQ-16 订阅**：`chainRpc.subscriptionPlans()`、`chainRpc.issueRpcKey(label?)`、`chainRpc.subscriptionCheckout(params)`、`chainRpc.subscriptionPaymentCheck()`、`chainRpc.subscriptionVerify(txHash)`、`chainRpc.subscriptionUsage()` | chain-rpc :9130 `/v1/rpc/:chain`、`/v1/broadcast/:chain`、`/v1/subscription/*` |
+| **MarketRpc 行情 RPC（A-12，≥0.8.3）** | `marketRpc.call(method, params)`、`marketRpc.tokenSearch()`、`marketRpc.tokenInfo()`、`marketRpc.price()`、`marketRpc.candles()`、`marketRpc.hotTokens()`、`marketRpc.leaderboard()`、`marketRpc.signals()`、`marketRpc.mempump()`、`marketRpc.balances()`、`marketRpc.transactions()`、`marketRpc.trackedTokens()`、`marketRpc.customSigs()`（12 组方法 + `tokens[]` 批量） | Collector :9101 `/v1/market-rpc` |
 | **payments 通用支付引擎** | `payment.checkout()`、`payment.a2a()`、`payment.a2aSettle()`、`payment.verify()`、`payment.balance()`、`payment.price()`；**MQ-16**：`payment.batchCreate()`/`batchSettle()`/`batchGet()`/`batchCancel()`、`payment.inviteCreate()`/`inviteList()`/`inviteGet()`/`inviteCancel()`/`inviteSettle()`/`invitePay()`、`payment.transferCreate()`/`transferList()`/`transferGet()`/`transferConfirm()`/`transferCancel()` | payments :9132 `/payments/*`（裸 JSON） |
 
 > `data.*` 对应参数以 SDK 导出类型为准（`DataBarsParams`/`DataTickerParams`/`DataFactorCurrentParams`…，见 `src/index.ts`）。
+>
+> **MarketRpc x402 门控（A-12，2026-08-16）**：匿名调用 4 个收费方法（`tokenSearch`/`tokenInfo`/`price`/`candles`）时服务端返回 HTTP 402，SDK（≥0.8.3）抛 `X402RequiredError`（含 `amount/network/payTo/orderId/verifyUrl`）。支付闭环：
+>
+> ```ts
+> import { InfraX, X402RequiredError } from '@0xinfrax/infrax-dk';
+> const infrax = new InfraX({ baseUrl: 'https://api.infrax.io', apiKey: 'rx_...' });
+> try {
+>   await infrax.marketRpc.tokenInfo({ chainIndex: '1', tokenAddress: '0x...' });
+> } catch (e) {
+>   if (e instanceof X402RequiredError) {
+>     // 1) 按 e.network / e.payTo 转账 e.amount 原生资产
+>     // 2) 提交 txHash 至 e.verifyUrl 入账
+>     // 3) 回放原请求携带 e.orderId（header X-Payment-Order-Id）→ 放行
+>     console.log(e.amount, e.network, e.payTo, e.orderId);
+>   }
+> }
+> ```
+> 持有效 `rx_`/`pkx_` key（套餐配额内）调用收费方法不触发 402。
 >
 > **chain-rpc 广播 key 说明（MQ-10 补充 A）**：网关读/广播为**分级 key**——读端点（`/v1/rpc`）只认读 key（`chainRpcApiKey`/`apiKey`），广播端点（`/v1/broadcast`）只认服务端签发的独立广播 key。SDK 自 0.5.0 支持独立配置：
 >

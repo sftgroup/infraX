@@ -466,13 +466,17 @@ X-API-Key: rx_...
 | `customSigs` | — | `chain`, `enabled` | 自定义事件签名列表（collector 本地表） |
 
 - **多 token 批量**：`tokenInfo` / `price` / `candles` 传 `params.tokens = [addr, ...]`；多元素时返回保序数组 `[{tokenAddress, data}, ...]`，单 token 用 `tokenAddress` 直接返回数据。
-- **x402 支付门控**：上游需 x402 时返回 **HTTP 402** `{code: -1, message: "x402 payment required: ...", code: 402}`（message 含 network/amount/payTo 清单），调用方据其接入 x402。
+- **x402 门控（自建，2026-08-16）**：`tokenSearch` / `tokenInfo` / `price` / `candles` 四个方法对**匿名调用**（无有效 `rx_`/`pkx_` key）返回 **HTTP 402** `{code:-1, message:"x402 payment required: <清单>", code:402}`，并带 `X-Payment-*` 头：`X-Payment-Order-Id`（支付订单）、`X-Payment-Resource`、`X-Payment-Amount`（按次费用，批量按 token 数倍增）、`X-Payment-Network`、`X-Payment-PayTo`（平台收款地址）、`X-Payment-Verify-Url`（`/api/v2/market/verify`）。
+  - 费率：`tokenSearch` $0.002 / `tokenInfo` $0.001 / `price` $0.0005 / `candles` $0.001（**按次**，`tokens[]` 批量按元素数 ×N；token 维度方法按 token 数倍增）。
+  - 支付闭环：调用方按其 `amount/network/payTo` 完成链上转账 → 提交 `txHash` 到 `X-Payment-Verify-Url` 入账 → **回放原请求**携带 `X-Payment-Order-Id`（头或 body）放行。
+  - **持有效 key（`rx_`/`pkx_`）调用 4 个收费方法不触发 402**（套餐配额内）；其余免费方法（`hotTokens`/`leaderboard`/`signals`/`mempump`/`balances`/`transactions`/`trackedTokens`/`customSigs`）匿名调用返回 401。
 - **错误**：参数缺失/非法 → `400`；未知方法 → `404`；上游错误 → `502`。
 
 ### 1.8 行情 WebSocket 订阅（`/v1/market-ws`，A-14，Collector `:9101`）
 
 > 2026-08-15 交付：**增量推送**——价格仅变化时推送、K 线仅最后一根 timestamp 变化时推送；对齐低延迟场景。
 > **鉴权**：query `key` = `rx_` 读 key（与 market-rpc 同一校验），如 `wss://…/v1/market-ws?key=rx_...&chainIndex=1`；失败 → HTTP 401 断开。
+> **x402 会话门控（自建，2026-08-16）**：无有效 key 的匿名连接 → **HTTP 402** + `X-Payment-*` 清单（会话价 $0.001，对齐 A-12）；支付后回放连接带 `paymentOrderId`（query）或 `X-Payment-Order-Id`（header）→ 101 升级放行。
 
 订阅 / 退订协议：
 

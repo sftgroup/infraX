@@ -419,12 +419,14 @@ X-API-Key: rx_...
 | `customSigs` | — | `chain`, `enabled` | 自定义事件签名（本地表） |
 
 - **批量**：`tokens[]` 多元素 → 保序 `[{tokenAddress, data}, ...]`；单 token 用 `tokenAddress` 直接返回。
-- **x402 门控**：上游需 x402 → **HTTP 402** `{code:-1, message:"x402 payment required: ...", code:402}`。
+- **x402 门控（自建，2026-08-16）**：`tokenSearch`/`tokenInfo`/`price`/`candles` 对**匿名调用**（无有效 `rx_`/`pkx_` key）返回 **HTTP 402** `{code:-1, message:"x402 payment required: <清单>", code:402}` + `X-Payment-*` 头（Order-Id/Resource/Amount/Network/PayTo/Verify-Url）。费率按次：tokenSearch $0.002、tokenInfo $0.001、price $0.0005、candles $0.001（`tokens[]` 批量 ×N）。支付 → 提交 txHash 至 Verify-Url 入账 → 回放请求带 `X-Payment-Order-Id` 放行。持有效 key 不触发 402；其余免费方法匿名 → 401。SDK（infrax-dk ≥0.8.3）遇 402 抛 `X402RequiredError`。
 - **错误**：参数缺失 400 / 未知方法 404 / 上游错误 502。
 
 ### 7.6.7 行情 WebSocket 订阅（collector :9101，A-14）— `/v1/market-ws`
 
 > 2026-08-15 交付：增量推送（价格仅变化、K 线仅最后一根变化）。鉴权：query `key` = `rx_` 读 key，如 `wss://…/v1/market-ws?key=rx_...&chainIndex=1`；失败 401 断开。
+>
+> **x402 会话门控（自建，2026-08-16）**：无有效 key 匿名连接 → HTTP 402 + `X-Payment-*` 清单（会话价 $0.001）；支付后回放连接带 `paymentOrderId`（query）或 `X-Payment-Order-Id`（header）→ 101 升级放行。
 
 | 方向 | 消息 | 说明 |
 |---|---|---|
