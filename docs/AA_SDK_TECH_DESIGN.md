@@ -1,16 +1,18 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.7 | **日期**: 2026-08-10 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.8 | **日期**: 2026-08-16 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
+>
+> **v1.8（2026-08-16）**：**SDK 公开发布**——`@0xinfrax/aa-sdk@0.1.0` 发布至 npm（`@infrax` scope 私有发布需付费 E402，改 `@0xinfrax` scope + `--access public`）；`entryPointAbi`（activate.ts）、`parseBundlers`（config.ts）按 PocketX 需求单三.1/三.2 导出；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 上线（9131 网关对外 / 9134 内部 signer 仅内网）。详见 `docs/PAYMASTER_PROVISION_REQUEST.md` §八。
 >
 > **v1.7（2026-08-10）**：**产品方向修正（stevenwang 确认）：不做免 gas / 不替用户付费**——用户自行充值原生代币支付 gas（引导充值流程，余额不足时提示）；Paymaster 保留为可选组件（默认不启用，不用于替用户付费）。同步修正 §1.1 需求表、D5、§5.5、§6.2、§10.2 验收、§11 风控、§13 M3 完成标准。
 >
 > **v1.6（2026-08-09）**：MQ-10 补充 E-1 三缺口完成状态——**E-1a Paymaster 客户端 ✅**（`PaymasterClient` 落地 `pimlico_getPaymasterStubData/Data`，直连或 aa-relay `/v1/paymaster` 代理双模式隐藏 apikey；`estimateUserOpGas` 编排 stub→估算→正式 data）；**E-1c aa-relay ✅**（`/v1/userops` 转发+多 bundler 容灾、`/v1/userops/:hash` 收据、`/v1/estimate`、`/v1/paymaster` 代理、`/v1/session` 系列；systemd unit `infrax-aa-relay.service`）；**E-1d MPC 接入 ✅**（`MpcSigner` 落地，`signUserOp`→MPC `POST /api/v2/mpc/sign-digest`（raw 32B 摘要 TSS 签名，免二次哈希）、`signMessage`→`/sign-message`）；**E-1b 多链扩展 🟡**（env 模板就绪，逐链合约部署+链上实测待生产）；链上验收（用户自充 gas 发起 UserOp / ≥3 新链 UserOp 实测）待生产机执行。
 >
-> **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@infrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
+> **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@0xinfrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
 >
-> **v1.4（2026-08-07）**：新增 §1.3 三层架构与 InfraX 统一管理：aa-sdk 定位升级为 InfraX 共享 SDK（`@infrax/aa-sdk` 白标），PocketX 仅基于 SDK 构建；链上/服务能力归 InfraX 统一承载；新增 product 多租户隔离（`SessionStore` 键 `(product, network, sessionId)`）。
+> **v1.4（2026-08-07）**：新增 §1.3 三层架构与 InfraX 统一管理：aa-sdk 定位升级为 InfraX 共享 SDK（`@0xinfrax/aa-sdk` 白标），PocketX 仅基于 SDK 构建；链上/服务能力归 InfraX 统一承载；新增 product 多租户隔离（`SessionStore` 键 `(product, network, sessionId)`）。
 >
 > **v1.3（2026-08-07）**：新增 §7.6 任意地址转账模式（原生币）：哨兵 target 授权（data 必须为空 + value 单笔/日限额 + 目标非合约），随 P0.12 增强模块一并实现；说明原生币与 ERC-20 转账接收方约束差异。
 >
@@ -45,11 +47,11 @@
 
 ### 1.3 三层架构与 InfraX 统一管理（stevenwang 2026-08-07 确认）
 
-**定位**：aa-sdk 升级为 **InfraX 共享 SDK**（`@infrax/aa-sdk` 白标）——PocketX 及所有产品**只基于 SDK 构建**，链上与服务能力由 InfraX 统一承载。
+**定位**：aa-sdk 升级为 **InfraX 共享 SDK**（`@0xinfrax/aa-sdk` 白标）——PocketX 及所有产品**只基于 SDK 构建**，链上与服务能力由 InfraX 统一承载。
 
 ```
 ┌─ 产品层：PocketX（wallet-base / mobile / desktop）───────────┐
-│  仅依赖 @infrax/aa-sdk（链上交互 + Signer 抽象）+ InfraX SDK │
+│  仅依赖 @0xinfrax/aa-sdk（链上交互 + Signer 抽象）+ InfraX SDK │
 ├─ 服务层：InfraX 统一管理（多产品共享）───────────────────────┤
 │  · Session Key Engine :3500（签发/托管/签名委托，P3.1 对接） │
 │  · aa-relay（UserOp 转发 / apikey，P0.5）                   │
@@ -65,7 +67,7 @@
 | 链上合约栈 + Bundler | InfraX 共享部署 | 一次部署，多产品/多链复用 |
 | Session Key 签发/托管/签名 | InfraX :3500 | 不重复开发（§1.2 / P3.1） |
 | UserOp 中继 + apikey | InfraX aa-relay | 前端零密钥（P0.5） |
-| aa-sdk | **InfraX 共享 SDK**（`@infrax/aa-sdk`） | 白标；PocketX 基于其构建 |
+| aa-sdk | **InfraX 共享 SDK**（`@0xinfrax/aa-sdk`） | 白标；PocketX 基于其构建 |
 | 产品 UI / 品牌 / 授权配置入口 | PocketX | 只调 SDK |
 
 **多租户隔离（关键）**：InfraX 统一管理多个产品，授权数据按 `product` 维度隔离——`SessionStore` 键从 `(network, sessionId)` 扩展为 **`(product, network, sessionId)`**；每产品独立授权记录、互不可见。
