@@ -245,12 +245,12 @@ Base URL:  https://api.infrax.io
 ### 🌐 rpc-gw 公网 HTTPS 入口（`https://rpc-gw.0xainet.top`，RPC-1）
 
 > 2026-08-13 交付：chain-rpc 网关 `:9130` 的公网入口（nginx TLS 反代，certbot 自动续期，客户端体上限 2m）。
-> **鉴权透传**：`X-API-Key`（或 `Authorization: Bearer`）原样转发至 chain-rpc，契约与内网一致（`rx_` 读 key / `cr_` 广播 key 双轨）。
+> **鉴权透传**：`X-API-Key`（或 `Authorization: Bearer`）原样转发至 chain-rpc，契约与内网一致（`rx_` 读 key / `bx_` 广播 key 双轨；广播 key 另一形态 = data 签发 scope=`rpc_broadcast`）。
 
 | 路由 | 方法 | 功能 | 鉴权 |
 |------|------|------|------|
-| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（batch 支持，`X-Json-Rpc: raw` 透传） | ✅ 读 key（`rx_`） |
-| `/v1/broadcast/{chain}` | POST | 广播交易（读 key 无法触达） | ✅ 广播 key（`cr_`） |
+| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（**内容协商 RPC-9**：body 含 `jsonrpc:"2.0"` 自动标准 JSON-RPC 透传——ethers/viem 零改动直连；无 `jsonrpc` 字段走信封；`X-Json-Rpc: raw` 强制标准；batch ≤100 条） | ✅ 读 key（`rx_`） |
+| `/v1/broadcast/{chain}` | POST | 广播交易（读 key 无法触达；标准 body `eth_sendRawTransaction` → `{jsonrpc,result}`） | ✅ 广播 key（`bx_`） |
 | `/v1/ws` | WS | WebSocket（仅 eth_subscribe/unsubscribe，upgrade 支持） | ✅ 读 key |
 | `/v1/subscription/*` | — | RPC 套餐订阅面（plans / issue-key / checkout / payment-check / verify / usage） | ✅ `rx_` key |
 | `/v1/status` `/v1/plans` `/v1/planinfo` `/health` | GET | 公开元信息（免鉴权） | — |

@@ -14,9 +14,9 @@ pip install infra-chain-rpc-client
 from infra_chain_rpc_client import ChainRpcClient
 
 client = ChainRpcClient(
-    base_url="https://your-host:9130",
+    base_url="https://rpc-gw.0xainet.top",  # 公网入口（标准 JSON-RPC 兼容；内网可 http://127.0.0.1:9130）
     api_key="rx_...",            # 读 key：/v1/rpc/:chain、dex.quote
-    broadcast_key="cr_...",      # 广播 key：/v1/broadcast、dex.approve/dex.swap
+    broadcast_key="bx_...",      # 广播 key（订阅签发 bx_ / data 签发 cr_ scope=rpc_broadcast）：/v1/broadcast、dex.approve/dex.swap
 )
 
 # DEX 聚合报价（OKX DEX 首选 / 1inch 回退）

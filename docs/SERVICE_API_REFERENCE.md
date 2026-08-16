@@ -359,17 +359,19 @@ cancel ───────────────────────▶ 
 
 ### 7.6.3 Chain RPC 基础端点（:9130，2026-08-12 补录）
 
-> 读 key（`rx_`）/ 广播 key（`cr_`）双鉴权；`/health` 豁免。
+> 读 key（`rx_`）/ 广播 key（`bx_`，或 data 签发 scope=`rpc_broadcast`）双鉴权；`/health` 豁免。
 
 | 端点 | 方法 | 功能 | 鉴权 |
 |---|---|---|---|
-| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（batch 支持，`X-Json-Rpc: raw` 透传） | ✅ 读 key |
+| `/v1/rpc/{chain}` | POST | 任意 JSON-RPC 代理（**内容协商 RPC-9**：body 含 `jsonrpc:"2.0"` 自动标准 JSON-RPC 透传；`X-Json-Rpc: raw` 强制；batch ≤100 条） | ✅ 读 key |
 | `/v1/broadcast/{chain}` | POST | 广播交易（读 key 无法触达） | ✅ 广播 key |
 | `/v1/status` | GET | 链状态/同步信息 | ✅ 读 key |
 | `/v1/ws` | WS | WebSocket（仅 eth_subscribe/unsubscribe） | ✅ 读 key |
 | `/v1/subscription/*` | 见 §7.6.3 | 套餐订阅面 | ✅ `rx_` key |
 
 > **公网入口（RPC-1，2026-08-13 交付）**：`https://rpc-gw.0xainet.top`（nginx TLS 反代 `:9130`，certbot 自动续期），上表路由逐一对应；鉴权头 `X-API-Key` / `Authorization: Bearer` 原样透传，契约与内网一致。公开免鉴权路径：`/v1/status`、`/v1/plans`、`/v1/planinfo`、`/health`；`/v1/ws` 支持 upgrade，read timeout 60s（WS 3600s）。
+>
+> **标准 JSON-RPC 2.0 兼容（RPC-9，2026-08-16 交付）**：读/广播端点均支持 ethers/viem/Web3.py 零改动直连——请求体含 `jsonrpc:"2.0"`（单条或 batch 数组）自动标准透传（`{jsonrpc,id,result|error}`），无 `jsonrpc` 字段走旧信封（兼容 waas/dc/mcp-server/sdk），显式 `X-Json-Rpc: raw` 强制标准；广播标准 body `eth_sendRawTransaction` → `result:"0xtxhash"`；方法级 RPC 错误（revert/无效参数/nonce/余额）raw 模式 HTTP 200 + JSON-RPC error、信封模式 400 `{detail, code:"rpc_error"}`。链集 10 链：sepolia/ethereum/bsc/base/oxa/solana/polygon/arbitrum/optimism/xlayer。
 
 ### 7.6.4 Chain RPC 订阅（:9130，T-3）— `rx_` key 鉴权，信封 `{code,message,data}`，超限 **503**
 

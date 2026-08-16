@@ -57,7 +57,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 | Web 代理层 | 9111 | **公网入口**（nginx 80/443 → 9111） | 代理自动注入 X-Service-Key | [web.md](./docs/services/web.md) |
 | Data 数据中心 | 9112 | 经 nginx `/api/data/*` | 统一 key（DATA_API_KEY / dx_ key）；/health /docs 公开 | [data.md](./docs/services/data.md) |
 | Knowledge Injector | 9113 | 仅内网 | INJECTOR_API_KEY | [knowledge-injector.md](./docs/services/knowledge-injector.md) |
-| Chain RPC 网关 | 9130 | **仅内网**（外部经 SDK key 直连） | 读/广播 key / rx_ 订阅 key（超限 503） | [chain-rpc.md](./docs/services/chain-rpc.md) |
+| Chain RPC 网关 | 9130 | **公网入口** `rpc-gw.0xainet.top`（标准 JSON-RPC 兼容） | rx_ 读 key / bx_ 广播 key（超限 503） | [chain-rpc.md](./docs/services/chain-rpc.md) |
 | Payments 通用支付引擎 | 9132 | **仅内网**（业务服务经 key 调用） | 统一 key（PAYMENTS_API_KEY / px_ key） | [payments.md](./docs/services/payments.md) |
 | RAGservicer 知识库 | 9721 | 经 nginx `/api/rag/*` | 租户 key（RAGSERVICER_API_KEY / lightrag-client） | [ragservicer.md](./docs/services/ragservicer.md) |
 | Session Key 会话授权 | 3500 | 经 web 代理（SDK 直连） | API_TOKENS 白名单；nonce/sessions 创建公开 | [session-key.md](./docs/services/session-key.md) |
