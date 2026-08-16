@@ -23,7 +23,14 @@ import { Pool } from "pg";
  *   ESCROW_ADDRESS=0x... \
  *   DATABASE_URL=postgresql://ubuntu@10.3.8.6:5432/pocketx_payments \
  *   [FROM_BLOCK=0] [DAY=<unix day>] [DIFF_THRESHOLD_WEI=0] [USERS=a,b,c] \
+ *   [LEGACY_BASE_BLOCK=<区块>] [LEGACY_BASE_BY_USER=0xuser=wei,...] \
  *   npx hardhat run scripts/reconcile.ts --network oxachain
+ *
+ * 迁移基准（OE-4 EOA→Escrow 注资属于一次性迁移，非 verify 充值）：
+ *   - LEGACY_BASE_BLOCK：迁移基准块（默认 = FROM_BLOCK）。<= 该块的链上事件
+ *     与 credited_at 早于该块时间的 payment_credits 视为历史基准，不参与对账。
+ *   - LEGACY_BASE_BY_USER：迁移基准块时刻各用户已存在的链上余额（如平台 EOA
+ *     `0x5682…=9999944629992224822`），从对账余额中扣除，避免迁移资金被误判为偏差。
  *
  * 退出码：0 = 无差异（或均在阈值内）；1 = 存在差异（对账不通过）。
  */
@@ -31,9 +38,15 @@ async function main() {
   const escrowAddr = process.env.ESCROW_ADDRESS || "";
   const dbUrl = process.env.DATABASE_URL || "";
   const fromBlock = Number(process.env.FROM_BLOCK || 0);
+  const legacyBaseBlock = Number(process.env.LEGACY_BASE_BLOCK || fromBlock);
   const day = process.env.DAY ? Number(process.env.DAY) : Math.floor(Date.now() / 1000 / 86400);
   const diffThreshold = BigInt(process.env.DIFF_THRESHOLD_WEI || "0");
   const onlyUsers = (process.env.USERS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const legacyBase = new Map<string, bigint>();
+  for (const kv of (process.env.LEGACY_BASE_BY_USER || "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    const [u, w] = kv.split("=");
+    if (u && w) legacyBase.set(u.toLowerCase(), BigInt(w));
+  }
 
   if (!escrowAddr || !dbUrl) {
     console.error("ESCROW_ADDRESS 与 DATABASE_URL 必填");
@@ -44,20 +57,24 @@ async function main() {
   const escrow = await ethers.getContractAt("InfraXEscrow", escrowAddr);
 
   const [network, latest] = await Promise.all([provider.getNetwork(), provider.getBlockNumber()]);
-  console.log(`链: ${network.name} (chainId=${network.chainId}) | escrow=${escrowAddr} | fromBlock=${fromBlock} → ${latest}`);
+  console.log(`链: ${network.name} (chainId=${network.chainId}) | escrow=${escrowAddr} | fromBlock=${fromBlock} → ${latest} | legacyBaseBlock=${legacyBaseBlock}`);
   if (latest < fromBlock) {
     console.error("fromBlock 大于当前区块");
     process.exit(2);
   }
+  // 基准块时间戳：早于此时间的 payment_credits 视为历史基准
+  const legacyBaseTime = Math.floor((await provider.getBlock(legacyBaseBlock)).timestamp);
 
   // ── 1. 链上事件聚合（native 资产，token == address(0)）──────────────────
+  //    只统计迁移基准块之后的事件（<= 基准块的为一次性迁移/历史）
   const zero = ethers.ZeroAddress.toLowerCase();
+  const isLegacy = (l: any) => (l.blockNumber as number) <= legacyBaseBlock;
   const nativeDeposit = (await escrow.queryFilter("Deposited", fromBlock, latest))
-    .filter((l) => (l.args.token as string).toLowerCase() === zero);
+    .filter((l) => !isLegacy(l) && (l.args.token as string).toLowerCase() === zero);
   const nativeWithdraw = (await escrow.queryFilter("Withdrawn", fromBlock, latest))
-    .filter((l) => (l.args.token as string).toLowerCase() === zero);
-  const chargedLogs = await escrow.queryFilter("Charged", fromBlock, latest);
-  const refundedLogs = await escrow.queryFilter("Refunded", fromBlock, latest);
+    .filter((l) => !isLegacy(l) && (l.args.token as string).toLowerCase() === zero);
+  const chargedLogs = (await escrow.queryFilter("Charged", fromBlock, latest)).filter((l) => !isLegacy(l));
+  const refundedLogs = (await escrow.queryFilter("Refunded", fromBlock, latest)).filter((l) => !isLegacy(l));
 
   const sumBy = (logs: any[], pick: (l: any) => bigint) => {
     const m = new Map<string, bigint>();
@@ -73,13 +90,14 @@ async function main() {
   const refunds = sumBy(refundedLogs, (l) => l.args.amount as bigint);
 
   // ── 2. ledger 侧（payments 引擎索引层）───────────────────────────────────
+  //    只统计迁移基准时间之后的 verify 入账（早于基准的为 OE-4 迁移前历史）
   const pool = new Pool({ connectionString: dbUrl, max: 4 });
   const { rows: credits } = await pool.query(
     `SELECT payer, SUM(amount_wei::numeric) AS sum_wei
        FROM payment_credits
-      WHERE asset = $1
+      WHERE asset = $1 AND credited_at >= to_timestamp($2 / 1000.0)
       GROUP BY payer`,
-    [zero]
+    [zero, legacyBaseTime * 1000]
   );
   const creditMap = new Map<string, bigint>();
   for (const r of credits) creditMap.set((r.payer as string).toLowerCase(), BigInt(r.sum_wei));
@@ -112,13 +130,18 @@ async function main() {
     const ref = refunds.get(u) || 0n;
     const creditsSum = creditMap.get(u) || 0n;
     const ledgerBal = balanceMap.get(u) || 0n;
+    // 迁移基准余额（OE-4 一次性注资，视为用户初始链上余额）
+    const baseBal = legacyBase.get(u) || 0n;
 
-    // 守恒：deposits - withdrawals - (charges - refunds) == 链上余额
-    const conserved = dep - wd - (chg - ref);
+    // 守恒：基准余额 + deposits - withdrawals - (charges - refunds) == 链上余额
+    const conserved = baseBal + dep - wd - (chg - ref);
     const problems: string[] = [];
     if (conserved !== onchain) problems.push(`守恒偏差 ${conserved - onchain}`);
     if (creditsSum !== dep) problems.push(`索引偏差 ${creditsSum - dep}`);
-    const balDiff = ledgerBal > onchain ? ledgerBal - onchain : onchain - ledgerBal;
+    // 余额偏差：ledger 应与"链上余额 - 迁移基准"（当日净新增）一致；
+    // 迁移基准资金在 OE-8 已结清，不计入索引层偏差
+    const netNew = onchain - baseBal;
+    const balDiff = ledgerBal > netNew ? ledgerBal - netNew : netNew - ledgerBal;
     if (balDiff > diffThreshold) problems.push(`余额偏差 ${balDiff}`);
     if (problems.length) diffCount++;
 
