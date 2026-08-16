@@ -311,11 +311,17 @@ export class RpcPoolManager {
         endpoint.status = 'healthy';
 
         if (response.data.error) {
-          throw new Error(`RPC error: ${response.data.error.message || JSON.stringify(response.data.error)}`);
+          // 方法级 JSON-RPC 错误（revert/无效参数/错误签名/nonce/余额等）：节点健康、请求已被处理。
+          // 原样上抛（带 rpcError 标记），不重试、不降级端点——避免错误请求拖垮整链池。
+          const rpcError = response.data.error;
+          const e: any = new Error(`RPC error: ${rpcError.message || JSON.stringify(rpcError)}`);
+          e.rpcError = rpcError;
+          throw e;
         }
         return response.data.result;
       } catch (err: any) {
         lastError = err;
+        if (err.rpcError) throw err; // 方法级错误：不重试、不降级
         const status = err.response?.status;
         if (status === 429) {
           logger.warn(`[rpc-pool] 429 on ${endpoint.key}, retrying in ${attempt * 2}s`);

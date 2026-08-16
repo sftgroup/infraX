@@ -57,28 +57,29 @@ router.get('/plans', asyncHandler(async (_req, res) => {
   res.json({ code: 0, message: 'ok', data: RPC_PLANS, chains });
 }));
 
-// POST /v1/subscription/issue-key — 签发 rx_ 读 key（管理操作：X-Service-Key = 本地 bridge key）
+// POST /v1/subscription/issue-key — 签发 rx_ 读 key / bx_ 广播 key（管理操作：X-Service-Key = 本地 bridge key）
 router.post('/issue-key', asyncHandler(async (req, res) => {
   const svcKey = (req.headers['x-service-key'] || req.headers['x-api-key']
     || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || '').trim();
   if (!timingSafeEqualStr(svcKey, config.readKey) && !timingSafeEqualStr(svcKey, config.broadcastKey)) {
     return res.status(401).json({ detail: 'unauthorized' });
   }
-  const { label } = req.body ?? {};
-  const raw = generateRpcKey();
+  const { label, kind } = req.body ?? {};
+  const kKind: 'read' | 'broadcast' = kind === 'broadcast' ? 'broadcast' : 'read';
+  const raw = generateRpcKey(kKind);
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   const r = await rpcPool.query(
     `INSERT INTO rpc_keys (label, key_hash, key_prefix, key_tail, rpc_plan_id, rpc_sub_status)
      VALUES ($1, $2, $3, $4, 'rpc_free', 'active')
      RETURNING id, rpc_plan_id`,
-    [label || 'rpc key', hash, raw.slice(0, 8), raw.slice(-4)]
+    [label || `${kKind} rpc key`, hash, raw.slice(0, 8), raw.slice(-4)]
   );
   const row = r.rows[0];
-  logger.info('[chain-rpc] rpc key issued', { keyId: row.id, label: label || 'rpc key' });
+  logger.info('[chain-rpc] rpc key issued', { keyId: row.id, kind: kKind, label: label || `${kKind} rpc key` });
   res.status(201).json({
     code: 0,
     message: 'ok',
-    data: { keyId: row.id, rpcKey: raw, planId: row.rpc_plan_id, status: 'active', note: 'rpcKey shown once — store it securely' },
+    data: { keyId: row.id, kind: kKind, rpcKey: raw, planId: row.rpc_plan_id, status: 'active', note: 'rpcKey shown once — store it securely' },
   });
 }));
 

@@ -163,9 +163,10 @@ export const paymentsApi = {
   },
 };
 
-/** 生成 `rx_` 前缀读 key。 */
-export function generateRpcKey(): string {
-  return 'rx_' + crypto.randomBytes(24).toString('hex');
+/** 生成订阅 key：`rx_` 读 key / `bx_` 广播 key（读写分离，仅存 SHA-256 哈希）。 */
+export function generateRpcKey(kind: 'read' | 'broadcast' = 'read'): string {
+  const prefix = kind === 'broadcast' ? 'bx_' : 'rx_';
+  return prefix + crypto.randomBytes(24).toString('hex');
 }
 
 /** 按 key 明文解析订阅（key 不匹配 → null）。 */

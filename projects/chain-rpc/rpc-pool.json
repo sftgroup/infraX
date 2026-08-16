@@ -412,6 +412,21 @@
         "resetAt": 0
       },
       "status": "healthy"
+    },
+    {
+      "key": "oxa-rpc-raw",
+      "url": "http://43.156.99.215:18545",
+      "provider": "public",
+      "tier": "free",
+      "rateLimit": {
+        "rpm": 60,
+        "rpd": 10000
+      },
+      "tokens": {
+        "remaining": 10000,
+        "resetAt": 0
+      },
+      "status": "healthy"
     }
   ],
   "polygon": [

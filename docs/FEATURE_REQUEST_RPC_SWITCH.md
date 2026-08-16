@@ -3,7 +3,7 @@
 > **提出方**：AIHunter SaaS（backend risk-engine / broadcast-service / chain-sync 等全部 RPC 依赖方）
 > **日期**：2026-08-12
 > **目标版本**：`@0xinfrax/infrax-dk` ≥ 0.6（ChainRpcAPI 已具备）
-> **状态**：待评审
+> **状态**：✅ **已交付**（2026-08-16：公网入口 + 双 key 签发 + 10 链覆盖 + 白名单确认 + 广播语义验证；AIHunter 侧 env 切换与 24h 回归验收待其执行，见 §七）
 
 ## 一、背景与痛点
 
@@ -25,15 +25,21 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 
 ### R1 公网接入路径 — P0
 
+> ✅ **已交付（2026-08-16）**：公网 HTTPS 入口 **`https://rpc-gw.0xainet.top`**（nginx TLS → 网关 :9130），`/v1/rpc/{chain}`、`/v1/broadcast/{chain}`、`/v1/status`、`/v1/subscription/*` 全部可达；`X-API-Key`/`X-Service-Key`/`Bearer` 三选一契约不变。
+
 - 为 `/v1/rpc/:chain`、`/v1/broadcast/:chain`、`/v1/status`、`/v1/subscription/*`、`/v1/ws` 提供 **HTTPS 公网入口**（nginx 代理或独立域名，如 `rpc-gw.0xainet.top`），复用平台 key 鉴权（`X-API-Key`/`X-Service-Key`/Bearer 三选一契约不变）。
 - 交付物：公网 base URL + TLS 证书有效说明；或明确的 VPN/跳板接入方案。
 
 ### R2 双 key 签发 — P0
 
+> ✅ **已交付（2026-08-16）**：签发读 key（`rx_`）+ 广播 key（`bx_`，读写分离）。key 值已线下交付 AIHunter，不入 git（rpc_keys 表仅存 SHA-256 哈希）。公网验证全过：rx_ 读 200 / rx_ 广播 401 / bx_ 读 200 / bx_ 广播鉴权通过；`X-Json-Rpc: raw` 透传正常（HTTP 200 + JSON-RPC error 语义，viem/ethers 可直连）。
+
 - 我方接入所需：**读 key**（可读全部读端点，含 `/v1/rpc`、`/v1/status`、`/v1/ws`）+ **广播 key**（仅 `/v1/broadcast/:chain`）。
 - 验收：读 key 调广播端点 → 401；广播 key 可读可广播；`X-Json-Rpc: raw` 透传正常。
 
 ### R3 链覆盖补齐 — P1
+
+> ✅ **已交付（2026-08-16）**：生产链集 **10 链全绿**（`GET /v1/status` 实测）：sepolia 11155111 / ethereum 1 / bsc 56 / base 8453 / **oxa 19505** / solana / polygon 137 / arbitrum 42161 / optimism 10 / xlayer 196。polygon/arbitrum/optimism 已上线，AIHunter DEX 扩展（signal-service 7 链映射）可直接使用。
 
 **背景与必要性（为什么需要 polygon/arbitrum/optimism）**:
 
@@ -48,6 +54,8 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 - 链参数与链 ID 映射文档化（`GET /v1/status` 或 plans 返回完整链表）。
 
 ### R4 方法白名单确认 — P1
+
+> ✅ **已交付（2026-08-16）**：白名单逐项公网实测 200（oxa 上 `eth_blockNumber/eth_getBalance/eth_call/eth_getCode/eth_getLogs/eth_getTransactionReceipt/eth_getTransactionByHash/eth_getBlockByNumber` 全过；solana `getVersion/getSignatureStatuses` 过）；非白名单方法（`eth_sign` 等）403 保留。Solana 白名单本轮补 `getSignatureStatuses`（AIHunter 需求点）。
 
 我方读方法清单（须全部放行，非白名单 403 语义保留）：
 - `eth_blockNumber` `eth_chainId` `eth_gasPrice` `eth_feeHistory`
@@ -109,6 +117,33 @@ AIHunter SaaS 决定将全部链上 RPC 基础设施切换到 InfraX chain-rpc �
 - R1+R2 落地后，我方 risk-engine（已 env 化 `RPC_URL_ETH` 等）**零代码改动**改 env 指向 InfraX 公网入口即完成链读切换；broadcast 兜底、chain-sync/nft/subscription（OxaChain 19505）同步切换。
 - 统一：5 处 RPC 依赖收敛为 1 个网关 + 2 个 key，与钱包（MPCAPI）、支付（PaymentAPI）同平台治理。
 - 配合已提的两份需求单（行情 RPC + DEX 执行 / Session Key 托管），我方链上依赖全部收敛到 InfraX。
+
+---
+
+## 七、2026-08-16 接入交付确认（AIHunter 2026-08-16 需求单逐项答复）
+
+> AIHunter 于 2026-08-16 提交接入需求（依据 08-12 需求单），以下为 InfraX 侧交付结论，已全部完成并公网实测验证。
+
+| # | AIHunter 需求 | InfraX 交付结论 |
+|---|--------------|----------------|
+| 3.1 链读能力 | `POST /v1/rpc/{chain}` JSON-RPC 2.0 兼容（`X-Json-Rpc: raw` 透传，可直接替换 ethers/viem transport）。7 个读方法白名单全放行（公网实测 200，见 R4） |
+| 3.2 交易广播 | `POST /v1/broadcast/{chain}` body `{rawTransaction, wait?, timeoutMs?}`；仅 `eth_sendRawTransaction`（EVM）/`sendTransaction`（Solana），原始交易透传、网关不持私钥 |
+| 3.3 链集 | ethereum/bsc/base/solana/**oxa（19505）** 均可用且为生产环境；完整 10 链见 R3 |
+| 3.4 方法白名单 | 全部放行（见 R4），非白名单 403 |
+| 4.1 读 key（rx_） | ✅ 已签发（id=4 `aihunter-saas-rpc-read`，rpc_free 套餐）；旧 key（id=3）已禁用。key 值线下交付，不入 git |
+| 4.2 广播 key（bx_） | ✅ 已签发（id=5 `aihunter-saas-rpc-broadcast`，读写分离：rx_ 广播 401 / bx_ 可读可广播） |
+| 4.3 行情 RPC x402 | 无需另行申请 key：AIHunter 暂未接入 `/v1/market-rpc`，x402 为链上按次付费（无预签发 key 流程），后续接入时另行开通 |
+| 5 配额与 SLA | 套餐：`rpc_free` 1万次/月+并发10（当前绑定）/ `rpc_pro` $79/月 10万次+并发50 / `rpc_enterprise` $299/月 100万次+并发200；超限行为=**503 + 升级提示**（非 429/402）；限流退避：429 仅来自上游免费端点（池内自动重试退避 + 故障转移），网关对外配额用尽统一 503；当前 AIHunter 用量（chain-sync 30-60 次/2min ≈ 4.3万次/月上限）接近 rpc_free 上限，**建议 pro**（或按 batch 合并读调用，见下） |
+| 6 链补齐 | polygon/arbitrum/optimism **已上线**（10 链集，非阻塞项已提前完成） |
+| 7 广播语义 | 原始交易透传（raw tx broadcast），**nonce 归属调用方**（网关不持有私钥、无签名服务）；重放保护由链上 nonce 裁决（重复 nonce 广播节点返回错误）；失败码映射：方法级错误（nonce/余额/revert 等）→ **400 `{detail: 节点消息, code: "rpc_error"}`**（raw 模式 HTTP 200 + JSON-RPC error）；网络/端点故障 → 502 `upstream_error`；无可用端点 → 503 `no_active_endpoint` |
+
+**2026-08-16 本轮改进（错误语义 + 容灾）**：
+
+- **方法级 RPC 错误不再拖垮端点**：`rpcCall` 对节点返回的 JSON-RPC error（revert/无效参数/错误签名/nonce/余额等——节点本身健康）不再重试 3 次并降级端点，改为原样上抛；raw 模式 HTTP 200 + JSON-RPC error（viem/ethers 正确解析 revert/nonce 语义，此前 502 会被 viem 判为 HttpRequestError 丢失语义）。公网实测：solana 无效签名 `getSignatureStatuses` → 400 `rpc_error`；bx_ 广播无效 tx → 400 `{"detail":"invalid sender"}`。
+- **oxa 链双端点容灾**：oxa 池由单端点 `https://rpc-oxa.0xainet.top` 增加裸节点 `http://43.156.99.215:18545`（同节点双入口，round-robin + 健康检查），避免单端点间歇超时导致整链 503；`/v1/status` 实测 oxa total=2 active=2。
+- **公网 20 连发压测**：oxa `eth_blockNumber` 20/20 全 200（此前单端点时段歇 503）。
+
+**验收状态**：网关侧全部就绪（公网 URL + 双 key + 10 链 + 白名单 + 配额 + 广播语义）。AIHunter 侧待执行：env 切换（`INFRAX_API_URL=https://rpc-gw.0xainet.top` + 双 key）→ 重建 gateway/chain-sync/broadcast-service → 24h 无 RPC 错误 → 功能回归（风控链读/链同步入库/NFT 铸造/订阅校验/广播兜底）。
 
 ---
 

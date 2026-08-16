@@ -126,6 +126,17 @@ function handleError(res: any, err: any, tag: string, raw = false, id: unknown =
     }
     return;
   }
+  // 方法级 JSON-RPC 错误：节点健康，原样透传错误信息。
+  // raw（viem/ethers 直连）：HTTP 200 + JSON-RPC error（非 2xx 会被 viem 判为 HttpRequestError，
+  //   丢失 revert/nonce 等语义）；信封模式：HTTP 400 + 节点错误消息。
+  if (err?.rpcError) {
+    if (raw) {
+      res.status(200).json({ jsonrpc: '2.0', id, error: { code: err.rpcError.code ?? -32000, message: err.rpcError.message ?? 'rpc error' } });
+    } else {
+      res.status(400).json({ detail: err.rpcError.message ?? 'rpc error', code: 'rpc_error' });
+    }
+    return;
+  }
   logger.warn(`[chain-rpc] ${tag} error: ${err?.message || err}`);
   if (raw) {
     res.status(502).json({ jsonrpc: '2.0', id, error: { code: 'upstream_error', message: 'upstream rpc error' } });

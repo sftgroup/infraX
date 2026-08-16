@@ -95,7 +95,7 @@ app.get('/health', (_req, res) => {
 
 // ── 路由（鉴权分级：读 / 广播独立挂载，读 key 无法触达广播） ──
 app.use('/v1/rpc', createReadAuth(), rpcQuotaEnforce(), createRpcRouter(pool));
-app.use('/v1/broadcast', createBroadcastAuth(), createBroadcastRouter(pool));
+app.use('/v1/broadcast', createBroadcastAuth(), rpcQuotaEnforce(), createBroadcastRouter(pool));
 // A-11: /v1/dex-rpc 分权限挂载——quote=读 key（计入读配额）；approve/swap=广播 key
 app.use('/v1/dex-rpc', createReadAuth(), rpcQuotaEnforce(), createDexReadRouter(pool));
 app.use('/v1/dex-rpc', createBroadcastAuth(), createDexBroadcastRouter(pool));

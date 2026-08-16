@@ -76,8 +76,9 @@ export function createReadAuth() {
       req.isLocal = true;
       return next();
     }
-    // MQ-16 T-3: rx_ 订阅 key（rpc_keys 表 SHA-256 哈希校验），配额由 rpcQuotaEnforce 记账
-    if (key.startsWith('rx_')) {
+    // MQ-16 T-3: rx_/bx_ 订阅 key（rpc_keys 表 SHA-256 哈希校验），配额由 rpcQuotaEnforce 记账
+    //   rx_ = 读 key；bx_ = 广播 key（广播 key 权限更高，可读）
+    if (key.startsWith('rx_') || key.startsWith('bx_')) {
       const rpcKey = await findRpcKeyByRaw(key);
       if (rpcKey && rpcKey.enabled !== false) {
         req.rpcKey = rpcKey;
@@ -96,6 +97,15 @@ export function createBroadcastAuth() {
     const key = extractApiKey(req);
     if (!key) return unauthorized(res);
     if (matchLocal(key, [config.broadcastKey])) return next();
+    // bx_ 广播订阅 key（rpc_keys 表校验；读 key rx_ 不可广播）
+    if (key.startsWith('bx_')) {
+      const rpcKey = await findRpcKeyByRaw(key);
+      if (rpcKey && rpcKey.enabled !== false) {
+        req.rpcKey = rpcKey;
+        return next();
+      }
+      return unauthorized(res);
+    }
     if (config.enableExternalVerify && (await matchExternal(key, 'rpc_broadcast'))) return next();
     return unauthorized(res);
   };

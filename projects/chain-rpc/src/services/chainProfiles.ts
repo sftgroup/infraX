@@ -54,6 +54,7 @@ export const SOLANA_READ_METHODS = new Set([
   'getBalance',
   'getAccountInfo',
   'getTransaction',
+  'getSignatureStatuses',
   'getSignaturesForAddress',
   'getTokenAccountsByOwner',
   'getRecentPrioritizationFees',
