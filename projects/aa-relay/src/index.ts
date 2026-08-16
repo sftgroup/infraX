@@ -80,8 +80,20 @@ function asyncHandler(fn: any) {
   return (req: any, res: any, next: any) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+/** 递归将对象/数组中的 BigInt 转为字符串（JSON.stringify 不支持 BigInt，res.json 会抛 "Do not know how to serialize a BigInt"） */
+function jsonSafe(v: any): any {
+  if (typeof v === 'bigint') return v.toString();
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (v && typeof v === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, x] of Object.entries(v)) out[k] = jsonSafe(x);
+    return out;
+  }
+  return v;
+}
+
 function apiResponse(data: any = null, message = 'success', code = 0) {
-  return { code, message, data };
+  return { code, message, data: jsonSafe(data) };
 }
 
 function getChain(chain: string): ChainAAConfig {
