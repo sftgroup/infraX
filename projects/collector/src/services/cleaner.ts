@@ -53,22 +53,23 @@ export class DataCleaner {
   }
 
   /**
-   * 数据盘（PG data_directory 所在挂载点）可用空间百分比；
-   * 失败时返回 100（不触发紧急清理，避免误伤）。
+   * 数据盘可用空间估算（百分比）。
+   * 2026-08-16 M-3 迁移后 PG 位于新机 10.3.8.6，collector 所在机器无本地
+   * data_directory，也无到新机的 SSH 免密 → 无法直接 df。
+   * 等效信号：events 是数据盘唯一大增长源，用 pg_total_relation_size(events)
+   * 估算占用比例（其余库 + WAL + 系统预留由 CLEANER_DISK_CAPACITY_GB 覆盖，
+   * 默认按 196G 数据盘口径）。失败返回 100（不触发紧急清理）。
    */
   private async getDiskFreePct(): Promise<number> {
     try {
-      const { rows } = await pool.query(`SELECT current_setting('data_directory') AS dir`);
-      const dir: string | undefined = rows[0]?.dir;
-      if (!dir) return 100;
-      const { stdout } = await execFileAsync('df', ['-P', dir]);
-      const line = stdout.trim().split('\n').pop() ?? '';
-      const parts = line.split(/\s+/);
-      // df -P 输出: Filesystem 1024-blocks Used Available Capacity Mounted on
-      const usedPct = parseInt(parts[4], 10); // 例如 "85%"
-      return Number.isFinite(usedPct) ? 100 - usedPct : 100;
+      const { rows } = await pool.query(`SELECT pg_total_relation_size('events') AS ev_size`);
+      const evSize = Number(rows[0]?.ev_size ?? 0);
+      const capacity = (parseInt(process.env.CLEANER_DISK_CAPACITY_GB || '196', 10) || 196) * 1024 ** 3;
+      if (capacity <= 0 || evSize <= 0) return 100;
+      const usedPct = (evSize / capacity) * 100;
+      return Math.max(0, 100 - usedPct);
     } catch (err: any) {
-      logger.warn('[cleaner] Failed to probe disk free space', { error: err.message });
+      logger.warn('[cleaner] Failed to estimate disk free space', { error: err.message });
       return 100;
     }
   }

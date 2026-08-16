@@ -1,0 +1,15 @@
+# InfraX collector 日志轮转
+# combined.log 曾膨胀至 7GB（winston File transport 无轮转）
+# copytruncate：collector 进程不重开文件句柄，直接截断副本
+/home/ubuntu/infraX-1/projects/collector/logs/*.log {
+    daily
+    rotate 7
+    maxsize 500M
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+    dateext
+    dateformat -%Y%m%d
+}
