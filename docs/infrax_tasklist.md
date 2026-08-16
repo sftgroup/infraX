@@ -1710,7 +1710,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > ② **eth 扫描慢**：单周期 ~30s（每块 getLogs 响应巨大，5 千+ 事件/块），落后实时约 N 块，属既有性能特征；
 > ③ **solana 扫描：保持关闭（2026-08-13 用户决策）**。端点已配置（alchemy×2+public，rpc-pool.json 就绪）但 `scanner.ts ACTIVE_CHAINS` 未含 solana。实测（30 slot 采样外推）：**1.41 亿事件/天 ≈ 270GB/天 写入**（当前 5 链合计 ~1780 万/30GB），getBlock 全量响应 8.7MB/slot → 日下载 1.8TB，数据盘一天爆满、Alchemy 免费额度秒尽——全量不可控。如需采集，须先设计白名单（指定代币）+ 金额阈值过滤并小样本验证。
 
-> **备注**：备份（P0）按 docs/INFRAX_BACKUP_MULTI_IP.md §2 另行排期，前置=用户确认目标服务器清单（10 业务库 pg_dump ~90MB/日 + 加密配置，systemd timer 每日 03:30，14日+4周+12月，每月恢复演练）。
+> **备注**：备份（P0）按 docs/INFRAX_BACKUP_MULTI_IP.md §2 另行排期，前置=用户确认目标服务器清单（**2026-08-17 口径确认：9 业务库 pg_dump ~87MB/日 + 加密配置，collector 整库不备份**；systemd timer 每日 03:30，14日+4周+12月，每月恢复演练）。
 
 ---
 
