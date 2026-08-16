@@ -97,4 +97,49 @@ describe('BundlerClient.sendUserOperation (容灾兜底)', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  // 回归（PocketX 联调反馈 ⑤）：rpc() 需支持自定义 headers（relay 模式注入 X-API-Key）。
+  // 构造级 headers 与端点级 bundler.headers 均须注入 viem transport。
+  it('injects custom headers into every RPC request (client-level + endpoint-level)', async () => {
+    const seen: Array<Record<string, string>> = [];
+    vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
+      const h: Record<string, string> = {};
+      // viem http transport 可能传 Headers 实例或 plain object
+      if (init?.headers instanceof Headers) {
+        init.headers.forEach((v, k) => { h[k] = v; });
+      } else {
+        Object.assign(h, init?.headers as Record<string, string>);
+      }
+      seen.push(h);
+      const body = JSON.parse(String(init?.body)) as { method: string; id: number };
+      let result: unknown;
+      if (body.method === 'eth_sendUserOperation') {
+        result = '0x1234';
+      } else if (body.method === 'eth_getUserOperationReceipt') {
+        result = {
+          userOpHash: '0x1234', entryPoint: ENTRYPOINT, sender: SENDER, nonce: '0x0',
+          actualGasCost: '0x123', actualGasUsed: '0x456', success: true, logs: [],
+          receipt: { transactionHash: '0xfeed' },
+        };
+      }
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { status: 200 });
+    });
+    try {
+      // 端点级 headers 优先
+      const ep: BundlerConfig = { url: 'https://mock.invalid', priority: 0, timeoutMs: 1000, headers: { 'X-API-Key': 'ep-key' } };
+      const client = new BundlerClient(makeChain([ep]), { 'X-API-Key': 'client-key' });
+      await client.sendUserOperation(makeOp());
+      expect(seen.length).toBeGreaterThan(0);
+      seen.forEach((h) => expect(h['x-api-key'] ?? h['X-API-Key']).toBe('ep-key'));
+
+      // 构造级 headers（未配端点级时生效）
+      const client2 = new BundlerClient(makeChain([makeBundler('https://mock.invalid', 0)]), { 'X-API-Key': 'client-key' });
+      seen.length = 0;
+      await client2.sendUserOperation(makeOp());
+      expect(seen.length).toBeGreaterThan(0);
+      seen.forEach((h) => expect(h['x-api-key'] ?? h['X-API-Key']).toBe('client-key'));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

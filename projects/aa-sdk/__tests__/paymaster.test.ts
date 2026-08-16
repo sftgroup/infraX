@@ -92,6 +92,24 @@ describe('PaymasterClient', () => {
     expect(calls[0].body.params.length).toBe(4);
   });
 
+  it('自定义 headers：构造级注入 X-API-Key（relay 鉴权），config.headers 优先', async () => {
+    const calls = mockFetch({ result: { paymaster: PM_ADDR, data: '0xbeef' } });
+    const pm = new PaymasterClient(makePaymasterCfg(), RELAY_URL, { 'X-API-Key': 'client-key' });
+    await pm.getPaymasterData(makeOp(), CTX);
+    expect(calls[0].headers['X-API-Key']).toBe('client-key');
+    expect(calls[0].headers['content-type']).toBe('application/json');
+
+    // config.headers 优先于构造级
+    const calls2 = mockFetch({ result: { paymaster: PM_ADDR, data: '0xbeef' } });
+    const pm2 = new PaymasterClient(
+      { type: 'verifying', url: PAYMASTER_URL, headers: { 'X-API-Key': 'config-key' } },
+      RELAY_URL,
+      { 'X-API-Key': 'client-key' },
+    );
+    await pm2.getPaymasterData(makeOp(), CTX);
+    expect(calls2[0].headers['X-API-Key']).toBe('config-key');
+  });
+
   it('paymaster RPC 失败（HTTP 非 2xx）抛错且透传服务端消息', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,

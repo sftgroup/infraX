@@ -46,6 +46,8 @@ export class PaymasterClient {
     private readonly config: PaymasterConfig,
     /** 服务端代理 baseURL（aa-relay，隐藏 apikey），缺省直连 Pimlico */
     private readonly relayBaseUrl?: string,
+    /** 附加请求头（relay 模式注入 X-API-Key 等；config.headers 优先） */
+    private readonly headers?: Record<string, string>,
   ) {}
 
   /** 获取 stub 数据（gas 估算阶段，不计费；Pimlico 返回 paymaster+data+gas 字段） */
@@ -93,7 +95,7 @@ export class PaymasterClient {
 
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(this.headers ?? {}), ...(this.config.headers ?? {}) },
       body: JSON.stringify(body),
     });
     const json = await resp.json().catch(() => null);

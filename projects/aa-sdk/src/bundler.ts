@@ -54,12 +54,21 @@ type RpcClient = {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
 };
 
-function rpcClient(url: string): RpcClient {
-  return createClient({ transport: http(url) }) as unknown as RpcClient;
+function rpcClient(url: string, headers?: Record<string, string>): RpcClient {
+  return createClient({ transport: http(url, { fetchOptions: { headers } }) }) as unknown as RpcClient;
 }
 
 export class BundlerClient {
-  constructor(private readonly chainConfig: ChainAAConfig) {}
+  constructor(
+    private readonly chainConfig: ChainAAConfig,
+    /** 附加请求头（relay 模式注入 X-API-Key 等；端点级 bundler.headers 优先） */
+    private readonly headers?: Record<string, string>,
+  ) {}
+
+  /** 合并请求头：端点级 bundler.headers > 客户端构造 headers */
+  private headersFor(ep: BundlerConfig): Record<string, string> | undefined {
+    return ep.headers ?? this.headers;
+  }
 
   /** 发送 UserOp，内置端点容灾；返回 userOpHash + 收据 */
   async sendUserOperation(op: UserOperationV7, options?: BundlerSendOptions): Promise<UserOpResult> {
@@ -94,7 +103,7 @@ export class BundlerClient {
   /** 估算 UserOp gas（eth_estimateUserOperationGas；失败抛错不虚报，由上层决定兜底） */
   async estimateUserOperationGas(op: UserOperationV7): Promise<Partial<UserOperationV7>> {
     const ep = this.primaryEndpoint();
-    const client = rpcClient(ep.url);
+    const client = rpcClient(ep.url, this.headersFor(ep));
     const r = (await client.request({
       method: 'eth_estimateUserOperationGas',
       params: [userOpToRpc(op), this.chainConfig.entryPoint],
@@ -116,7 +125,7 @@ export class BundlerClient {
 
   /** eth_sendUserOperation → userOpHash */
   private async sendSingle(ep: BundlerConfig, op: UserOperationV7): Promise<Hex> {
-    const client = rpcClient(ep.url);
+    const client = rpcClient(ep.url, this.headersFor(ep));
     const hash = (await client.request({
       method: 'eth_sendUserOperation',
       params: [userOpToRpc(op), this.chainConfig.entryPoint],
@@ -130,7 +139,7 @@ export class BundlerClient {
     userOpHash: Hex,
     timeoutMs: number,
   ): Promise<UserOpReceipt> {
-    const client = rpcClient(ep.url);
+    const client = rpcClient(ep.url, this.headersFor(ep));
     const deadline = Date.now() + timeoutMs;
     let lastErr: unknown;
     while (Date.now() < deadline) {

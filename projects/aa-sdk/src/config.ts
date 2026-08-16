@@ -88,6 +88,7 @@ export function parseBundlers(raw: string | undefined, chainAlias: string): Bund
       url: b.url ?? '',
       priority: b.priority ?? i,
       timeoutMs: b.timeoutMs ?? 30_000,
+      headers: b.headers,
     }));
   } catch {
     // 纯 URL 容错：http(s):// 开头 → 单端点
@@ -98,11 +99,25 @@ export function parseBundlers(raw: string | undefined, chainAlias: string): Bund
   }
 }
 
+/** 解析 PAYMASTER_URL：纯 URL 字符串 或 JSON {"url": "...", "headers": {...}}（headers 注入 X-API-Key 等） */
 function parsePaymaster(raw: string | undefined): PaymasterConfig | undefined {
   if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<PaymasterConfig>;
+      return {
+        type: 'verifying',
+        url: parsed.url ?? '',
+        headers: parsed.headers,
+      };
+    } catch {
+      throw new Error('[aa-sdk] invalid AA_{CHAIN}_PAYMASTER_URL JSON');
+    }
+  }
   return {
     type: 'verifying',
-    url: raw,
+    url: trimmed,
     // Pimlico VP 无 token 扣费；erc20 模式后续按 AA_{CHAIN}_PAYMASTER_TOKEN 扩展
   };
 }

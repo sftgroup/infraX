@@ -2,7 +2,7 @@
 
 InfraX 共享 ERC-4337 智能账户 SDK（白标自 PocketX `@pocketx/aa-sdk`）——Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key。
 
-- **npm**: `@0xinfrax/aa-sdk@0.1.0`（2026-08-16 公开发布；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
+- **npm**: `@0xinfrax/aa-sdk@0.1.1`（2026-08-16 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
 - **文档**: `docs/AA_SDK_TECH_DESIGN.md`（技术方案）、`docs/PAYMASTER_PROVISION_REQUEST.md` §八（PocketX 对接与公网入口）
 - **关联包**: `@0xinfrax/session-key-core`（`Aa` 命名空间导出同源能力，v0.2.1 已发布）——两通道并存，按需选用
 
@@ -50,10 +50,17 @@ import { PaymasterClient } from '@0xinfrax/aa-sdk';
 const pm = new PaymasterClient(
   { type: 'verifying', url: 'https://rpc-gw.0xainet.top/aa-relay/v1/paymaster' },
   'https://rpc-gw.0xainet.top/aa-relay',   // relay 代理模式：{chain, method, params}
+  { 'X-API-Key': AA_RELAY_KEY },          // v0.1.1：自定义 headers（relay 鉴权必需）
 );
 const stub = await pm.getPaymasterStubData(op, { chain: 'oxachain', entryPoint, chainId: 19505 });
 const data  = await pm.getPaymasterData(op, { chain: 'oxachain', entryPoint, chainId: 19505 });
 ```
+
+自定义 headers 支持（v0.1.1，PocketX 联调反馈 ⑤）：
+
+- **PaymasterClient**：构造第三参数 `headers`，或 `PaymasterConfig.headers`（config 优先）；relay 模式下注入 `X-API-Key` 过 aa-relay 鉴权
+- **BundlerClient**：构造第二参数 `headers`，或 `BundlerConfig[].headers`（端点级优先）；注入到所有 RPC 请求（send/estimate/receipt 轮询）
+- env 形态：`AA_{CHAIN}_PAYMASTER_URL` 支持 JSON `{"url":"...","headers":{"X-API-Key":"..."}}`；`AA_{CHAIN}_BUNDLERS` 数组项支持 `"headers"` 字段
 
 ## 关键导出（barrel `dist/index.d.ts`）
 

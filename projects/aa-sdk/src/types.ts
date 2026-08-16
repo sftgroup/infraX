@@ -33,6 +33,8 @@ export interface BundlerConfig {
   url: string; // 完整 URL（含 apikey 由服务端代理注入）
   priority: number; // 0 = 主，1 = 备
   timeoutMs: number;
+  /** 附加请求头（relay 模式注入 X-API-Key 等；缺省继承 BundlerClient 构造 headers） */
+  headers?: Record<string, string>;
 }
 
 export interface PaymasterConfig {
@@ -40,6 +42,8 @@ export interface PaymasterConfig {
   url: string; // Pimlico paymaster RPC
   /** erc20 模式下扣费的 token（如 USDC） */
   token?: Address;
+  /** 附加请求头（relay 模式注入 X-API-Key 等；缺省继承 PaymasterClient 构造 headers） */
+  headers?: Record<string, string>;
 }
 
 /** 统一签名器抽象（D6；P0.13 扩展：外部钱包） */

@@ -1,8 +1,10 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.8 | **日期**: 2026-08-16 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.9 | **日期**: 2026-08-16 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
+>
+> **v1.9（2026-08-16）**：**SDK v0.1.1——自定义 headers 支持（PocketX 联调反馈 ⑤）**——`PaymasterClient` 构造第三参数 `headers`（或 `PaymasterConfig.headers`，config 优先）、`BundlerClient` 构造第二参数 `headers`（或 `BundlerConfig[].headers`，端点级优先），relay 模式注入 `X-API-Key` 过 aa-relay 鉴权（此前 rpc() 硬编码 headers 导致 wallet 端直用 relay 时 401）；`parseBundlers` 透传 `headers` 字段，`parsePaymaster` 支持 JSON `{"url","headers"}`；单测 +2（bundler 构造/端点级 headers 注入、paymaster config/构造 headers 合并）。`@0xinfrax/aa-sdk@0.1.1`。
 >
 > **v1.8（2026-08-16）**：**SDK 公开发布**——`@0xinfrax/aa-sdk@0.1.0` 发布至 npm（`@infrax` scope 私有发布需付费 E402，改 `@0xinfrax` scope + `--access public`）；`entryPointAbi`（activate.ts）、`parseBundlers`（config.ts）按 PocketX 需求单三.1/三.2 导出；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 上线（9131 网关对外 / 9134 内部 signer 仅内网）。详见 `docs/PAYMASTER_PROVISION_REQUEST.md` §八。
 >
