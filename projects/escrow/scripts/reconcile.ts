@@ -43,7 +43,6 @@ async function main() {
   const provider = ethers.provider;
   const escrow = await ethers.getContractAt("InfraXEscrow", escrowAddr);
 
-  const abi = escrow.interface;
   const [network, latest] = await Promise.all([provider.getNetwork(), provider.getBlockNumber()]);
   console.log(`链: ${network.name} (chainId=${network.chainId}) | escrow=${escrowAddr} | fromBlock=${fromBlock} → ${latest}`);
   if (latest < fromBlock) {
@@ -53,12 +52,12 @@ async function main() {
 
   // ── 1. 链上事件聚合（native 资产，token == address(0)）──────────────────
   const zero = ethers.ZeroAddress.toLowerCase();
-  const nativeDeposit = (await escrow.queryFilter(abi.getEvent("Deposited"), fromBlock, latest))
+  const nativeDeposit = (await escrow.queryFilter("Deposited", fromBlock, latest))
     .filter((l) => (l.args.token as string).toLowerCase() === zero);
-  const nativeWithdraw = (await escrow.queryFilter(abi.getEvent("Withdrawn"), fromBlock, latest))
+  const nativeWithdraw = (await escrow.queryFilter("Withdrawn", fromBlock, latest))
     .filter((l) => (l.args.token as string).toLowerCase() === zero);
-  const chargedLogs = await escrow.queryFilter(abi.getEvent("Charged"), fromBlock, latest);
-  const refundedLogs = await escrow.queryFilter(abi.getEvent("Refunded"), fromBlock, latest);
+  const chargedLogs = await escrow.queryFilter("Charged", fromBlock, latest);
+  const refundedLogs = await escrow.queryFilter("Refunded", fromBlock, latest);
 
   const sumBy = (logs: any[], pick: (l: any) => bigint) => {
     const m = new Map<string, bigint>();
