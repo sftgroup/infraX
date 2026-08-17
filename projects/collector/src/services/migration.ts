@@ -73,7 +73,21 @@ export async function migrateEventCollectorTables(): Promise<void> {
 
     // ============================================================
     // Core indexes (high-frequency query paths)
+    //
+    // 2026-08-17 events 分区迁移后：events 为 native partition 父表（relkind='p'）。
+    // PG14 在分区父表执行 CREATE INDEX 会递归为所有分区构建索引：
+    //   1) 36GB 大分区（events_p_20260816）上构建 15 个索引耗时数小时 → 启动卡死
+    //   2) 与迁移脚本已建的精简索引（uk + chain/block + collected_at）重复浪费空间
+    // 分区表时跳过本块；普通表（未迁移）保持原逻辑。
     // ============================================================
+    const eventsRel = await client.query(
+      `SELECT c.relkind FROM pg_class c
+        WHERE c.relname = 'events'
+          AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())`
+    );
+    const eventsIsPartitioned = eventsRel.rows.length > 0 && eventsRel.rows[0].relkind === 'p';
+
+    if (!eventsIsPartitioned) {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_block ON events (chain, block_number DESC);`);
     // 无过滤 ORDER BY block_number DESC LIMIT n（dc /events 默认路径）：单列 block_number 索引，
     // 否则 150GB+/1 亿+ 行全表排序（曾卡死 dc 服务，见 B-10-3）
@@ -92,6 +106,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_chain_type_block ON events (chain, event_type, block_number DESC);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_events_to_chain_block ON events (to_address, chain, block_number DESC);`);
+    }
 
     // ============================================================
     // event_checkpoints

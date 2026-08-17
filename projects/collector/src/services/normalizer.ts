@@ -96,12 +96,16 @@ function safeParseInt(hex: string): number {
   try { return isEmptyHex(hex) ? 0 : parseInt(hex, 16); } catch { return 0; }
 }
 
-function safeChecksum(address: string | null | undefined): string | null {
-  if (!address) return null;
-  try { return ethers.getAddress(address); } catch { return null; }
+function safeChecksum(address: string | null | undefined): string {
+  // 2026-08-17 分区迁移后暴露：合约创建交易 tx.to 为 null，
+  // 返回 null 会违反 to_address NOT NULL 约束（23502）导致事件丢失。
+  // 返回 '' 与表列默认值一致，保证地址字段永不为 null。
+  if (!address) return '';
+  try { return ethers.getAddress(address); } catch { return ''; }
 }
 
 function topicToAddress(topic: string): string {
+  if (!topic || typeof topic !== 'string') return '';
   try { return ethers.getAddress('0x' + topic.slice(26)); } catch { return topic; }
 }
 

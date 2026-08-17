@@ -176,9 +176,9 @@ export class DataCleaner {
         );
         const maxTs: Date | null = maxRow.rows[0]?.max_ts ?? null;
         if (!maxTs) {
-          // 空分区也直接回收
-          await pool.query(`DROP TABLE IF EXISTS ${part}`);
-          dropped++;
+          // 空分区不回收：迁移预建的未来分区（events_p_YYYYMMDD）被 DROP 后，
+          // collector 写入父表时无分区路由会报 "no partition found for row"。
+          // 空分区仅占 32kB，留待有数据后由下方 maxTs 边界判断决定是否回收。
           continue;
         }
         const boundary = new Date(Date.now() - retentionHours * 3_600_000);
