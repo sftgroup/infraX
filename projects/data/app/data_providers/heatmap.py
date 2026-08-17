@@ -1,9 +1,7 @@
-"""Crypto-focused heatmap data aggregator.
+"""Market heatmap data aggregator — crypto + 传统金融（stocks/fx/commodities）。
 
-Traditional finance sources (Yahoo, Finnhub, Stooq, CNBC) are unreliable without
-API keys.  CoinGecko / CoinCap are free, globally accessible, and work without
-authentication — so the heatmap is now **crypto-only**, divided into logical
-market sectors.
+Crypto 数据源：CoinGecko / CoinCap（免费）。传统金融见 ``tradfi_heatmap``
+（REQ-2：Finnhub 主源，TwelveData 兜底保护 kline 链路额度）。
 
 Sector token mappings are maintained here as a single source of truth.
 New tokens can be added by editing ``CRYPTO_SECTORS``.
@@ -20,10 +18,12 @@ from app.data_providers.crypto import (
     fetch_crypto_heatmap_coincap,
     fetch_crypto_prices,
 )
+from app.data_providers.tradfi_heatmap import fetch_tradfi_heatmap
 
 logger = get_logger(__name__)
 
-HEATMAP_CELL_COUNT = 30  # per-category cap
+# REQ-2：每类 token 上限 30 → 50+
+HEATMAP_CELL_COUNT = 50  # per-category cap
 
 # ── Crypto sector definitions ────────────────────────────────────────────
 # symbol → category mapping. Tokens not listed here go into "Other".
@@ -170,17 +170,18 @@ def _build_topcap_heatmap(all_coins: List[Dict[str, Any]]) -> List[Dict[str, Any
             "image": coin.get("image", ""),
         })
     rows.sort(key=lambda r: safe_float(r.get("marketCap", 0)), reverse=True)
-    return rows[:30]
+    return rows[:HEATMAP_CELL_COUNT]
 
 
 # ── Main entry ───────────────────────────────────────────────────────────
 
 def generate_heatmap_data() -> Dict[str, Any]:
-    """Generate crypto-only heatmap broken down by market sector.
+    """Generate full-market heatmap (crypto sectors + stocks/fx/commodities).
 
     Returns dict with keys:
-        topcap, layer1, layer2, defi, meme, ai, gaming, infra, other
-    Each value is a list of {name, fullName, value, price, marketCap, volume, image}.
+        topcap, layer1, layer2, defi, meme, ai, gaming, infra, other,
+        stocks, fx, commodities
+    Each value is a list of {name, fullName, value, price, ...}.
     """
     all_coins = _fetch_all_crypto()
 
@@ -193,6 +194,7 @@ def generate_heatmap_data() -> Dict[str, Any]:
             for name in sector_names
         }
         fut_other = pool.submit(_build_other_heatmap, all_coins)
+        fut_tradfi = pool.submit(fetch_tradfi_heatmap)
 
         result: Dict[str, Any] = {
             "topcap": fut_topcap.result(),
@@ -200,10 +202,11 @@ def generate_heatmap_data() -> Dict[str, Any]:
         for name in sector_names:
             result[name.lower()] = fut_sectors[name].result()
         result["other"] = fut_other.result()
+        result.update(fut_tradfi.result())  # stocks / fx / commodities
 
     total = sum(len(v) for v in result.values())
     logger.info(
-        "Crypto heatmap generated: total=%d coins across %d sectors",
+        "Full-market heatmap generated: total=%d cells across %d categories",
         total, len(result),
     )
     return result

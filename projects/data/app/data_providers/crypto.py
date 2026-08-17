@@ -173,12 +173,12 @@ def fetch_crypto_prices(*, fast: bool = False) -> List[Dict[str, Any]]:
 # ---------- Heatmap-specific fetchers ----------
 
 def fetch_crypto_heatmap_coingecko() -> List[Dict[str, Any]]:
-    """Fetch crypto heatmap from CoinGecko with retry — up to 100 tokens."""
+    """Fetch crypto heatmap from CoinGecko with retry — up to 150 tokens."""
     for attempt in range(2):
         try:
             resp = requests.get("https://api.coingecko.com/api/v3/coins/markets", params={
                 "vs_currency": "usd", "order": "market_cap_desc",
-                "per_page": 100, "page": 1, "sparkline": "false",
+                "per_page": 150, "page": 1, "sparkline": "false",
                 "price_change_percentage": "24h",
             }, timeout=15)
             resp.raise_for_status()

@@ -3,7 +3,7 @@
 
   "kline": {
     "_comment": "symbols/timeframes/exchange/fetch_limit 由 .env (KL_* 变量) 控制，此处仅供文档参考。indicators 参数由此处读取。深度标准对齐 AItrader 回测区间上限（DS-8）：1m≥30天、5m/15m/30m≥180天、1h/4h≥1年、1D≥3年。",
-    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BTC/USDC", "ETH/USDC"],
     "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
     "exchange": "binance",
     "fetch_limit": 500,
@@ -189,8 +189,8 @@
   },
 
   "heatmap": {
-    "_comment": "加密热力图 — CoinGecko 免费，无需 API Key。",
+    "_comment": "全市场热力图（REQ-2：crypto + stocks/fx/commodities）。crypto 数据 CoinGecko/CoinCap 免费源；传统金融走 app/data_providers/tradfi_heatmap.py（Finnhub 主源，TwelveData 最后兜底保护 kline 链路额度）。",
     "interval_sec": 600,
-    "max_per_category": 30
+    "max_per_category": 50
   }
 }

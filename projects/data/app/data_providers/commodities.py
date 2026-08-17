@@ -39,6 +39,10 @@ def _fetch_td(commodities: list) -> List[Dict[str, Any]]:
                 resp = requests.get("https://api.twelvedata.com/quote", params={
                     "symbol": c["td"], "apikey": api_key,
                 }, timeout=10)
+                if resp.status_code == 429:
+                    # 免费额度耗尽：短路跳过整层，避免逐对请求浪费等待
+                    logger.warning("TwelveData commodity quota exhausted, skip TD tier")
+                    break
                 data = resp.json()
                 if data.get("status") == "error" or not data.get("close"):
                     continue

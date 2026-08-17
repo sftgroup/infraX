@@ -45,7 +45,7 @@ Data Service 为整个 InfraX 平台提供**多市场行情数据**和**技术/�
 
 | 数据类型 | 内容 | 数据源 |
 |----------|------|--------|
-| 热力图 | 8分类×95币种 (topcap/layer1/layer2/defi/meme/ai/gaming/infra) | CoinGecko (免费) |
+| 热力图（全市场） | crypto 8 分类×50 + stocks + fx(12对) + commodities(12只) | CoinGecko / Finnhub / frankfurter / yfinance / Tiingo / TwelveData（多源回退，REQ-2） |
 | 经济日历 | FOMC/CPI/PPI/NFP/GDP 等12类事件 | Finnhub API / 静态日期 |
 | 加密货币价格 | 5币种价格+涨跌幅+市值 | CoinGecko |
 | 全球指数 | S&P500/NASDAQ/Dow/Nikkei/EuroStoxx/FTSE/HSI | yfinance |
@@ -77,7 +77,7 @@ data-service/
     │   ├── external_factors.py  # Fear & Greed / VIX / DXY / US10Y
     │   ├── calendar.py          # 经济日历 (Finnhub → FOMC静态兜底)
     │   ├── market_data.py       # 快照: 加密货币/指数/链上/DeFi/波动率/宏观/财报
-    │   ├── heatmap.py           # 加密热力图 (CoinGecko 8分类)
+    │   ├── heatmap.py           # 全市场热力图快照 (crypto + stocks/fx/commodities，统一走 generate_heatmap_data)
     │   └── urls.py              # 所有 API URL 集中管理 (env可覆盖)
     │
     ├── storage/             # SQLite 存储层

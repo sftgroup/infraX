@@ -384,11 +384,16 @@ def get_snapshots(data_type: Optional[str] = None) -> dict:
             params = (data_type,)
         rows = db.execute(sql, params).fetchall()
     else:
+        # 按 (provider, data_type) 分组取每组最新，替代全局 LIMIT 50：
+        # 高频快照（onchain_checkpoints / okx_* 等 1-2 分钟级）会把低频快照
+        # （heatmap 等 10 分钟级）挤出最近 50 行窗口，导致 /snapshots 间歇缺项。
         rows = db.execute(
             """SELECT provider, data_type, raw_json, fetched_at
                FROM raw_snapshots
-               ORDER BY fetched_at DESC
-               LIMIT 50"""
+               WHERE id IN (
+                   SELECT MAX(id) FROM raw_snapshots GROUP BY provider, data_type
+               )
+               ORDER BY fetched_at DESC"""
         ).fetchall()
 
     seen: set = set()
