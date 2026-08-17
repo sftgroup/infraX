@@ -72,8 +72,8 @@ export class SessionService {
       throw new AppError(Errors.INVALID_SIGNATURE.statusCode, Errors.INVALID_SIGNATURE.code, Errors.INVALID_SIGNATURE.msg);
     }
 
-    // Encrypt and persist
-    const encKey = this.adapter.encryptKey(params.sessionPrivateKey);
+    // Encrypt and persist（AX-12/SK-4: 走 IKeyVault 接缝，可替换为 KMS/外部托管）
+    const encKey = await this.adapter.encryptKey(params.sessionPrivateKey);
     const session = await this.sessionRepo.create({
       userId: params.userAddress,
       chain: params.chain,

@@ -157,6 +157,13 @@ function x402Gate(req: any, res: any, method: string, params: any): boolean {
     requestUrl: X402_REQUEST_URL,
     verifyUrl: X402_VERIFY_URL,
     retryHeader: 'X-Payment-Order-Id',
+    // AX-7/PC-3: 引擎 402 body 结构化对齐（供前端渲染付款卡片）。
+    // collector 为 USD 计费 rail（无 wei 定价），priceWei/payTo 按配置留空；
+    // resumeRef 由调用方先经 X402_REQUEST_URL 取订单后闭环。
+    priceWei: null,
+    payTo: process.env.X402_PAY_TO || null,
+    resumeRef: null,
+    mode: 'topup',
   }, 'x402 payment required', 402));
   return true;
 }

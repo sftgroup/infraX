@@ -13,9 +13,12 @@ export function makeStore(): PaymentStore & {
     credit: vi.fn(async () => {}),
     isCreditRecorded: vi.fn(async () => false),
     deduct: vi.fn(async () => true),
+    recordAccessDeduction: vi.fn(async () => true),
+    deleteAccessDeduction: vi.fn(async () => {}),
     resolveAccess: vi.fn(async () => false),
     recordIntent: vi.fn(async () => {}),
     updateIntentStatus: vi.fn(async () => {}),
+    getIntent: vi.fn(async () => null),
     emitEvent: vi.fn(async () => {}),
   }
 }

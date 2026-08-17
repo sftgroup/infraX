@@ -9,7 +9,12 @@ export interface CreateSessionRequest {
   maxTotal: string;
   userAddress: string;
   nonce: string;
-  sessionAddress: string;
+  /** A-16：session key 由客户端生成并提交——公钥地址（= 签名消息中的 sessionAddress） */
+  sessionPublicKey: string;
+  /** A-16：客户端生成的会话私钥（服务端校验与公钥派生一致后 AES 加密托管） */
+  sessionPrivateKey: string;
+  /** 客户端 EIP-712 签名时使用的 validUntil（unix 秒），需与签名消息一致；省略则服务端计算 */
+  validUntil?: number;
 }
 
 export interface ExecuteRequest {

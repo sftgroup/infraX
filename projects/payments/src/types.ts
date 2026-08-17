@@ -151,6 +151,7 @@ export type PaymentEventType =
   | 'transfer.requested'
   | 'transfer.executed'
   | 'transfer.rejected'
+  | 'access.deducted' // AX-6/PC-2: 按次扣费成功（审计可订阅）
 
 /** An outbound payment event (module writes; host consumes). */
 export interface PaymentEvent {

@@ -31,7 +31,7 @@ import type {
   TransferStore,
 } from './store'
 import { PAYMENT_INTENT_STATUSES } from './store'
-import type { PaymentIntentStatus } from './store'
+import type { AccessCheckOptions, AccessComposerSource, AccessResource, PaymentIntentStatus } from './store'
 import { NATIVE_ASSET } from './types'
 import type {
   BatchItemResult,
@@ -73,6 +73,8 @@ export interface X402Options {
     permit2?: string
     chain?: ChainKey
   }
+  /** AX-1/OE-1: Escrow 托管合约地址。配置后 verify 自动走 escrow 判定（verifyEscrowDepositTx）。 */
+  escrow?: { address: string }
 }
 
 export interface MPPOptions extends MPPConfig {}
@@ -141,6 +143,9 @@ export class PaymentsService {
             priceWei: opts.x402.priceWei,
             chain: opts.x402.chain,
             maxAmountWei: opts.x402.maxAmountWei,
+            // AX-1/OE-1: 修复透传断裂——server.ts 注入的 X402_ESCROW_ADDRESS 此前被丢弃，
+            // 导致 HTTP 路径下 escrow 判定恒不可达。
+            escrow: opts.x402.escrow,
             stablecoin: opts.x402.stablecoin
               ? { ...opts.x402.stablecoin, chain: opts.x402.stablecoin.chain ?? opts.x402.chain }
               : undefined,
@@ -416,12 +421,38 @@ export class PaymentsService {
   }
 
   /**
-   * Phase 2: verify the payer's on-chain payment tx for an a2a intent and
-   * credit it (idempotent per tx hash). The tx must be a valid payment to the
-   * deployment payee wallet — the module then credits the payer's ledger
-   * balance and lets the host route funds via onCredit / webhook events.
+   * Phase 2: settle an a2a intent.
+   *
+   * `mode: 'tx'` (default) verifies the payer's on-chain payment tx for the
+   * intent and credits it (idempotent per tx hash). The tx must be a valid
+   * payment to the deployment payee wallet — the module then credits the
+   * payer's ledger balance and lets the host route funds via onCredit /
+   * webhook events.
+   *
+   * `mode: 'balance'` (AX-8/A2A-1) settles from the payer's pre-deposited
+   * ledger balance instead — no new on-chain tx. Used by server→server A2A
+   * orchestration where a fresh user wallet signature is impractical. The
+   * intent's subscriber/amount are read back via `store.getIntent` (when the
+   * host implements it), with `subscriber` / `amountWei` as fallbacks. Deduct
+   * is atomic and ref-idempotent (see deductForAccess); the intent flips to
+   * `paid` exactly once.
    */
-  async a2aSettle(input: { paymentId: string; txHash: string; chain?: ChainKey }): Promise<VerifiedPayment | null> {
+  async a2aSettle(input: {
+    paymentId: string
+    txHash?: string
+    chain?: ChainKey
+    mode?: 'tx' | 'balance'
+    /** Balance mode fallback/override: payer address (used when the store has no getIntent). */
+    subscriber?: string
+    /** Balance mode override: amount to deduct (defaults to the intent amount). */
+    amountWei?: string
+    /** Balance mode override: asset to deduct (defaults to the intent asset / native). */
+    asset?: string
+    /** Balance mode idempotency ref (defaults to the paymentId). */
+    ref?: string
+  }): Promise<VerifiedPayment | null> {
+    if ((input.mode ?? 'tx') === 'balance') return this._a2aSettleByBalance(input)
+    if (!input.txHash) throw new PaymentError('INVALID_INPUT', 'a2a tx mode: txHash is required', 400)
     if (!this.x402) throw new PaymentError('NOT_CONFIGURED', 'x402 is not configured', 503)
     const verified = await this.x402.verifyAndCredit(input.txHash, input.chain)
     if (!verified) return null
@@ -448,6 +479,68 @@ export class PaymentsService {
       chainId: this.chain.chainIdOf(verified.chain),
     })
     return verified
+  }
+
+  /**
+   * AX-8/A2A-1: balance-mode settle — deduct from the payer's ledger balance.
+   *
+   * Sources for subscriber/amount/asset/chain, in priority order:
+   *   1. explicit caller overrides (subscriber/amountWei/asset/chain)
+   *   2. the recorded intent (store.getIntent)
+   * The caller must pass `subscriber` + `amountWei` when the store does not
+   * implement `getIntent`.
+   */
+  private async _a2aSettleByBalance(input: {
+    paymentId: string
+    chain?: ChainKey
+    subscriber?: string
+    amountWei?: string
+    asset?: string
+    ref?: string
+  }): Promise<VerifiedPayment | null> {
+    const intent = this.opts.store.getIntent ? await this.opts.store.getIntent(input.paymentId) : null
+    const subscriber = String(input.subscriber ?? intent?.subscriber ?? '').toLowerCase()
+    const amountWei = input.amountWei ?? intent?.amountWei
+    const asset = (input.asset ?? intent?.asset ?? NATIVE_ASSET).toLowerCase()
+    const chain = (input.chain ?? (intent?.chain as ChainKey) ?? 'oxachain')
+    if (!subscriber || !amountWei) {
+      throw new PaymentError('INVALID_INPUT', 'a2a balance mode: subscriber + amountWei are required (store.getIntent unavailable or intent not found)', 400)
+    }
+    // Idempotency gate #1: an already-paid intent settles exactly once.
+    if (intent && intent.status === 'paid') {
+      return { reference: input.ref ?? input.paymentId, payer: subscriber, creditedWei: amountWei, asset, chain }
+    }
+    const ref = input.ref ?? input.paymentId
+    // Atomic deduct + ref-idempotent audit (see deductForAccess); insufficient
+    // balance is an explicit error so hosts can surface 4xx instead of a bare null.
+    const result = await this.deductForAccess(subscriber, `a2a:${input.paymentId}`, BigInt(amountWei), { ref, asset, chain })
+    if (!result.ok) {
+      throw new PaymentError('INSUFFICIENT_BALANCE', 'a2a balance settle failed: insufficient balance', 400)
+    }
+    await this.opts.store.updateIntentStatus?.(input.paymentId, 'paid')
+    await this.emit('a2a.settled', input.paymentId, {
+      paymentId: input.paymentId,
+      reference: ref,
+      payer: subscriber,
+      creditedWei: amountWei,
+      method: 'balance',
+    })
+    await this.emit('payment.credited', ref, {
+      reference: ref,
+      payer: subscriber,
+      amountWei,
+      asset,
+      chain,
+      chainId: this.chain.chainIdOf(chain),
+    })
+    await this.opts.onCredit?.({
+      reference: ref,
+      payer: subscriber,
+      amountWei,
+      asset,
+      chainId: this.chain.chainIdOf(chain),
+    })
+    return { reference: ref, payer: subscriber, creditedWei: amountWei, asset, chain }
   }
 
   // ── Batch rail (one-shot multi-payee collection) ───────────────────────
@@ -818,7 +911,13 @@ export class PaymentsService {
         description: 'Single-shot on-chain payment verification (native + stablecoin)',
         endpoints: ['POST /verify', 'GET /info'],
         config: this.x402
-          ? { chain: this.x402.chain(), payTo: this.x402.payTo(), stablecoin: this.x402.stablecoinAvailable() }
+          ? {
+              chain: this.x402.chain(),
+              payTo: this.x402.payTo(),
+              stablecoin: this.x402.stablecoinAvailable(),
+              // AX-1/OE-1: 暴露 escrow 金库地址（GET /capabilities → 集成方核对）
+              escrow: this.x402.escrowAddress() ?? undefined,
+            }
           : undefined,
       },
       mpp: {
@@ -926,12 +1025,34 @@ export class PaymentsService {
 
   // ── Access & balances (delegated to the injected store) ─────────────────
 
-  resolveAccess(
+  /**
+   * AX-5/PC-1: 统一访问判定。
+   *  - 提供 `opts.composer` 时走默认组合器：`chain 订阅 OR offchain 订阅 OR
+   *    balance ≥ price`（宿主仅注入子判定来源与 order 优先级，无需自实现判定树）；
+   *  - 否则委托注入 store 的 resolveAccess（现状，向后兼容）。
+   */
+  async resolveAccess(
     subscriber: string,
     resource: string | number | Record<string, unknown>,
-    opts?: { chain?: ChainKey }
+    opts?: AccessCheckOptions
   ): Promise<boolean> {
-    return this.opts.store.resolveAccess(subscriber, resource, opts)
+    const composer = opts?.composer
+    if (!composer) return this.opts.store.resolveAccess(subscriber, resource, opts)
+
+    const chain = opts?.chain
+    const order: AccessComposerSource[] = composer.order ?? ['chain', 'offchain', 'balance']
+    for (const source of order) {
+      if (source === 'chain' && composer.chainSub && chain) {
+        if (await composer.chainSub(subscriber, resource, chain)) return true
+      } else if (source === 'offchain') {
+        const check = composer.offchain ?? ((s: string, r: AccessResource) => this.opts.store.resolveAccess(s, r))
+        if (await check(subscriber, resource)) return true
+      } else if (source === 'balance' && composer.payPerCall) {
+        const bal = await this.balanceOf(subscriber, composer.payPerCall.asset)
+        if (bal >= BigInt(composer.payPerCall.priceWei)) return true
+      }
+    }
+    return false
   }
 
   balanceOf(address: string, asset: string = NATIVE_ASSET): Promise<bigint> {
@@ -940,5 +1061,52 @@ export class PaymentsService {
 
   deduct(address: string, amount: bigint, asset: string = NATIVE_ASSET): Promise<boolean> {
     return this.opts.store.deduct(address, amount, asset)
+  }
+
+  /**
+   * AX-6/PC-2: 按次扣费（审计 + 幂等 + 事件）。
+   * 流程：审计占位（ref 幂等短路）→ deduct（余额不足回滚占位）→ `access.deducted` 事件。
+   * 宿主传入 ref 可跨请求幂等（对齐 AgentX `a2a_pay_log.ref_id` 语义）；未传时自动生成。
+   * 宿主 store 未实现 recordAccessDeduction 时退化为裸 deduct（无审计）。
+   */
+  async deductForAccess(
+    subscriber: string,
+    resource: string,
+    amount: bigint,
+    opts?: { ref?: string; asset?: string; chain?: string }
+  ): Promise<{ ok: boolean; reason?: 'insufficient_balance'; idempotent?: boolean }> {
+    const ref = opts?.ref ?? `access:${subscriber.toLowerCase()}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`
+    const asset = opts?.asset ?? NATIVE_ASSET
+
+    // 1. 审计占位（ref_id 唯一 → 幂等短路，不重复扣费）
+    if (this.opts.store.recordAccessDeduction) {
+      const inserted = await this.opts.store.recordAccessDeduction({
+        refId: ref,
+        subscriber,
+        resource,
+        amountWei: amount.toString(),
+        asset,
+        chain: opts?.chain,
+      })
+      if (!inserted) return { ok: true, idempotent: true }
+    }
+
+    // 2. 扣费（原子 UPDATE，余额不足返回 false）
+    const deducted = await this.deduct(subscriber, amount, asset)
+    if (!deducted) {
+      // 回滚占位，保持审计与余额一致
+      if (this.opts.store.deleteAccessDeduction) await this.opts.store.deleteAccessDeduction(ref)
+      return { ok: false, reason: 'insufficient_balance' }
+    }
+
+    // 3. 审计事件（宿主可订阅对账）
+    await this.emit('access.deducted', ref, {
+      subscriber,
+      resource,
+      amountWei: amount.toString(),
+      asset,
+      chain: opts?.chain ?? null,
+    })
+    return { ok: true }
   }
 }

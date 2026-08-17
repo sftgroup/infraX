@@ -32,8 +32,40 @@ export interface SqlExecutor {
 /** What the caller wants access to (opaque — the store knows how to read it). */
 export type AccessResource = string | number | Record<string, unknown>
 
+/** AX-6/PC-2: 一次按次扣费审计记录（ref_id 幂等，对齐 AgentX a2a_pay_log）。 */
+export interface AccessDeductionEntry {
+  /** 宿主幂等键（如 `a2a_pay_log:{uuid}`）；同 ref 不重复扣费。 */
+  refId: string
+  subscriber: string
+  resource: string
+  amountWei: string
+  asset?: string
+  chain?: string
+}
+
+/** 子判定来源（AX-5/PC-1 默认组合器）：任一命中即放行。 */
+export type AccessComposerSource = 'chain' | 'offchain' | 'balance'
+
+/**
+ * AX-5/PC-1: 默认组合器配置（宿主仅注入子判定来源与优先级，
+ * 无需自实现判定树）。`PaymentsService.resolveAccess` 在提供 composer 时
+ * 按 order 顺序执行：chain 订阅 OR offchain 订阅 OR balance ≥ price。
+ */
+export interface AccessComposerOptions {
+  /** 链上订阅判定来源（如 SubscriptionManager.hasActiveSubscription）。 */
+  chainSub?: (subscriber: string, resource: AccessResource, chain: ChainKey) => Promise<boolean>
+  /** offchain 订阅判定来源（默认回退 payment_access 注册表）。 */
+  offchain?: (subscriber: string, resource: AccessResource) => Promise<boolean>
+  /** 按次扣费判定：balance ≥ priceWei 即放行（仅判定，不扣费；扣费见 PC-2/AX-6）。 */
+  payPerCall?: { priceWei: string; asset?: string }
+  /** 子判定优先级，任一命中即放行（默认 ['chain','offchain','balance']）。 */
+  order?: AccessComposerSource[]
+}
+
 export interface AccessCheckOptions {
   chain?: ChainKey
+  /** AX-5/PC-1: 提供时启用默认组合器（否则保持 store 直判，向后兼容）。 */
+  composer?: AccessComposerOptions
 }
 
 /** Lifecycle of a payment intent (audit trail across all rails). */
@@ -80,6 +112,16 @@ export interface PaymentStore {
   isCreditRecorded(reference: string): Promise<boolean>
   /** Atomically deduct from a balance; false when insufficient. */
   deduct(address: string, amount: bigint, asset?: string): Promise<boolean>
+  /**
+   * AX-6/PC-2: 记录按次扣费审计日志（ref_id 幂等）。
+   * 返回 true = 新增记录（宿主继续扣费流程）；false = ref 已存在（幂等短路）。
+   * Optional — 宿主不实现时 deductForAccess 退化为裸 deduct。
+   */
+  recordAccessDeduction?(entry: AccessDeductionEntry): Promise<boolean>
+  /**
+   * AX-6/PC-2: 回滚一条审计占位（deduct 失败时删除占位保持一致）。Optional。
+   */
+  deleteAccessDeduction?(refId: string): Promise<void>
   /** Unified access check (the store decides how to interpret `resource`). */
   resolveAccess(subscriber: string, resource: AccessResource, opts?: AccessCheckOptions): Promise<boolean>
   /** Record a payment intent (audit trail). Optional — hosts may skip. */
@@ -94,6 +136,12 @@ export interface PaymentStore {
    * skip; callers then get an empty list. Newest-first, paginated.
    */
   listIntents?(params: { limit?: number; offset?: number; status?: string; subscriber?: string }): Promise<PaymentIntentRow[]>
+  /**
+   * AX-8/A2A-1: read a single payment intent by id. Optional — hosts without
+   * it can still settle by balance when the caller passes `subscriber` +
+   * `amountWei` explicitly. Implementations return null for unknown ids.
+   */
+  getIntent?(paymentId: string): Promise<PaymentIntentRow | null>
   /**
    * Append an outbound lifecycle event (see `PaymentEvent`). Optional — hosts
    * that consume lifecycle via callbacks (onWebhookEvent / onCredit) may skip.
@@ -211,6 +259,29 @@ export class PgPaymentStore implements PaymentStore {
     }))
   }
 
+  async getIntent(paymentId: string): Promise<PaymentIntentRow | null> {
+    const { rows } = await this.pool.query(
+      `SELECT intent_id, method, subscriber, asset, amount_wei, currency, chain, status, metadata, created_at, updated_at
+       FROM payment_intents WHERE intent_id = $1 LIMIT 1`,
+      [String(paymentId).toLowerCase()]
+    )
+    const r = rows[0]
+    if (!r) return null
+    return {
+      intentId: r.intent_id,
+      method: r.method,
+      subscriber: r.subscriber,
+      asset: r.asset,
+      amountWei: r.amount_wei !== null && r.amount_wei !== undefined ? String(r.amount_wei) : null,
+      currency: r.currency,
+      chain: r.chain,
+      status: r.status,
+      metadata: r.metadata ? (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) : null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }
+  }
+
   async deduct(address: string, amount: bigint, asset: string = NATIVE_ASSET): Promise<boolean> {
     const res = await this.pool.query(
       `UPDATE payment_balances SET balance_wei = (balance_wei::numeric - $3::numeric)::text, updated_at = NOW()
@@ -218,6 +289,28 @@ export class PgPaymentStore implements PaymentStore {
       [address.toLowerCase(), asset.toLowerCase(), amount.toString()]
     )
     return (res.rowCount ?? 0) > 0
+  }
+
+  // AX-6/PC-2: 按次扣费审计日志（ref_id 幂等）。
+  async recordAccessDeduction(entry: AccessDeductionEntry): Promise<boolean> {
+    const res = await this.pool.query(
+      `INSERT INTO payment_access_log (ref_id, subscriber, resource, amount_wei, asset, chain)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (ref_id) DO NOTHING`,
+      [
+        entry.refId,
+        entry.subscriber.toLowerCase(),
+        entry.resource,
+        entry.amountWei,
+        (entry.asset ?? NATIVE_ASSET).toLowerCase(),
+        entry.chain ?? null,
+      ]
+    )
+    return (res.rowCount ?? 0) > 0
+  }
+
+  async deleteAccessDeduction(refId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM payment_access_log WHERE ref_id = $1`, [refId])
   }
 
   async resolveAccess(

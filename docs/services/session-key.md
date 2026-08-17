@@ -30,7 +30,7 @@ const sk = new SessionKeyClient({
 const { nonce, message } = await sk.getNonce('0x0000000000000000000000000000000000000001');
 console.log(message);
 
-// 2. 创建会话（服务端验签通过后返回会话 id + sessionAddress；签名须基于服务端生成的 sessionAddress，见下文 §3 签名域）
+// 2. 创建会话（客户端生成 session keypair 并提交；签名消息中的 sessionAddress = 客户端生成的公钥地址，见下文 §3 签名域）
 const session = await sk.createSession({
   signature: '<0xEIP712_SIGNATURE>',
   chain: 'eth',
@@ -40,6 +40,8 @@ const session = await sk.createSession({
   maxTotal: '10000',
   userAddress: '0x0000000000000000000000000000000000000001',
   nonce,
+  sessionPublicKey: '<0xSESSION_PUBLIC_KEY>',   // A-16：客户端生成 keypair 后提交公钥地址
+  sessionPrivateKey: '<0xSESSION_PRIVATE_KEY>', // 客户端生成的私钥（服务端加密托管，仅用于代签）
 });
 console.log(session.id, session.sessionAddress);
 ```
@@ -54,16 +56,16 @@ curl -s "http://127.0.0.1:3500/api/v1/nonce?user=0x00000000000000000000000000000
 
 ## 1. 服务定位
 
-**session-key**（Session Key Engine，v0.1.0）是 InfraX 的**会话密钥授权服务**：用户主钱包一次性 EIP-712 签名授权后，服务端为其生成会话密钥对（Session Key），在有效期内自动代签交易——实现 **Agent 免签名交易（服务端受限代执行）**。
+**session-key**（Session Key Engine，v0.1.0）是 InfraX 的**会话密钥授权服务**：用户主钱包一次性 EIP-712 签名授权后，**客户端生成会话密钥对（Session Key）**并提交公钥/私钥，服务端校验派生一致性后加密托管，在有效期内自动代签交易——实现 **Agent 免签名交易（服务端受限代执行）**。
 
-> **能力边界（重要）**：本服务**不是 ERC-4337 智能账户方案**——无 UserOp / Bundler / Paymaster / EntryPoint。会话私钥由平台生成并 **AES 加密托管**（`sessionKeyEnc`），`/api/v1/execute` 由服务端解密后经 viem 直接签名广播；授权模型为「用户对会话元数据做 EIP-712 签名 + 服务端白名单/限额执行」。若集成方需要**去信任的链上验证器（ERC-4337）**，属另一条产品线，可与 InfraX 托管钱包 / MPC 能力组合实现。
+> **能力边界（重要）**：本服务**不是 ERC-4337 智能账户方案**——无 UserOp / Bundler / Paymaster / EntryPoint。会话私钥由**客户端生成**（A-16 修复：EIP-712 签名消息含 sessionAddress，服务端随机生成会签名死锁），提交后由服务端 **AES 加密托管**（`sessionKeyEnc`），`/api/v1/execute` 由服务端解密后经 viem 直接签名广播；授权模型为「用户对会话元数据做 EIP-712 签名 + 服务端白名单/限额执行」。若集成方需要**去信任的链上验证器（ERC-4337）**，属另一条产品线，可与 InfraX 托管钱包 / MPC 能力组合实现。
 
 核心流程：
 
 ```
 1. GET  /api/v1/nonce?user=0xUser            → 获取一次性 nonce（15 分钟 TTL）+ 签名提示消息
-2. 用户主钱包对 SessionAuth 消息做 EIP-712 签名
-3. POST /api/v1/sessions                     → 创建 Session Key（服务端生成 sessionAddress，验签通过后加密存储）
+2. 客户端生成 session keypair（address + privateKey），用户主钱包对含该 sessionAddress 的 SessionAuth 消息做 EIP-712 签名
+3. POST /api/v1/sessions                     → 提交 sessionPublicKey + sessionPrivateKey（服务端校验派生一致 + 验签，加密托管）
 4. POST /api/v1/execute                      → 有效期内自动代签交易（额度/白名单三重校验）
 5. DELETE /api/v1/sessions/:id               → 手动撤销授权
 ```
@@ -106,7 +108,10 @@ curl -s "http://127.0.0.1:3500/api/v1/nonce?user=0x00000000000000000000000000000
   "maxPerTx": "1000",                            // 单笔上限（USDC 单位，默认 1000）
   "maxTotal": "10000",                           // 累计上限（USDC 单位，默认 10000）
   "userAddress": "0xUserWallet",
-  "nonce": "abc123..."                           // GET /nonce 返回值
+  "nonce": "abc123...",                          // GET /nonce 返回值
+  "sessionPublicKey": "0x...",                   // 客户端生成的会话公钥地址（= 签名消息中的 sessionAddress）
+  "sessionPrivateKey": "0x...",                  // 客户端生成的会话私钥（服务端校验派生一致后加密托管）
+  "validUntil": 1787040000                       // 可选：客户端签名时使用的 unix 秒；省略则服务端按 validDays 计算
 }
 ```
 
@@ -138,14 +143,14 @@ types : SessionAuth [
 primaryType: "SessionAuth"
 ```
 
-> 注意：`sessionAddress` 由**服务端在 createSession 时生成**（`generateSessionKey`）并以其校验签名（`session-service.ts`），即签名内容中的 sessionAddress 需与服务端生成的会话地址一致——签名环节需按服务端生成的地址构建消息，或与客户端预生成地址的集成方式对齐（当前 REST 契约不暴露预生成接口，属服务端设计约束）。
+> 注意（A-16）：`sessionAddress` 由**客户端在本地生成 keypair 后提交**（`generateSessionKey` 派生公钥地址，见 `packages/evm/src/eip712.ts`），服务端仅做「提交私钥派生地址 == 提交公钥地址」的一致性硬校验 + EIP-712 验签（`session-service.ts`）。因此签名环节须**先由客户端生成 keypair**，再用该 sessionAddress 构建 EIP-712 消息由用户主钱包签名，最后连同 sessionPublicKey/sessionPrivateKey 一起提交。
 
 ### 安全机制
 
 - **Nonce 防重放**：一次性消费，15 分钟 TTL（NONCE_TTL_MS），过期/重复 → `NONCE_EXPIRED`/`NONCE_INVALID`。
 - **三重额度**：有效期（validUntil）+ 单笔上限（maxPerTx）+ 累计上限（maxTotal，成功交易后记账 `totalSpent`）。
 - **合约/函数白名单**：`permissions.contracts` 精确校验、`functions` 4-byte selector 校验。
-- **私钥加密存储**：AES-256-GCM（`ENCRYPTION_KEY` 注入）。
+- **私钥加密存储**：AES-256-GCM（`ENCRYPTION_KEY` 注入）；可选 KMS/外部密钥托管接缝（AX-12/SK-4），见 §6。
 - **Redis 分布式锁**：`lock:session:<id>` 30 秒防并发执行，命中返回 429 `SESSION_LOCKED`。
 
 ## 4. 样例代码
@@ -165,7 +170,7 @@ TOKEN=<SESSION_KEY_API_TOKEN>
 curl -s "$BASE/api/v1/nonce?user=0x0000000000000000000000000000000000000001"
 # {"code":200,"data":{"nonce":"7f3a...","message":"Session Key Engine\n\nAuthorise a session key to execute transactions on your behalf.\n\nNonce: 7f3a..."},"message":"ok"}
 
-# ── 2. 创建会话（公开端点，但需合法 EIP-712 签名；signature 由主钱包按上文签名域生成）──
+# ── 2. 创建会话（公开端点，但需合法 EIP-712 签名；客户端先生成 keypair，signature 由主钱包按上文签名域生成）──
 curl -s -X POST "$BASE/api/v1/sessions" -H "Content-Type: application/json" \
   -d '{
     "signature": "0x<USER_SIGNATURE>",
@@ -175,7 +180,9 @@ curl -s -X POST "$BASE/api/v1/sessions" -H "Content-Type: application/json" \
     "maxPerTx": "1000",
     "maxTotal": "10000",
     "userAddress": "0x0000000000000000000000000000000000000001",
-    "nonce": "<NONCE_FROM_STEP_1>"
+    "nonce": "<NONCE_FROM_STEP_1>",
+    "sessionPublicKey": "<0xCLIENT_GENERATED_PUBLIC_KEY>",
+    "sessionPrivateKey": "<0xCLIENT_GENERATED_PRIVATE_KEY>"
   }'
 # {"code":201,"data":{"id":"<sessionId>","sessionAddress":"0x...","status":"active","validUntil":"2026-09-10T..."},"message":"Session created"}
 
@@ -222,34 +229,31 @@ const userAddress = '0x0000000000000000000000000000000000000001';
 const { nonce, message } = await sk.getNonce(userAddress);
 console.log(message); // 用户主钱包展示并签名
 
-// ── 2. EIP-712 签名（SessionAuth，域 "Session Key Engine" v1 + chainId）──
-// sessionAddress / validUntil 为服务端 createSession 时生成与计算，
-// 此处以占位展示签名结构；签名必须基于服务端生成的 sessionAddress（见 §3 签名域说明）。
+// ── 2. 客户端生成 session keypair（A-16：先于签名生成，sessionAddress 进入签名消息）──
+import { generateSessionKey, buildSessionAuthMessage } from '@0xinfrax/session-key-evm';
+const sessionKey = generateSessionKey(); // { address, privateKey }
+
+// ── 3. EIP-712 签名（SessionAuth，域 "Session Key Engine" v1 + chainId）──
+// 注意：签名消息中的 sessionAddress = 上面生成的 sessionKey.address（客户端生成，非服务端生成）。
+const validUntil = Math.floor(Date.now() / 1000) + 30 * 86400;
+const { domain, types, primaryType, message } = buildSessionAuthMessage({
+  nonce,
+  chainId: 1,
+  sessionAddress: sessionKey.address,          // 客户端生成的会话公钥地址
+  permissions: { contracts: ['0xUniswapRouter'] },
+  validUntil,
+  maxPerTx: '1000',
+  maxTotal: '10000',
+});
 const signature = await signTypedData({
   privateKey: userPrivateKey, // 用户主钱包私钥（仅本地签名，不上传）
-  domain: { name: 'Session Key Engine', version: '1', chainId: 1 },
-  types: {
-    SessionAuth: [
-      { name: 'nonce', type: 'string' },
-      { name: 'sessionAddress', type: 'address' },
-      { name: 'contracts', type: 'string' },
-      { name: 'validUntil', type: 'uint256' },
-      { name: 'maxPerTx', type: 'uint256' },
-      { name: 'maxTotal', type: 'uint256' },
-    ],
-  },
-  primaryType: 'SessionAuth',
-  message: {
-    nonce,
-    sessionAddress: '<SESSION_ADDRESS>',           // 服务端生成的会话地址
-    contracts: JSON.stringify(['0xUniswapRouter']),
-    validUntil: BigInt(Math.floor(Date.now() / 1000) + 30 * 86400),
-    maxPerTx: BigInt(1000),
-    maxTotal: BigInt(10000),
-  },
+  domain,
+  types,
+  primaryType,
+  message,
 });
 
-// ── 3. 创建会话（签名通过后返回会话 id + sessionAddress）──
+// ── 4. 创建会话（提交客户端 keypair，签名通过后返回会话 id + sessionAddress）──
 const session = await sk.createSession({
   signature,
   chain: 'eth',
@@ -259,10 +263,13 @@ const session = await sk.createSession({
   maxTotal: '10000',
   userAddress,
   nonce,
+  sessionPublicKey: sessionKey.address,    // A-16：提交公钥地址
+  sessionPrivateKey: sessionKey.privateKey, // 提交私钥（服务端加密托管，仅用于代签）
+  validUntil,                               // 与签名消息中的 validUntil 一致
 });
 console.log(session.sessionAddress);
 
-// ── 4. 执行交易（Agent 免签名）──
+// ── 5. 执行交易（Agent 免签名）──
 const result = await sk.execute({
   sessionId: session.id,
   chain: 'eth',
@@ -273,7 +280,7 @@ const result = await sk.execute({
 });
 console.log(result.txHash, result.status);
 
-// ── 5. 列表 / 详情 / 撤销 ──
+// ── 6. 列表 / 详情 / 撤销 ──
 const sessions = await sk.listSessions(userAddress, 'eth', 'active');
 await sk.getSession(session.id);
 await sk.revokeSession(session.id);
@@ -295,6 +302,171 @@ await sk.revokeSession(session.id);
 | 404 | `SESSION_NOT_FOUND` | 会话 id 不存在 | 确认 sessionId |
 | 429 | `SESSION_LOCKED` | 会话正在执行（Redis 锁 30s） | 稍后重试 |
 | 401 | — | 未携带 Bearer 头 | 非豁免端点必须携带 token |
+
+## 5. 代付授权模板（Agent 自主付费 / pay-per-call）
+
+> SK-1：面向「Agent 自主付费」场景的典型代付授权模板——`contracts=[Escrow/Vault 地址], functions=[deposit]`（或 x402 payTo 转账）的一键 SessionAuth 生成。集成方（如 AgentX）可据此快速生成"只允许付给金库、限额定次"的会话。
+
+### 5.1 模板函数
+
+```ts
+import { SessionKeyClient } from '@0xinfrax/session-key-client';
+import { generateSessionKey, buildSessionAuthMessage } from '@0xinfrax/session-key-evm';
+import { signTypedData } from 'viem/accounts';
+
+// 合约函数选择器（可用 viem toFunctionSelector 现场计算，勿硬编码）
+const SELECTORS = {
+  deposit: '0xd0e30db0',              // deposit() — 原生币充值金库
+  depositERC20: '0x97feb926',         // depositERC20(address,uint256) — 稳定币充值金库
+  transfer: '0xa9059cbb',             // transfer(address,uint256) — ERC20 转账
+};
+
+export interface DelegationSpec {
+  userAddress: string;          // 用户主钱包地址
+  userPrivateKey: string;       // 用户主钱包私钥（仅本地签名，不上传）
+  chain: 'eth' | 'bsc' | 'base' | 'polygon' | 'arbitrum' | 'optimism' | 'xlayer';
+  chainId: number;              // 签名域 chainId
+  /** 授权目标。二选一： */
+  mode: 'escrow-deposit' | 'escrow-deposit-erc20' | 'x402-pay';
+  escrowAddress?: string;       // mode 含 escrow 时必填（InfraXEscrow 金库地址）
+  stablecoinAddress?: string;   // escrow-deposit-erc20 时的 ERC20 token 地址
+  x402PayTo?: string;           // x402-pay 时的收款地址（payTo）
+  priceUsd: string;             // maxPerTx/maxTotal 限额（USDC 单位）
+  validDays?: number;           // 默认 30
+}
+
+/** 一键生成"只允许付给金库/收款方、限额定次"的会话（创建后返回 session + 可直接执行） */
+export async function createPayDelegation(spec: DelegationSpec, sk: SessionKeyClient) {
+  const { nonce } = await sk.getNonce(spec.userAddress);
+
+  // 1. 客户端生成 session keypair（A-16：sessionAddress 必须进入签名消息）
+  const sessionKey = generateSessionKey();
+
+  // 2. 按代付模式构建白名单
+  let contracts: string[];
+  let functions: string[] | undefined;
+  if (spec.mode === 'escrow-deposit') {
+    contracts = [spec.escrowAddress!];
+    functions = [SELECTORS.deposit];                  // 只允许 deposit()
+  } else if (spec.mode === 'escrow-deposit-erc20') {
+    contracts = [spec.escrowAddress!, spec.stablecoinAddress!];
+    functions = [SELECTORS.depositERC20, SELECTORS.transfer]; // approve 由用户主钱包另签；此处仅 deposit 走 session
+  } else { // x402-pay
+    contracts = [spec.x402PayTo!];
+    functions = undefined;                            // 纯 value 转账，data=0x，不限制函数
+  }
+
+  // 3. 构建 SessionAuth 并签名（validUntil 需与会话创建请求一致）
+  const validUntil = Math.floor(Date.now() / 1000) + (spec.validDays ?? 30) * 86400;
+  const typed = buildSessionAuthMessage({
+    nonce,
+    chainId: spec.chainId,
+    sessionAddress: sessionKey.address,
+    permissions: { contracts, functions },
+    validUntil,
+    maxPerTx: spec.priceUsd,
+    maxTotal: spec.priceUsd,
+  });
+  const signature = await signTypedData({
+    privateKey: spec.userPrivateKey as `0x${string}`,
+    domain: typed.domain,
+    types: typed.types,
+    primaryType: typed.primaryType,
+    message: typed.message,
+  });
+
+  // 4. 创建会话（提交客户端 keypair）
+  return sk.createSession({
+    signature,
+    chain: spec.chain,
+    permissions: { contracts, functions },
+    validDays: spec.validDays ?? 30,
+    maxPerTx: spec.priceUsd,
+    maxTotal: spec.priceUsd,
+    userAddress: spec.userAddress,
+    nonce,
+    sessionPublicKey: sessionKey.address,
+    sessionPrivateKey: sessionKey.privateKey,
+    validUntil,
+  });
+}
+```
+
+### 5.2 使用示例
+
+```ts
+const sk = new SessionKeyClient({ baseUrl: 'http://127.0.0.1:3500', apiKey: '<SESSION_KEY_API_TOKEN>' });
+
+// 示例 A：只允许给 Escrow 金库充值原生币（deposit()），单笔/累计 ≤ $50
+const escrowSes = await createPayDelegation({
+  userAddress: '0xUserWallet', userPrivateKey: '0x<USER_PK>',
+  chain: 'base', chainId: 8453,
+  mode: 'escrow-deposit', escrowAddress: '0x<ESCROW_CONTRACT>',
+  priceUsd: '50',
+}, sk);
+
+// 充值执行：value=1 ETH（单位 wei），data=deposit()，命中白名单 → 服务端代签广播
+await sk.execute({
+  sessionId: escrowSes.id, chain: 'base',
+  to: '0x<ESCROW_CONTRACT>',
+  data: '0xd0e30db0',
+  value: '1000000000000000000',
+});
+
+// 示例 B：x402 按次付费（payTo 收款地址 + 纯 value 转账，无函数白名单）
+const paySes = await createPayDelegation({
+  userAddress: '0xUserWallet', userPrivateKey: '0x<USER_PK>',
+  chain: 'oxachain', chainId: <OXA_CHAIN_ID>,
+  mode: 'x402-pay', x402PayTo: '0x<PAYTO_ADDRESS>',
+  priceUsd: '5',
+}, sk);
+
+await sk.execute({
+  sessionId: paySes.id, chain: 'oxachain',
+  to: '0x<PAYTO_ADDRESS>',
+  data: '0x', value: '5000000000000000', // 等价 x402 priceWei
+});
+```
+
+> 安全提示：session 会话是"限额定次"的代签授权——被授权的函数集仅限充值/付款路径（deposit/depositERC20/x402 转账），**不应**把 `withdraw`/`refund`（`0x2e1a7d4d`）等出金函数加入白名单；一旦授权即等价于给会话"花多少、付给谁"的能力，请按最小权限原则设置 `maxPerTx`/`maxTotal` 与有效期，并在任务完成后 `DELETE /api/v1/sessions/:id` 撤销。
+
+## 6. 密钥托管接缝（AX-12/SK-4：可选 KMS / 外部密钥服务）
+
+> 默认路径为 **EnvKeyVault**（`ENCRYPTION_KEY` 32 字节 hex + AES-256-GCM）。集成方可注入自己的密钥托管实现（AWS/GCP KMS 代理、HashiCorp Vault transit、自建密钥网关），让**会话私钥不落明文 env**，由外部密钥管理系统托管加解密。
+
+### 6.1 配置
+
+| env | 默认 | 说明 |
+|---|---|---|
+| `KEY_VAULT_TYPE` | `env` | `env` = 本地 ENCRYPTION_KEY；`http` = 转发外部密钥服务 |
+| `KEY_VAULT_URL` | — | `KEY_VAULT_TYPE=http` 时必填，外部密钥服务 baseUrl |
+| `KEY_VAULT_TOKEN` | — | 可选 Bearer token，转发时带 `Authorization: Bearer <token>` |
+| `ENCRYPTION_KEY` | — | `env` 模式必填，32 字节 hex（64 字符） |
+
+### 6.2 HTTP 托管协议（`HttpKeyVault` 现成实现）
+
+`KEY_VAULT_TYPE=http` 时服务端把加解密转发给外部服务：
+
+```
+POST {KEY_VAULT_URL}/vault/encrypt  body {"plaintext": string}  → {"ciphertext": string}
+POST {KEY_VAULT_URL}/vault/decrypt  body {"ciphertext": string} → {"plaintext": string}
+```
+
+### 6.3 代码接缝
+
+核心包导出 `IKeyVault`（`encrypt`/`decrypt`，均为 Promise）与默认实现 `EnvKeyVault`；服务端 `buildKeyVault(config.keyVault)` 按 `KEY_VAULT_TYPE` 选择实现，并通过 `EvmAdapter` 第二参数注入（`packages/server/src/app.ts`）：
+
+```ts
+import { IKeyVault } from '@0xinfrax/session-key-core';
+
+// 自建实现（如 AWS/GCP KMS 代理）——实现 IKeyVault 后即可替换默认路径
+class MyKmsVault implements IKeyVault {
+  async encrypt(plaintext: string): Promise<string> { /* KMS 加密 */ }
+  async decrypt(ciphertext: string): Promise<string> { /* KMS 解密 */ }
+}
+```
+
+> 说明：`IKeyVault`/`EnvKeyVault` 由 `@0xinfrax/session-key-core@0.2.2` 导出；`EvmAdapter` 第二参数注入密钥托管（`@0xinfrax/session-key-evm@0.1.3`，`encryptKey`/`decryptKey` 走该接缝）；`HttpKeyVault`/`buildKeyVault` 在 server（`packages/server/src/services/key-vault.ts`）中提供。
 
 ## 参考
 

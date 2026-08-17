@@ -59,8 +59,8 @@ export class ExecutionService {
         throw new AppError(Errors.FUNCTION_FORBIDDEN.statusCode, Errors.FUNCTION_FORBIDDEN.code, Errors.FUNCTION_FORBIDDEN.msg);
       }
 
-      // Decrypt → sign → broadcast
-      const privateKey = this.adapter.decryptKey(session.sessionKeyEnc);
+      // Decrypt → sign → broadcast（AX-12/SK-4: 解密走 IKeyVault 接缝，可替换为 KMS/外部托管）
+      const privateKey = await this.adapter.decryptKey(session.sessionKeyEnc);
       const result = await this.adapter.signAndBroadcast({
         privateKey,
         chain: params.chain,

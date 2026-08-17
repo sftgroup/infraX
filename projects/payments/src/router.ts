@@ -415,15 +415,21 @@ export function createPaymentsRouter(payments: PaymentsService): Router {
   }))
 
   // POST /a2a/settle — phase 2: verify the payer's on-chain payment tx
-  // body: { paymentId, txHash, chain? }
+  // body: { paymentId, txHash?, chain?, mode? ('tx' default | 'balance'), subscriber?, amountWei?, asset?, ref? }
+  //   mode 'tx'      → txHash required; verifies + credits the on-chain payment
+  //   mode 'balance' → deducts from the payer's ledger balance (AX-8/A2A-1)
   router.post('/a2a/settle', cap(caps.a2a?.enabled ?? false, (req: Request, res: Response, next: NextFunction) => {
-    const { paymentId, txHash, chain } = req.body ?? {}
-    if (!paymentId || !txHash) {
-      res.status(400).json({ error: 'paymentId and txHash are required' })
+    const { paymentId, txHash, chain, mode, subscriber, amountWei, asset, ref } = req.body ?? {}
+    if (!paymentId) {
+      res.status(400).json({ error: 'paymentId is required' })
+      return
+    }
+    if ((mode ?? 'tx') !== 'balance' && !txHash) {
+      res.status(400).json({ error: 'tx mode requires txHash (or pass mode: "balance" for a balance settle)' })
       return
     }
     handle(
-      () => payments.a2aSettle({ paymentId: String(paymentId), txHash: String(txHash), chain }),
+      () => payments.a2aSettle({ paymentId: String(paymentId), txHash: txHash ? String(txHash) : undefined, chain, mode, subscriber, amountWei, asset, ref }),
       res,
       next,
       (verified) => {

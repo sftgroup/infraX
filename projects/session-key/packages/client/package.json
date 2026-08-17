@@ -10,7 +10,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@0xinfrax/session-key-core": "^0.1.0"
+    "@0xinfrax/session-key-core": "^0.2.2"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

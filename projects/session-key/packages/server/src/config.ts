@@ -14,6 +14,8 @@ export interface AppConfig {
   jwtSecret: string;
   apiTokens: string[];
   chains: Record<string, string>;
+  /** AX-12/SK-4: 密钥托管接缝（KEY_VAULT_TYPE=env|http） */
+  keyVault: { type: 'env' | 'http'; url?: string; token?: string };
 }
 
 let cached: AppConfig | null = null;
@@ -38,6 +40,11 @@ export function loadConfig(): AppConfig {
     encryptionKey: env('ENCRYPTION_KEY'),       // required
     jwtSecret:     env('JWT_SECRET'),            // required
     apiTokens:     env('API_TOKENS').split(',').filter(Boolean),  // required — no default
+    keyVault: {
+      type:  (process.env.KEY_VAULT_TYPE === 'http' ? 'http' : 'env') as 'env' | 'http',
+      url:   process.env.KEY_VAULT_URL || undefined,
+      token: process.env.KEY_VAULT_TOKEN || undefined,
+    },
     chains: {
       eth:       env('ETH_RPC_URL'),
       bsc:       env('BSC_RPC_URL'),

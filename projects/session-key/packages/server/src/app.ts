@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { EvmAdapter } from '@0xinfrax/session-key-evm';
 import { loadConfig } from './config.js';
+import { buildKeyVault } from './services/key-vault.js';
 import { authPlugin } from './plugins/auth.js';
 import { createInfra, initDb } from './plugins/db.js';
 import { SessionRepo } from './repos/session-repo.js';
@@ -18,7 +19,8 @@ export async function start() {
   await initDb(pool);
 
   // ── Wire dependencies ───────────────────────────────────────────
-  const adapter = new EvmAdapter();
+  // AX-12/SK-4: 密钥托管接缝（KEY_VAULT_TYPE=env|http）；外部 KMS 时私钥不落明文 env
+  const adapter = new EvmAdapter(undefined, buildKeyVault(config.keyVault));
   const sessionRepo = new SessionRepo(pool);
   const executionRepo = new ExecutionRepo(pool);
   const nonceService = new NonceService();

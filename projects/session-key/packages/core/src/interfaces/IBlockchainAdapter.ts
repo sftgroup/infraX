@@ -29,9 +29,9 @@ export interface IBlockchainAdapter {
     gasLimit?: string;
   }): Promise<{ txHash: string; success: boolean; reason?: string; gasUsed?: string; blockNumber?: number }>;
 
-  /** Decrypt encrypted Session Key private key */
-  decryptKey(encryptedKey: string): string;
+  /** Decrypt encrypted Session Key private key (may be async — KMS / external vault) */
+  decryptKey(encryptedKey: string): Promise<string>;
 
-  /** Encrypt Session Key private key */
-  encryptKey(privateKey: string): string;
+  /** Encrypt Session Key private key (may be async — KMS / external vault) */
+  encryptKey(privateKey: string): Promise<string>;
 }

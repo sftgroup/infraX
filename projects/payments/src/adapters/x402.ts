@@ -37,8 +37,9 @@ export interface X402Config {
   escrow?: { address: string }
 }
 
-/** InfraXEscrow.deposit() 事件（native deposit: token = address(0)）。 */
-const escrowDepositAbi = parseAbi([
+/** InfraXEscrow.deposit() 事件（native deposit: token = address(0)）。
+ *  AX-1/OE-1：导出供集成方合约对齐（对齐 InfraXEscrow 接口）。 */
+export const escrowDepositAbi = parseAbi([
   'event Deposited(address indexed user, uint256 amount, address token)',
 ])
 
@@ -46,6 +47,19 @@ export interface X402Deps {
   store: PaymentStore
   getClient: (chain: ChainKey) => PublicClient
   chainIdOf: (chain: ChainKey) => number
+}
+
+/** AX-7/PC-3: 结构化 402 body（前端可直接渲染付款卡片）。 */
+export interface PaymentRequiredBody {
+  priceWei: string
+  payTo: string
+  resource: string
+  /** 待付款闭环关联键（宿主传入，如 a2a paymentId）。 */
+  resumeRef: string
+  /** 付款模式二选一：充值并继续 / 改为订阅。 */
+  mode: 'topup' | 'subscribe'
+  network: string
+  asset: string
 }
 
 export class X402Adapter {
@@ -80,6 +94,11 @@ export class X402Adapter {
 
   payTo(): string {
     return this.cfg.payTo
+  }
+
+  /** AX-1/OE-1: 已配置的 escrow 金库地址（未配置返回 null）。 */
+  escrowAddress(): string | null {
+    return this.cfg.escrow?.address ?? null
   }
 
   chain(): ChainKey {
@@ -118,6 +137,26 @@ export class X402Adapter {
       'x-price': this.priceWei().toString(),
       'x-pay-to': this.cfg.payTo,
       'x-network': this.network(),
+    }
+  }
+
+  /**
+   * AX-7/PC-3: 结构化 402 body（供前端直接渲染"付款按钮"）。
+   * 字段：priceWei / payTo / resource / resumeRef / mode（topup | subscribe）。
+   * resumeRef 由宿主传入待付款闭环关联键（如 a2a paymentId）；mode 二选一。
+   */
+  paymentRequiredBody(
+    resource: string,
+    opts?: { resumeRef?: string; mode?: 'topup' | 'subscribe' }
+  ): PaymentRequiredBody {
+    return {
+      priceWei: this.priceWei().toString(),
+      payTo: this.cfg.payTo,
+      resource,
+      resumeRef: opts?.resumeRef ?? '',
+      mode: opts?.mode ?? 'topup',
+      network: this.network(),
+      asset: NATIVE_ASSET,
     }
   }
 
@@ -244,8 +283,11 @@ export class X402Adapter {
   }
 
   /**
-   * OE-5: Escrow deposit path. tx.to == escrow.address + native Deposited event
-   * (token == address(0)) + amount ≥ price → credit the depositor (ledger 索引).
+   * OE-5/AX-3: Escrow deposit path. tx.to == escrow.address + Deposited event
+   * + amount ≥ price → credit the depositor (ledger 索引).
+   *  - native deposit（token == address(0)）: amount ≥ x402 price，asset = native
+   *  - ERC20 deposit（token != address(0), OE-3/AX-3）: 资金同样进金库托管；
+   *    需 stablecoin rail 已配置且 token 匹配，amount ≥ stablecoin price。
    * The authoritative balance stays on-chain (InfraXEscrow.balanceOf); the
    * ledger entry is the index/reconciliation layer (OE-8).
    */
@@ -271,17 +313,36 @@ export class X402Adapter {
     const user = (deposited.user as string).toLowerCase()
     const amount = deposited.amount as bigint
     const token = (deposited.token as string).toLowerCase()
-    // native deposit only (token == address(0)); ERC20 deposit 走 stablecoin rail
-    if (token !== `0x${'0'.repeat(40)}` || amount < this.priceWei()) return null
+    const zeroAddr = `0x${'0'.repeat(40)}`
 
+    if (token === zeroAddr) {
+      // native deposit
+      if (amount < this.priceWei()) return null
+      await this.deps.store.credit({
+        reference: txHash.toLowerCase(),
+        payer: user,
+        amountWei: amount.toString(),
+        asset: NATIVE_ASSET,
+        chainId: this.deps.chainIdOf(c),
+      })
+      return { reference: txHash.toLowerCase(), payer: user, creditedWei: amount.toString(), asset: NATIVE_ASSET, chain: c }
+    }
+
+    // AX-3/OE-3: ERC20 deposit into escrow — 资金进金库托管（非 payTo 直收）。
+    // 需 stablecoin rail 已配置且 token 匹配，否则不误入账。
+    const sc = this.stablecoin
+    if (!sc || !sc.available() || token !== sc.asset().toLowerCase()) return null
+    if (amount < sc.priceWei()) return null
+
+    const asset = sc.asset()
     await this.deps.store.credit({
       reference: txHash.toLowerCase(),
       payer: user,
       amountWei: amount.toString(),
-      asset: NATIVE_ASSET,
+      asset,
       chainId: this.deps.chainIdOf(c),
     })
-    return { reference: txHash.toLowerCase(), payer: user, creditedWei: amount.toString(), asset: NATIVE_ASSET, chain: c }
+    return { reference: txHash.toLowerCase(), payer: user, creditedWei: amount.toString(), asset, chain: c }
   }
 
   async balanceOf(address: string): Promise<bigint> {

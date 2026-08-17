@@ -137,6 +137,21 @@ describe('X402Adapter.verifyPaymentSignature', () => {
     expect(schemes).toEqual(['exact', 'upto'])
     expect(challenge.accepts[1].amount).toBe((PRICE_WEI * 10n).toString())
   })
+
+  it('AX-7/PC-3: paymentRequiredBody returns the structured 402 body', () => {
+    const { adapter } = makeAdapter()
+    const body = adapter.paymentRequiredBody('/agent:1', { resumeRef: 'a2a:pi_1', mode: 'topup' })
+    expect(body).toEqual({
+      priceWei: PRICE_WEI.toString(),
+      payTo: PAY_TO,
+      resource: '/agent:1',
+      resumeRef: 'a2a:pi_1',
+      mode: 'topup',
+      network: 'eip155:11155111',
+      asset: '0x0000000000000000000000000000000000000000',
+    })
+    expect(adapter.paymentRequiredBody('/agent:1').mode).toBe('topup')
+  })
 })
 
 // ── OE-5: verify 解析 Escrow deposit 入账事件 ──────────────────────────────
@@ -196,7 +211,7 @@ describe('X402Adapter.verifyAndCredit (OE-5 escrow deposit)', () => {
     expect(await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')).toBeNull()
   })
 
-  it('ignores an ERC20 deposit into escrow (native only)', async () => {
+  it('ignores an ERC20 deposit into escrow when no stablecoin rail configured', async () => {
     const token = '0x' + '44'.repeat(20)
     const adapter = new X402Adapter(
       { enabled: true, payTo: PAY_TO, priceWei: PRICE_WEI.toString(), chain: 'sepolia', escrow: { address: ESCROW } },
@@ -207,6 +222,61 @@ describe('X402Adapter.verifyAndCredit (OE-5 escrow deposit)', () => {
           ({
             getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
             getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, 10n ** 18n, token)] }),
+          }) as any,
+      }
+    )
+    expect(await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')).toBeNull()
+  })
+
+  it('AX-3/OE-3: credits an ERC20 deposit into escrow when stablecoin rail matches the token', async () => {
+    const token = '0x' + '44'.repeat(20)
+    const store = makeStore()
+    const adapter = new X402Adapter(
+      {
+        enabled: true,
+        payTo: PAY_TO,
+        priceWei: PRICE_WEI.toString(),
+        chain: 'sepolia',
+        escrow: { address: ESCROW },
+        stablecoin: { enabled: true, asset: token, decimals: 6, priceWei: (2n * 10n ** 6n).toString() },
+      },
+      {
+        store,
+        chainIdOf: () => 11155111,
+        getClient: () =>
+          ({
+            getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
+            getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, 5n * 10n ** 6n, token)] }),
+          }) as any,
+      }
+    )
+    const res = await adapter.verifyAndCredit('0x' + '11'.repeat(32), 'sepolia')
+    expect(res).not.toBeNull()
+    expect(res!.asset).toBe(token)
+    expect(res!.creditedWei).toBe((5n * 10n ** 6n).toString())
+    expect(store.credit).toHaveBeenCalledWith(
+      expect.objectContaining({ payer: account.address.toLowerCase(), amountWei: (5n * 10n ** 6n).toString(), asset: token })
+    )
+  })
+
+  it('AX-3/OE-3: ignores an ERC20 deposit into escrow when token does not match the stablecoin asset', async () => {
+    const other = '0x' + '55'.repeat(20)
+    const adapter = new X402Adapter(
+      {
+        enabled: true,
+        payTo: PAY_TO,
+        priceWei: PRICE_WEI.toString(),
+        chain: 'sepolia',
+        escrow: { address: ESCROW },
+        stablecoin: { enabled: true, asset: '0x' + '44'.repeat(20), decimals: 6, priceWei: (2n * 10n ** 6n).toString() },
+      },
+      {
+        store: makeStore(),
+        chainIdOf: () => 11155111,
+        getClient: () =>
+          ({
+            getTransaction: async () => ({ to: ESCROW, from: account.address, value: 0n }),
+            getTransactionReceipt: async () => ({ status: 'success', logs: [depositLog(account.address, 5n * 10n ** 6n, other)] }),
           }) as any,
       }
     )

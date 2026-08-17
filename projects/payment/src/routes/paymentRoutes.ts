@@ -320,6 +320,12 @@ router.post(
       recipientAddress: receiveAddress,
       resource: resource || 'InfraX API Resource',
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
+      // AX-7/PC-3: 引擎 402 body 结构化对齐（供前端渲染付款卡片）。
+      // priceWei 当前为 USD 占位定价（无 oracle），故留 null；resumeRef = orderId 闭环。
+      priceWei: null,
+      payTo: receiveAddress,
+      resumeRef: orderId,
+      mode: 'topup',
     }));
   })
 );

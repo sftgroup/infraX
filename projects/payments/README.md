@@ -128,6 +128,10 @@ const payments = new PaymentsService({
     payTo: process.env.X402_PAY_TO,          // 平台收款钱包
     priceWei: process.env.X402_PRICE_WEI,    // 单次价格
     chain: 'sepolia',
+    // AX-1/OE-1：Escrow 金库托管（可选）。配置后 verify 自动走 escrow 判定
+    // （解析 InfraXEscrow.deposit() 的 Deposited 事件入账，资金进金库而非 payTo 直收）。
+    // 部署指引见 projects/escrow（InfraXEscrow）与 docs/INFRAX_ESCROW_GUIDE.md。
+    escrow: { address: process.env.X402_ESCROW_ADDRESS },
   },
 
   // ── 宿主业务只写在这里 ──────────────────────────────────────────────
@@ -215,6 +219,7 @@ app.use('/payments', createPaymentsRouter(payments))
   ```
 - 未启用能力的端点仍存在但返回 **503**（显式 "not enabled" 而非 404），便于调用方识别配置缺失。
 - 新增能力不破坏旧调用：`createPayment(method)` 增加 `a2a`（两阶段意图）与 `batch`（一次向 N 个 payee 收款）；`chargePeriod` / `getAuthorization` 走 period 授权；`createInvite` / `payInviteByBalance` 走 invite（agent 自动发收费邀请）；`createTransfer` / `confirmTransfer` 走 transfer（账本内原子划转）。
+- `POST /a2a/settle` 支持两种结算模式（AX-8/A2A-1）：`mode: 'tx'`（默认，校验链上 tx 入账）与 `mode: 'balance'`（从 payer 预存余额直接 `deduct` 结算，无新链上 tx，适用于服务端→服务端 A2A 编排；结算原子、ref 幂等，金额默认取 intent 记录，可被 `amountWei` 覆盖）。
 - 独立开关：`a2a` 默认随 `x402` 开启（可 `A2A_ENABLED=false` 关闭）；`period` / `batch` / `invite` / `transfer` 需注入对应 store seam 才启用（微服务形态另需 `PERIOD_ENABLED` / `BATCH_ENABLED` / `INVITE_ENABLED` / `TRANSFER_ENABLED=true`）。
 
 ---

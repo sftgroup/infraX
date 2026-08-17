@@ -288,3 +288,186 @@ describe('PaymentsService delegates to the injected store', () => {
     expect(store.deduct).toHaveBeenCalled()
   })
 })
+
+describe('AX-5/PC-1 resolveAccess default composer', () => {
+  it('denies when no source matches', async () => {
+    const { payments } = makeService()
+    const ok = await payments.resolveAccess(SUB, 'agent:1', {
+      chain: 'sepolia',
+      composer: { chainSub: async () => false, payPerCall: { priceWei: '1000' } },
+    })
+    expect(ok).toBe(false)
+  })
+
+  it('grants via offchain subscription source', async () => {
+    const { payments } = makeService()
+    const ok = await payments.resolveAccess(SUB, 'agent:1', {
+      composer: { offchain: async () => true, payPerCall: { priceWei: '1000' } },
+    })
+    expect(ok).toBe(true)
+  })
+
+  it('grants via chain subscription (first in order)', async () => {
+    const { payments } = makeService()
+    const ok = await payments.resolveAccess(SUB, 'agent:1', {
+      chain: 'sepolia',
+      composer: {
+        chainSub: async () => true,
+        offchain: async () => false,
+        payPerCall: { priceWei: '1000' },
+        order: ['chain', 'offchain', 'balance'],
+      },
+    })
+    expect(ok).toBe(true)
+  })
+
+  it('grants via balance >= price', async () => {
+    const { store, payments } = makeService()
+    store.balanceOf.mockResolvedValueOnce(2000n)
+    const ok = await payments.resolveAccess(SUB, 'agent:1', {
+      composer: { payPerCall: { priceWei: '1000' } },
+    })
+    expect(ok).toBe(true)
+    expect(store.balanceOf).toHaveBeenCalled()
+  })
+
+  it('denies when balance < price', async () => {
+    const { store, payments } = makeService()
+    store.balanceOf.mockResolvedValueOnce(500n)
+    const ok = await payments.resolveAccess(SUB, 'agent:1', {
+      composer: { payPerCall: { priceWei: '1000' } },
+    })
+    expect(ok).toBe(false)
+  })
+
+  it('falls back to store.resolveAccess when no composer is provided', async () => {
+    const { store, payments } = makeService()
+    store.resolveAccess.mockResolvedValueOnce(true)
+    const ok = await payments.resolveAccess(SUB, 'agent:1')
+    expect(ok).toBe(true)
+    expect(store.resolveAccess).toHaveBeenCalled()
+  })
+})
+
+describe('AX-6/PC-2 deductForAccess (audit + idempotency)', () => {
+  it('deducts and records an access.deducted event', async () => {
+    const { store, payments } = makeService()
+    const res = await payments.deductForAccess(SUB, 'agent:1', 100n, { ref: 'a2a_pay_log:1' })
+    expect(res).toEqual({ ok: true })
+    expect(store.recordAccessDeduction).toHaveBeenCalledWith(
+      expect.objectContaining({ refId: 'a2a_pay_log:1', subscriber: SUB, resource: 'agent:1', amountWei: '100' })
+    )
+    expect(store.deduct).toHaveBeenCalledWith(SUB, 100n, '0x0000000000000000000000000000000000000000')
+    expect(store.emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'access.deducted', reference: 'a2a_pay_log:1' })
+    )
+  })
+
+  it('is idempotent: skips deduct when the ref was already recorded', async () => {
+    const { store, payments } = makeService()
+    store.recordAccessDeduction.mockResolvedValueOnce(false)
+    const res = await payments.deductForAccess(SUB, 'agent:1', 100n, { ref: 'a2a_pay_log:dup' })
+    expect(res).toEqual({ ok: true, idempotent: true })
+    expect(store.deduct).not.toHaveBeenCalled()
+  })
+
+  it('rolls back the audit placeholder when balance is insufficient', async () => {
+    const { store, payments } = makeService()
+    store.deduct.mockResolvedValueOnce(false)
+    const res = await payments.deductForAccess(SUB, 'agent:1', 100n, { ref: 'a2a_pay_log:2' })
+    expect(res).toEqual({ ok: false, reason: 'insufficient_balance' })
+    expect(store.deleteAccessDeduction).toHaveBeenCalledWith('a2a_pay_log:2')
+  })
+
+  it('degrades to a bare deduct when the store has no audit seam', async () => {
+    const bare = makeStore()
+    delete (bare as any).recordAccessDeduction
+    const { payments } = makeService({}, { store: bare })
+    const res = await payments.deductForAccess(SUB, 'agent:1', 100n)
+    expect(res).toEqual({ ok: true })
+    expect(bare.deduct).toHaveBeenCalled()
+    expect(bare.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'access.deducted' }))
+  })
+})
+
+describe('AX-8/A2A-1 a2aSettle balance mode', () => {
+  const AMOUNT = '500000000000000000'
+  const intent = (over: Record<string, unknown> = {}) => ({
+    intentId: 'a2a_bal_1',
+    method: 'a2a',
+    subscriber: SUB,
+    asset: '0x0000000000000000000000000000000000000000',
+    amountWei: AMOUNT,
+    currency: null,
+    chain: 'sepolia',
+    status: 'created',
+    metadata: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...over,
+  })
+
+  it('deducts the intent amount, marks paid, emits events and calls onCredit', async () => {
+    const onCredit = vi.fn(async () => {})
+    const { store, payments } = makeService({}, { onCredit })
+    store.getIntent.mockResolvedValueOnce(intent())
+    const v = await payments.a2aSettle({ paymentId: 'a2a_bal_1', mode: 'balance' })
+    expect(v).toEqual({ reference: 'a2a_bal_1', payer: SUB.toLowerCase(), creditedWei: AMOUNT, asset: intent().asset, chain: 'sepolia' })
+    expect(store.deduct).toHaveBeenCalledWith(SUB.toLowerCase(), BigInt(AMOUNT), intent().asset)
+    expect(store.updateIntentStatus).toHaveBeenCalledWith('a2a_bal_1', 'paid')
+    expect(store.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'a2a.settled', reference: 'a2a_bal_1' }))
+    expect(store.emitEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'payment.credited', reference: 'a2a_bal_1' }))
+    expect(onCredit).toHaveBeenCalledWith(expect.objectContaining({ reference: 'a2a_bal_1', payer: SUB.toLowerCase(), amountWei: AMOUNT }))
+  })
+
+  it('works without store.getIntent when subscriber/amountWei are passed explicitly', async () => {
+    const { store, payments } = makeService()
+    store.getIntent.mockResolvedValueOnce(null)
+    const v = await payments.a2aSettle({ paymentId: 'a2a_bal_2', mode: 'balance', subscriber: SUB, amountWei: AMOUNT, asset: intent().asset, chain: 'sepolia' })
+    expect(v?.payer).toBe(SUB.toLowerCase())
+    expect(store.deduct).toHaveBeenCalledWith(SUB.toLowerCase(), BigInt(AMOUNT), intent().asset)
+  })
+
+  it('throws INSUFFICIENT_BALANCE when the balance cannot cover the deduct', async () => {
+    const { store, payments } = makeService()
+    store.getIntent.mockResolvedValueOnce(intent())
+    store.deduct.mockResolvedValueOnce(false)
+    await expect(payments.a2aSettle({ paymentId: 'a2a_bal_1', mode: 'balance' }))
+      .rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE', status: 400 })
+    // audit placeholder rolled back to keep balance + audit consistent
+    expect(store.deleteAccessDeduction).toHaveBeenCalled()
+    expect(store.updateIntentStatus).not.toHaveBeenCalled()
+  })
+
+  it('is idempotent: an already-paid intent settles without a second deduct', async () => {
+    const { store, payments } = makeService()
+    store.getIntent.mockResolvedValueOnce(intent({ status: 'paid' }))
+    const v = await payments.a2aSettle({ paymentId: 'a2a_bal_1', mode: 'balance' })
+    expect(v?.reference).toBe('a2a_bal_1')
+    expect(store.deduct).not.toHaveBeenCalled()
+    expect(store.updateIntentStatus).not.toHaveBeenCalled()
+  })
+
+  it('is idempotent by ref: a repeated ref short-circuits the deduct', async () => {
+    const { store, payments } = makeService()
+    store.getIntent.mockResolvedValueOnce(intent())
+    store.recordAccessDeduction.mockResolvedValueOnce(false) // ref already used
+    const v = await payments.a2aSettle({ paymentId: 'a2a_bal_1', mode: 'balance', ref: 'a2a_pay_log:bal' })
+    expect(v?.reference).toBe('a2a_pay_log:bal')
+    expect(store.deduct).not.toHaveBeenCalled()
+    expect(store.updateIntentStatus).toHaveBeenCalledWith('a2a_bal_1', 'paid')
+  })
+
+  it('does not require x402 (balance settlement is server-side only)', async () => {
+    const { store, payments } = makeService({ withX402: false })
+    store.getIntent.mockResolvedValueOnce(intent())
+    const v = await payments.a2aSettle({ paymentId: 'a2a_bal_1', mode: 'balance' })
+    expect(v?.creditedWei).toBe(AMOUNT)
+  })
+
+  it('tx mode stays backward compatible: missing txHash is an INVALID_INPUT error', async () => {
+    const { payments } = makeService()
+    await expect(payments.a2aSettle({ paymentId: 'a2a_1' }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', status: 400 })
+  })
+})

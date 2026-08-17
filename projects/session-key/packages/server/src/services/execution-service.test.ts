@@ -181,3 +181,52 @@ describe('SessionRepo.expireStale — 过期清理（MQ-4/MQ-5）', () => {
     expect(expireStale).toHaveBeenCalled();
   });
 });
+
+describe('ExecutionService.execute — 白名单拒绝（SK-3）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('to 未命中合约白名单 → CONTRACT_FORBIDDEN（不广播）', async () => {
+    const { svc, adapter } = makeHarness();
+    await expect(svc.execute({ ...execParams, to: '0xEvilContract00000000000000000000000000000001' }))
+      .rejects.toMatchObject({ errorCode: Errors.CONTRACT_FORBIDDEN.code, statusCode: 403 });
+    expect(adapter.signAndBroadcast).not.toHaveBeenCalled();
+  });
+
+  it('data selector 未命中函数白名单 → FUNCTION_FORBIDDEN（不广播）', async () => {
+    const { svc, adapter } = makeHarness({
+      session: makeSession({
+        permissions: { contracts: ['0xContract000000000000000000000000000000000001'], functions: ['0x38ed1739'] },
+      }),
+    });
+    await expect(svc.execute({ ...execParams, data: '0xdeadbeef00' }))
+      .rejects.toMatchObject({ errorCode: Errors.FUNCTION_FORBIDDEN.code, statusCode: 403 });
+    expect(adapter.signAndBroadcast).not.toHaveBeenCalled();
+  });
+
+  it('未配置函数白名单时不限制 selector（functions 空数组 = 不校验）', async () => {
+    const { svc, adapter } = makeHarness({
+      session: makeSession({ permissions: { contracts: ['0xContract000000000000000000000000000000000001'], functions: [] } }),
+    });
+    const res = await svc.execute({ ...execParams, data: '0xdeadbeef00' });
+    expect(res.status).toBe('success');
+    expect(adapter.signAndBroadcast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ExecutionService.execute — 并发锁（SK-3）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('redis.set 抢锁失败 → SESSION_LOCKED（429，不广播）', async () => {
+    const harness = makeHarness({});
+    harness.redis.set = vi.fn(async () => null); // NX 已存在 → null = 未抢到锁
+    const svc2 = new (ExecutionService as any)(harness.sessionRepo, harness.executionRepo, harness.adapter, harness.redis);
+    await expect(svc2.execute(execParams)).rejects.toMatchObject({ errorCode: 'SESSION_LOCKED', statusCode: 429 });
+    expect(harness.adapter.signAndBroadcast).not.toHaveBeenCalled();
+  });
+
+  it('正常完成后释放锁（redis.del 被调用）', async () => {
+    const { svc, redis } = makeHarness();
+    await svc.execute(execParams);
+    expect(redis.del).toHaveBeenCalledWith('lock:session:ses_1');
+  });
+});

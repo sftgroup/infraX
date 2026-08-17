@@ -62,7 +62,7 @@ export class SessionKeyClient {
     /** A-16：session key 由客户端生成并提交（EIP-712 签名消息含 sessionAddress，服务端随机生成会死锁） */
     sessionPublicKey: string;
     sessionPrivateKey: string;
-    /** EIP-712 签名时使用的 validUntil（unix 秒）；需与 sessionAuthTypedData 中一致。省略则服务端自行计算。 */
+    /** EIP-712 签名时使用的 validUntil（unix 秒）；需与 buildSessionAuthMessage 中一致。省略则服务端自行计算。 */
     validUntil?: number;
   }): Promise<{ id: string; sessionAddress: string; status: string; validUntil: Date }> {
     const res = await this.request<any>('POST', '/api/v1/sessions', params);
