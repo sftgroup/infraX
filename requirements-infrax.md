@@ -25,12 +25,12 @@
 
 ## 二、待处理需求
 
-### REQ-1【高】ETH/USDC 1D 日线数据为空
+### REQ-1【高】K 线数据整体缺失（/bars 全周期 count:0）
 
-- **现象**：`GET /api/data/bars?symbol=ETH/USDC&timeframe=1D&limit=5` 返回 `count: 0, bars: []`（HTTP 200 但无数据）。
-- **影响**：策略回测（1D 周期）、历史趋势图（日线）、AI 分析均缺 ETH 日线数据。
-- **期望**：ETH 1D 至少 500 根日线（约 2 年），与 BTC/USDC 1D 深度一致。
-- **验收**：接口返回 `count >= 500` 且 `bars` 非空，连续 5 次采样（间隔 1h）均稳定。
+- **现象**（2026-08-17 复测）：`GET /api/data/bars` 返回 `count: 0, bars: []`（HTTP 200 但无数据），**BTC/USDC 与 ETH/USDC 全部周期**均如此——15m/1H/4H/1D/1W（含正确格式 `1h/4h/1d`）全部 `count: 0`。比此前发现的"仅 ETH 1D 缺失"范围更大，疑似 kline 采集/落库链路整体中断或数据被清。
+- **影响**（AIHunter 侧）：`/api/market-data/bars` 透传接口、MCP `get_market_data` 的 K 线部分为空；依赖 B 端 K 线的策略回测（1D/4H 周期）无法取数。
+- **期望**：恢复 kline 采集，BTC/ETH 各周期至少 500 根（1D 约 2 年）。
+- **验收**：`count >= 500` 且 `bars` 非空；连续 5 次采样（间隔 1h）均稳定。
 
 ### REQ-2【中】热力图覆盖扩展：crypto-only → 全市场
 
@@ -58,5 +58,5 @@
 | 编号 | 需求 | 优先级 | 状态 |
 | ---- | ---- | ---- | ---- |
 | 1.1 | /snapshots 截断修复正式合入 | 高 | 已修复，待合入 |
-| REQ-1 | ETH/USDC 1D 日线补数据 | 高 | 待处理 |
+| REQ-1 | K 线数据整体缺失（/bars 全周期 count:0） | 高 | 待处理 |
 | REQ-2 | 热力图全市场覆盖（付费源启用） | 中 | 待处理 |
