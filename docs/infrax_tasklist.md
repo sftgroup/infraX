@@ -586,7 +586,7 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 > **唯一维护点**：全部需求/任务统一在此登记状态；详细契约见源文档（`projects/data/AITRADER_DATA_SERVICE_REQ.md` / `projects/ragservicer/docs/REQUIREMENTS.md` / `docs/DATA_MODULE_RAG_PLAN.md` / `docs/SESSION_KEY_ENGINE_DEV_PLAN.md` / `docs/SESSION_KEY_ENGINE_PRD.md` / `docs/MERGE_PLAN_AITRADER.md` / `prd/PRD.md` / `docs/MCP_REQUIREMENTS.md` / 本文件 §1~§8）。各源文档不再分别维护"待办/状态"（需求源登记见 §9.9）。
 > 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
 
-### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md）
+### 9.1 AItrader data-service 需求（源：projects/data/AITRADER_DATA_SERVICE_REQ.md；DS-16/17 源：requirements-infrax.md REQ-1/REQ-2）
 
 | 编号 | 需求 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|
@@ -605,6 +605,8 @@ curl -s http://127.0.0.1:9120/ml/volatility                # Kronos 预测列表
 | DS-13 | ML 因子并入标准因子面（catalog/current/history） | ✅ | P1 | `app/factors.py` 新增 10 个 ML 因子（category="ml"：tree/finbert/consensus/bolt/moirai/timesfm 的 direction+prob，direction 统一数值化 up=1/flat=0/down=-1）；catalog 28 因子、current 按 symbol 广播、history asof 对齐（fetched_at ≤ bar ts，无未来函数）；2026-08-07 已部署生产实测三端点全出数 |
 | DS-14 | 官方 Python SDK（封装全部端点） | ✅ | P1 | `projects/data/sdk/python/`（包名 infra-data-client，现 **0.2.0**，SemVer）：单构造 `Client(base_url, api_key)` 内置 X-Service-Key、`verify` 可配置、429 重试/退避（Retry-After 优先）、fail-silent 默认返回 None 不抛错、秒↔毫秒自动归一化、全方法类型注解；覆盖 /bars /factors/* /snapshots /ticker /symbol/resolve /symbols/search /policy/broker-market /stats /health + **`get_ml_predictions()`（2026-08-08 v0.2.0 新增，/ml/predictions 快照优先路径）**；集成示例 `examples/ml_predictions_integration.py`（快照优先 + data=null 兜底 + /ml/cache/stats 就绪判断）；wheel 构建通过 + 生产实测 12 方法全绿 |
 | DS-15 | **ML 因子历史回填**（对已上线 30 符号按历史 1d bars 回放推理写 `ml_predictions` / `raw_snapshots`，解决「回测含 ML 因子早期区间全空」） | ✅ | P1 | 脚本：ml-service `scripts/backfill_ml_history.py`（bolt/moirai 单变量·多变量回放、tree 逐日聚合、timesfm 单变量长上下文）+ data `scripts/ingest_backfill.py`（INSERT OR IGNORE 幂等落库）。**阶段一完成（2026-08-08，不停服）**：bolt **+4853** / moirai **+4044**（2024-09-09 → 2026-08-07）+ tree **+1723** 个按日聚合快照（2023-10-06 → 2026-08-07）。**阶段二完成（2026-08-08，停服窗口，实测 36min）**：timesfm **+4856** 行（2024-09-09 → 2026-08-07；峰值 RSS 1.89Gi，停服执行无 swap 压力，落库后服务已恢复）。全量收口：`ml_predictions` 现 **14524 行**（bolt 5126 / moirai 4294 / timesfm 5104）+ tree 快照 1782，30 符号全覆盖；`/factors/history` 早期区间（2024-10-01）实测已含 tree/bolt/moirai/timesfm 因子 |
+| DS-16 | **K 线数据整体缺失修复**（/bars 全周期 count:0，源：requirements-infrax.md REQ-1） | ✅ | P0 | **根因（2026-08-18 定位）**：非链路中断，而是标的缺失——`KL_SYMBOLS`/`KL_SWAP_SYMBOLS` 仅有 USDT 对（BTC/USDT, ETH/USDT, SOL/USDT），**从未采集 USDC 对**。**修复**：`.env.example` + 生产 `.env` 增补 `BTC/USDC`、`ETH/USDC`（spot+swap），热更新走 `PUT /admin/symbols`（Bearer ADMIN_API_KEY，免重启）后回填全周期（1d 1095 根、4h 2185 根等）。**验证**：`/bars?symbol=BTC/USDC` 等 count≥500 且 bars 非空，连续采样稳定 |
+| DS-17 | **热力图全市场覆盖**（crypto-only → 股票/外汇/大宗商品，源：requirements-infrax.md REQ-2） | ✅ | P1 | **实现（2026-08-18 上线）**：新增 `app/data_providers/tradfi_heatmap.py`——stocks（4 指数+11 板块 ETF+40 大盘股）Finnhub 串行限速 0.2s（并发 8 触发 429）<28 只时 yfinance 兜底；fx（12 对）frankfurter → yfinance → Tiingo → TwelveData 多源回退；commodities（12 只）yfinance → Tiingo(金/银) → TwelveData。`heatmap.py` crypto 每类上限 30→50（CoinGecko per_page 100→150）+ 并行合并 tradfi；cache key `market_heatmap_v4`→`v5`；`collectors/heatmap.py` 统一走 `generate_heatmap_data()`；forex/commodities `_fetch_td` 增 429 短路。**生产实测**：crypto topcap/other 各 50、stocks 39、fx 12 对全齐、commodities 2 只（金/银）。⚠️ commodities 其余 10 只受 yfinance 临时限流（YFRateLimitError）+ TwelveData 免费额度今日 429 耗尽（4065/800）未出数，源解封后自愈回 12 只 |
 
 ### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
 
@@ -1848,3 +1850,30 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | U-4 | 三端代码一致性核验 | 本地 / 101.33.109.117（历史生产源码机）/ GitHub(sftgroup/infraX) master 全为 7f341d3；30 项目源码树逐项比对一致（远程多出文件均为 .gitignore 排除项） | ✅ |
 
 > 生产三台实机（172/78.59/25.197）代码版本未经 SSH 直接核验（无凭证）；101.33.109.117 源码副本与 GitHub 完全一致。部署文档健康检查、端口、DB 连接等信息以 §9.19 迁移记录与迁移文档（INFRAX_MIGRATION_SCALE_OUT.md）为准。
+
+---
+
+**9.9 AgentX 通用支付能力需求（源：docs/FEATURE_REQUEST_AGENTX_ESCROW_PAYPERCALL_20260817.md，2026-08-17 拆分）**
+
+> 提交方：AgentX 平台。通用能力上收、宿主策略保留。协同：InfraX 发版（payments 0.1.4+ / session-key 0.2.x+ / mpc-sdk 0.3.x+）→ AgentX npm bump。
+> 编号说明：**AX-** 为 tasklist 内部编号（避免与既有 OE-1~OE-8 链上计费编号冲突）；括号内为需求文档原始编号。
+> 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
+> 实现顺序（按需求文档建议）：**P0（AX-1/AX-2/AX-3/AX-5/AX-6/AX-7）→ P1（AX-8/AX-9/AX-10/AX-11）→ P2（AX-12/AX-13）**
+
+| 编号 | 需求（原始） | 任务内容 | 现状 | 优先级 |
+|---|---|---|---|---|
+| AX-1 | OE-1 公开 escrow 配置与 ABI | payments 服务层 escrow 透传修复：`X402Options` 加 `escrow` 字段并在 `PaymentsService` 构造时透传（当前 [service.ts](projects/payments/src/service.ts) 丢弃 escrow → HTTP 路径 escrow 判定不可达）；导出 `escrowDepositAbi`；`GET /capabilities` 暴露 escrow 地址；README 补齐配置说明 | ✅ | P0 |
+| AX-2 | OE-2 标准 Escrow 参考实现 | 提供 Escrow 部署/集成指引文档（如何部署并配置 `x402.escrow.address` + `GET /capabilities` 暴露）；治理能力确认——owner 提现/资金总额上限列为可选项（多签按设计不引入，`docs/PAYMASTER_ONCHAIN_ESCROW_DESIGN.md` 为准） | ✅ 部署/集成指引见 [INFRAX_ESCROW_GUIDE.md](docs/INFRAX_ESCROW_GUIDE.md) | P0 |
+| AX-3 | OE-3 ERC20 deposit 走 escrow | [x402.ts](projects/payments/src/adapters/x402.ts#L274) `verifyEscrowDepositTx` 支持 `token != 0`（按 token 校验 + 入账），补测试；或明确 stablecoin 判定 | ✅ | P0 |
+| AX-4 | OE-4 对账参考实现 | 已实现：[reconcile.ts](projects/escrow/scripts/reconcile.ts)（链上 balanceOf/chargedToday/事件 ↔ ledger 守恒+索引+阈值断言，迁移基准过滤）。补：README/文档说明（集成方可跑对账任务） | ✅ 已实现（文档待补） | P0 |
+| AX-5 | PC-1 resolveAccess 默认组合器 | `AccessCheckOptions` 扩展（优先级 + 子判定来源配置）；实现默认组合器 `chain 订阅 OR offchain 订阅 OR balance ≥ price`；AgentX 用默认组合器可复现 canAccessAgentOrPay | ✅ | P0 |
+| AX-6 | PC-2 按次扣费审计/幂等 | `payment_access_log` 表 + `access.deducted` 事件 + deduct ref_id 幂等（对齐 AgentX `a2a_pay_log` 语义） | ✅ [009_payment_access_log.sql](projects/payments/db/migrations/009_payment_access_log.sql) | P0 |
+| AX-7 | PC-3 402 响应结构化 | 引擎 402 body 结构化 `{ priceWei, payTo, resource, resumeRef, mode: 'topup'\|'subscribe' }`；构造 helper；宿主（collector :9101 / payment :9132）接入替换自拼 body | ✅ | P0 |
+| AX-8 | A2A-1 a2aSettle balance 模式 | `a2aSettle` 增 `mode: 'tx'\|'balance'`（默认 tx 兼容）；balance 模式校验余额 → deduct → intent paid + 事件/onCredit，ref 幂等 | ✅ | P1 |
+| AX-9 | SK-1 代付授权模板 | session-key 提供典型代付授权模板（contracts=[Escrow/Vault], functions=[deposit]）的 SessionAuth 生成示例/辅助函数 | ✅ [session-key.md §5](docs/services/session-key.md) | P1 |
+| AX-10 | SK-2 文档与实现对齐 | [docs/services/session-key.md](docs/services/session-key.md) 7 处"服务端生成 sessionAddress"→ 客户端提交 publicKey；`CreateSessionRequest.sessionAddress` 类型字段对齐 | ✅ | P1 |
+| AX-11 | SK-3 测试补强 | 补会话创建/撤销、白名单拒绝（CONTRACT/FUNCTION_FORBIDDEN）、并发锁（SESSION_LOCKED 429）、过期路径测试（当前仅 execution-service.test.ts 覆盖限额/过期） | ✅ session-service.test.ts 10 例 + execution-service.test.ts 16 例 | P1 |
+| AX-12 | SK-4 会话私钥托管加固（可选） | AES-256-GCM 已就绪；补 KMS/外部密钥托管可选接缝 + 文档标注密钥管理最佳实践 | ✅ IKeyVault/EnvKeyVault（core 0.2.2）+ HttpKeyVault/buildKeyVault（server）+ 文档 §6；core/evm 已发布 0.2.2/0.1.3 | P2 |
+| AX-13 | MPC-1 2-of-3 阈值演进 | TSS_EVALUATION 加片3（独立签名机/HSM）落地：签名/恢复路径支持 3 片 2 阈值 + 2-of-3 测试 + 2-of-2 平滑兼容 | ✅ mpc_signer `/v1/import` 3 片 t=2 + `/v1/sign` `partner_index` 1/2（TSS_SIGNER_URL_1/2 路由）；tss_signer `TSS_PARTY_ID` 实例标签；`m4_2of3` 3 子集签名全部有效 + `verify-2of3.mjs` HTTP 级两路径复核；server.ts 六端点 `partnerIndex` 透传 + `recovery_shard2` 列迁移（存量 2-of-2 平滑兼容）；文档见 [TSS_EVALUATION.md §7](docs/TSS_EVALUATION.md) | P2 |
+
+> **现状核对记录（2026-08-17）**：三组 search 调研确认——OE-2/OE-4 已实现；OE-1 部分（服务层透传断裂）；SK-2/3/4 部分；OE-3、PC-1/2/3、A2A-1、SK-1、MPC-1 未实现。详见上方任务表。

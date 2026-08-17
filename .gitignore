@@ -48,5 +48,8 @@ deploy/overrides/*.conf
 .env.github
 ~/.git-credentials
 
+# Legacy server backups (contains private keys / tokens, never commit)
+legacy/
+
 # Python build artifacts
 *.egg-info/
