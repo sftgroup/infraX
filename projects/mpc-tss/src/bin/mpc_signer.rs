@@ -1,9 +1,9 @@
 //! M3 mpc_signer：CGGMP24 party0（持片1）HTTP 服务 —— Node mpc server 的 TSS 签名器
 //!
 //! 端点：
-//!   POST /v1/import { private_key }        → { shard1, shard2, address }（trusted_dealer 迁移，地址不变）
-//!   POST /v1/sign    { share1, wallet_address, msg_hash }
-//!                                          → { signature(64B hex) }（与 tss_signer 完成 2-of-2 presign+sign）
+//!   POST /v1/import { private_key }        → { shard1, shard2, shard3, address }（trusted_dealer 2-of-3 迁移，地址不变）
+//!   POST /v1/sign    { share1, wallet_address, msg_hash, partner_index? }
+//!                                          → { signature(64B hex) }（与 tss_signer(party1/party2) 完成 2-of-3 presign+sign）
 //!   GET  /health
 
 use anyhow::Context;
@@ -23,7 +23,8 @@ use sha3::Digest;
 
 #[derive(Clone)]
 struct AppState {
-    partner_url: String,
+    /// 索引 0 → 片2(tss_signer party1)、索引 1 → 片3(tss_signer party2)
+    partner_urls: Vec<String>,
     client: Client,
 }
 
@@ -36,6 +37,7 @@ struct ImportRequest {
 struct ImportResponse {
     shard1: serde_json::Value,
     shard2: serde_json::Value,
+    shard3: serde_json::Value,
     address: String,
     compressed_pk: String,
 }
@@ -45,6 +47,8 @@ struct SignRequest {
     share1: serde_json::Value,
     wallet_address: String,
     msg_hash: String, // 32B hex（Node 已按 EIP-191/EIP-712/交易哈希计算好的摘要）
+    // 参与签名的 partner 片索引：1（片2，默认，兼容 2-of-2）或 2（片3，独立签名机/HSM）
+    partner_index: Option<u16>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,7 +65,7 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok", "service": "mpc-signer" }))
 }
 
-/// 存量迁移：完整私钥 → trusted_dealer 2-of-2 分片（地址不变）
+/// 存量迁移：完整私钥 → trusted_dealer 2-of-3 分片（地址不变）
 async fn import_shares(
     Json(req): Json<ImportRequest>,
 ) -> Result<Json<ImportResponse>, (StatusCode, String)> {
@@ -72,7 +76,9 @@ async fn import_shares(
     let sk_nz = NonZero::from_secret_scalar(sk).ok_or((StatusCode::BAD_REQUEST, "zero private key".into()))?;
 
     let mut rng = rand::rngs::OsRng;
-    let shares = cggmp24::trusted_dealer::builder::<Secp256k1, cggmp24::security_level::SecurityLevel128>(2)
+    // AX-13：2-of-3 阈值演进。片1=mpc_signer、片2=tss_signer(party1)、片3=tss_signer(party2, 独立签名机/HSM)。
+    // 任取 2 片即可完成签名；2-of-2 平滑兼容（旧客户端只存片1+片2 仍可签名）。
+    let shares = cggmp24::trusted_dealer::builder::<Secp256k1, cggmp24::security_level::SecurityLevel128>(3)
         .set_threshold(Some(2))
         .set_shared_secret_key(sk_nz)
         .generate_shares(&mut rng)
@@ -86,6 +92,7 @@ async fn import_shares(
     Ok(Json(ImportResponse {
         shard1: serde_json::to_value(&shares[0]).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
         shard2: serde_json::to_value(&shares[1]).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        shard3: serde_json::to_value(&shares[2]).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
         address,
         compressed_pk: hex::encode(shares[0].core.shared_public_key.to_bytes(true)),
     }))
@@ -104,7 +111,7 @@ async fn share_address(
     })))
 }
 
-/// 与 tss_signer 完成 2-of-2 presign + sign（同步交替）
+/// 与 tss_signer 完成 2-of-3 presign + sign（同步交替；party0 与 party1/party2 中任一方）
 async fn run_initiator(
     share: KeyShare<Secp256k1>,
     eid_bytes: [u8; 32],
@@ -160,6 +167,7 @@ async fn run_initiator(
             .context("parse step response")?;
 
         for w in resp.outgoing {
+            // 参与子集恒为 2 方：本地索引 0（本机/party0）与 1（partner）
             let incoming = outgoing_wire_to_incoming(w, 1).context("parse partner msg")?;
             inbox_tx
                 .unbounded_send(incoming)
@@ -203,13 +211,26 @@ async fn sign(
         .map_err(|_| (StatusCode::BAD_REQUEST, "msg_hash must be 32 bytes".into()))?;
     let data_to_sign = data_to_sign_from_hash(&hash);
 
+    // AX-13：partner_index 选择参与签名的片（1→片2，2→片3）。
+    // parties 是参与子集在 keygen 时的索引 S（协议内 Lagrange 用）；本机恒为本地索引 0，
+    // partner 恒为本地索引 1（2 方子集）。
+    let partner_index = req.partner_index.unwrap_or(1);
+    if partner_index != 1 && partner_index != 2 {
+        return Err((StatusCode::BAD_REQUEST, "partner_index must be 1 or 2".into()));
+    }
+    let parties = if partner_index == 2 { vec![0u16, 2u16] } else { vec![0u16, 1u16] };
+    let partner_url = st
+        .partner_urls
+        .get(partner_index as usize - 1)
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, format!("partner url for index {partner_index} not configured").into()))?
+        .clone();
+
     let exec_id = format!("sign-{}-{}", req.wallet_address, hex::encode(&hash[..8]));
     let eid_bytes: [u8; 32] = sha2::Sha256::digest(exec_id.as_bytes()).into();
-    let parties = vec![0u16, 1u16];
 
-    // 初始化 partner 会话（幂等：tss_signer 从 keystore 取片2）
+    // 初始化 partner 会话（幂等：tss_signer 从 keystore 取片2/片3）
     st.client
-        .post(format!("{}/v1/init", st.partner_url))
+        .post(format!("{}/v1/init", partner_url))
         .json(&InitRequest {
             exec_id: exec_id.clone(),
             wallet_address: req.wallet_address.clone(),
@@ -231,7 +252,7 @@ async fn sign(
         eid_bytes,
         parties,
         data_to_sign,
-        &st.partner_url,
+        &partner_url,
         &exec_id,
         &st.client,
     )
@@ -248,11 +269,16 @@ async fn sign(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let port = std::env::var("MPC_SIGNER_PORT").unwrap_or_else(|_| "9201".into());
-    let partner_url = std::env::var("TSS_SIGNER_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:9200".into());
+    // AX-13：片2/片3 可部署在不同机器（独立签名机/HSM），分别配置 URL。
+    // 兼容旧配置：只配 TSS_SIGNER_URL 时视为片2。
+    let legacy = std::env::var("TSS_SIGNER_URL").unwrap_or_else(|_| "http://127.0.0.1:9200".into());
+    let partner_urls = vec![
+        std::env::var("TSS_SIGNER_URL_1").unwrap_or_else(|_| legacy.clone()),
+        std::env::var("TSS_SIGNER_URL_2").unwrap_or_else(|_| legacy),
+    ];
     let client = Client::builder().build()?;
     let state = AppState {
-        partner_url,
+        partner_urls,
         client,
     };
     let app = Router::new()
@@ -263,7 +289,10 @@ async fn main() -> anyhow::Result<()> {
         .with_state(state);
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("[mpc-signer] listening on {addr} (party0, 持片1), partner={}", std::env::var("TSS_SIGNER_URL").unwrap_or_else(|_| "http://127.0.0.1:9200".into()));
+    println!(
+        "[mpc-signer] listening on {addr} (party0, 持片1), partners={:?}",
+        std::env::var("TSS_SIGNER_URL_1").or_else(|_| std::env::var("TSS_SIGNER_URL")).unwrap_or_else(|_| "http://127.0.0.1:9200".into())
+    );
     axum::serve(listener, app).await?;
     Ok(())
 }

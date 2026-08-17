@@ -76,6 +76,7 @@
 | M2 存量迁移 | 用 Key Import（SPOF code）把 E-2 现有钱包完整私钥转为 TSS 分片，地址不变 | ✅ 完成：`mpc_signer /v1/import` 按现有私钥 trusted_dealer 分片，地址不变 |
 | M3 服务端替换 | mpc server 引入 TSS 签名器，替换 sign-message/sign-typed-data/send-transaction/contract-write 四端点签名路径；`getSession` 改持分片 | ✅ 完成：本地四端点 E2E 13/13 通过（签名可被 ethers 复核，链上广播 + 余额变动确认）；见 §6 实现记录 |
 | M4 生产部署 | 分片进程/侧车部署（systemd）+ 现有 mpc-sdk/合约调用方零改动回归 | ✅ **2026-08-09 完成（43.163.105.172 主栈）**：`infrax-mpc-tss-signer.service`（tss_signer :9200）+ `infrax-mpc-signer.service`（mpc_signer :9201）安装并 active；`infrax-mpc.service` 增 `MPC_SIGNER_URL`/`TSS_SIGNER_URL` env + 依赖；mpc server 升级（sign-digest 端点 + undici 超时修复）重启；**验证全绿**：生产 TSS 钱包注册（`0xb84161…`）、sign-message/sign-digest ethers 恢复地址 MATCH、旧 Shamir 钱包（agent@infrax.io）兼容解锁签名、链上 balance 走 chain-rpc 网关（DC-3）、mpc-sdk 0.3.0 生产回归 **27/27 ALL PASS**（钱包 1:N/会话/恢复/错误分支） |
+| M5 2-of-3 阈值演进 | 加片3（独立签名机/HSM）：trusted_dealer 3 片 t=2，签名/恢复路径任取 2 片 | ✅ 完成（AX-13）：`/v1/import` 产出 shard3，`/v1/sign` 支持 `partner_index` 1/2（分别路由 tss_signer 两实例）；`m4_2of3` 进程内 3 子集签名全部有效；2-of-2 平滑兼容（默认 partner_index=1 即旧路径）；见 §7 实现记录 |
 
 ---
 
@@ -92,3 +93,27 @@
 - **验收证据**：`projects/mpc-tss/scripts/e2e-mpc.mjs` 四端点 13/13 断言通过（sign-message / sign-typed-data 经 `ethers.recoverAddress` 复核；send-transaction 链上 receipt status=1 且接收方 +0.01 ETH；contract-write ERC20 transfer 链上余额 -1 TST）。
 
 **前置依赖**：无硬依赖；建议在 E-1（aa-sdk 三缺口）与 E-4④ 稳定后启动（本轮 E-4④ 已先行完成）。
+
+---
+
+## 7. M5 实现记录：2-of-3 阈值演进（AX-13，2026-08-18）
+
+**目标**：`docs/infrax_tasklist.md` AX-13 —— TSS_EVALUATION 加片3（独立签名机/HSM）落地：签名/恢复路径支持 3 片 2 阈值 + 2-of-3 测试 + 2-of-2 平滑兼容。
+
+**关键协议语义（代码层核实）**：cggmp24 `signing(eid, i, S, share)` 中 `i` 是**参与子集内的本地索引**（校验 `i < t`，内部把 `i` 原样传给 t-out-of-t 协议），`S = parties_indexes_at_keygen` 是该子集的 **keygen 索引**（仅用于 Lagrange 系数）。参与子集恒为 2 方（t=2）→ 本地索引恒为 {0,1}：mpc_signer 恒为 0，tss_signer 恒为 1。因此 **tss_signer 二进制无需协议改动**，两份实例（TSS_PARTY_ID=1/2）行为一致，差异仅在 keystore 注册的片与 mpc_signer 的 URL 路由。
+
+**改动**：
+
+- `mpc_signer.rs`：
+  - `/v1/import`：`trusted_dealer::builder(3).set_threshold(Some(2))` → 响应增加 `shard3`；共享公钥/地址不变（任取 2 片签名均产出同一地址）。
+  - `/v1/sign`：新增可选 `partner_index`（1=片2/默认，兼容 2-of-2；2=片3）。按它选 `S=[0,1]` 或 `S=[0,2]`，并从 `TSS_SIGNER_URL_1`/`TSS_SIGNER_URL_2`（兼容旧 `TSS_SIGNER_URL` 作为片2）选 partner URL。
+- `tss_signer.rs`：`TSS_PARTY_ID` 仅作实例标签（启动日志 + `/health`），不进协议；`make_protocol_future` 的 `i` 保持 1。
+- 新增 `src/bin/m4_2of3.rs`：进程内 trusted_dealer 2-of-3 + 对 {0,1}/{0,2}/{1,2} 三个子集分别 presign+sign，cggmp24 内部校验 + k256 EIP-191 verify_prehash 全部通过，并断言 3 片共享公钥一致且地址不变。
+- 新增 `scripts/verify-2of3.mjs`：HTTP 级验证 —— `/v1/import` 出 shard3 → 片2/片3 分别注册两台 tss_signer → `partner_index=1` 与 `=2` 各签一次 → ethers `recoverAddress` 复核同一地址。
+- `server.ts`（Node 侧，已完成）：env 增 `TSS_SIGNER_URL_1`（兼容旧 `TSS_SIGNER_URL`）/`TSS_SIGNER_URL_2`；`tssImport` 收 shard3、`tssRegisterShard` 按 URL 注册片2/片3；`buildSessionData`/`getSession`/`getSessionByEmail`/recover/unlock 的 SELECT 增 `recovery_shard2`；六个签名端点（sign-message/sign-typed-data/sign-digest/sign/send-transaction/contract-write）支持可选 `partnerIndex`（1=片2 默认，2=片3；2-of-2 钱包请求 2 → 400）；register 存片3 且 `total_shards=3`（缺 shard3 的旧 mpc_signer 拒绝注册）。
+
+**验收**：m4_2of3（3 子集 × EIP-191 双校验）、verify-2of3.mjs（两 partner 路径 recover 命中）。旧客户端不传 `partner_index`（默认 1）即原 2-of-2 路径，平滑兼容。
+
+**DB 迁移（启动自动执行）**：`ALTER TABLE mpc_wallets ADD COLUMN IF NOT EXISTS recovery_shard2 TEXT`；存量 2-of-2 钱包该列为 NULL → 跳过片3 注册，签名默认片2，平滑兼容。
+
+**部署（生产，待 M4 环境执行）**：主栈新增 `infrax-mpc-tss-signer2.service`（TSS_PARTY_ID=2，独立签名机/HSM），mpc_signer env 增 `TSS_SIGNER_URL_1`（现有 tss_signer）+ `TSS_SIGNER_URL_2`（新实例）；mpc server env 增 `TSS_SIGNER_URL_2`（注册片3 用）。端口/env 契约见 `docs/PRODUCTION_CREDENTIALS.md`。
