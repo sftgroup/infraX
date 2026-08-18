@@ -117,7 +117,7 @@
 | 端口 | 内容 | 用途 |
 |---|---|---|
 | `/factors/catalog` | **固定因子目录 49 个**（31 内置/ML + 18 graph，静态清单） | 因子字段名 / 单位 / 取值范围查阅 |
-| `/factors/current` | **最新因子值**（symbol 维度，category 过滤）；附 `ml_factory`（挖掘因子）、`graph`（图谱因子）、`_complex`（news / put_call_ratio 等复合结构） | 实时展示 / 决策 |
+| `/factors/current` | **最新因子值**（symbol 维度，category 过滤）；**顶层恒附** `ml_factory`（挖掘因子，与 category 无关）、`graph`（图谱因子，当前实测为空）、`_complex`（news / put_call_ratio 等复合结构） | 实时展示 / 决策 |
 | `/factors/history` | 逐 bar 因子时序（对齐 /bars ts） | 回测 |
 | `/factors/graph` + `/factors/graph/edges` | 语义图谱因子（gf_*）+ 相关性图边 | 图谱联动 / 传导分析 |
 | `/ml/predictions` | ML 预测快照明细（model=bolt/moirai/timesfm） | 模型明细核对 |
@@ -130,7 +130,7 @@
 | 端点 | 返回 |
 |---|---|
 | `/factors/catalog` | 因子目录（**49 个**：31 内置/ML + 18 graph；七字段结构见下，2026-08-19 实测） |
-| `/factors/current?symbols=&category=` | 最新因子值（category：external/sentiment/news/opportunities/heatmap/calendar/snapshot） |
+| `/factors/current?symbols=&category=` | 最新因子值（category 过滤快照因子，可用：external/sentiment/news/opportunities/heatmap/calendar/snapshot/**ml**；技术指标与 ML 因子**恒附加**，不随 category 过滤） |
 | `/factors/history?symbol=&timeframe=&ids=` | 逐 bar 因子时序（对齐 /bars ts，回测用） |
 
 **catalog 条目统一结构**（内置 / ML / extra 三来源一致）：
@@ -146,7 +146,7 @@
 | 字段 | 说明 |
 |---|---|
 | `id` / `name` | 因子标识 / 显示名 |
-| `category` | `technical` \| `macro` \| `sentiment` \| `onchain` \| `ml` \| `external` |
+| `category` | `technical` \| `macro` \| `sentiment` \| `onchain` \| `ml` \| `graph` \| `external` |
 | `type` | `float` \| `int` |
 | `range` | 合理值域（`null` 表示无限制；`[0, 100]` 为含边界闭区间） |
 | `description` | 中文语义描述（新增 2026-08-07，下游展示用） |
@@ -159,6 +159,16 @@
 - **sentiment（3）**：`fear_greed`（int 0-100）、`sentiment_score`（float -1~1）、`put_call_ratio`（期权认沽认购比，`_complex` 内含 `value/level/signal/interpretation` 解读，2026-08-19 登记）
 - **onchain（2）**：`btc_difficulty`（unit=`T`）、`btc_hashrate`（unit=`EH/s`）
 - **ml（10，DS-13，来源 ml-service）**：`tree_direction` / `tree_prob_up`（LightGBM）、`finbert_sentiment`（FinBERT）、`consensus_score`、`bolt_direction` / `bolt_prob_up`、`moirai_direction` / `moirai_prob_up`、`timesfm_direction` / `timesfm_prob_up`（direction 数值化：up=1 / flat=0 / down=-1）
+
+> **⚠️ 两类带 "ML" 字样的因子勿混淆（B 端必读）**：
+
+| 维度 | **ML 因子（category=ml）** | **挖掘因子（因子工厂 ml_factory）** |
+|---|---|---|
+| 定义 | catalog 内**固定** 10 个模型预测因子（tree/bolt/moirai/timesfm 方向+概率、finbert_sentiment、consensus_score） | 因子工厂**每日自动挖掘**产出：`mom_5_20`/`mom_10_30`/`mom_20_60`（多周期动量）、`ret_1/3/5/10/20/60`（多周期收益率）、`vol_20`（波动率） |
+| 获取位置 | `/factors/catalog`（category=ml）+ `/factors/current` 的 `factors[SYMBOL]` + `/factors/history` | **仅** `/factors/current` 响应**顶层** `ml_factory`（与 category 无关，external/ml/news 任何 category 均附） |
+| 是否静态 | **固定**，不随挖掘变化 | **动态**，随每日挖掘 / IC 评估增减（active/inactive） |
+| 是否有历史 | ✅ `/factors/history` 可回测 | ❌ **无历史**，仅当前实时值（`ml_factory.values`） |
+| 取列表方式 | 查 `/factors/catalog` 或 `category=ml` | `ml_factory.factors`（激活 key 列表） |
 
 > **external category 覆盖（2026-08-19，Arbitrage 套利平台 PRD §2.1）**：
 > `GET /factors/current?symbols=BTC&category=external` 返回 `vix` / `vxn` / `gvz` / `dxy` / `us10y` / `fear_greed` / `sentiment_score`（symbol 维度标量）+ `_complex.put_call_ratio`（含 `value/level/signal/interpretation`）。vxn/gvz 由 `volatility` 复合快照拆分，60s 级更新。

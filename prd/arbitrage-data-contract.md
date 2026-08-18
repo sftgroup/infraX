@@ -25,7 +25,7 @@
 | 端口 | 内容 | 用途 |
 |---|---|---|
 | `/factors/catalog` | **固定因子目录 49 个**（31 内置/ML + 18 graph，静态） | 字段名 / 单位 / 取值范围查阅 |
-| `/factors/current` | **最新因子值**（category 过滤）；附 `ml_factory`（挖掘因子）、`graph`、`_complex`（news / put_call_ratio） | 实时展示 / 决策 |
+| `/factors/current` | **最新因子值**（category 过滤）；**顶层恒附** `ml_factory`（挖掘因子，与 category 无关）、`graph`（图谱因子，当前实测为空）、`_complex`（news / put_call_ratio） | 实时展示 / 决策 |
 | `/factors/history` | 逐 bar 因子时序（对齐 /bars ts） | 回测 |
 | `/factors/graph` + `/factors/graph/edges` | 语义图谱因子（gf_*）+ 相关性图边 | 图谱联动 / 传导分析 |
 | `/ml/predictions` | ML 预测快照明细（model=bolt/moirai/timesfm） | 模型明细核对 |
@@ -81,7 +81,16 @@ GET /factors/current?symbols=BTC&category=news
 
 ## 2. 开放问题 2：ML 因子扩展 —— ✅ 我方提供
 
-`category=ml` 返回 **21 个 symbol 维度字段**（10 ML 因子 + 11 技术指标），另附因子工厂实时因子。
+> **先分清两类带 "ML" 字样的因子，勿混淆**：
+
+| 维度 | **ML 因子（category=ml）** | **挖掘因子（因子工厂 ml_factory）** |
+|---|---|---|
+| 定义 | catalog 内**固定** 10 个模型预测因子 + 11 个技术指标 | **每日自动挖掘**的多周期动量 / 收益率 / 波动率因子 |
+| 获取 | `category=ml`（`factors[SYMBOL]` 维度）；`/factors/history` 可回测 | `/factors/current` 响应**顶层** `ml_factory`（与 category 无关，external/ml/news 任何 category 均附） |
+| 是否变化 | 固定 | 随每日挖掘 / IC 评估动态增减 |
+| 是否有历史 | ✅ 有 | ❌ 无（仅当前实时值） |
+
+### 2.1 ML 因子（category=ml，21 字段）
 
 端点：
 
@@ -96,7 +105,14 @@ GET /factors/current?symbols=BTC,ETH,SOL&category=ml
 | ML 方向/概率 | `tree_direction`(1/0/-1)、`tree_prob_up`(0-1)、`finbert_sentiment`(-1~1)、`consensus_score`(0-1)、`bolt_direction`、`bolt_prob_up`、`moirai_direction`、`moirai_prob_up`、`timesfm_direction`、`timesfm_prob_up` |
 | 技术指标 | `rsi_14`、`macd`、`macd_signal`、`macd_hist`、`bb_upper`、`bb_middle`、`bb_lower`、`atr_14`、`ma_5`、`ma_10`、`ma_20` |
 
-**多周期动量/波动率因子（因子工厂 ml_factory，每日自动挖掘）**：响应 `ml_factory.factors` 为当前**激活因子列表**，`ml_factory.values` 为各 symbol 实时值：
+- **更新频率**：ML 预测分钟级 ~ 日更；技术指标随 bar（均支持 `/factors/history` 回测）
+- **category 聚合行为**：category 过滤快照因子，但 symbol 维度为**并集**（外部 + 技术 + ML 同时返回）——B 端按需取字段，忽略多余字段即可
+
+### 2.2 挖掘因子（因子工厂 ml_factory）
+
+- **位置**：`/factors/current` 响应**顶层** `ml_factory` 字段，**与 category 无关**（任何 category 都返回）
+- **语义**：`mom_X_Y` = X-Y 日动量、`ret_N` = N 日收益率、`vol_N` = N 日波动率；激活清单随每日挖掘 / IC 评估**动态增减**
+- **无历史**：挖掘因子**不支持 `/factors/history` 回测**，仅提供当前实时值
 
 ```json
 "ml_factory": {
@@ -107,9 +123,8 @@ GET /factors/current?symbols=BTC,ETH,SOL&category=ml
 }
 ```
 
-- 激活因子清单会随每日挖掘/IC 评估**动态增减**——B 端按 `ml_factory.factors` 动态渲染，勿硬编码
-- **更新频率**：ML 预测分钟级 ~ 日更；技术指标随 bar；ml_factory 60s 级
-- **category 聚合行为**：category 决定拉取哪些因子，但响应 symbol 维度为**并集**（外部 + 技术 + ML 同时返回）——B 端按需取字段，忽略多余字段即可
+- `ml_factory.factors` = 当前激活因子 key 列表（B 端**动态渲染，勿硬编码**）；`ml_factory.values` = 各 symbol 实时值
+- `updated_at` 为挖掘评估时间；实时值按最新 K 线计算（data-service 60s 缓存 TTL，非因子计算频率——因子本体每日挖掘时更新）
 
 ---
 
