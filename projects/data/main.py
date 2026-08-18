@@ -345,9 +345,59 @@ async def factors_current(
                 response["ml_factory"] = ff
         except Exception:
             pass
+        # GX-1.5: 图谱因子 passthrough（ml-service graph 引擎，60s TTL，fail-silent）
+        try:
+            from app.ml_client import fetch_graph_catalog, fetch_graph_factors
+            gvals = await asyncio.to_thread(fetch_graph_factors, sym_list)
+            if gvals and gvals.get("values"):
+                response["graph"] = {
+                    "updated_at": gvals.get("updated_at", 0),
+                    "values": {sym: v for sym, v in gvals["values"].items() if sym in set(sym_list)},
+                }
+                gc = await asyncio.to_thread(fetch_graph_catalog)
+                if gc:
+                    response["graph"]["catalog"] = gc
+        except Exception:
+            pass
         return response
     except Exception as e:
         logger.error(f"/factors/current failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Crypto Derivatives（GX-3.5.3 资金费率数据面，db_cache 读取） ──
+
+@app.get("/factors/crypto-derivatives")
+async def factors_crypto_derivatives(
+    symbols: str = Query("BTC", description="Comma-separated symbols"),
+):
+    """最新衍生品资金费率/持仓/多空比（db_cache collector:crypto_factors:{sym}）。
+
+    ml-service 图谱引擎 GX-3.5.3 资金费率数据面读取端点：funding_rate /
+    open_interest / open_interest_change_24h / long_short_ratio（Coinglass
+    主源 + Binance 兜底，ttl 300s）。fail-silent：缓存缺失/DB 不可用 → 空 factors。
+    """
+    try:
+        from app.data_providers.db_cache import db_cache_get
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        factors: dict = {}
+        for sym in sym_list:
+            base = sym.split("/", 1)[0].split(":", 1)[0].strip().upper()
+            if not base:
+                continue
+            raw = db_cache_get(f"collector:crypto_factors:{base}")
+            if not isinstance(raw, dict) or not raw:
+                continue
+            factors[base] = {
+                "funding_rate": raw.get("funding_rate"),
+                "open_interest": raw.get("open_interest"),
+                "open_interest_change_24h": raw.get("open_interest_change_24h"),
+                "long_short_ratio": raw.get("long_short_ratio"),
+                "signals": raw.get("signals"),
+            }
+        return {"ts": int(time.time() * 1000), "factors": factors}
+    except Exception as e:
+        logger.error(f"/factors/crypto-derivatives failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -520,6 +570,7 @@ async def policy_broker_market():
 @app.get("/snapshots")
 async def snapshots(
     type: Optional[str] = Query(None, description="Data type: heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain"),
+    provider: Optional[str] = Query(None, description="Provider filter (GX-3.4/3.5): moomoo_f10 等按标的落库的 provider，返回 {data_type: {symbol: payload}}"),
 ):
     """Return latest complex snapshot data.
 
@@ -533,10 +584,12 @@ async def snapshots(
       - us_indicators: FRED macro indicators (CPI, GDP, etc.)
       - earnings: upcoming earnings reports
       - onchain: aggregate BTC on-chain data (btc_difficulty/btc_transfers/btc_hashrate, G-4)
+    Use ?provider= to filter by provider (moomoo_f10: mm_f10/mm_short_capital per symbol,
+    for ml-service graph engine GX-3.4/GX-3.5).
     """
     try:
         from app.factors import get_snapshots
-        result = get_snapshots(type)
+        result = get_snapshots(type, provider=provider)
         return {"ts": result.pop("_ts", 0), "snapshots": result}
     except Exception as e:
         logger.error(f"/snapshots failed: {e}")

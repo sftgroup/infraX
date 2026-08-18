@@ -156,6 +156,81 @@ def fetch_factor_factory_values(symbols: list[str]) -> dict | None:
         return None
 
 
+# GX-1.5: 图谱因子（ml-service graph 引擎，60s TTL，fail-silent）
+_GRAPH_FACTORS_CACHE: dict = {}
+_GRAPH_FACTORS_CACHE_TTL_S = 60
+_GRAPH_CATALOG_CACHE: dict = {}
+_GRAPH_CATALOG_CACHE_TTL_S = 60
+
+
+def fetch_graph_factors(symbols: list[str]) -> dict | None:
+    """拉取 ml-service 图谱因子当前值（/ml/graph_factors，GX-1.5）。
+
+    返回 {"updated_at", "values": {symbol: {factor_key: value}}} 或 None（fail-silent）。
+    60s TTL 缓存，**按 symbols 集合键控**（不同请求的标的池不同，值必须对应）。
+    data-service /factors/current 将其透传为 response["graph"]。
+    """
+    global _GRAPH_FACTORS_CACHE  # 函数内赋值 → 需显式 global
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base or not symbols:
+        return None
+    cache_key = ",".join(sorted(symbols))
+    now = time.time()
+    if (_GRAPH_FACTORS_CACHE.get("key") == cache_key
+            and now - _GRAPH_FACTORS_CACHE.get("ts", 0) < _GRAPH_FACTORS_CACHE_TTL_S):
+        return _GRAPH_FACTORS_CACHE.get("data")
+    try:
+        resp = requests.get(f"{base}/ml/graph_factors",
+                            params={"symbols": ",".join(symbols)},
+                            headers=_headers(), timeout=30)
+        if resp.status_code != 200:
+            logger.debug("ml-service /ml/graph_factors → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict) or not data.get("values"):
+            return None
+        _GRAPH_FACTORS_CACHE = {"key": cache_key, "ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ml-service /ml/graph_factors request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service /ml/graph_factors parse failed: %s", exc)
+        return None
+
+
+def fetch_graph_catalog() -> list | None:
+    """拉取 ml-service 图谱因子目录（/ml/graph/catalog，GX-1.5）。
+
+    返回 [{id, name, category, type, range, description, unit}, ...] 或 None（fail-silent）。
+    60s TTL 缓存（catalog 低频变化）。data-service /factors/current 将其并入
+    response["graph"]["catalog"]，客户端免维护图谱因子清单。
+    """
+    global _GRAPH_CATALOG_CACHE  # 函数内赋值 → 需显式 global
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return None
+    now = time.time()
+    if _GRAPH_CATALOG_CACHE and now - _GRAPH_CATALOG_CACHE.get("ts", 0) < _GRAPH_CATALOG_CACHE_TTL_S:
+        return _GRAPH_CATALOG_CACHE.get("data")
+    try:
+        resp = requests.get(f"{base}/ml/graph/catalog", headers=_headers(), timeout=10)
+        if resp.status_code != 200:
+            logger.debug("ml-service /ml/graph/catalog → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, list) or not data:
+            return None
+        _GRAPH_CATALOG_CACHE = {"ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ml-service /ml/graph/catalog request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service /ml/graph/catalog parse failed: %s", exc)
+        return None
+
+
 def post_sentiment(articles: list[dict]) -> dict | None:
     """POST 新闻文章到 ml-service /ml/sentiment，返回聚合情绪统计（或 None）。"""
     base = (ML_SERVICE_URL or "").strip().rstrip("/")

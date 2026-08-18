@@ -79,6 +79,15 @@ FACTOR_MINER_DEACTIVATE_ICIR = float(os.getenv("FACTOR_MINER_DEACTIVATE_ICIR", "
 # 建议保持 ICIR 门槛明显低于 IC（如 IC≥0.03 配 ICIR≥0.05）才能收获因子。
 FACTOR_MINER_SCHEDULE_MIN_IC = float(os.getenv("FACTOR_MINER_SCHEDULE_MIN_IC", "0.03"))
 FACTOR_MINER_SCHEDULE_MIN_ICIR = float(os.getenv("FACTOR_MINER_SCHEDULE_MIN_ICIR", "0.3"))
+# ── GX-2.4：graph 图因子（gf_*）接入 FF 挖掘 ───────────────
+# 历史快照：main.py 每次图因子计算后落库 graph_history.db（graph_history.py）；
+# 挖掘作业对 gf_* 做横截面 IC/ICIR 评估（graph_pool.evaluate_graph_factors），
+# 合格登记 + 自动激活（进 /factors/current），衰退淘汰（FF-4.4）graph 分支覆盖。
+# 历史不足时评估跳过（fail-silent），不阻塞挖掘作业。
+FACTOR_MINER_GRAPH_ENABLED = os.getenv("FACTOR_MINER_GRAPH_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+FACTOR_MINER_GRAPH_DAYS = int(os.getenv("FACTOR_MINER_GRAPH_DAYS", "90"))
+FACTOR_MINER_GRAPH_MIN_DAYS = int(os.getenv("FACTOR_MINER_GRAPH_MIN_DAYS", "30"))
+GRAPH_HISTORY_DB_PATH = os.getenv("GRAPH_HISTORY_DB_PATH", "")
 
 # ── 因子工厂 LLM 意图解析（需求5 R5-4） ──────────────────
 # OpenAI 兼容 chat completions（默认 DeepSeek）；未配置时自然语言入口 400 提示。

@@ -200,6 +200,23 @@ def _compute_consensus():
     })
 
 
+def _compute_graph_factors():
+    """GX 图谱因子全市场 payload（heatmap 静态图 + /bars 相关性动态图 + 结构因子）。
+
+    计算成功后把全市场 values 快照进 graph_history（GX-2.4：FF 挖掘 IC/ICIR
+    评估与衰退淘汰的历史数据源；快照失败不影响返回）。
+    """
+    from app.graph_engine import compute_graph_payload
+    payload = compute_graph_payload()
+    if payload and payload.get("values"):
+        try:
+            from app.factorengine.graph_history import snapshot_graph_values
+            snapshot_graph_values(payload.get("updated_at") or 0, payload["values"])
+        except Exception:
+            pass  # 历史快照 fail-silent（GX-2.4 不阻塞图因子计算）
+    return payload
+
+
 # 预热任务表：全部重计算端点（启用与否由 compute 内部 fail-silent 决定）
 _PRECOMPUTE: dict = {
     "tree_predictions": _compute_tree,
@@ -208,6 +225,7 @@ _PRECOMPUTE: dict = {
     "moirai": _compute_moirai,
     "timesfm": _compute_timesfm,
     "consensus": _compute_consensus,
+    "graph_factors": _compute_graph_factors,
 }
 
 # R4-3.2：预热表从 provider registry 遍历生成（新 provider 注册即自动纳入预热）
@@ -583,6 +601,54 @@ def factors_values(symbols: str = Query("", description="Comma-separated symbols
 def _now_ms() -> int:
     import time
     return int(time.time() * 1000)
+
+
+# ── 图谱因子（GX-1/GX-2：静态图 + 相关性动态图 + 结构/邻居/嵌入因子）──
+# 契约（对齐 data-service app.ml_client.fetch_graph_factors/fetch_graph_catalog）：
+#   GET /ml/graph_factors?symbols=BTC,ETH → {"code":0,"data":{"updated_at", "values":{sym:{gf_*}}}}
+#   GET /ml/graph/catalog                  → {"code":0,"data":[18 个 graph 因子条目]}
+# 全图 + 结构因子计算走 _async_runner 缓存（ML_CACHE_TTL_SEC，后台线程 + 预热），
+# 端点仅做字典过滤，秒回；miss 时后台计算并立即返回空 values（fail-silent）。
+
+@app.get("/ml/graph_factors")
+def graph_factors_endpoint(symbols: str = Query("", description="Comma-separated symbols")):
+    """图谱因子当前值（全市场图，按请求 symbols 过滤）。
+
+    返回 data: {"updated_at": ms, "values": {symbol: {gf_degree, ..., gf_node2vec_1..8}}}；
+    symbols 缺省返回全市场值；无图/计算未就绪时 values 为空对象（fail-silent）。
+    """
+    sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    empty = {"updated_at": _now_ms(), "values": {}}
+    try:
+        payload = _async_runner.get("graph_factors", _compute_graph_factors)
+        if not payload or not payload.get("values"):
+            return {"code": 0, "message": "ok", "data": empty}
+        if not sym_list:
+            return {"code": 0, "message": "ok", "data": payload}
+        from app.graph_engine import _norm_symbol
+        out: dict[str, dict] = {}
+        for sym in sym_list:
+            norm = _norm_symbol(sym)
+            if norm in payload["values"]:
+                out[sym] = payload["values"][norm]
+            elif sym in payload["values"]:
+                out[sym] = payload["values"][sym]
+        return {"code": 0, "message": "ok",
+                "data": {"updated_at": payload.get("updated_at", 0), "values": out}}
+    except Exception as exc:
+        logger.warning("graph_factors failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": empty}
+
+
+@app.get("/ml/graph/catalog")
+def graph_catalog_endpoint():
+    """图谱因子目录（18 项，id/type/range 与 data-service _GRAPH_FACTORS 对齐）。"""
+    try:
+        from app.graph_engine import GRAPH_FACTOR_CATALOG
+        return {"code": 0, "message": "ok", "data": GRAPH_FACTOR_CATALOG}
+    except Exception as exc:
+        logger.warning("graph catalog failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": []}
 
 
 # ── 宏观特征（FRED 历史趋势 + DXY/VIX/US10Y） ─────────────

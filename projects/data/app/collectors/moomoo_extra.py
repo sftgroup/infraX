@@ -4,6 +4,7 @@
   - mm_capital_flow  资金流（MM-8.1，分钟级，600s）
   - mm_basicinfo     美股自选池候选（MM-8.2，6h）
   - mm_f10           基本面/评级/估值（MM-11.2，6h；financials 权限待生产验证）
+                     + 卖空/资金流（mm_short_capital，GX-3.5.1，同 provider/周期）
   - mm_smart_money   卖空/机构/内部人/ARK（MM-12.2，6h）
   - mm_hot           热力/榜单（MM-14.2，900s；榜单权限待生产验证）
   - mm_screen        板块/产业链（MM-15.2，6h）
@@ -117,11 +118,36 @@ class MoomooExtraCollector:
         return len(rows)
 
     def _collect_f10(self) -> int:
+        """F10 基本面（mm_f10）+ 卖空/资金流（mm_short_capital，GX-3.5.1）。
+
+        两快照同 provider=moomoo_f10、6h 周期，各自任一数据源有返回才落库；
+        fetch 层已 fail-silent（空/异常 → 跳过该标的，不抛错）。
+        """
         if not MOOMOO_EXTRA_ENABLED:
             return 0
         total = 0
         for sym in _F10_SYMBOLS:
             code = f"US.{sym}"
+            # GX-3.5.1：卖空兴趣 / 每日卖空量 / 分钟资金流 → mm_short_capital
+            # （图谱引擎 F10 标的域属性注入数据面，与 mm_f10 同 provider）
+            sc = {"symbol": sym, "code": code}
+            si = mx.fetch_short_interest(code)
+            if si:
+                sc["short_interest"] = si[:5]
+            dv = mx.fetch_daily_short_volume(code)
+            if dv:
+                sc["daily_short_volume"] = dv[:5]
+            cf = mx.fetch_capital_flow(sym, "usstock")
+            if cf:
+                sc["capital_flow"] = cf[-60:]  # 最近 60 分钟
+            if len(sc) > 2:
+                save_snapshot(
+                    provider="moomoo_f10",
+                    data_type="mm_short_capital",
+                    data=sc,
+                    symbol=sym,
+                )
+            # F10 基本面（MM-11.2）
             entry = {"symbol": sym, "code": code}
             fin = mx.fetch_financials(code)
             if fin:

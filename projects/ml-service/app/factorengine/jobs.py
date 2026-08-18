@@ -254,27 +254,41 @@ def _run_wrapper(job_id: str, spec: JobSpec) -> None:
                 store.update(job_id, status=JobStatus.FAILED,
                              error="无可用数据：asset_pool 无有效标的或 K 线不足（见日志）")
             return
-        store.save_results(job_id, result["results"])
+        results = list(result["results"])
+        # GX-2.4：graph 图因子（gf_*）接入 FF 挖掘——开关启用且历史足够时，
+        # 增量合并横截面 IC/ICIR 评估结果（与 K 线因子共用 catalog/激活/淘汰链路）
+        if config.FACTOR_MINER_GRAPH_ENABLED:
+            try:
+                from app.factorengine.graph_pool import evaluate_graph_factors
+                graph_results = evaluate_graph_factors(horizon=spec.preferences.horizon)
+                existing = {r["factor_key"] for r in results}
+                for gr in graph_results:
+                    if gr["factor_key"] not in existing:
+                        results.append(gr)
+            except Exception as exc:
+                logger.warning("graph factor eval failed: %s", exc)
+        store.save_results(job_id, results)
         # FF-3.1：passed 因子自动登记进 catalog（inactive，待激活），带评估环境
         from app.factorengine.catalog import register_qualified
-        register_qualified(job_id, result["results"], spec)
+        register_qualified(job_id, results, spec)
         # FF-4.3 自动闭环：合格因子自动激活（进 /factors/current 与模型特征）
         # + 置模型过期（下次预测自动用含新因子的特征重训）。开关默认开启。
         activated = 0
         if config.FACTOR_MINER_AUTO_ACTIVATE:
             from app.factorengine.catalog import auto_activate
-            activated = auto_activate(job_id, result["results"])
+            activated = auto_activate(job_id, results)
         if config.FACTOR_MINER_AUTO_RETRAIN and activated:
             from app.analytics.tree_models import invalidate_models
             invalidate_models()
         # FF-4.4 衰退淘汰：激活因子用各自评估环境重新评估，IC 衰减自动停用
+        # （graph 因子走 graph_history 重评估分支，见 catalog.health_check_active）
         if config.FACTOR_MINER_DEACTIVATE_ENABLED:
             from app.factorengine.catalog import health_check_active
             health_check_active()
         store.update(job_id, status=JobStatus.COMPLETED, stage="persist",
                      result={"selected": result["selected"],
                              "stats": result["stats"],
-                             "factors": result["results"]})
+                             "factors": results})
     except Exception as exc:
         logger.exception("[%s] mine failed", job_id)
         store.update(job_id, status=JobStatus.FAILED, error=str(exc))

@@ -30,11 +30,13 @@ def openapi_json():
 # ── Register sub-routes ─────────────────────────────────
 
 def _register_all():
-    from . import documents, query, admin, legacy
+    from . import documents, graph, query, admin, legacy, factors
     documents.register(api)
+    graph.register(api)
     query.register(api)
     admin.register(api)
     legacy.register(api)
+    factors.register(api)
 
 
 _register_all()

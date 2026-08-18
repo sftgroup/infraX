@@ -153,9 +153,10 @@ def register_qualified(job_id: str, results: list[dict[str, Any]],
             params.update(eval_env)
         entry = {
             "factor_key": key,
-            "name": fd.name if fd else f"factor {key}",
-            "category": fd.category if fd else _category_of(key),
-            "template": getattr(fd, "template", None),
+            "name": fd.name if fd else (f"graph factor {key}" if key.startswith("gf_") else f"factor {key}"),
+            "category": fd.category if fd else ("graph" if key.startswith("gf_") else _category_of(key)),
+            "template": (getattr(fd, "template", None)
+                         if fd else ("graph_factor" if key.startswith("gf_") else None)),
             "params": params,
             "description": f"auto-mined by job {job_id} (IC={r.get('ic')}, ICIR={r.get('icir')})",
             "source": "factor_miner",
@@ -206,6 +207,12 @@ def health_check_active() -> int:
     deactivated = 0
     for e in active:
         key = e["factor_key"]
+        # GX-2.4.5：graph 因子（gf_*）走 graph_history 重评估（非 K 线可算）
+        if key.startswith("gf_") or (e.get("template") or "") == "graph_factor":
+            from app.factorengine.graph_pool import health_check_graph_factor
+            if health_check_graph_factor(e):
+                deactivated += 1
+            continue
         params = e.get("params") or {}
         pool = params.get("asset_pool") or []
         if not pool:

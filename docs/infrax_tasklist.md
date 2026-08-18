@@ -88,6 +88,8 @@ nginx 为唯一公网入口（80 → 301 → 443），后端服务大多绑定 1
 
 **API 前缀现状（B 端反馈 P2-5）**：业务 `/api/data/*`、admin `/admin/*`、`/api-keys/verify` 并存；根 `/` 与 `/openapi.json` 返回 HTML（需登录态）；`/api/data/openapi.json` 带 key 可出 JSON（公开免鉴权 docs 入口待开放，见 §9.3 反馈项）。
 
+**B 端访问方式（2026-08-19 确认）**：所有 B 端（含 AItrader）**走 SDK/API 通用方案**，经 nginx 唯一公网入口访问，不直连后端端口：`lightrag_client` SDK / 通用 API → `https://43.163.105.172/api/rag/*` → `http://127.0.0.1:9721/`（ragservicer）。因此 **43.156.78.59:9721 公网入方向应保持关闭**（安全组 140.44 白名单规则可移除；nginx 同机 127.0.0.1 或内网 10.3.8.6 可达即可）。GF 新端点经公网路径实测可用：`/api/rag/api/v1/factors/graph`、`/api/rag/api/v1/graph/entities`、`/api/rag/api/v1/factors/catalog`（AItrader key 鉴权，2026-08-19 实测 200）。
+
 ---
 
 ## 3. 首次部署（一次性）
@@ -1898,13 +1900,13 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 |---|---|---|---|---|
 | GF-1 | 存量文档图谱构建修复 | 1163 篇文档在库但检索 `[no-context]`。**已完成（2026-08-19）**：根因=LightRAG 事件循环劣化（服务 3 天未重启）致异步任务假成功/状态不回写 + denoise 去重残留 `dup-*`。处理：重启 ragservicer（indexed 742→923，积压全消化）+ 清理 287 篇 error（286 dup-* + 1 defi:tvl，fail=0）。终态：indexed 923 / error 0 | ✅ | **P0** |
 | GF-2 | 图谱检索回归验证 | **已完成（2026-08-19）**：8 条标准查询（BTC_ETF/ETH_L2/RATE/POLICY/MINER/DEFI_TVL/INSTITUTION/MACRO）retrieve 回归——**8/8 PASS（100% 命中，no-context 归零）**，平均响应 11.2s | ✅ | **P0** |
-| GF-3 | 图谱因子端点 `GET /factors/graph` | RAGservicer :9721 实现，契约 8 数值因子（graph_entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure + top_entities/events）；子图聚合 + PageRank/边加权情绪；日频（随 `crypto:daily:*`）；验证：与 fear_greed/finbert_sentiment 方向一致 ≥70% | 🔲 | P1 |
-| GF-4 | 因子目录并入 catalog | `/factors/graph` 输出并入 `/factors/catalog`（graph 分类，metadata 对齐 catalog 规范） | 🔲 | P1 |
-| GF-5 | 可视化端点 `GET /graph/entities` | 力导向图数据：nodes（category 9 枚举：asset/central_bank/exchange/fund/whale/project/media/event/policy + size=sentiment）+ edges（relation 8 枚举：affects/funding/custody/listing/whale_move/etf_flow/regulation/sentiment_correlate + weight）；前端 ECharts 渲染 | 🔲 | P1 |
-| GF-6 | AItrader 专用 key | 签发 `RAGSERVICER_API_KEY`（现借用 aiservicer），key 隔离治理 | 🔲 | P2 |
-| GX-1 | moomoo 供应链/行业图 + 结构因子（M1 扩展） | ml-service graph_engine：静态图（moomoo 行业/供应链 + F10 财报传导）+ 结构特征 `gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole/gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover`；data `/factors/current?category=graph` 透传（60s TTL） | 🔲 | P1 |
-| GX-2 | 相关性动态图 + 图嵌入 + FF 联动（M2 扩展） | `/bars` 滚动 60 日 |ρ|≥0.6 动态边 + 社区动量 + Node2Vec（`gf_node2vec_1..k`）；FF 挖掘候选 IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4） | 🔲 | P2 |
-| GX-3 | 扩展数据面接入框架（Source Adapter + Edge Builder + Attribute Injector） | 统一图模型扩展机制：Source Adapter（`fetch→normalize→upsert`）、Edge Builder Registry（边构建器注册 + 图层权重合并）、Attribute Injector（财报/估值/情绪节点属性）；接入验证数据面：moomoo 卖空兴趣/资金流、财报事件边/基本面相似边（财报进图）、衍生品资金费率、链上 defi tvl；文档：扩展接入指南 | 🔲 | P2 |
+| GF-3 | 图谱因子端点 `GET /factors/graph` | RAGservicer :9721 实现，契约 8 数值因子（graph_entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure + top_entities/events）；子图聚合 + PageRank/边加权情绪；日频（随 `crypto:daily:*`）；验证：与 fear_greed/finbert_sentiment 方向一致 ≥70% | ✅ 生产验证（2026-08-19）：`/factors/graph?symbol=BTC` 8 因子 + top_entities/top_events，大小写不敏感，缺 symbol 400；graph_sentiment vs finbert 100% 同向；topcap 租户数据回退 default | P1 |
+| GF-4 | 因子目录并入 catalog | `/factors/graph` 输出并入 `/factors/catalog`（graph 分类，metadata 对齐 catalog 规范） | ✅ 生产验证（2026-08-19）：`/factors/catalog` 9 条 graph 分类（factor_id/name/category/type/range/description），无 key 401 | P1 |
+| GF-5 | 可视化端点 `GET /graph/entities` | 力导向图数据：nodes（category 9 枚举：asset/central_bank/exchange/fund/whale/project/media/event/policy + size=sentiment）+ edges（relation 8 枚举：affects/funding/custody/listing/whale_move/etf_flow/regulation/sentiment_correlate + weight）；前端 ECharts 渲染 | ✅ 生产验证（2026-08-19）：`/graph/entities?namespace=market&limit=100` 100 nodes / 672 edges，node keys=category/id/sentiment/size，edge keys=relation/source/target/weight | P1 |
+| GF-6 | AItrader 专用 key | 签发 `RAGSERVICER_API_KEY`（现借用 aiservicer），key 隔离治理 | ✅ 生产验证（2026-08-19）：`lr_a1a683d4b905e9c32ef10d3569b8ef38edad9c3f1eab5af7`（tenant=aitrader，GF-3/4/5 全端点 200，无 key 401）；凭证见 [docs/PRODUCTION_CREDENTIALS.md §7](docs/PRODUCTION_CREDENTIALS.md)；图谱数据回退 default 共享数据面；**B 端访问经 nginx `/api/rag/*` 通用方案，不直连 :9721（见 §2.1）** | P2 |
+| GX-1 | moomoo 供应链/行业图 + 结构因子（M1 扩展） | ml-service graph_engine：静态图（moomoo 行业/供应链 + F10 财报传导）+ 结构特征 `gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole/gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover`；data `/factors/current?category=graph` 透传（60s TTL） | ✅ 生产部署（2026-08-19）：ml-service graph_engine（SourceAdapter/Industry/SupplyChain 边）+ `graph built: nodes=180 edges=4087 sectors=10 communities=9`；data `/factors/current` graph 透传（6 symbols 命中，catalog 18 条） | P1 |
+| GX-2 | 相关性动态图 + 图嵌入 + FF 联动（M2 扩展） | `/bars` 滚动 60 日 |ρ|≥0.6 动态边 + 社区动量 + Node2Vec（`gf_node2vec_1..k`）；FF 挖掘候选 IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4） | ✅ 生产部署（2026-08-19）：CorrelationEdgeBuilder（`/bars` 60 日 |ρ|≥0.6，crypto 裸对 /USDT 回退）+ 谱嵌入 `gf_node2vec_1..8` + 社区动量因子；FF 联动（GF-2.4 候选池评估）待接入 | P2 |
+| GX-3 | 扩展数据面接入框架（Source Adapter + Edge Builder + Attribute Injector） | 统一图模型扩展机制：Source Adapter（`fetch→normalize→upsert`）、Edge Builder Registry（边构建器注册 + 图层权重合并）、Attribute Injector（财报/估值/情绪节点属性）；接入验证数据面：moomoo 卖空兴趣/资金流、财报事件边/基本面相似边（财报进图）、衍生品资金费率、链上 defi tvl；文档：扩展接入指南 | ✅ 生产部署（2026-08-19）：graph_engine 扩展机制（SOURCE_ADAPTERS/EDGE_BUILDERS/ATTRIBUTE_INJECTORS 注册表 + register_*）；内置 HeatmapAdapter/Industry/SupplyChain/Correlation/HeatmapBarsInjector；文档 [docs/services/ml-graph-factors.md](docs/services/ml-graph-factors.md)（GX-3.6） | P2 |
 
 > **要点记录**：GF-1 已锁定根因方向——AItrader 对照实验证明注入→实体抽取→检索链路正常（sync=1 注入 `aitrader-diagnose-20260818` 命中），问题在存量异步任务。moomoo MM-11 F10 含财报（income/balance/cashflow）可作 GX-1 供应链传导的数据基础（生产权限待验证，`fetch_financials` 本地 ret=0 空）。验证基线：GF-2 回归、GF-3 方向一致 ≥70%、GF-5 ECharts 渲染、GX 单因子 IC/分层收益单调性、回测区间 2024-09 起（对齐 ML 因子）。
 
@@ -1968,3 +1970,48 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - GX-3.4 财报事件边/基本面相似边：财报发布→标的事件边 + 财务结构相似聚簇（财报进图，可选）
 > - GX-3.5 扩展数据面验证：moomoo 卖空兴趣/资金流、衍生品资金费率、链上 defi tvl 接入试点
 > - GX-3.6 文档：扩展接入指南（适配器/边构建器/属性注入器规范）
+
+> **GF-3/GF-4/GF-5/GF-6 执行结果（2026-08-19 生产部署+验证）**：
+> - 部署前根因修复：生产 ragservicer（43.156.78.59:9721）缺失 GF 代码（routes/factors.py、routes/graph.py、api/graph_engine.py 均不存在）→ scp 部署 6 文件（api/graph_engine.py + routes/{factors,graph}.py + routes/__init__.py + openapi.py + requirements.txt，MD5 全对齐）+ 生产 venv 装 networkx 3.6.1/scipy 1.18.0 + 重启 `infrax-ragservicer`（active）。
+> - 503 根因修复：AItrader key 绑定 tenant=aitrader，`data/aitrader/market/` 空（无注入数据）→ graph_engine 三个 loader 增加 `resolve_graph_dir`（租户目录缺 GraphML 时回退 default 共享 market 数据面，仅影响只读图谱数据路径，不破坏 tenant 鉴权）。
+> - GF-3 生产验证：`/factors/graph?symbol=BTC`（AItrader key）→ 8 因子（graph_entity_count=205/relation_count=353/centrality=0.0162/sentiment=0.2378/event_intensity=0.1173/momentum_affinity=-0.8413/policy_exposure=0）+ top_entities 10 + top_events 5；eth 大小写不敏感；缺 symbol→400；无 key→401。
+> - GF-3.4 方向一致性：graph_sentiment vs finbert_sentiment **4/4=100% 同向**（BTC/ETH/SOL/XRP + vs +0.027）；fear_greed=41（恐慌，全局指数）当前快照与所有文本情绪信号（含 finbert）反向，属市场状态域差异非算法缺陷。
+> - GF-4：`/factors/catalog` 9 条 graph 分类（factor_id/name/category/type/range/description）。
+> - GF-5：`/graph/entities?namespace=market&limit=100` → 100 nodes / 672 edges（node keys=category/id/sentiment/size；edge keys=relation/source/target/weight，契约对齐）。
+> - GF-6：AItrader 专用 key `lr_a1a683d4b905e9c32ef10d3569b8ef38edad9c3f1eab5af7`（tenant=aitrader）GF 全端点 200 / 无 key 401；凭证文档见 PRODUCTION_CREDENTIALS §7。
+
+> **GX-1/GX-2/GX-3 执行结果（2026-08-19 生产部署+验证）**：
+> - 部署：ml-service（43.156.25.197:9120）`app/graph_engine.py`（GX-1/2/3 统一扩展机制）+ `data_client.fetch_heatmap` + main.py `_PRECOMPUTE["graph_factors"]` + `/ml/graph_factors`、`/ml/graph/catalog` 端点 + requirements networkx/scipy；data-service（43.163.105.172:9112）`/factors/current` graph 透传（60s TTL）+ `/factors/catalog` 并入 18 条 `_GRAPH_FACTORS`。重启两服务（active）。
+> - 图规模：`graph built: nodes=180 edges=4087 sectors=10 communities=9 values=150`（corr + sector 边合并后；对比修复前 1862 边）。关键修复：`/bars` crypto 裸对补 `/USDT` 回退（裸对返回 0 根）+ topcap/other 板块 `_SECTOR_MAP` 回填。
+> - 因子验证：BTC/ETH/SOL/XRP 同社区 0（Layer1 行业边+相关性边），LINK 社区 3、UNI 社区 2；BTC gf_degree=0.402/gf_neighbor_mom=0.0035/gf_neighbor_vol=0.0141/gf_node2vec_1..8 非空。
+> - 端点验证：`/ml/graph_factors?symbols=BTC,ETH,SOL,XRP,LINK,UNI` 6/6 命中（code 0）；`/ml/graph/catalog` 18 条全 graph 分类；无 key 401。data-service `/factors/current` graph block present（6 symbols + catalog 18）。
+> - 文档：GX-3.6 [docs/services/ml-graph-factors.md](docs/services/ml-graph-factors.md)（概览/端点契约/18 因子清单/扩展机制规范/数据面规划/运维）。
+> - 待办：GX-2.4 FF 联动（`gf_*` 入挖掘候选池 IC/ICIR 评估）、GX-3.4 财报事件边/基本面相似边、GX-3.5 扩展数据面试点（moomoo 卖空兴趣/资金费率/链上 defi tvl）。
+
+> **待办拆分登记（2026-08-19，GX-2.4 / GX-3.4 / GX-3.5 细化）**：
+> 前置现状：FF-4.4 引擎已完整实现并生产启用（ml-service `app/factorengine/`：pool 候选池 / eval IC·ICIR / catalog 登记·自动激活·衰退淘汰）；moomoo F10 已生产实测可用（MM-11.1/11.3，`provider=moomoo_f10` 快照 6h 落库）；资金费率已产出（data-service `_get_crypto_derivatives_metrics`，Coinglass+Binance，`collector:crypto_factors`）；defi tvl 已落库（data-service `/snapshots?type=tvl`，DeFiLlama）。
+>
+> **GX-2.4 FF 联动（`gf_*` 入挖掘候选池，M2 收尾）**：
+> - GX-2.4.1 候选池注册：`factorengine/pool.py` `expand_factor_pool()` 增加 graph 因子模板（category="graph"），18 个 `gf_*`（gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole/gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover/gf_community_mom/gf_node2vec_1..8）按 id 注册为 FactorCandidate（params={factor_id}），支持 `FACTOR_MINER_SPEC` 过滤启用
+> - GX-2.4.2 历史序列落库：graph 因子日频快照持久化（graph_factors 历史表或对齐 data-service snapshot），保证 IC 评估窗口有 ≥N 日历史（对齐 FF 评估 horizon，缺失期自动跳过）
+> - GX-2.4.3 IC/ICIR 评估接入：`eval.py` 对 `gf_*` 复用 `evaluate_factor()`（数据源=graph 历史序列），门槛对齐 FF（`FACTOR_MINER_MIN_IC 0.03 / MIN_ICIR 0.3`），IC 独立性去冗余入 top-K
+> - GX-2.4.4 登记 + 自动激活：`register_qualified()` 登记通过评估的 `gf_*`（inactive，评估环境 asset_pool/horizon 入 params）→ `auto_activate()` 置 active → data-service `/factors/current` 合并可见（AItrader factor_client 无改动可消费）
+> - GX-2.4.5 衰退淘汰覆盖：`health_check_active()`（FF-4.4）对 active `gf_*` 用登记评估环境重评估，`abs(IC)<0.01` 或 `abs(ICIR)<0.03` 自动停用并追加 `[FF-4.4 decayed]` 标记（未登记评估环境跳过防误停）
+> - GX-2.4.6 验证：候选池展开含 18 个 `gf_*`、挖掘作业 COMPLETED、`gf_*` 登记 factor_catalog、`/factors/current` 可见 `gf_*`、健康检查覆盖无误停
+>
+> **GX-3.4 财报事件边/基本面相似边（财报进图，M2）**：
+> 数据域说明：moomoo F10 为美股标的（AAPL/MSFT/NVDA/TSLA/SPY），与 crypto 图宇宙并集接入（stocks 板块共存）。
+> - GX-3.4.1 F10 数据面适配器：`FinancialsAdapter`（SourceAdapter）拉 data-service `/snapshots?provider=moomoo_f10`（financials[:2]/consensus/valuation），normalize 节点（_financial_type/items 关键指标），fail-silent
+> - GX-3.4.2 财报属性注入：`FinancialsAttributeInjector` 注入节点属性（净利润/营收/估值/一致预期 → features JSON，不建边）
+> - GX-3.4.3 财报事件边：`EarningsEventEdgeBuilder`（kind="earnings_event"）——财报期 report 时间 → 标的事件边，权重可配置（对齐 `_EDGE_WEIGHT_*` 常量）
+> - GX-3.4.4 基本面相似边：`FinancialSimilarityEdgeBuilder`（kind="financial_similarity"）——财务结构特征向量（ROE/毛利率/资产负债率等归一化）余弦相似 ≥ 阈值建边，并入 Edge Builder Registry 图层权重合并
+> - GX-3.4.5 验证：新边/属性并入后图规模与 community 可观测（betweenness/community 受影响）、`/ml/graph_factors` 无回归、单数据面缺失降级不影响构图
+>
+> **GX-3.5 扩展数据面验证（moomoo 卖空/资金流、资金费率、链上 defi tvl 接入试点，M2）**：
+> - GX-3.5.1 卖空/资金流落库：data-service `MoomooExtraCollector` 扩展落库 `fetch_short_interest`/`fetch_daily_short_volume`/`fetch_capital_flow`（对齐 mm_f10 模式，6h 周期）
+> - GX-3.5.2 卖空/资金流属性注入：`MoomooShortAttributeInjector`（short_interest/资金流 → 节点属性，F10 标的域）
+> - GX-3.5.3 资金费率数据面：`FundingRateAdapter`（SourceAdapter）拉 data-service crypto_factors（funding_rate/open_interest/open_interest_change_24h/long_short_ratio）→ crypto 节点属性（衍生品情绪），fail-silent
+> - GX-3.5.4 链上 defi tvl 数据面：`DefiTvlAdapter`（SourceAdapter）拉 `/snapshots?type=tvl` → 链节点/属性（tvl/change_24h/dominance）+ 链-资产关系边（可选）
+> - GX-3.5.5 试点验证：新数据面全部进图（nodes/attrs 日志可观测）、单数据面失败 fail-silent 降级、全链路回归（`graph built` 规模 + `/ml/graph_factors` + data-service 透传）无退化
+>
+> 依赖关系：GX-3.4 与 GX-3.5 均依赖 graph_engine 扩展注册表（已就位），GX-3.4 依赖 moomoo_f10 快照（已就位）、GX-3.5.1 依赖 data-service collector 扩展（需先行）；GX-2.4 依赖 graph 历史序列落库（GX-2.4.2，可先行）与 FF 引擎（已就位）。三者数据面相互独立，可并行开发。

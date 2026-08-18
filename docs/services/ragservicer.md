@@ -67,6 +67,8 @@ curl -s http://127.0.0.1:9721/api/v1/health   # 免鉴权
 | `ADMIN_API_KEY` | `admin` | 管理端点专用（`require_admin`：必须 `Authorization: Bearer <admin_key>`） |
 | DB 租户 key（`tenants.db`，admin 端点 `/api/v1/tenants/{id}/keys` 签发） | 绑定租户 | 普通调用方；带 `X-Tenant-ID` 头时作为跨租户 service account |
 
+> **GF-6（2026-08-19）**：已为 **AItrader 签发专用 DB 租户 key**（tenant `aitrader`，key 名 `aitrader-main`，明文见 `PRODUCTION_CREDENTIALS.md` §7，生产实测 `GET /api/v1/namespaces/market/documents` → 200）。AItrader 应**迁移至该专用 key**（`Authorization: Bearer` / `X-API-Key` 携带），**废弃此前借用的 aiservicer bridge key**（`RAGSERVICER_API_KEY` 映射 default 租户，仅保留给内部注入器等默认租户使用），实现 B 端租户 key 隔离治理。
+
 - 所有业务端点（documents/query/retrieve/tasks）需 `require_tenant` 校验，**不匹配一律 401**（不回退 default 租户）。
 - **豁免（免鉴权）**：`GET /api/v1/health`、`GET /api/v1/openapi.json`（无鉴权装饰器，天然公开）。
 - 限流：每租户 token bucket，`RATE_LIMIT_RPM` 默认 100 次/分钟，超限 429。

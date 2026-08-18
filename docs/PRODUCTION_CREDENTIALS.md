@@ -2,7 +2,7 @@
 
 > **用途**：记录生产环境访问凭证与服务密钥，供授权运维/开发人员本地查阅。
 > **安全提示**：本文件含真实密钥，禁止外泄、禁止推送公开仓库；如需分享请走安全渠道。
-> **最后更新**：2026-08-16（§5 aa-relay env 对齐生产：relay key 轮换 + M-3 迁移 DB + drop-in 补录；§6 新增 session-key engine 接入信息与 AIHunter 客户独立 key）
+> **最后更新**：2026-08-19（§7 新增 ragservicer AItrader 专用租户 key，GF-6 隔离治理）
 
 ---
 
@@ -122,7 +122,25 @@
 
 ---
 
-## 7. 安全提醒
+## 7. ragservicer（:9721）DB 租户 API key（GF-6，2026-08-19 签发）
+
+| 项 | 值 |
+|---|---|
+| 服务 | ragservicer（`127.0.0.1:9721`，生产机 43.156.78.59，`/home/ubuntu/infraX-1/projects/ragservicer`） |
+| 租户 | `aitrader`（AItrader B 端接入专用租户） |
+| key 名 | `aitrader-main` |
+| 明文 key | `lr_a1a683d4b905e9c32ef10d3569b8ef38edad9c3f1eab5af7` |
+| 用途 | **AItrader 专用（GF-6，替代借用 aiservicer bridge key）** |
+| 签发日期 | 2026-08-19 |
+| 有效期 | 永不过期（`expires_days=0`） |
+| 签发方式 | 生产机 `tenants/manager.py` `generate_api_key("aitrader","aitrader-main")`（`tenants/tenants.db`） |
+| 使用方式 | `Authorization: Bearer <key>` 或 `X-API-Key: <key>`，生产实测 `GET /api/v1/namespaces/market/documents` → 200 |
+
+> 说明：AItrader 此前借用 `RAGSERVICER_API_KEY`（aiservicer bridge key，映射 default 租户）；GF-6 后应迁移至本专用 key，实现租户隔离。旧 aitrader 租户下另有 2026-08-05 初始化的 `prod` key（`lr_db9f5e4c0…`，明文未留存，仅初始化时用过）与已失效 `e2e` key（`lr_d69ce83cb…`，active=0），本次未重复签发。
+
+---
+
+## 8. 安全提醒
 
 - **MPC_ENCRYPTION_SECRET 曾泄漏于 git 历史**（建议轮换后再更新本文件）。
 - 轮换任一 key 时需同步：对应 systemd unit env + 本文件 + 使用方配置（如 SDK/代理）。

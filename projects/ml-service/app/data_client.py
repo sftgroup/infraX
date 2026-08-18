@@ -153,6 +153,48 @@ def fetch_snapshot_factor(data_type: str, field: str) -> dict | None:
     return {"value": score, "ts": ts}
 
 
+def fetch_heatmap() -> dict | None:
+    """拉取 data-service 全市场 heatmap（板块分组，GX-1 静态图数据源）。
+
+    返回 {sector_key: [rows]}（topcap/layer1/layer2/defi/meme/ai/gaming/infra/
+    other/stocks/fx/commodities）或 None（fail-silent）。
+    """
+    base = _base_url()
+    if not base:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/snapshots",
+            params={"type": "heatmap"},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service heatmap → %s", resp.status_code)
+            return None
+        data = resp.json()
+        payload = (data.get("snapshots") or {}).get("heatmap")
+        if not isinstance(payload, dict):
+            return None
+        # 单键信封解包（{"categories": {...}} → {...}）
+        if len(payload) == 1:
+            inner = next(iter(payload.values()))
+            if isinstance(inner, dict) and inner:
+                payload = inner
+        if not any(isinstance(v, list) for v in payload.values()):
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service heatmap timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service heatmap request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service heatmap parse failed: %s", exc)
+        return None
+
+
 def fetch_macro_history() -> dict | None:
     """拉取 data-service FRED 宏观历史（/macro/history，1 年观测值序列）。
 
@@ -184,4 +226,112 @@ def fetch_macro_history() -> dict | None:
         return None
     except Exception as exc:
         logger.debug("data-service /macro/history parse failed: %s", exc)
+        return None
+
+
+def fetch_moomoo_f10() -> dict | None:
+    """拉取 data-service moomoo F10 扩展快照（GX-3.4.1/GX-3.5.2 数据面）。
+
+    GET /snapshots?provider=moomoo_f10 → {"ts", "snapshots": {data_type: {symbol: {...}}}}：
+      - mm_f10：          {symbol: {financials/analyst_consensus/valuation}}
+      - mm_short_capital：{symbol: {short_interest/daily_short_volume/capital_flow}}
+    外层单键信封（{"ts", "snapshots"}）经 .get("snapshots") 解包；失败返回 None（fail-silent）。
+    """
+    base = _base_url()
+    if not base:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/snapshots",
+            params={"provider": "moomoo_f10"},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service moomoo_f10 → %s", resp.status_code)
+            return None
+        payload = (resp.json().get("snapshots") or {})
+        if not isinstance(payload, dict) or not payload:
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service moomoo_f10 timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service moomoo_f10 request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service moomoo_f10 parse failed: %s", exc)
+        return None
+
+
+def fetch_defi_tvl() -> list[dict] | None:
+    """拉取 data-service 链上 DeFi TVL 快照（GX-3.5.4 数据面）。
+
+    GET /snapshots?type=tvl → {"chains": [{chain, tvl, change_1d, change_7d}, ...]}
+    （DeFiLlama，data-service 侧已解单键信封 → list）；失败返回 None（fail-silent）。
+    """
+    base = _base_url()
+    if not base:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/snapshots",
+            params={"type": "tvl"},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service tvl → %s", resp.status_code)
+            return None
+        payload = (resp.json().get("snapshots") or {}).get("tvl")
+        # 防御：若仍未解包（{"chains": [...]}），这里补解一次
+        if isinstance(payload, dict) and len(payload) == 1:
+            inner = next(iter(payload.values()))
+            if isinstance(inner, list):
+                payload = inner
+        if not isinstance(payload, list) or not payload:
+            return None
+        return payload
+    except requests.Timeout:
+        logger.debug("data-service tvl timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service tvl request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service tvl parse failed: %s", exc)
+        return None
+
+
+def fetch_crypto_derivatives(symbols: list[str]) -> dict | None:
+    """拉取 data-service 衍生品资金费率/持仓/多空比（GX-3.5.3 数据面）。
+
+    GET /factors/crypto-derivatives?symbols=BTC,ETH → {"factors": {sym: {...}}}
+    （db_cache collector:crypto_factors:{sym}，Coinglass 主源 + Binance 兜底，
+    ttl 300s）；失败返回 None（fail-silent）。
+    """
+    base = _base_url()
+    if not base or not symbols:
+        return None
+    try:
+        resp = requests.get(
+            f"{base}/factors/crypto-derivatives",
+            params={"symbols": ",".join(symbols)},
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.debug("data-service /factors/crypto-derivatives → %s", resp.status_code)
+            return None
+        factors = (resp.json().get("factors") or {})
+        return factors or None
+    except requests.Timeout:
+        logger.debug("data-service /factors/crypto-derivatives timeout (%ss)", _TIMEOUT)
+        return None
+    except requests.RequestException as exc:
+        logger.debug("data-service /factors/crypto-derivatives request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("data-service /factors/crypto-derivatives parse failed: %s", exc)
         return None

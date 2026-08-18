@@ -63,6 +63,33 @@ _ML_FACTORS = [
     {"id": "timesfm_prob_up", "name": "TimesFM P(Up)", "category": "ml", "type": "float", "range": [0, 1], "description": "TimesFM 上涨概率（0-1）", "unit": None},
 ]
 
+# ─── 图谱因子 catalog（GX-1.5，来源 ml-service graph 引擎，category="graph"）───
+# gf_degree/betweenness/pagerank/community/structural_hole 为结构因子；
+# gf_neighbor_mom/vol、gf_sector_mom、gf_cc_spillover 为邻居聚合；
+# gf_community_mom 为社区动量；gf_node2vec_1..8 为图嵌入。
+# 实际数值由 ml-service /ml/graph_factors 透传（data-service 侧仅做 passthrough，
+# 此处为 /factors/catalog 静态声明，type/range 与 ml-service /ml/graph/catalog 对齐）。
+_GRAPH_FACTORS = [
+    {"id": "gf_degree", "name": "Degree Centrality", "category": "graph", "type": "float", "range": [0, 1], "description": "节点度中心性（图谱内关联度）", "unit": None},
+    {"id": "gf_betweenness", "name": "Betweenness Centrality", "category": "graph", "type": "float", "range": [0, 1], "description": "介数中心性（传导枢纽地位）", "unit": None},
+    {"id": "gf_pagerank", "name": "PageRank Centrality", "category": "graph", "type": "float", "range": [0, 1], "description": "PageRank 中心度（信息网络重要性）", "unit": None},
+    {"id": "gf_community", "name": "Community Index", "category": "graph", "type": "int", "range": [0, None], "description": "Louvain 社区编号（同社区联动分组）", "unit": None},
+    {"id": "gf_structural_hole", "name": "Structural Hole Constraint", "category": "graph", "type": "float", "range": [0, 1], "description": "结构洞约束（约束越低桥接价值越高）", "unit": None},
+    {"id": "gf_neighbor_mom", "name": "Neighbor Momentum", "category": "graph", "type": "float", "range": [-1, 1], "description": "邻居节点动量聚合（传导方向）", "unit": None},
+    {"id": "gf_neighbor_vol", "name": "Neighbor Volatility", "category": "graph", "type": "float", "range": [0, None], "description": "邻居节点波动率聚合", "unit": None},
+    {"id": "gf_sector_mom", "name": "Sector Momentum", "category": "graph", "type": "float", "range": [-1, 1], "description": "同行业/板块动量", "unit": None},
+    {"id": "gf_cc_spillover", "name": "CC Spillover", "category": "graph", "type": "float", "range": [-1, 1], "description": "相关性联动溢出", "unit": None},
+    {"id": "gf_community_mom", "name": "Community Momentum", "category": "graph", "type": "float", "range": [-1, 1], "description": "社区动量", "unit": None},
+    {"id": "gf_node2vec_1", "name": "Node2Vec Dim 1", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 1 维", "unit": None},
+    {"id": "gf_node2vec_2", "name": "Node2Vec Dim 2", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 2 维", "unit": None},
+    {"id": "gf_node2vec_3", "name": "Node2Vec Dim 3", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 3 维", "unit": None},
+    {"id": "gf_node2vec_4", "name": "Node2Vec Dim 4", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 4 维", "unit": None},
+    {"id": "gf_node2vec_5", "name": "Node2Vec Dim 5", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 5 维", "unit": None},
+    {"id": "gf_node2vec_6", "name": "Node2Vec Dim 6", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 6 维", "unit": None},
+    {"id": "gf_node2vec_7", "name": "Node2Vec Dim 7", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 7 维", "unit": None},
+    {"id": "gf_node2vec_8", "name": "Node2Vec Dim 8", "category": "graph", "type": "float", "range": [None, None], "description": "图嵌入第 8 维", "unit": None},
+]
+
 # ML 因子（history asof 对齐时并入 _NON_TECH_FACTORS 同型序列）
 _ML_FACTOR_IDS = tuple(f["id"] for f in _ML_FACTORS)
 
@@ -118,8 +145,8 @@ def _load_extra_factors() -> list[dict]:
 
 
 def get_catalog() -> list[dict]:
-    """Return full factor catalog (built-in + ML + extra from config)."""
-    return _BUILTIN + _ML_FACTORS + _load_extra_factors()
+    """Return full factor catalog (built-in + ML + graph + extra from config)."""
+    return _BUILTIN + _ML_FACTORS + _GRAPH_FACTORS + _load_extra_factors()
 
 
 # ─── Category → provider/data_type mapping ─────────────
@@ -345,13 +372,48 @@ def get_current_factors(
     return result
 
 
-def get_snapshots(data_type: Optional[str] = None) -> dict:
+def get_snapshots(data_type: Optional[str] = None, provider: Optional[str] = None) -> dict:
     """Return latest complex snapshot data (heatmap, calendar, indices, etc.).
 
     If data_type is specified, returns only that type's latest raw_json.
     Otherwise returns all complex snapshots.
+    If provider is specified, returns latest row per (data_type, symbol) for
+    that provider as {data_type: {symbol: payload}}（GX-3.4/3.5：moomoo_f10
+    等按标的落库的 provider，ml-service 图谱引擎读取用；可叠加 type 过滤）。
     """
     db = get_db()
+
+    # GX-3.4/3.5: provider 模式 —— 按 (data_type, symbol) 取每组最新（不叠加
+    # 单键信封解包，保持 {data_type: {symbol: payload}} 稳定契约）
+    if provider:
+        where = "provider = ?"
+        params: list = [provider]
+        if data_type:
+            where += " AND data_type = ?"
+            params.append(data_type)
+        rows = db.execute(
+            f"""SELECT provider, data_type, symbol, raw_json, fetched_at
+                FROM raw_snapshots
+                WHERE {where} AND id IN (
+                    SELECT MAX(id) FROM raw_snapshots WHERE {where} GROUP BY data_type, symbol
+                )
+                ORDER BY fetched_at DESC""",
+            params + params,
+        ).fetchall()
+        result: dict = {}
+        max_ts = 0
+        for r in rows:
+            if r["fetched_at"] and r["fetched_at"] > max_ts:
+                max_ts = r["fetched_at"]
+            try:
+                payload = json.loads(r["raw_json"]) if r["raw_json"] else {}
+            except Exception:
+                continue
+            if not payload:
+                continue
+            result.setdefault(r["data_type"], {})[r["symbol"] or "_global"] = payload
+        result["_ts"] = int(max_ts)
+        return result
 
     # G-4: 汇总别名 → 前缀匹配。onchain 数据实际落 btc_difficulty /
     # btc_transfers / btc_hashrate / whale_balances 及新合并的 onchain_checkpoints

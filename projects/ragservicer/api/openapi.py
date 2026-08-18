@@ -26,6 +26,7 @@ def build_openapi() -> dict:
         "tags": [
             {"name": "documents", "description": "文档写入与管理"},
             {"name": "query", "description": "查询与检索"},
+            {"name": "graph", "description": "图谱因子与可视化（GF-3/4/5）"},
             {"name": "tenants", "description": "租户管理（admin）"},
             {"name": "admin", "description": "运行时配置（admin）"},
         ],
@@ -167,6 +168,42 @@ def build_openapi() -> dict:
                         {"name": "namespace", "in": "path", "required": True, "schema": {"type": "string"}},
                         {"name": "task_id", "in": "path", "required": True, "schema": {"type": "string"}},
                     ],
+                    "responses": {"200": {"description": "ok", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}}},
+                }
+            },
+            "/api/v1/graph/entities": {
+                "get": {
+                    "tags": ["graph"],
+                    "summary": "图谱可视化数据（GF-5）：nodes（category 9 枚举 + size）+ edges（relation 8 枚举 + weight）",
+                    "parameters": [
+                        {"name": "namespace", "in": "query", "schema": {"type": "string", "default": "default"}},
+                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 200, "minimum": 1}},
+                        {"name": "symbol", "in": "query", "schema": {"type": "string", "description": "仅返回该实体的 1-hop 子图"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "ok", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}},
+                        "503": {"description": "graph data unavailable"},
+                    },
+                }
+            },
+            "/api/v1/factors/graph": {
+                "get": {
+                    "tags": ["graph"],
+                    "summary": "图谱因子（GF-3）：symbol 的 8 数值因子 + top_entities/events",
+                    "parameters": [
+                        {"name": "namespace", "in": "query", "schema": {"type": "string", "default": "default"}},
+                        {"name": "symbol", "in": "query", "required": True, "schema": {"type": "string"}},
+                    ],
+                    "responses": {
+                        "200": {"description": "ok", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}},
+                        "503": {"description": "graph data unavailable"},
+                    },
+                }
+            },
+            "/api/v1/factors/catalog": {
+                "get": {
+                    "tags": ["graph"],
+                    "summary": "图谱因子目录（GF-4）：graph 分类条目",
                     "responses": {"200": {"description": "ok", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Envelope"}}}}},
                 }
             },

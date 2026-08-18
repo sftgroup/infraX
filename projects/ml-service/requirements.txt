@@ -7,6 +7,10 @@ numpy>=1.24.0
 pandas>=2.0.0
 yfinance>=0.2.30
 
+# ── 图谱因子引擎（GX-1/GX-2：静态图 + 相关性动态图 + 结构因子）──
+networkx>=3.0
+scipy>=1.9
+
 # ── LightGBM 方向预测（TREE_ML_ENABLED=true 时启用）────
 # 纯 CPU 训练，2C4G 足够（样本数千行 × 数十特征，秒级训练）
 lightgbm>=4.0.0
