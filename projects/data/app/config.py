@@ -255,6 +255,16 @@ class APIKeys:
             cls._counters.clear()
 
 
+class CacheConfig:
+    """本地缓存配置（kline_service / utils.cache 引用）。
+
+    默认 MemoryCache（local-first，不触碰 Redis）；Redis 仅显式开启。
+    """
+
+    ENABLED = os.getenv("CACHE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    KLINE_CACHE_TTL = int(os.getenv("KLINE_CACHE_TTL", "300"))
+
+
 class CCXTConfig:
     """CCXT 加密货币数据源配置（env-only）。"""
 
