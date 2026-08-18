@@ -62,6 +62,31 @@
 - 兜底：账户自身用 session key 调 `deposit()` 自付（需会话白名单含 `escrow.deposit()`，REQ-4 fallback）。
 - ⚠️ `deposit()` 只记 `msg.sender`：用户 EOA 调 `deposit()` 到不了子账户名下；402 提示已按计费主体区分文案（REQ-2c）。
 
+## 5.5 批量充值与费用估算（REQ-5）
+
+多子账户/多期续订场景：
+
+**N 期续订总费用估算**（可预计算充值额）：
+
+```
+N 期费用 = N × 单期费用
+单期费用 = 订阅价（execute value） + relay 服务费（固定费 0.0001 OXA + 预估 gas）
+```
+
+- 生产实测（enable 场景）单期 relay 服务费 ≈ **0.00246 OXA**（固定费 + 预估 gas，预扣值；结算按实际退差）。
+- 例：订阅价 0.05 OXA/期 × 12 期 + relay 服务费 0.00246×12 → 一次性充值 ≈ 0.6295 OXA。
+
+**批量入账**（2026-08-19 上线，`InfraXEscrow` UUPS 升级后）：
+
+```solidity
+function depositForBatch(address[] users, uint256[] amounts) external payable;   // msg.value 须等于各额之和
+function depositForERC20Batch(address token, address[] users, uint256[] amounts) external;
+```
+
+- 单 tx 多账户入账（gas 远低于 N 笔 depositFor），逐账户各发 `DepositedFor` 事件供对账聚合。
+- 生产实测：`depositForBatch([0x02a6…A3, 0x257a…B4], [0.001, 0.002], {value: 0.003})` → 两账户精确入账，tx `0x0bd95a6c…` ✅
+- 充值后由账户相关方确认 `balanceOf` 即生效（relay 计费主体 = `op.sender` 直接命中）。
+
 ## 6. 耗时与 SLA 建议（REQ-3）
 
 AgentX 生产实测（2026-08-18/19）：

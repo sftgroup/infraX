@@ -2,7 +2,7 @@
 
 > 对应需求：AgentX 通用支付能力需求 **OE-2**（标准 Escrow 合约参考实现）；tasklist **AX-2**。
 > 合约源码：`projects/escrow/contracts/InfraXEscrow.sol`（UUPS 升级 + 手写 nonReentrant，OZ 5.6.1）。
-> 当前生产部署（oxachain 19505）：proxy `0x8Bf8Ffee86F1D4a160f0953Eb13BEDcBF99eaF9E`，implementation `0x8dd8ea5631bb042403006ac2442e8398b1ee182b`（2026-08-19 REQ-1 升级），owner `0x257a0E759B4A7B97680354728cda2796eDbDBbF4`。
+> 当前生产部署（oxachain 19505）：proxy `0x8Bf8Ffee86F1D4a160f0953Eb13BEDcBF99eaF9E`，implementation `0x5ff8638103723d38b5103bf6bb9ba2abf36e3bca`（2026-08-19 REQ-1/REQ-5 两次升级），owner `0x257a0E759B4A7B97680354728cda2796eDbDBbF4`。
 
 ## 1. 这是什么
 
@@ -16,6 +16,7 @@
 |---|---|---|
 | 充值 | `deposit()` / `depositERC20(token, amount)` | native / ERC20 入金（记 msg.sender），emit `Deposited(user, amount, token)` |
 | 代充（REQ-1） | `depositFor(user)` / `depositForERC20(token, amount, user)` | EOA 单笔 tx 代**他人**入账（智能账户充值闭环）；emit `DepositedFor(user, amount, token, by)` |
+| 批量代充（REQ-5） | `depositForBatch(users, amounts)` / `depositForERC20Batch(token, users, amounts)` | 单 tx 多账户入账（msg.value 须等于各额之和），逐账户事件；多子账户/多期续订场景 |
 | 提现 | `withdraw()` / `withdrawERC20(token, amount)` | 仅用户本人提取自有余额 |
 | 计费 | `charge(user, amount)` / `refund(user, amount)` | 仅 relayer 调用；原子记账 + perTx/perDay 限额 |
 | 查询 | `balanceOf(u)` / `erc20BalanceOf(u, t)` / `chargedToday(u, day)` | 对账锚点 |
@@ -36,10 +37,9 @@ DEPLOYER_PRIVATE_KEY=0x... npx hardhat run scripts/deploy.ts --network oxachain
 
 部署产物：proxy + implementation（UUPS）。脚本输出两者地址、owner、默认限额。
 
-**升级记录（2026-08-19，REQ-1）**：`scripts/upgrade.ts`（pause → upgradeTo → 校验 → unpause）已执行。
-- 新 implementation `0x8dd8ea5631bb042403006ac2442e8398b1ee182b`（新增 `depositFor`/`depositForERC20` + `DepositedFor` 事件）
-- pause tx `0xd16d0b68…` / upgradeTo tx `0x0b67c63f…` / unpause tx `0x0218caa0…`（status 全 1）
-- 生产实测：owner `depositFor(0x02a6bf2…A3, 0.001 OXA)` → `balanceOf` 精确 +0.001，tx `0x4b798174…` ✅
+**升级记录（2026-08-19）**：`scripts/upgrade.ts`（pause → upgradeTo → 校验 → unpause）。
+- REQ-1：新 implementation `0x8dd8ea5631bb042403006ac2442e8398b1ee182b`（`depositFor`/`depositForERC20` + `DepositedFor` 事件）；生产实测 owner 代充 0.001 OXA → `balanceOf` 精确 +0.001（tx `0x4b798174…`）✅
+- REQ-5：新 implementation `0x5ff8638103723d38b5103bf6bb9ba2abf36e3bca`（批量代充）；生产实测 `depositForBatch` 单 tx 双账户精确入账（tx `0x0bd95a6c…`）✅
 - ⚠️ hardhat-upgrades 执行后可能误报 `transaction execution reverted`（内部 validateUpgrade 模拟 revert），**以链上状态为准**（ERC-1967 impl 地址 + paused + 新函数 selector），详见 `docs/AA_STACK_GOTCHAS.md` §6。
 
 **上线前必做**：
