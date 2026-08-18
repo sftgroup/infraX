@@ -103,6 +103,29 @@ ragservicer 公网已开放（`/api/rag/*`），AIHunter 需消费 GF-3/4/5 + `r
 
 ---
 
+## REQ-G4【高】graph 因子多币种覆盖扩展（2026-08-19 实测发现）
+
+- **现象**：`GET /factors/current` 的 `graph.values` 当前仅覆盖 **BTC 一个 symbol**——GX-2 相关性图/社区/嵌入仅有单点，前端图谱页/市场页无法展示多节点图。
+- **需求**：扩展为多币种覆盖（建议 ≥10 主流币：BTC/ETH/SOL/BNB/XRP/DOGE/ADA/AVAX/LINK/DOT），每个 symbol 输出完整 `gf_*` 18 项。
+- **验收**：`graph.values` 返回 ≥10 个 symbol；各 symbol 的 community/pagerank 与图口径一致。
+
+## REQ-G5【高】ml 日更链路恢复（2026-08-19 实测发现）
+
+- **现象**：`tree_direction`/`tree_prob_up`/`bolt_*`/`moirai_*`/`timesfm_*`/`finbert_sentiment`/`consensus_score`（ml 分类 10 项）的 `meta.age_ms ≈ 269h`（≈11 天），疑似日更采集/训练链路中断。
+- **影响**：ml 因子过期期间注入回测/实盘将产生陈旧信号（AIHunter 将按 `meta.age_ms` 过滤；未解决前前端标记「已过期」）。
+- **需求**：恢复 ml 日更链路；若本期不再维护请明确告知，AIHunter 侧降级处理。
+
+## REQ-G6【中】graph 因子历史序列确认
+
+- **背景**：AIHunter 回测需 graph 因子历史（`/factors/history` 支持 `gf_*` ids）。
+- **需求**：确认 `/factors/history` 对 graph 分类的返回格式（日频重建是否保留历史）；若仅当前值请告知，AIHunter 按 asof 语义仅注入末行。
+
+## REQ-G7【中】gf_* 有效期/频率确认
+
+- 确认 `gf_*` 是否日频重建、`meta.age_ms` 是否随重建更新；AIHunter 前端将按 meta.age 展示有效期与过期态。
+
+---
+
 ## 优先级汇总
 
 | 编号 | 需求 | 优先级 | 状态 |
@@ -110,6 +133,10 @@ ragservicer 公网已开放（`/api/rag/*`），AIHunter 需消费 GF-3/4/5 + `r
 | REQ-G1 | 市场相关性图边数据接口 `/factors/graph/edges` | 高 | 待处理 |
 | REQ-G2 | AIHunter ragservicer 只读 key + namespace 确认 | 高 | 待处理 |
 | REQ-G3 | 知识图谱规模/频率/枚举确认 | 中 | 待确认 |
+| REQ-G4 | graph 因子多币种覆盖（当前仅 BTC） | 高 | 待处理 |
+| REQ-G5 | ml 日更链路恢复（当前过期 269h） | 高 | 待处理 |
+| REQ-G6 | graph 因子历史序列确认 | 中 | 待确认 |
+| REQ-G7 | gf_* 有效期/频率确认 | 中 | 待确认 |
 
 ---
 
