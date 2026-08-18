@@ -1877,3 +1877,25 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | AX-13 | MPC-1 2-of-3 阈值演进 | TSS_EVALUATION 加片3（独立签名机/HSM）落地：签名/恢复路径支持 3 片 2 阈值 + 2-of-3 测试 + 2-of-2 平滑兼容 | ✅ mpc_signer `/v1/import` 3 片 t=2 + `/v1/sign` `partner_index` 1/2（TSS_SIGNER_URL_1/2 路由）；tss_signer `TSS_PARTY_ID` 实例标签；`m4_2of3` 3 子集签名全部有效 + `verify-2of3.mjs` HTTP 级两路径复核；server.ts 六端点 `partnerIndex` 透传 + `recovery_shard2` 列迁移（存量 2-of-2 平滑兼容）；文档见 [TSS_EVALUATION.md §7](docs/TSS_EVALUATION.md) | P2 |
 
 > **现状核对记录（2026-08-17）**：三组 search 调研确认——OE-2/OE-4 已实现；OE-1 部分（服务层透传断裂）；SK-2/3/4 部分；OE-3、PC-1/2/3、A2A-1、SK-1、MPC-1 未实现。详见上方任务表。
+
+---
+
+**9.22 图谱因子（Graph Factor）统一方案（源：projects/data/AITRADER_GRAPH_FACTOR_REQ.md，2026-08-18 AItrader 提交；扩展 GX 源：docs 图谱因子技术设计）**
+
+> 提交方：AItrader。基于 **LightRAG 知识图谱**（RAGservicer :9721，namespace `market`）的数值因子 + 存量文档 `[no-context]` 故障。通用方案覆盖事件面（GF，RAGservicer 契约）+ 结构面（GX 扩展，moomoo 供应链/相关性图）。
+> 数据源：knowledge-injector `crypto:daily:*`（事件/新闻实体关系）、**moomoo MM-11 F10（财报 income/balance/cashflow + 一致预期 + 估值，`fetch_financials`）**、data-service `/bars`（滚动相关性）、宏观锚点。
+> 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
+> 实施顺序：Phase 0（GF-1/GF-2 P0）→ Phase 1（GF-3/GF-4/GF-5 P1）→ Phase 2（GF-6 P2）→ Phase 3（GX-1 M1 结构因子）→ Phase 4（GX-2 M2 图嵌入+FF 联动）。
+
+| 编号 | 需求 | 任务内容 | 现状 | 优先级 |
+|---|---|---|---|---|
+| GF-1 | 存量文档图谱构建修复 | 1163 篇文档（`crypto:daily:*`）在库但 retrieve/query 全返回 `[no-context]`；疑异步注入任务（202+task_id）实体抽取/向量化失败。排查：`/admin/tasks` 状态分布 → `/admin/config` 确认 LLM(DeepSeek)/embedding(all-MiniLM-L6-v2/DashScope) → 存量批量同步重灌（`/documents/batch async=false`）→ 回归 | 🔲 | **P0** |
+| GF-2 | 图谱检索回归验证 | 重灌后 `retrieve`/`query` 命中 `crypto:daily:2026081*` 内容，返回实体上下文（不再 no-context）；对照 sync 注入文档 `aitrader-diagnose-20260818` 已验证链路本身正常 | 🔲 | **P0** |
+| GF-3 | 图谱因子端点 `GET /factors/graph` | RAGservicer :9721 实现，契约 8 数值因子（graph_entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure + top_entities/events）；子图聚合 + PageRank/边加权情绪；日频（随 `crypto:daily:*`）；验证：与 fear_greed/finbert_sentiment 方向一致 ≥70% | 🔲 | P1 |
+| GF-4 | 因子目录并入 catalog | `/factors/graph` 输出并入 `/factors/catalog`（graph 分类，metadata 对齐 catalog 规范） | 🔲 | P1 |
+| GF-5 | 可视化端点 `GET /graph/entities` | 力导向图数据：nodes（category 9 枚举：asset/central_bank/exchange/fund/whale/project/media/event/policy + size=sentiment）+ edges（relation 8 枚举：affects/funding/custody/listing/whale_move/etf_flow/regulation/sentiment_correlate + weight）；前端 ECharts 渲染 | 🔲 | P1 |
+| GF-6 | AItrader 专用 key | 签发 `RAGSERVICER_API_KEY`（现借用 aiservicer），key 隔离治理 | 🔲 | P2 |
+| GX-1 | moomoo 供应链/行业图 + 结构因子（M1 扩展） | ml-service graph_engine：静态图（moomoo 行业/供应链 + F10 财报传导）+ 结构特征 `gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole/gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover`；data `/factors/current?category=graph` 透传（60s TTL） | 🔲 | P1 |
+| GX-2 | 相关性动态图 + 图嵌入 + FF 联动（M2 扩展） | `/bars` 滚动 60 日 |ρ|≥0.6 动态边 + 社区动量 + Node2Vec（`gf_node2vec_1..k`）；FF 挖掘候选 IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4） | 🔲 | P2 |
+
+> **要点记录**：GF-1 已锁定根因方向——AItrader 对照实验证明注入→实体抽取→检索链路正常（sync=1 注入 `aitrader-diagnose-20260818` 命中），问题在存量异步任务。moomoo MM-11 F10 含财报（income/balance/cashflow）可作 GX-1 供应链传导的数据基础（生产权限待验证，`fetch_financials` 本地 ret=0 空）。验证基线：GF-2 回归、GF-3 方向一致 ≥70%、GF-5 ECharts 渲染、GX 单因子 IC/分层收益单调性、回测区间 2024-09 起（对齐 ML 因子）。
