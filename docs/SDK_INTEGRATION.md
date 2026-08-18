@@ -324,6 +324,40 @@ client.get_task(namespace="market", task_id="<task_id>")
 
 ---
 
+## 3A. Python SDK：`infra-data-client`（data-service）
+
+> PyPI 已发布 **0.3.0**（2026-08-19，含 `get_ml_factory`/`get_current_factors_full`）。仓库 `projects/data/sdk/python`。
+> **给 B 端的完整 README 片段（安装 + 示例 + 方法速查）见 [DATA_SDK_QUICKSTART.md](DATA_SDK_QUICKSTART.md)**。
+
+```bash
+pip install infra-data-client==0.3.0
+```
+
+```python
+from infra_data_client import InfraDataClient
+
+client = InfraDataClient(
+    base_url="https://infrax.0xainet.top/api/data",  # 公网统一域名
+    api_key="<dx_* key>",        # X-Service-Key 自动携带
+    verify=True, fail_silent=True,
+)
+
+# K 线 + 技术指标 + 最近外部因子 join
+bars = client.get_bars("BTC/USDT", timeframe="1D", market_type="swap", limit=100)
+# 最新因子：external 8 字段 / ml 21 字段 / news 标题流
+ext = client.get_current_factors("BTC", category="external")
+# 因子工厂挖掘因子：激活列表 + 实时值（与 category 无关）
+mf = client.get_ml_factory("BTC,ETH")
+# 完整响应（factors/_complex/ml_factory 原样结构）
+full = client.get_current_factors_full("BTC")
+# 因子历史（回测，逐 bar 对齐 /bars ts）
+hist = client.get_history_factors("BTC/USDT", timeframe="1D", ids=["tree_direction", "bolt_prob_up"])
+```
+
+> **TS 替代**：`@0xinfrax/data-sdk`（0.1.1，npm；`data.mlFactory()` / `data.factorsCurrent()`，底层 `infrax-dk` 0.8.4）。方法对应见 [DATA_SDK_QUICKSTART.md](DATA_SDK_QUICKSTART.md) §6。
+
+---
+
 ## 4. OpenAPI 契约（任意语言生成客户端）
 
 | 服务 | OpenAPI 地址 | 生成方式 |
@@ -344,7 +378,7 @@ npx openapi-generator-cli generate -i https://infrax.0xainet.top/api/data/openap
 
 > **鉴权说明（B 端必读）**：data 快照路径用 **data 签发的 `dx_*` key 即可**（SDK `apiKey`/`dataApiKey`，走统一三选一 header）；**直连 ml-service 实时端点需要单独的 `ML_API_KEY`**——ml-service 目前是**单一静态 key**（`app_auth.py` 单 key 常量时间比较，无租户多 key 签发体系，与 data 的 `dx_*` 不同）。未发放 `ML_API_KEY` 的 B 端请走 data 快照路径；如确需实时直连，需向平台申请或由 data-service 侧代理透传（`/api/data/ml/*` 带 ML_API_KEY 调用 ml-service）。
 
-> **Python SDK**：`InfraDataClient.get_ml_predictions(model, symbol, start, end, limit)`（v0.2.0+）已内置快照读取（无快照 404→None，fail-silent）。完整集成示例（快照优先 + ml-service 直连 `data=null` 兜底 + `/ml/cache/stats` 就绪判断，生产实测通过）见 `projects/data/sdk/python/examples/ml_predictions_integration.py`。
+> **Python SDK**：`InfraDataClient.get_ml_predictions(model, symbol, start, end, limit)`（v0.3.0+）已内置快照读取（无快照 404→None，fail-silent）。完整集成示例（快照优先 + ml-service 直连 `data=null` 兜底 + `/ml/cache/stats` 就绪判断，生产实测通过）见 `projects/data/sdk/python/examples/ml_predictions_integration.py`。
 
 **端点清单**（模型不可用/数据不足时 `data=null`，fail-silent）：
 
