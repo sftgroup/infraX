@@ -32,6 +32,8 @@ export interface IInfraXEscrowInterface extends Interface {
       | "chargedToday"
       | "deposit"
       | "depositERC20"
+      | "depositFor"
+      | "depositForERC20"
       | "erc20BalanceOf"
       | "pause"
       | "refund"
@@ -50,6 +52,7 @@ export interface IInfraXEscrowInterface extends Interface {
       | "ChargeLimitSet"
       | "Charged"
       | "Deposited"
+      | "DepositedFor"
       | "Refunded"
       | "RelayerSet"
       | "Withdrawn"
@@ -75,6 +78,14 @@ export interface IInfraXEscrowInterface extends Interface {
   encodeFunctionData(
     functionFragment: "depositERC20",
     values: [AddressLike, BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "depositFor",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "depositForERC20",
+    values: [AddressLike, BigNumberish, AddressLike]
   ): string;
   encodeFunctionData(
     functionFragment: "erc20BalanceOf",
@@ -124,6 +135,11 @@ export interface IInfraXEscrowInterface extends Interface {
   decodeFunctionResult(functionFragment: "deposit", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "depositERC20",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(functionFragment: "depositFor", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "depositForERC20",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -213,6 +229,31 @@ export namespace DepositedEvent {
     user: string;
     amount: bigint;
     token: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace DepositedForEvent {
+  export type InputTuple = [
+    user: AddressLike,
+    amount: BigNumberish,
+    token: AddressLike,
+    by: AddressLike
+  ];
+  export type OutputTuple = [
+    user: string,
+    amount: bigint,
+    token: string,
+    by: string
+  ];
+  export interface OutputObject {
+    user: string;
+    amount: bigint;
+    token: string;
+    by: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -340,6 +381,14 @@ export interface IInfraXEscrow extends BaseContract {
     "nonpayable"
   >;
 
+  depositFor: TypedContractMethod<[user: AddressLike], [void], "payable">;
+
+  depositForERC20: TypedContractMethod<
+    [token: AddressLike, amount: BigNumberish, user: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
   erc20BalanceOf: TypedContractMethod<
     [token: AddressLike, user: AddressLike],
     [bigint],
@@ -427,6 +476,16 @@ export interface IInfraXEscrow extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "depositFor"
+  ): TypedContractMethod<[user: AddressLike], [void], "payable">;
+  getFunction(
+    nameOrSignature: "depositForERC20"
+  ): TypedContractMethod<
+    [token: AddressLike, amount: BigNumberish, user: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "erc20BalanceOf"
   ): TypedContractMethod<
     [token: AddressLike, user: AddressLike],
@@ -510,6 +569,13 @@ export interface IInfraXEscrow extends BaseContract {
     DepositedEvent.OutputObject
   >;
   getEvent(
+    key: "DepositedFor"
+  ): TypedContractEvent<
+    DepositedForEvent.InputTuple,
+    DepositedForEvent.OutputTuple,
+    DepositedForEvent.OutputObject
+  >;
+  getEvent(
     key: "Refunded"
   ): TypedContractEvent<
     RefundedEvent.InputTuple,
@@ -574,6 +640,17 @@ export interface IInfraXEscrow extends BaseContract {
       DepositedEvent.InputTuple,
       DepositedEvent.OutputTuple,
       DepositedEvent.OutputObject
+    >;
+
+    "DepositedFor(address,uint256,address,address)": TypedContractEvent<
+      DepositedForEvent.InputTuple,
+      DepositedForEvent.OutputTuple,
+      DepositedForEvent.OutputObject
+    >;
+    DepositedFor: TypedContractEvent<
+      DepositedForEvent.InputTuple,
+      DepositedForEvent.OutputTuple,
+      DepositedForEvent.OutputObject
     >;
 
     "Refunded(address,uint256,string)": TypedContractEvent<

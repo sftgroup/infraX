@@ -27,7 +27,7 @@ import {
 } from '../../aa-sdk/src/index.js';
 import { PostgresSessionStore } from './session-store.js';
 // A-10: session 订阅计费（UserOp 次数费 + paymaster gas 代付按实际结算）
-import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleUserOp, aaLedgerBalance, aaPlansInfo, AABillingError } from './billing.js';
+import { aaChargeConfigured, escrowConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleUserOp, aaLedgerBalance, aaPlansInfo, AABillingError } from './billing.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -484,12 +484,12 @@ app.get('/v1/plans', (_req: any, res: any) => {
   res.json(apiResponse(aaPlansInfo(), 'AA session billing plans'));
 });
 
-// POST /v1/ledger-balance — 智能账户 ledger 余额
+// POST /v1/ledger-balance — 智能账户 ledger 余额（REQ-2a：escrow 模式读链上托管，不要求 ledger 配置）
 app.post('/v1/ledger-balance', asyncHandler(async (req: any, res: any) => {
   const { account } = req.body || {};
   if (!account) return res.status(400).json(apiResponse(null, 'account required (smart account address)', 1001));
-  if (!aaChargeConfigured()) {
-    return res.status(503).json(apiResponse(null, 'AA session billing is not configured (AA_PAYMENTS_URL/AA_PAYMENTS_API_KEY/AA_PLATFORM_ADDRESS)', 1007));
+  if (!aaChargeConfigured() && !escrowConfigured()) {
+    return res.status(503).json(apiResponse(null, 'AA session billing is not configured (AA_PAYMENTS_URL/AA_PAYMENTS_API_KEY/AA_PLATFORM_ADDRESS or ESCROW_*)', 1007));
   }
   try {
     const balance = await aaLedgerBalance(String(account));

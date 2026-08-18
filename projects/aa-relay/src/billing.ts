@@ -40,6 +40,15 @@ const escrowAbi = parseAbi([
   'function relayerEnabled(address relayer) external view returns (bool)',
 ]);
 
+// EP v0.7 deposit（REQ-2b 资金总览）：子账户 UserOp gas 由 EP.deposit 支付，与 escrow 余额独立。
+const entryPointAbi = parseAbi([
+  'function getDepositInfo(address account) external view returns (uint112 deposit, bool staked, uint112 stake, uint32 unstakeDelaySec, uint48 withdrawTime)',
+]);
+
+function entryPointAddress(): `0x${string}` | '' {
+  return (process.env.ESCROW_ENTRYPOINT || process.env.AA_OXACHAIN_ENTRYPOINT_V07 || '').toLowerCase() as `0x${string}` | '';
+}
+
 const AA_ESCROW = {
   enabled: process.env.ESCROW_MODE === 'true',
   rpcUrl: process.env.ESCROW_RPC_URL || '',
@@ -51,6 +60,8 @@ const AA_ESCROW = {
 function escrowConfigured(): boolean {
   return Boolean(AA_ESCROW.enabled && AA_ESCROW.rpcUrl && AA_ESCROW.address && AA_ESCROW.relayerKey);
 }
+
+export { escrowConfigured };
 
 function escrowChain() {
   const chainId = AA_ESCROW.chainId;
@@ -183,10 +194,13 @@ export const aaPaymentsApi = {
   },
 };
 
-/** 充值提示（x402 入账路径 / Escrow 存款路径）。 */
-export function topupHint(): string {
+/** 充值提示（x402 入账路径 / Escrow 存款路径）。subscriber 传入计费主体地址，用于区分 EOA 自付与智能账户代充。 */
+export function topupHint(subscriber?: string): string {
   if (escrowConfigured()) {
-    return `余额不足。充值路径：向托管合约 ${AA_ESCROW.address} 存入原生资产（deposit），链上 balanceOf 即时生效，随后调用引擎 POST ${AA_PAYMENTS.baseUrl || '(未配置)'}/payments/verify {txHash} 入账索引（UserOp 次数费 + paymaster gas 代付按实际结算，详见 GET /v1/plans）`;
+    // REQ-2c：计费主体是智能账户（op.sender）时，deposit()（记 msg.sender）到不了子账户名下，
+    // 应指引主钱包 EOA 调 depositFor(账户) 单笔 tx 代充值（REQ-1 落地后）。
+    const target = subscriber ? ` 计费主体=${subscriber}` : '';
+    return `余额不足。充值路径：托管合约 ${AA_ESCROW.address} —— 智能账户计费场景由主钱包 EOA 单笔 tx 调 depositFor(<智能账户地址>) 代充值；或账户自身用 session key 调 deposit() 自付（需会话白名单含 escrow.deposit）。链上 balanceOf 即时生效，随后调用引擎 POST ${AA_PAYMENTS.baseUrl || '(未配置)'}/payments/verify {txHash} 入账索引（UserOp 次数费 + paymaster gas 代付按实际结算，详见 GET /v1/plans）。${target}`;
   }
   const payTo = AA_PAYMENTS.platformAddress;
   const base = AA_PAYMENTS.baseUrl || '(未配置)';
@@ -220,7 +234,7 @@ export async function chargeUserOp(subscriber: string, reference: string, amount
     if (bal === null) throw new AABillingError('escrow not configured', 503);
     if (bal < amountWei) {
       throw new AABillingError(
-        `[402] ${topupHint()}（当前链上余额 ${formatEther(bal)}，本次需 ${formatEther(amountWei)}）`, 402);
+        `[402] ${topupHint(subscriber)}（当前链上余额 ${formatEther(bal)}，本次需 ${formatEther(amountWei)}）`, 402);
     }
     await escrowCharge(subscriber, amountWei, reference); // 余额不足/超限 revert → 402
     return { skipped: false, charged: true, amountWei: amountWei.toString() };
@@ -317,18 +331,50 @@ export async function settleUserOp(
   }
 }
 
+/** 资金总览（REQ-2b）：escrow 余额 / EP deposit / 账户 native，供续订前资金预检。 */
+export interface AccountFunds {
+  escrowWei: string;      // 托管余额（relay 计费预扣来源）
+  epDepositWei: string | null; // EntryPoint deposit（UserOp gas 来源）
+  nativeWei: string | null;    // 账户原生余额（execute value / 订阅费来源）
+}
+
 /** 查询账户余额。escrow 双轨读链上托管余额，否则读 ledger。未配置 → 抛 503。 */
-export async function aaLedgerBalance(subscriber: string): Promise<{ address: string; balanceWei: string; balance: string }> {
+export async function aaLedgerBalance(subscriber: string): Promise<{
+  address: string; balanceWei: string; balance: string; funds: AccountFunds | null;
+}> {
   if (escrowConfigured()) {
     const bal = await escrowBalance(subscriber);
     if (bal === null) throw new AABillingError('escrow not configured', 503);
-    return { address: subscriber.toLowerCase(), balanceWei: bal.toString(), balance: formatEther(bal) };
+    const funds: AccountFunds = { escrowWei: bal.toString(), epDepositWei: null, nativeWei: null };
+    const ep = entryPointAddress();
+    const account = subscriber.toLowerCase() as `0x${string}`;
+    if (ep) {
+      try {
+        const { publicClient } = escrowClient();
+        const [deposit] = await Promise.all([
+          publicClient.readContract({
+            address: ep,
+            abi: entryPointAbi,
+            functionName: 'getDepositInfo',
+            args: [account],
+          }) as Promise<[bigint, boolean, bigint, number, number]>,
+          publicClient.getBalance({ address: account }),
+        ]);
+        funds.epDepositWei = deposit[0].toString();
+        funds.nativeWei = deposit[1].toString();
+      } catch (err: any) {
+        // 资金总览为增强信息，EP/native 读取失败不阻断 escrow 余额返回
+        console.error('[aa-relay] funds query failed (ep/native):', err?.shortMessage || err?.message);
+      }
+    }
+    return { address: account, balanceWei: bal.toString(), balance: formatEther(bal), funds };
   }
   const balanceWei = await aaPaymentsApi.balance(subscriber);
   return {
     address: subscriber.toLowerCase(),
     balanceWei,
     balance: formatEther(BigInt(balanceWei || '0')),
+    funds: null,
   };
 }
 

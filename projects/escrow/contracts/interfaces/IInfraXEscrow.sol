@@ -10,6 +10,7 @@ pragma solidity ^0.8.24;
 interface IInfraXEscrow {
     // ---- 事件（供对账/索引） ----
     event Deposited(address indexed user, uint256 amount, address token);
+    event DepositedFor(address indexed user, uint256 amount, address token, address indexed by);
     event Withdrawn(address indexed user, uint256 amount, address token);
     event Charged(address indexed user, uint256 amount, string ref);
     event Refunded(address indexed user, uint256 amount, string ref);
@@ -21,8 +22,14 @@ interface IInfraXEscrow {
     /// @notice 原生资产存管（msg.sender 入账）
     function deposit() external payable;
 
+    /// @notice 代他人原生资产入账（msg.sender 支付、user 入账；与 EP.depositTo 同语义，REQ-1）
+    function depositFor(address user) external payable;
+
     /// @notice ERC20 存管（msg.sender 入账，safeTransferFrom）
     function depositERC20(address token, uint256 amount) external;
+
+    /// @notice 代他人 ERC20 入账（msg.sender 支付、user 入账，REQ-1）
+    function depositForERC20(address token, uint256 amount, address user) external;
 
     /// @notice 原生资产提现（仅 msg.sender 本人余额，CEI + ReentrancyGuard）
     function withdraw(uint256 amount) external;

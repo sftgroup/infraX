@@ -112,6 +112,25 @@ contract InfraXEscrow is
         emit Deposited(msg.sender, amount, token);
     }
 
+    // REQ-1（AgentX 智能账户充值闭环）：代他人入账，记账到 user 名下，msg.sender 仅作来源记录。
+    // 语义与 EntryPoint.depositTo 对齐：用户可自由帮任意地址入账（非出金操作，无资金风险），
+    // 不要求 relayer/owner 权限；withdraw 仍仅本人可取。事件携带 by（充值者）供对账索引。
+    function depositFor(address user) external payable override {
+        require(msg.value > 0, "ESCROW: zero amount");
+        require(user != address(0), "ESCROW: zero user");
+        _balances[user] += msg.value;
+        emit DepositedFor(user, msg.value, address(0), msg.sender);
+    }
+
+    function depositForERC20(address token, uint256 amount, address user) external override {
+        require(token != address(0), "ESCROW: zero token");
+        require(amount > 0, "ESCROW: zero amount");
+        require(user != address(0), "ESCROW: zero user");
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        _erc20Balances[token][user] += amount;
+        emit DepositedFor(user, amount, token, msg.sender);
+    }
+
     function withdraw(uint256 amount) external override nonReentrant {
         require(amount > 0, "ESCROW: zero amount");
         uint256 bal = _balances[msg.sender];

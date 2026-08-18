@@ -77,6 +77,53 @@ describe("InfraXEscrow (OE-1)", () => {
     });
   });
 
+  describe("代他人充值（depositFor，REQ-1）", () => {
+    it("EOA 代充原生入账到 user 名下 + 事件（by=充值者）", async () => {
+      const { escrow, other, user2 } = await loadFixture(deployFixture);
+      const amt = ethers.parseEther("5");
+      await expect(escrow.connect(other).depositFor(user2.address, { value: amt }))
+        .to.emit(escrow, "DepositedFor")
+        .withArgs(user2.address, amt, ethers.ZeroAddress, other.address);
+      expect(await escrow.balanceOf(user2.address)).to.equal(amt);
+      // 记账到 user 名下，msg.sender（充值者）自身余额不变
+      expect(await escrow.balanceOf(other.address)).to.equal(0);
+    });
+
+    it("零值 / 零地址 depositFor revert", async () => {
+      const { escrow, other, user2 } = await loadFixture(deployFixture);
+      await expect(escrow.connect(other).depositFor(user2.address, { value: 0 })).to.be.revertedWith(
+        "ESCROW: zero amount"
+      );
+      await expect(
+        escrow.connect(other).depositFor(ethers.ZeroAddress, { value: ethers.parseEther("1") })
+      ).to.be.revertedWith("ESCROW: zero user");
+    });
+
+    it("depositForERC20 代充入账到 user 名下 + 事件", async () => {
+      const { escrow, token, other, user2 } = await loadFixture(deployFixture);
+      const amt = ethers.parseEther("100");
+      await token.mint(other.address, amt);
+      await token.connect(other).approve(await escrow.getAddress(), amt);
+      await expect(escrow.connect(other).depositForERC20(await token.getAddress(), amt, user2.address))
+        .to.emit(escrow, "DepositedFor")
+        .withArgs(user2.address, amt, await token.getAddress(), other.address);
+      expect(await escrow.erc20BalanceOf(await token.getAddress(), user2.address)).to.equal(amt);
+      expect(await escrow.erc20BalanceOf(await token.getAddress(), other.address)).to.equal(0);
+    });
+
+    it("代充余额仍只能由 user 本人提现（资金隔离）", async () => {
+      const { escrow, other, user2 } = await loadFixture(deployFixture);
+      const amt = ethers.parseEther("5");
+      await escrow.connect(other).depositFor(user2.address, { value: amt });
+      // 充值者 other 无法提走 user2 的余额
+      await expect(escrow.connect(other).withdraw(amt)).to.be.revertedWith(
+        "ESCROW: insufficient balance"
+      );
+      // user2 本人可提现
+      await expect(escrow.connect(user2).withdraw(ethers.parseEther("2"))).to.not.be.reverted;
+    });
+  });
+
   describe("提现（withdraw）", () => {
     it("本人提现成功，余额扣减 + 事件", async () => {
       const { escrow, user } = await loadFixture(deployFixture);
