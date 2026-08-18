@@ -137,6 +137,12 @@
 | 使用方式 | `Authorization: Bearer <key>` 或 `X-API-Key: <key>`，生产实测 `GET /api/v1/namespaces/market/documents` → 200 |
 
 > 说明：AItrader 此前借用 `RAGSERVICER_API_KEY`（aiservicer bridge key，映射 default 租户）；GF-6 后应迁移至本专用 key，实现租户隔离。旧 aitrader 租户下另有 2026-08-05 初始化的 `prod` key（`lr_db9f5e4c0…`，明文未留存，仅初始化时用过）与已失效 `e2e` key（`lr_d69ce83cb…`，active=0），本次未重复签发。
+>
+> **AIHunter SaaS 租户 key（2026-08-19 追加签发）**：
+> - 租户：`aihunter-saas`（AIHunter SaaS B 端接入专用租户，2026-08-05 已建租户，当时有 `prod` key `lr_db0c2ac4c…` 有效至 2027-08-05）
+> - key 名：`aihunter-saas-main` ｜ 明文 key：`lr_09ef21e954fa4af57301df273200a52fc02e1aedcb658e5a` ｜ 永不过期
+> - 签发：生产机 78.59 `PYTHONPATH=. .venv/bin/python3 -c "from tenants.manager import create_tenant, generate_api_key; ..."`（需先 `load_config()` + `load_dotenv('.env')`）
+> - 验证：`/api/v1/factors/graph?symbol=BTC`（8 因子真实返回）/ `/api/v1/factors/catalog` / `/api/v1/graph/entities` 无 key 401、带 key 200；`/api/v1/namespaces/market/documents` 200
 
 ---
 
