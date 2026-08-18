@@ -118,3 +118,38 @@ ragservicer 公网已开放（`/api/rag/*`），AIHunter 需消费 GF-3/4/5 + `r
 - **知识增强适配层**：AItrader 源码 `graph_client` 调 `{LIGHTRAG_URL}/query`（body `question`），与 B 端 `/api/v1/namespaces/{ns}/retrieve`（body `query`）不兼容——AIHunter 将新增适配层或直接使用 `@0xinfrax/ragservicer-sdk` 2.0.0
 - **图谱展示界面**：`GraphPage`（ECharts force-directed）——知识图谱渲染走 REQ-G2 key；相关性图渲染走 REQ-G1 接口
 - **因子界面/策略因子**：`gf_*` 因子已透传，AIHunter 侧直接接入（无需 B 端改动）
+
+---
+
+# B 端回复（2026-08-19）
+
+## REQ-G1 ✅ 已完成（生产已部署验证）
+
+新增统一入口：
+
+```
+GET /api/data/factors/graph/edges?symbols=BTC,ETH&window=60&min_abs_corr=0.6&limit=300
+```
+
+- 路径前缀请按 B 端既有接入习惯（`/api/data/*` 或 data-service 公网基址）；鉴权三选一，**dx_ key**
+- 返回 `{ts, meta{source, window, min_abs_corr, updated_at}, nodes[{id,symbol,community,pagerank,size}], edges[{source,target,corr,abs_corr,weight,kind}]}`
+- 数据口径与 `gf_*` **完全一致**（同一图快照）：实测 BTC `gf_community=0 / gf_pagerank=0.007843` == edges 节点 `community=0 / pagerank=0.007843`
+- `symbols` 缺省返回全图（当前 173 节点 / 3305 边）；提供 symbols 返回其节点 + 1-hop 邻边；edges 按 abs_corr 降序、limit 截断
+- 无 key 401 / 带 dx_ key 200（生产已实测）
+- 提交 commit `c796f14`
+
+## REQ-G2 说明（key 定位澄清，请勿误解）
+
+- **`lr_` key 是独立的 LightRAG 微服务**（供项目方**上传自己的资料 + 读取资料**：documents 注入/列表、query/retrieve 检索、graph/entities 可视化数据），与因子/金融数据方案无关；**今日（2026-08-19）以前发放的 `lr_` key 全部保持有效**
+- **因子（含图谱因子）一律走 data-service `dx_` key**：`/factors/graph`（语义图谱 8 因子）、`/factors/graph/edges`（相关性图）、`/factors/current`（gf_* 18 因子）。ragservicer 因子端点已锁服务间（仅内部透传，B 端 lr_ key 访问返回 403）
+- AIHunter 已持有 data-service `dx_` key（600 RPM）——**因子/图谱数据消费仅需该 key**；若需 LightRAG 知识增强（retrieve/query），用既有 `lr_` key 即可
+- namespace：`market`（主数据面）+ `onchain`（链上）可用
+
+## REQ-G3 确认
+
+| 项 | 实况 |
+| ---- | ---- |
+| 节点规模 | `market` 图谱 **1176 节点**（graphml 3.4MB，2026-08-19 实测）；`limit` 建议 ≤300 |
+| 更新频率 | knowledge-injector **日频持续灌入**（`crypto:daily:*`，08-19 03:36 仍在更新）→ 前端可日频刷新 |
+| category 9 枚举 | `central_bank` / `exchange` / `fund` / `whale` / `project` / `media` / `policy` / `event` / `asset` |
+| relation 8 枚举 | `funding` / `custody` / `listing` / `whale_move` / `etf_flow` / `regulation` / `sentiment_correlate` / `affects` |
