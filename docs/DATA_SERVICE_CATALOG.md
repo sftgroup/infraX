@@ -203,7 +203,7 @@ curl "https://infrax.0xainet.top/api/data/factors/history?symbol=BTC/USDT&timefr
 curl "https://infrax.0xainet.top/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
 ```
 
-SDK：`infra-data-client`（Python，**0.3.0**：`get_ml_factory`/`get_current_factors_full`/`get_ml_predictions` 等；PyPI 已发布 0.2.0，0.3.0 待发布）、`@0xinfrax/data-sdk`（npm，**0.1.1**：`data.mlFactory()`/`factorsCurrent` 含 ml_factory；底层 `infrax-dk` 0.8.4）——用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
+SDK：`infra-data-client`（Python，**0.3.0**：`get_ml_factory`/`get_current_factors_full`/`get_ml_predictions` 等，PyPI 已发布）、`@0xinfrax/data-sdk`（npm，**0.1.1**：`data.mlFactory()`/`factorsCurrent` 含 ml_factory；底层 `infrax-dk` 0.8.4）——用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
 
 ### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
 

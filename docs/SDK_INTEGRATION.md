@@ -14,7 +14,7 @@
 | `@0xinfrax/aa-sdk`（npm，独立 ERC-4337 SDK） | **0.1.1** | ✅ 已发布（2026-08-16 ~ 08-18，registry 验证；`@infrax` scope 私有发布需付费故改 `@0xinfrax` + `--access public`） | ERC-4337 智能账户：Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；**`entryPointAbi` / `parseBundlers` 已导出（PocketX 需求单三.1/三.2）**；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/`（详见 `projects/aa-sdk/README.md`） |
 | `@0xinfrax/payments`（npm，引擎/服务包） | **0.1.4** | ✅ 已发布（2026-08-18） | Payments 引擎 + 订阅：**AX-1 escrow 配置透传 + `GET /capabilities` 暴露 + AX-3 ERC20 deposit 走 escrow + AX-6 `payment_access_log` 审计/ref 幂等 + AX-7 402 结构化**；15 方法（batch/invite/transfer） |
 | `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
-| `infra-data-client`（PyPI） | 0.3.0 | ⏳ 已构建待发布（wheel 2026-08-19，含 `get_ml_factory`/`get_current_factors_full`；PyPI 最新已发布 0.2.0，发版需 PyPI token） | DATA（data-service） |
+| `infra-data-client`（PyPI） | 0.3.0 | ✅ 已发布（pypi.org，2026-08-19；含 `get_ml_factory`/`get_current_factors_full`） | DATA（data-service） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
 | 手写 OpenAPI 3.0（injector :9113 / ragservicer :9721） | 3.0 | ✅ 生产免 key 可访问 | LightRAG |
@@ -36,7 +36,7 @@
 | Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
 | AA（ERC-4337） | `@0xinfrax/aa-sdk` | 独立 ERC-4337 智能账户 SDK（Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；含 aa-relay 公网入口对接） | ✅ 0.1.0（2026-08-16 发布） |
 | LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
-| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions/**ml_factory** | ⏳ 0.3.0（已构建待发布） |
+| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions/**ml_factory** | ✅ 0.3.0（2026-08-19 发布） |
 
 > 拆分实施后，统一包与独立包**同源同步发版**（独立包薄封装 infrax-dk 对应 API 类）；调用方可按需二选一（全量 `infrax-dk` 或单服务独立包）。
 
