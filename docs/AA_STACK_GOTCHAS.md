@@ -42,7 +42,9 @@
 - `_authorizeUpgrade` 要求 `paused()`，否则升级 revert。
 - 升级序列：`pause()` → `upgradeTo(新实现)` → `unpause()`；升级脚本 `projects/escrow/scripts/upgrade.ts`（owner 签名，`DEPLOYER_PRIVATE_KEY`）。
 - 生产代理 `0x8Bf8Ffee86F1D4a160f0953Eb13BEDcBF99eaF9E`，owner `0x257a0e759b4a7b97680354728cda2796edbdbbf4`（owner 私钥不在生产 env，需平台侧保管）。
-- 2026-08-19 升级内容：`depositFor` / `depositForERC20` + 事件 `DepositedFor`（REQ-1）。
+- 2026-08-19 升级内容：`depositFor` / `depositForERC20` + 事件 `DepositedFor`（REQ-1）——**已执行**：pause `0xd16d0b68…` → upgradeTo `0x0b67c63f…` → unpause `0x0218caa0…`（status 全 1），新 impl `0x8dd8ea5631bb042403006ac2442e8398b1ee182b`。
+- ⚠️ **hardhat-upgrades 误报陷阱**：`upgrades.upgradeProxy` 成功后脚本可能抛 `transaction execution reverted`（内部 validateUpgrade 对目标链的模拟调用 revert）——**不代表升级失败**。判别标准：① ERC-1967 slot 是否已指向新 impl；② `paused()` 状态；③ 新函数（如 `depositFor` selector）是否可调用。升级中若 pause 已生效而脚本中断，先查 `paused()`，为 true 则补执行 `unpause()` 恢复计费。
+- **RPC 域名**：hardhat 默认 `rpc.l1.oxachain.io` 不可解析；生产用 `https://rpc-oxa.0xainet.top`（仅生产机可达，本地直连超时，升级须在生产机执行）。
 
 ## 7. relay 生产计费 env 位置
 
