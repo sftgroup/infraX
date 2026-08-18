@@ -1920,7 +1920,9 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - GF-1.7 日志验证：`Vector similarity data inconsistency` 警告消失、indexed 占比 >95%
 > - GF-1.8 状态登记：GF-1/GF-2 更新为 ✅ 并汇报
 
-> **GF-1/GF-2 执行结果（2026-08-19 凌晨）**：GF-1.1 试点重灌成功（crypto_overview 46s / defi_tvl 262s，今日 47 篇 indexed）；GF-1.2 重启 ragservicer 后积压全消化（indexed 742→923）——LightRAG 事件循环劣化根因（服务 3 天未重启，异步任务假成功）；GF-1.3 清理 287 篇 error（286 dup-* denoise 去重残留 + 1 defi:tvl，fail=0）；GF-1.4 向量核查：**仍有 data inconsistency 警告**（defi:tvl/onchain 部分文档 chunk 向量缺失，检索 fallback WEIGHT 可用），修复见 GF-1.5（重嵌入/repair，待办）；GF-1.6 GF-2 回归 8/8 PASS（no-context 归零，平均 11.2s）；GF-1.7 重启后日志验证：inconsistency 警告降至部分（vs 修复前常态）；GF-1.8 已登记。剩余待办：GF-1.5 向量重建（精度优化，非阻塞）。
+> **GF-1/GF-2 执行结果（2026-08-19 凌晨）**：GF-1.1 试点重灌成功（crypto_overview 46s / defi_tvl 262s，今日 47 篇 indexed）；GF-1.2 重启 ragservicer 后积压全消化（indexed 742→923）——LightRAG 事件循环劣化根因（服务 3 天未重启，异步任务假成功）；GF-1.3 清理 287 篇 error（286 dup-* denoise 去重残留 + 1 defi:tvl，fail=0）；GF-1.4 向量核查：**仍有 data inconsistency 警告**（defi:tvl/onchain 部分文档 chunk 向量缺失，检索 fallback WEIGHT 可用），修复见 GF-1.5（重嵌入/repair，待办）；GF-1.6 GF-2 回归 8/8 PASS（no-context 归零，平均 11.2s）；GF-1.7 重启后日志验证：inconsistency 警告降至部分（vs 修复前常态）；GF-1.8 已登记。
+
+> **GF-1.5 执行结果（2026-08-19 凌晨）**：向量重建完成。①全量核查：text chunks 1035 vs vdb 709，缺失 328（defi 239 + onchain 79 + other 10）；②重嵌入：dashscope `text-embedding-v4`（batch 上限 10，>10 报 400 InvalidParameter），NanoVectorDB 增量 upsert，修复后 vdb 1037 / still_missing=0（vector=base64(zlib(float16)) 1024d 格式对齐）；③残留索引清理：实体/关系 chunk 索引引用 6 个已删除 chunk id（e2e.txt 等清洗遗留，非向量缺失）→ 从 entity_chunks/relation_chunks 移除 93 条引用（48+45，relation count 同步）；④验证：`/api/v1/namespaces/market/retrieve` 命中 Arbitrum/DeFi TVL/BTC 上下文，日志 `data inconsistency` 计数归零，检索不再 fallback WEIGHT。备份：vdb_chunks.bak.json / entity_chunks.bak.json / relation_chunks.bak.json（/tmp）。
 
 > **GF-2 执行拆分（图谱检索回归）**：
 > - GF-2.1 回归用例集：定义标准查询集（BTC/ETH/宏观/情绪/政策 ≥10 条），记录修复前基线（no-context 率）
