@@ -107,6 +107,13 @@ LIGHTRAG_URL = os.getenv("LIGHTRAG_URL", "")
 ML_SERVICE_URL = os.getenv("ML_SERVICE_URL", "")  # 未配置则 ML 类 collector 空转
 ML_API_KEY = os.getenv("ML_API_KEY", "")           # ml-service 自身鉴权（可选）
 
+# ── RAGservicer 语义图谱因子（GF-3 统一入口 /factors/graph）──
+# B 端统一走 data-service dx_* key 访问 /factors/graph；data-service 内部持
+# ragservicer 服务 key（default 租户 data-service-internal）透传语义图谱因子，
+# B 端无需再持有 ragservicer key（双轨收敛为单入口单 key）。
+RAGSERVICER_BASE_URL = os.getenv("RAGSERVICER_BASE_URL", "").rstrip("/")
+RAGSERVICER_SERVICE_KEY = os.getenv("RAGSERVICER_SERVICE_KEY", "")
+
 # ── P2 单模型快照落库（§5.7）：30min 拉 bolt/moirai/timesfm → ml_predictions ──
 P2_COLLECT_ENABLED = os.getenv("P2_COLLECT_ENABLED", "true").lower() == "true"
 P2_COLLECT_INTERVAL_SEC = int(os.getenv("P2_COLLECT_INTERVAL_SEC", "1800"))

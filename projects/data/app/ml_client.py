@@ -15,7 +15,7 @@ import time
 
 import requests
 
-from app.config import ML_SERVICE_URL, ML_API_KEY
+from app.config import ML_SERVICE_URL, ML_API_KEY, RAGSERVICER_BASE_URL, RAGSERVICER_SERVICE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -311,3 +311,102 @@ def fetch_moirai() -> list[dict] | None:
 def fetch_timesfm() -> list[dict] | None:
     """TimesFM 2.5 长上下文点预测列表（或 None，fail-silent）。"""
     return _fetch_p2("timesfm")
+
+
+# ── RAGservicer 语义图谱因子（GF-3 统一入口，60s TTL，fail-silent）──
+# B 端统一走 data-service /factors/graph（dx_* key）；data-service 内部以
+# ragservicer 服务 key 逐 symbol 调用 ragservicer /api/v1/factors/graph，
+# B 端无需再持有 ragservicer key（双轨收敛为单入口单 key）。
+_RAG_GRAPH_FACTORS_CACHE: dict = {}
+_RAG_GRAPH_FACTORS_CACHE_TTL_S = 60
+
+
+def fetch_rag_graph_factors(symbols: list[str]) -> dict | None:
+    """拉取 ragservicer 语义图谱因子（/api/v1/factors/graph，GF-3）。
+
+    ragservicer 端点单 symbol 查询，这里逐 symbol 并行组装为
+    {"updated_at", "values": {symbol: {factor_key: value}}} 或 None（fail-silent）。
+    60s TTL 缓存，按 symbols 集合键控。data-service /factors/graph 透传。
+    """
+    global _RAG_GRAPH_FACTORS_CACHE  # 函数内赋值 → 需显式 global
+    base = (RAGSERVICER_BASE_URL or "").strip().rstrip("/")
+    if not base or not RAGSERVICER_SERVICE_KEY or not symbols:
+        return None
+    cache_key = ",".join(sorted(symbols))
+    now = time.time()
+    if (_RAG_GRAPH_FACTORS_CACHE.get("key") == cache_key
+            and now - _RAG_GRAPH_FACTORS_CACHE.get("ts", 0) < _RAG_GRAPH_FACTORS_CACHE_TTL_S):
+        return _RAG_GRAPH_FACTORS_CACHE.get("data")
+    try:
+        headers = {"Authorization": f"Bearer {RAGSERVICER_SERVICE_KEY}"}
+        values: dict = {}
+        updated_at = 0
+        for sym in symbols:
+            try:
+                resp = requests.get(
+                    f"{base}/api/v1/factors/graph",
+                    params={"symbol": sym},
+                    headers=headers, timeout=15,
+                )
+                if resp.status_code != 200:
+                    logger.debug("ragservicer /factors/graph %s → %s", sym, resp.status_code)
+                    continue
+                payload = (resp.json() or {}).get("data")
+                if not isinstance(payload, dict):
+                    continue
+                # 数值因子（剔除 top_entities/events 等附加结构），与 catalog 对齐
+                values[sym] = {k: v for k, v in payload.items()
+                               if isinstance(v, (int, float)) and k not in ("ts", "updated_at")}
+                if payload.get("ts"):
+                    updated_at = max(updated_at, int(payload["ts"]))
+            except requests.RequestException as exc:
+                logger.debug("ragservicer /factors/graph %s request failed: %s", sym, exc)
+            except Exception as exc:
+                logger.debug("ragservicer /factors/graph %s parse failed: %s", sym, exc)
+        if not values:
+            return None
+        data = {"updated_at": updated_at, "values": values}
+        _RAG_GRAPH_FACTORS_CACHE = {"key": cache_key, "ts": now, "data": data}
+        return data
+    except Exception as exc:
+        logger.debug("ragservicer graph factors failed: %s", exc)
+        return None
+
+
+_RAG_GRAPH_CATALOG_CACHE: dict = {}
+_RAG_GRAPH_CATALOG_CACHE_TTL_S = 300
+
+
+def fetch_rag_graph_catalog() -> list | None:
+    """拉取 ragservicer 图谱因子目录（/api/v1/factors/catalog，GF-4）。
+
+    返回 [{id, name, category, type, range, description, unit}, ...] 或 None（fail-silent）。
+    300s TTL 缓存（catalog 低频变化）。data-service /factors/graph 并入 meta。
+    """
+    global _RAG_GRAPH_CATALOG_CACHE  # 函数内赋值 → 需显式 global
+    base = (RAGSERVICER_BASE_URL or "").strip().rstrip("/")
+    if not base or not RAGSERVICER_SERVICE_KEY:
+        return None
+    now = time.time()
+    if _RAG_GRAPH_CATALOG_CACHE and now - _RAG_GRAPH_CATALOG_CACHE.get("ts", 0) < _RAG_GRAPH_CATALOG_CACHE_TTL_S:
+        return _RAG_GRAPH_CATALOG_CACHE.get("data")
+    try:
+        resp = requests.get(
+            f"{base}/api/v1/factors/catalog",
+            headers={"Authorization": f"Bearer {RAGSERVICER_SERVICE_KEY}"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.debug("ragservicer /factors/catalog → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data", {}).get("factors")
+        if not isinstance(data, list) or not data:
+            return None
+        _RAG_GRAPH_CATALOG_CACHE = {"ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ragservicer /factors/catalog request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ragservicer /factors/catalog parse failed: %s", exc)
+        return None

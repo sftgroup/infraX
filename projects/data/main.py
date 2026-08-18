@@ -365,6 +365,42 @@ async def factors_current(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── 语义图谱因子统一入口（GF-3 迁入 data-service，单入口单 key）──
+# 双轨收敛：B 端只需 data-service dx_* key 访问 /factors/graph，data-service
+# 内部持 ragservicer 服务 key（default 租户 data-service-internal）逐 symbol 透传
+# ragservicer /api/v1/factors/graph。结构因子（ml-service gf_*）仍在
+# /factors/current 的 graph 块。fail-silent：ragservicer 不可用 → 空 factors。
+
+@app.get("/factors/graph")
+async def factors_graph(
+    symbols: str = Query("BTC", description="Comma-separated symbols"),
+):
+    """语义图谱因子（RAGservicer LightRAG 知识图谱，GF-3 统一入口）。
+
+    data-service 内聚 ragservicer 服务 key 透传，B 端仅需 data-service 统一
+    dx_* key（不再持有 ragservicer key）。响应 {ts, meta, factors: {SYMBOL:
+    {factor_key: value}}}。fail-silent：ragservicer 未配置/不可用 → 空 factors
+    + meta.warning（与 /factors/current 的 graph 块 fail-silent 语义一致）。
+    """
+    try:
+        from app.ml_client import fetch_rag_graph_factors, fetch_rag_graph_catalog
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        data = await asyncio.to_thread(fetch_rag_graph_factors, sym_list)
+        meta: dict = {"source": "ragservicer"}
+        if not data:
+            meta["warning"] = "ragservicer graph factors unavailable"
+        else:
+            catalog = await asyncio.to_thread(fetch_rag_graph_catalog)
+            if catalog:
+                meta["catalog"] = catalog
+            meta["updated_at"] = data.get("updated_at", 0)
+        return {"ts": int(time.time() * 1000), "meta": meta,
+                "factors": (data or {}).get("values", {})}
+    except Exception as e:
+        logger.error(f"/factors/graph failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Crypto Derivatives（GX-3.5.3 资金费率数据面，db_cache 读取） ──
 
 @app.get("/factors/crypto-derivatives")
