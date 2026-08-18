@@ -1885,7 +1885,14 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > 提交方：AItrader。基于 **LightRAG 知识图谱**（RAGservicer :9721，namespace `market`）的数值因子 + 存量文档 `[no-context]` 故障。通用方案覆盖事件面（GF，RAGservicer 契约）+ 结构面（GX 扩展，moomoo 供应链/相关性图）。
 > 数据源：knowledge-injector `crypto:daily:*`（事件/新闻实体关系）、**moomoo MM-11 F10（财报 income/balance/cashflow + 一致预期 + 估值，`fetch_financials`）**、data-service `/bars`（滚动相关性）、宏观锚点。
 > 状态标记：✅ 已完成 ｜ ⚠️ 部分/待确认 ｜ 🔲 待办
-> 实施顺序：Phase 0（GF-1/GF-2 P0）→ Phase 1（GF-3/GF-4/GF-5 P1）→ Phase 2（GF-6 P2）→ Phase 3（GX-1 M1 结构因子）→ Phase 4（GX-2 M2 图嵌入+FF 联动）。
+> 实施顺序：Phase 0（GF-1/GF-2 P0）→ Phase 1（GF-3/GF-4/GF-5 P1）→ Phase 2（GF-6 P2）→ Phase 3（GX-1 M1 结构因子）→ Phase 4（GX-2 M2 图嵌入+FF 联动）→ Phase 5（GX-3 扩展数据面框架）。
+>
+> **扩展机制设计（统一图模型，支持灵活添加数据面）**：
+> - **数据源适配器（Source Adapter）**：统一接口 `fetch → normalize → upsert`（节点/边/属性）；新数据源仅需实现一个适配器，接入 `graph_factor.db` 无需改图结构
+> - **边构建器注册表（Edge Builder Registry）**：每类边独立构建器（industry/supply_chain/corr/event/earnings_event/financial_similarity），注册即用、按图层权重合并
+> - **属性注入器（Attribute Injector）**：财报/估值/情绪等作为节点属性（features 表 JSON 字段），不占图结构
+> - **数据面清单**：已规划——moomoo F10（财报 income/balance/cashflow/一致预期/估值/卖空兴趣/资金流/新闻）、data-service `/bars`、knowledge-injector 19 源、宏观锚点；可扩展——链上 defi tvl、衍生品（资金费率/持仓）、社媒情绪、多语言新闻
+> - **接入路径**：适配器 → 边构建器/属性注入器 → `graph_factor.db` → 因子 compute 注册 → catalog/FF
 
 | 编号 | 需求 | 任务内容 | 现状 | 优先级 |
 |---|---|---|---|---|
@@ -1897,6 +1904,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | GF-6 | AItrader 专用 key | 签发 `RAGSERVICER_API_KEY`（现借用 aiservicer），key 隔离治理 | 🔲 | P2 |
 | GX-1 | moomoo 供应链/行业图 + 结构因子（M1 扩展） | ml-service graph_engine：静态图（moomoo 行业/供应链 + F10 财报传导）+ 结构特征 `gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole/gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover`；data `/factors/current?category=graph` 透传（60s TTL） | 🔲 | P1 |
 | GX-2 | 相关性动态图 + 图嵌入 + FF 联动（M2 扩展） | `/bars` 滚动 60 日 |ρ|≥0.6 动态边 + 社区动量 + Node2Vec（`gf_node2vec_1..k`）；FF 挖掘候选 IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4） | 🔲 | P2 |
+| GX-3 | 扩展数据面接入框架（Source Adapter + Edge Builder + Attribute Injector） | 统一图模型扩展机制：Source Adapter（`fetch→normalize→upsert`）、Edge Builder Registry（边构建器注册 + 图层权重合并）、Attribute Injector（财报/估值/情绪节点属性）；接入验证数据面：moomoo 卖空兴趣/资金流、财报事件边/基本面相似边（财报进图）、衍生品资金费率、链上 defi tvl；文档：扩展接入指南 | 🔲 | P2 |
 
 > **要点记录**：GF-1 已锁定根因方向——AItrader 对照实验证明注入→实体抽取→检索链路正常（sync=1 注入 `aitrader-diagnose-20260818` 命中），问题在存量异步任务。moomoo MM-11 F10 含财报（income/balance/cashflow）可作 GX-1 供应链传导的数据基础（生产权限待验证，`fetch_financials` 本地 ret=0 空）。验证基线：GF-2 回归、GF-3 方向一致 ≥70%、GF-5 ECharts 渲染、GX 单因子 IC/分层收益单调性、回测区间 2024-09 起（对齐 ML 因子）。
 
@@ -1950,3 +1958,11 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - GX-2.3 Node2Vec：64 维嵌入取前 k（`gf_node2vec_1..k`）
 > - GX-2.4 FF 联动：`gf_*` 入挖掘候选池，IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4）
 > - GX-2.5 全链路验证：端到端 + 回测
+
+> **GX-3 执行拆分（扩展数据面接入框架）**：
+> - GX-3.1 Source Adapter 框架：统一接口 `fetch→normalize→upsert`（节点/边/属性）
+> - GX-3.2 Edge Builder Registry：边构建器注册表 + 图层权重合并（industry/supply_chain/corr/event）
+> - GX-3.3 Attribute Injector：财报/估值/情绪节点属性注入（features JSON 字段）
+> - GX-3.4 财报事件边/基本面相似边：财报发布→标的事件边 + 财务结构相似聚簇（财报进图，可选）
+> - GX-3.5 扩展数据面验证：moomoo 卖空兴趣/资金流、衍生品资金费率、链上 defi tvl 接入试点
+> - GX-3.6 文档：扩展接入指南（适配器/边构建器/属性注入器规范）
