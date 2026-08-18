@@ -227,6 +227,12 @@ export interface DataBar {
 export interface DataTickerParams { symbol: string; marketType?: 'spot' | 'swap'; exchangeId?: string; market?: string; }
 export interface DataTickerResult { symbol: string; price: number; change: number; changePercent: number; high: number; low: number; open: number; previousClose: number; ts: number; }
 export interface DataFactorCurrentParams { symbols?: string; category?: string; }
+/** 因子工厂挖掘因子（ml_factory 顶层字段，FF-3.3/3.4）：激活列表 + 各 symbol 实时值 */
+export interface DataMlFactoryResult {
+  updated_at?: number;
+  factors?: string[];
+  values?: Record<string, Record<string, number>>;
+}
 export interface DataFactorHistoryParams { symbol: string; timeframe?: string; ids?: string[]; start?: number; end?: number; limit?: number; }
 export interface DataSnapshotParams { type?: string; date?: string; limit?: number; }
 export interface DataSymbolSearchParams { keyword: string; market?: string; limit?: number; }
@@ -894,12 +900,22 @@ export class DataAPI {
     return this.http.get<{ factors: any[] }>('/factors/catalog');
   }
 
-  /** 最新因子值（symbols 逗号分隔；category 过滤） */
+  /** 最新因子值（symbols 逗号分隔；category 过滤）。顶层含 ml_factory（挖掘因子，与 category 无关） */
   async factorsCurrent(params: DataFactorCurrentParams = {}) {
     const q = new URLSearchParams();
     if (params.symbols) q.set('symbols', params.symbols);
     if (params.category) q.set('category', params.category);
-    return this.http.get<{ ts: number; factors: Record<string, any> }>('/factors/current?' + q.toString());
+    return this.http.get<{
+      ts: number;
+      factors: Record<string, any>;
+      ml_factory?: DataMlFactoryResult;
+    }>('/factors/current?' + q.toString());
+  }
+
+  /** 因子工厂挖掘因子：激活因子列表 + 各 symbol 实时值（FF-3.3/3.4）
+   *  返回 {updated_at, factors: [key...], values: {SYMBOL: {key: val}}} */
+  async mlFactory(symbols = 'BTC') {
+    return this.http.get<DataMlFactoryResult>('/factors/current?' + new URLSearchParams({ symbols }).toString());
   }
 
   /** 逐 bar 因子时间序列（回测/研究用） */

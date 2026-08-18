@@ -8,13 +8,13 @@
 
 | SDK | 版本 | 发布状态 | 覆盖服务 |
 |---|---|---|---|
-| `@0xinfrax/infrax-dk`（npm） | **0.8.3** | ✅ 已发布（2026-08-12，registry 验证；0.7.0 首发、0.7.1 补 dc.balance；0.8.3 **MarketRpc 402 门控支持：`X402RequiredError` + `postWithMeta`**） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** / **MarketRpc（/v1/market-rpc 12 组方法 + 批量 + x402 门控）** |
+| `@0xinfrax/infrax-dk`（npm） | **0.8.4** | ✅ 已发布（2026-08-19；0.8.3 于 08-12 发布，**0.8.4 新增 `DataAPI.mlFactory()` + `DataMlFactoryResult`（因子工厂挖掘因子，FF-3.3/3.4）**） | DATA / ML / VAULT / MPC / WAAS / DC / OKX ChainOS / x402 / **chain-rpc（含 `chainRpcBroadcastKey` 独立广播 key）** / **WAAS 钱包签名鉴权（`walletAddress`+`walletSign`）** / **MQ-16 套餐订阅面（DC 订阅 4 + Market 订阅 5 + Chain RPC 订阅 6 + MPC 计费 2 + payments 引擎 batch/invite/transfer 15）** / **MarketRpc（/v1/market-rpc 12 组方法 + 批量 + x402 门控）** |
 | `@0xinfrax/mpc-sdk`（npm，独立轻量） | **0.3.0** | ✅ 已发布（npm registry 已验证，2026-08） + **生产 E2E 22/22 通过**（2026-08-08，MQ-10 补充 E-5） | MPC **16 方法**：钱包模块 6（sendCode/register/recover/status/listWallets/createWallet）+ 会话模块 3（unlock/lock/status）+ **链上模块 7（balance/signMessage/signTypedData/sendTransaction/contractRead/contractWrite/gasEstimate，E-5d 已随 0.3.0 发布）** |
 | `@0xinfrax/session-key-core` / `-client` / `-evm` / `-server`（npm，独立 4 包） | **0.2.2** / **0.1.2** / **0.1.3** / **0.1.1** | ✅ 已发布（2026-07-31 ~ 08-18） | Session Key 引擎（EIP-712 授权 + 受限代执行）；**core 0.2.x 并入 aa-sdk（`Aa` 命名空间：BundlerClient / PaymasterClient / SessionKeySigner / MpcSigner / KernelV3SessionDataBuilder，含 oxachain:19505）**；0.2.2 含代付授权模板 + IKeyVault/EnvKeyVault 密钥托管接缝（AX-9/AX-11/AX-12） |
 | `@0xinfrax/aa-sdk`（npm，独立 ERC-4337 SDK） | **0.1.1** | ✅ 已发布（2026-08-16 ~ 08-18，registry 验证；`@infrax` scope 私有发布需付费故改 `@0xinfrax` + `--access public`） | ERC-4337 智能账户：Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；**`entryPointAbi` / `parseBundlers` 已导出（PocketX 需求单三.1/三.2）**；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/`（详见 `projects/aa-sdk/README.md`） |
 | `@0xinfrax/payments`（npm，引擎/服务包） | **0.1.4** | ✅ 已发布（2026-08-18） | Payments 引擎 + 订阅：**AX-1 escrow 配置透传 + `GET /capabilities` 暴露 + AX-3 ERC20 deposit 走 escrow + AX-6 `payment_access_log` 审计/ref 幂等 + AX-7 402 结构化**；15 方法（batch/invite/transfer） |
 | `lightrag-client`（PyPI） | 2.0.0 | ✅ 已发布（pypi.org，2026-08-11） | LightRAG（ragservicer） |
-| `infra-data-client`（PyPI） | 0.2.0 | ✅ 已发布（pypi.org，2026-08-11） | DATA（data-service） |
+| `infra-data-client`（PyPI） | 0.3.0 | ⏳ 已构建待发布（wheel 2026-08-19，含 `get_ml_factory`/`get_current_factors_full`；PyPI 最新已发布 0.2.0，发版需 PyPI token） | DATA（data-service） |
 | `@0xinfrax/ragservicer-sdk`（TS 类型） | 2.0.0 | ✅ 仓库内（`projects/ragservicer/sdk`） | LightRAG |
 | FastAPI `/openapi.json`（data :9112 / ml-service :9120） | 原生 | ✅ 生产可访问 | DATA / ML |
 | 手写 OpenAPI 3.0（injector :9113 / ragservicer :9721） | 3.0 | ✅ 生产免 key 可访问 | LightRAG |
@@ -31,12 +31,12 @@
 | Market（collector） | `@0xinfrax/market-sdk` | market（数据面 + 订阅面） | ✅ 0.1.0（2026-08-12 发布） |
 | ChainRPC | `@0xinfrax/chain-rpc-sdk` | chainRpc（读/广播/订阅） | ✅ 0.1.0（2026-08-12 发布） |
 | Payments | `@0xinfrax/payments-sdk` | payment（引擎 15 + 订阅） | ✅ 0.1.0（2026-08-12 发布） |
-| Data / ML | `@0xinfrax/data-sdk` | data + ml | ✅ 0.1.0（2026-08-12 发布） |
+| Data / ML | `@0xinfrax/data-sdk` | data + ml（含 ml_factory） | ✅ 0.1.1（2026-08-19 发布） |
 | MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
 | Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
 | AA（ERC-4337） | `@0xinfrax/aa-sdk` | 独立 ERC-4337 智能账户 SDK（Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；含 aa-relay 公网入口对接） | ✅ 0.1.0（2026-08-16 发布） |
 | LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
-| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions | ✅ 0.2.0 |
+| Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions/**ml_factory** | ⏳ 0.3.0（已构建待发布） |
 
 > 拆分实施后，统一包与独立包**同源同步发版**（独立包薄封装 infrax-dk 对应 API 类）；调用方可按需二选一（全量 `infrax-dk` 或单服务独立包）。
 

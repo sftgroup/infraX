@@ -188,7 +188,7 @@
 **B 端使用方式（2026-08-08 定稿）**：统一鉴权头三选一 `Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`（`dx_*` 租户 key 或 `DATA_API_KEY`）；时间戳一律 unix ms；公网统一域名 `https://infrax.0xainet.top`（详见 §1）。
 
 ```bash
-export DX_KEY='dx_...'   # 已向 B 端签发的租户 key（登记清单见 PRODUCTION_CREDENTIALS §8，如 arbitrage 等）
+export DX_KEY='dx_...'   # 已向 B 端签发的租户 key（登记清单见 PRODUCTION_CREDENTIALS §8：arbitrage / aitrader / aihunter-saas / aiservicer）
 
 # 1) 行情 K 线（含技术指标 + 最近因子 join）
 curl "https://infrax.0xainet.top/api/data/bars?symbol=BTC/USDT&timeframe=1d&limit=100" -H "X-API-Key: $DX_KEY"
@@ -203,7 +203,7 @@ curl "https://infrax.0xainet.top/api/data/factors/history?symbol=BTC/USDT&timefr
 curl "https://infrax.0xainet.top/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
 ```
 
-Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get_ml_predictions` 等）用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
+SDK：`infra-data-client`（Python，**0.3.0**：`get_ml_factory`/`get_current_factors_full`/`get_ml_predictions` 等；PyPI 已发布 0.2.0，0.3.0 待发布）、`@0xinfrax/data-sdk`（npm，**0.1.1**：`data.mlFactory()`/`factorsCurrent` 含 ml_factory；底层 `infrax-dk` 0.8.4）——用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。
 
 ### 3.2 复杂快照 /snapshots（DS-3 / DS-10）
 

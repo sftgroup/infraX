@@ -1,7 +1,7 @@
 {
   "name": "@0xinfrax/data-sdk",
-  "version": "0.1.0",
-  "description": "InfraX Data SDK — thin wrapper over @0xinfrax/infrax-dk exposing the data & ML service surfaces (bars/snapshots/factors/ticker/symbols/ml-predictions + ml-service realtime inference). Same-source, synced releases: re-exports only, no duplicated implementation.",
+  "version": "0.1.1",
+  "description": "InfraX Data SDK — thin wrapper over @0xinfrax/infrax-dk exposing the data & ML service surfaces (bars/snapshots/factors/ticker/symbols/ml-predictions + factor-factory ml_factory + ml-service realtime inference). Same-source, synced releases: re-exports only, no duplicated implementation.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -15,7 +15,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@0xinfrax/infrax-dk": "^0.7.0"
+    "@0xinfrax/infrax-dk": "^0.8.4"
   },
   "keywords": [
     "infrax",
