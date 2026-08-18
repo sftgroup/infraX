@@ -31,6 +31,12 @@ interface IInfraXEscrow {
     /// @notice 代他人 ERC20 入账（msg.sender 支付、user 入账，REQ-1）
     function depositForERC20(address token, uint256 amount, address user) external;
 
+    /// @notice 批量代他人原生入账（单 tx 多账户，REQ-5；msg.value 须等于各额之和）
+    function depositForBatch(address[] calldata users, uint256[] calldata amounts) external payable;
+
+    /// @notice 批量代他人 ERC20 入账（单 tx 多账户，REQ-5）
+    function depositForERC20Batch(address token, address[] calldata users, uint256[] calldata amounts) external;
+
     /// @notice 原生资产提现（仅 msg.sender 本人余额，CEI + ReentrancyGuard）
     function withdraw(uint256 amount) external;
 

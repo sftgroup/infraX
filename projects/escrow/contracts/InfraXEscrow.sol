@@ -131,6 +131,40 @@ contract InfraXEscrow is
         emit DepositedFor(user, amount, token, msg.sender);
     }
 
+    // REQ-5（批量充值/对账辅助，AgentX 多子账户场景）：单 tx 给多账户入账。
+    // msg.value 必须精确等于各额之和（原生）；ERC20 版本先一次性转总额再逐账户记账。
+    // 事件按账户各发一条 DepositedFor，供对账索引聚合。
+    function depositForBatch(address[] calldata users, uint256[] calldata amounts) external payable override {
+        uint256 n = users.length;
+        require(n > 0 && n == amounts.length, "ESCROW: batch length");
+        uint256 total;
+        for (uint256 i = 0; i < n; i++) {
+            require(users[i] != address(0), "ESCROW: zero user");
+            require(amounts[i] > 0, "ESCROW: zero amount");
+            _balances[users[i]] += amounts[i];
+            emit DepositedFor(users[i], amounts[i], address(0), msg.sender);
+            total += amounts[i];
+        }
+        require(msg.value == total, "ESCROW: value mismatch");
+    }
+
+    function depositForERC20Batch(address token, address[] calldata users, uint256[] calldata amounts) external override {
+        uint256 n = users.length;
+        require(token != address(0), "ESCROW: zero token");
+        require(n > 0 && n == amounts.length, "ESCROW: batch length");
+        uint256 total;
+        for (uint256 i = 0; i < n; i++) {
+            require(users[i] != address(0), "ESCROW: zero user");
+            require(amounts[i] > 0, "ESCROW: zero amount");
+            total += amounts[i];
+        }
+        IERC20(token).safeTransferFrom(msg.sender, address(this), total);
+        for (uint256 i = 0; i < n; i++) {
+            _erc20Balances[token][users[i]] += amounts[i];
+            emit DepositedFor(users[i], amounts[i], token, msg.sender);
+        }
+    }
+
     function withdraw(uint256 amount) external override nonReentrant {
         require(amount > 0, "ESCROW: zero amount");
         uint256 bal = _balances[msg.sender];

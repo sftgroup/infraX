@@ -33,7 +33,9 @@ export interface IInfraXEscrowInterface extends Interface {
       | "deposit"
       | "depositERC20"
       | "depositFor"
+      | "depositForBatch"
       | "depositForERC20"
+      | "depositForERC20Batch"
       | "erc20BalanceOf"
       | "pause"
       | "refund"
@@ -84,8 +86,16 @@ export interface IInfraXEscrowInterface extends Interface {
     values: [AddressLike]
   ): string;
   encodeFunctionData(
+    functionFragment: "depositForBatch",
+    values: [AddressLike[], BigNumberish[]]
+  ): string;
+  encodeFunctionData(
     functionFragment: "depositForERC20",
     values: [AddressLike, BigNumberish, AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "depositForERC20Batch",
+    values: [AddressLike, AddressLike[], BigNumberish[]]
   ): string;
   encodeFunctionData(
     functionFragment: "erc20BalanceOf",
@@ -139,7 +149,15 @@ export interface IInfraXEscrowInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "depositFor", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "depositForBatch",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "depositForERC20",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "depositForERC20Batch",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -383,8 +401,20 @@ export interface IInfraXEscrow extends BaseContract {
 
   depositFor: TypedContractMethod<[user: AddressLike], [void], "payable">;
 
+  depositForBatch: TypedContractMethod<
+    [users: AddressLike[], amounts: BigNumberish[]],
+    [void],
+    "payable"
+  >;
+
   depositForERC20: TypedContractMethod<
     [token: AddressLike, amount: BigNumberish, user: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  depositForERC20Batch: TypedContractMethod<
+    [token: AddressLike, users: AddressLike[], amounts: BigNumberish[]],
     [void],
     "nonpayable"
   >;
@@ -479,9 +509,23 @@ export interface IInfraXEscrow extends BaseContract {
     nameOrSignature: "depositFor"
   ): TypedContractMethod<[user: AddressLike], [void], "payable">;
   getFunction(
+    nameOrSignature: "depositForBatch"
+  ): TypedContractMethod<
+    [users: AddressLike[], amounts: BigNumberish[]],
+    [void],
+    "payable"
+  >;
+  getFunction(
     nameOrSignature: "depositForERC20"
   ): TypedContractMethod<
     [token: AddressLike, amount: BigNumberish, user: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "depositForERC20Batch"
+  ): TypedContractMethod<
+    [token: AddressLike, users: AddressLike[], amounts: BigNumberish[]],
     [void],
     "nonpayable"
   >;

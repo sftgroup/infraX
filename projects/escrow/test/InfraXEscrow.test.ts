@@ -124,6 +124,54 @@ describe("InfraXEscrow (OE-1)", () => {
     });
   });
 
+  describe("批量代充（depositForBatch，REQ-5）", () => {
+    it("单 tx 多账户入账 + 逐账户事件", async () => {
+      const { escrow, owner, user2, other } = await loadFixture(deployFixture);
+      await expect(
+        escrow.connect(owner).depositForBatch(
+          [user2.address, other.address],
+          [ethers.parseEther("2"), ethers.parseEther("3")],
+          { value: ethers.parseEther("5") }
+        )
+      )
+        .to.emit(escrow, "DepositedFor").withArgs(user2.address, ethers.parseEther("2"), ethers.ZeroAddress, owner.address)
+        .and.to.emit(escrow, "DepositedFor").withArgs(other.address, ethers.parseEther("3"), ethers.ZeroAddress, owner.address);
+      expect(await escrow.balanceOf(user2.address)).to.equal(ethers.parseEther("2"));
+      expect(await escrow.balanceOf(other.address)).to.equal(ethers.parseEther("3"));
+    });
+
+    it("value 与总额不匹配 / 空数组 / 长度不一致 revert", async () => {
+      const { escrow, owner, user2, other } = await loadFixture(deployFixture);
+      await expect(
+        escrow.connect(owner).depositForBatch(
+          [user2.address, other.address],
+          [ethers.parseEther("2"), ethers.parseEther("3")],
+          { value: ethers.parseEther("4") }
+        )
+      ).to.be.revertedWith("ESCROW: value mismatch");
+      await expect(escrow.connect(owner).depositForBatch([], [])).to.be.revertedWith("ESCROW: batch length");
+      await expect(
+        escrow.connect(owner).depositForBatch([user2.address], [ethers.parseEther("1"), ethers.parseEther("1")])
+      ).to.be.revertedWith("ESCROW: batch length");
+    });
+
+    it("ERC20 批量：单 tx 转总额 + 多账户入账", async () => {
+      const { escrow, token, owner, user2, other } = await loadFixture(deployFixture);
+      const amt = ethers.parseEther("100");
+      await token.mint(owner.address, amt);
+      await token.connect(owner).approve(await escrow.getAddress(), amt);
+      await expect(
+        escrow.connect(owner).depositForERC20Batch(
+          await token.getAddress(),
+          [user2.address, other.address],
+          [ethers.parseEther("60"), ethers.parseEther("40")]
+        )
+      ).to.emit(escrow, "DepositedFor").withArgs(user2.address, ethers.parseEther("60"), await token.getAddress(), owner.address);
+      expect(await escrow.erc20BalanceOf(await token.getAddress(), user2.address)).to.equal(ethers.parseEther("60"));
+      expect(await escrow.erc20BalanceOf(await token.getAddress(), other.address)).to.equal(ethers.parseEther("40"));
+    });
+  });
+
   describe("提现（withdraw）", () => {
     it("本人提现成功，余额扣减 + 事件", async () => {
       const { escrow, user } = await loadFixture(deployFixture);

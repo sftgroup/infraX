@@ -340,6 +340,24 @@ const _abi = [
   {
     inputs: [
       {
+        internalType: "address[]",
+        name: "users",
+        type: "address[]",
+      },
+      {
+        internalType: "uint256[]",
+        name: "amounts",
+        type: "uint256[]",
+      },
+    ],
+    name: "depositForBatch",
+    outputs: [],
+    stateMutability: "payable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
         internalType: "address",
         name: "token",
         type: "address",
@@ -356,6 +374,29 @@ const _abi = [
       },
     ],
     name: "depositForERC20",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "token",
+        type: "address",
+      },
+      {
+        internalType: "address[]",
+        name: "users",
+        type: "address[]",
+      },
+      {
+        internalType: "uint256[]",
+        name: "amounts",
+        type: "uint256[]",
+      },
+    ],
+    name: "depositForERC20Batch",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
