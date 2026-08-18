@@ -2015,3 +2015,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - GX-3.5.5 试点验证：新数据面全部进图（nodes/attrs 日志可观测）、单数据面失败 fail-silent 降级、全链路回归（`graph built` 规模 + `/ml/graph_factors` + data-service 透传）无退化
 >
 > 依赖关系：GX-3.4 与 GX-3.5 均依赖 graph_engine 扩展注册表（已就位），GX-3.4 依赖 moomoo_f10 快照（已就位）、GX-3.5.1 依赖 data-service collector 扩展（需先行）；GX-2.4 依赖 graph 历史序列落库（GX-2.4.2，可先行）与 FF 引擎（已就位）。三者数据面相互独立，可并行开发。
+>
+> **GX-2.4 / GX-3.4 / GX-3.5 执行结果（2026-08-19，完成）**：
+> - 部署 commit：`3343d3a`（GX-2.4/3.4/3.5 主代码）+ `2498497`（CryptoFactorsCollector + CacheConfig）+ `b9bee94`（market_data `_core_patch` 挂载 `__init__`/`_crypto_metric_cache`）+ `13b96a3`（APIKeys 补 COINGLASS/CRYPTOQUANT）。ML 机（43.156.25.197）与 data 机（43.163.105.172）均已 pull + 重启（infrax-ml-service / infrax-data active）。
+> - **GX-2.4 FF 联动**：`pool.py` 候选池注册 18 个 `gf_*`（category="graph"）；`graph_history.py` SQLite 幂等快照（自然日归一化 ts）；`eval.py`/`jobs.py` 复用 `evaluate_graph_factors`（横截面 IC/ICIR，门槛对齐 FF）；`catalog.py` gf_ 前缀登记 + `auto_activate`；`health_check_graph_factor` 衰退淘汰分支（无评估历史防误停）。
+>   - 生产验证：`/ml/graph/catalog` 18 条全 graph 分类；`/ml/graph_factors` 150 值（6 symbols × 25）；data-service `/factors/current` graph block 6/6 symbols + catalog 18 + ml_factory；factor-factory 挖掘作业 COMPLETED/persist；**graph_history 快照 2433 rows / 150 symbols / 1 自然日幂等**（`gf_degree=0.4302` 等，由 prewarm 自动落库）。
+> - **GX-3.4 财报事件边/基本面相似边**：`graph_engine.py` 注册 `financials` SourceAdapter + `financials_attrs` AttributeInjector + `earnings_event` / `financial_similarity` EdgeBuilder（moomoo F10 数据面，fail-silent）。生产 `graph built: nodes=69 edges=430 sectors=7 communities=6 values=69` 无回归；`/snapshots?provider=moomoo_f10` 快照端点可用。
+> - **GX-3.5 扩展数据面试点**：`FundingRateAdapter`（crypto 衍生品情绪）+ `DefiTvlAdapter`（tvl/change_24h/dominance）+ `MoomooShortAttributeInjector`（卖空/资金流）；data-service `CryptoFactorsCollector`（300s 周期 → db_cache）+ `/factors/crypto-derivatives` 端点。
+>   - 生产验证：`/factors/crypto-derivatives?symbols=BTC,ETH,SOL,XRP` 4/4 真实数据（funding_rate 3.65e-05 / open_interest 6.86e9 / long_short_ratio 1.48 等）；`/snapshots?type=tvl` 可用；Coinglass 无 key 时 Binance 兜底降级正常。
+> - 关键修复：market_data 子模块拆分后 `__init__.py` 缺失 `_core_patch`（`MarketDataCollector.__init__`/`_crypto_metric_cache` 未挂载 → crypto 采集 AttributeError）；`APIKeys` 补 COINGLASS/CRYPTOQUANT 类属性。均已本地验证 + 生产复验。
