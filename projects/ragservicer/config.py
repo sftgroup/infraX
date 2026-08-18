@@ -71,6 +71,7 @@ class ServerConfig:
     admin_api_key: str = ""        # REQUIRED in production
     ragservicer_api_key: str = ""  # Internal key for aiservicer bridge (optional)
     monitor_api_key: str = ""      # G-7: 监控只读 key（仅 GET/HEAD/OPTIONS）
+    factor_service_keys: str = ""  # 因子端点服务 key 白名单（逗号分隔；仅服务间透传，B 端因子一律走 data-service dx_*）
     rate_limit_rpm: int = 100
     rate_limit_window: int = 60    # seconds
 
@@ -140,6 +141,7 @@ def load_config() -> AppConfig:
             admin_api_key=os.getenv("ADMIN_API_KEY", ""),
             ragservicer_api_key=os.getenv("RAGSERVICER_API_KEY", "") or os.getenv("DOC_API_KEY", "") or os.getenv("LIGHTRAG_API_KEY", ""),
             monitor_api_key=os.getenv("MONITOR_API_KEY", ""),
+            factor_service_keys=os.getenv("RAGSERVICER_FACTOR_KEYS", ""),
             rate_limit_rpm=int(os.getenv("RATE_LIMIT_RPM", str(ServerConfig.rate_limit_rpm))),
             rate_limit_window=int(os.getenv("RATE_LIMIT_WINDOW", str(ServerConfig.rate_limit_window))),
         ),

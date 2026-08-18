@@ -74,6 +74,33 @@ def require_tenant(f):
     return wrapper
 
 
+def require_service(f):
+    """Decorator: require a service-level API key for factor endpoints.
+
+    因子端点（/factors/graph、/factors/catalog）仅允许服务间透传：
+    请求 key 必须在 RAGSERVICER_FACTOR_KEYS 白名单内（data-service 内部
+    服务 key），B 端因子一律走 data-service /factors/graph（dx_* key），
+    不直接持有 ragservicer 因子访问权。
+    """
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        key = app_auth.extract_api_key(request.headers.get)
+        if not key:
+            return build_error("Missing or invalid API key", 401)
+        cfg = get_config()
+        whitelist = {k.strip() for k in (cfg.server.factor_service_keys or "").split(",") if k.strip()}
+        if not whitelist:
+            return build_error("Factor service endpoint not enabled", 403)
+        if key not in whitelist:
+            return build_error("Service-level key required for factor endpoints", 403)
+        tenant = extract_tenant()
+        if not tenant:
+            return build_error("Missing or invalid API key", 401)
+        kwargs["_tenant"] = tenant
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def require_admin(f):
     """Decorator: require admin API key."""
     @functools.wraps(f)
