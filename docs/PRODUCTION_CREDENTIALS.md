@@ -90,7 +90,7 @@
 | AA_OXACHAIN_FACTORY | 0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1 | 主 unit |
 | AA_OXACHAIN_ECDSA_VALIDATOR | 0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c | 主 unit |
 | AA_OXACHAIN_SESSION_MODULE | 0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74 | 主 unit |
-| AA_OXACHAIN_BUNDLERS | [{"url":"http://43.159.60.46:4338","priority":0}] | 主 unit |
+| AA_OXACHAIN_BUNDLERS | [{"url":"http://43.156.78.59:4338","priority":0}] | 主 unit（2026-08-19 迁移：原 43.159.60.46 随 AgentX 系统盘丢失，bundler 迁至 infraX 43.156.78.59:4338，见 tasklist AA Bundler 迁移与恢复） |
 | PORT | 9131 | 主 unit |
 | DATABASE_URL | postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc | drop-in `override.conf`（M-3 迁移修正，原 localhost） |
 | AA_PAYMENTS_URL | http://127.0.0.1:9132 | drop-in `override.conf` |

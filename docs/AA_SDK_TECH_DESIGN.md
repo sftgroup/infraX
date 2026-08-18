@@ -685,7 +685,7 @@ AA_RELAY_API_KEY=xxx                 # Pimlico apikey，仅服务端可见
 | 链 | EntryPoint | Bundler | Paymaster | 说明 |
 |----|-----------|---------|-----------|------|
 | Base Sepolia | v0.7 | Pimlico | Pimlico VP | ✅ 测试首链 |
-| **OxaChain（L1, 19505）** | **✅ v0.7 已部署**（`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`） | **✅ 自建 Alto**（`http://43.159.60.46:4338`，2026-08-07） | **✅ 自建 VerifyingPaymaster**（合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33` + signer :9134，2026-08-16 E2E 5/5） | ⭐ **目标主网**，原生代币 OXA；RPC `rpc-oxa.0xainet.top` ✅ 可达；**ERC-4337 合约全栈 + 自建 Bundler + 自建 Paymaster 已就绪** |
+| **OxaChain（L1, 19505）** | **✅ v0.7 已部署**（`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`） | **✅ 自建 Alto**（`http://43.156.78.59:4338`，2026-08-19 迁移，原 43.159.60.46） | **✅ 自建 VerifyingPaymaster**（合约 `0xc894ef13597f15a2fe8475b5914d1151da852f33` + signer :9134，2026-08-16 E2E 5/5） | ⭐ **目标主网**，原生代币 OXA；RPC `rpc-oxa.0xainet.top` ✅ 可达；**ERC-4337 合约全栈 + 自建 Bundler + 自建 Paymaster 已就绪** |
 | Base | v0.7 | Pimlico | Pimlico VP | ✅ 主网上线 |
 | **BSC** | v0.7 | 待部署（可复用自建 Alto） | 待定 | 🟢 **多网络 session（2026-08-07 新增）**：`CHAIN_ALIASES` 已含 `bsc:56`，合约/Bundler 待部署 |
 | Arbitrum | v0.7 | Pimlico | Pimlico VP | ✅ 备选主网 |
@@ -698,7 +698,7 @@ AA_RELAY_API_KEY=xxx                 # Pimlico apikey，仅服务端可见
 > 1. ✅ RPC 可达：`rpc-oxa.0xainet.top`（DNS → 43.163.105.172），chainId 19505 确认，区块活跃（85240+）
 > 2. ✅ **EntryPoint v0.7 已部署**：`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（0.8.23 + runs 1e6 编译，runtime 17,690 bytes；非标准 create2 地址，须 `AA_OXACHAIN_ENTRYPOINT_V07` 覆盖）
 > 3. ✅ **Kernel v3.1 implementation + KernelFactory + ECDSA validator 已部署**（2026-08-07 全栈部署成功）：implementation `0x5131d75af2126eba05edbb6bc24902c42d1b52b4`（runtime 20,427 bytes = 主网官方字节码一致）/ factory `0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1` / ECDSA validator `0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c`
-> 4. ✅ **Bundler 已部署（自建 Alto）**：`http://43.159.60.46:4338`（2026-08-07，生产 43.159.60.46 pm2 `pocketx-alto`，指向 `rpc-oxa.0xainet.top`，chainId 19505，block time ~31s）。Pimlico 不支持 19505，故自建 Alto；simulations 合约已手动部署（见 §8.3 第 6-9 行），`--deploy-simulations-contract false` + 显式传地址启动。✅ 安全组已放行 4338（外部可直达）。
+> 4. ✅ **Bundler 已部署（自建 Alto）**：`http://43.156.78.59:4338`（2026-08-19 迁移：原 `43.159.60.46:4338` 随 AgentX 系统盘丢失，已按 infraX 通用服务重建于 43.156.78.59 pm2 `pocketx-alto`，node 20.20.2，指向 `rpc-oxa.0xainet.top`，chainId 19505，block time ~31s，新执行钱包 `0xF434e525...65c8B` 余额 5 OXA）。Pimlico 不支持 19505，故自建 Alto；simulations 合约已手动部署（见 §8.3 第 6-9 行），`--deploy-simulations-contract false` + 显式传地址启动。✅ 安全组已放行 4338（163.105 → 78.59 连通验证，见 tasklist AA Bundler 迁移与恢复）。
 > 5. ✅ **P0.2 链上实测通过**（2026-08-07）：`chain-smoke.mjs` 场景④——create2 懒部署 + 首笔 UserOp 转账 0.001 OXA 经自建 Alto 成功上链（smart account 已部署 61 B，收款地址余额 = 0.001 OXA）。修复了 Alto 对 OxaChain 定制 EP 的模拟结果解码崩溃（见 §8.3「Alto 定制补丁」）。→ **P0.2 前置全部就绪**
 
 > 需求文档中 `AA_BUNDLER_URL=https://bundler.xlayer.tech` 的 XLayer 需要单独验证其 AA 生态；**首期不阻塞**，P0 用 Base Sepolia 打通。
@@ -719,12 +719,12 @@ OxaChain（chainId 19505）ERC-4337 全栈已部署并验证（部署方式：Fo
 | 8 | **EntryPointSimulations08（Alto gas 模拟）** | `0x91d444464761938481062341ceea4d3bad49e4cc` | 22,145 B | `0x507e04a40f7f75ae9b901746b06bc0b515712e9594121d2770647dcdd1158212` | 同上（v0.8，cancun EVM，Alto 视为可选） |
 | 9 | **EntryPointSimulations09（Alto gas 模拟）** | `0x292cf1519b860739974f96c35e1b874169fc525b` | 21,912 B | `0xf526b4b0a7320813494a44467992f70d1d297df160edce9fdd124bad8afdcfc9` | 同上（v0.9，cancun EVM，Alto 视为可选） |
 
-> **Alto Bundler 部署要点**（2026-08-07，生产 43.159.60.46）：
-> - 安装：Pimlico `alto` 仓库 clone + `pnpm install` + `pnpm run build:contracts`（forge 编译 simulations）+ `pnpm build`，rsync 至 `/opt/pocketx/alto/`
+> **Alto Bundler 部署要点**（2026-08-07 首建 43.159.60.46；**2026-08-19 迁移至 infraX 43.156.78.59**）：
+> - 安装：Pimlico `alto` 仓库 clone + `pnpm install` + `pnpm run build:contracts`（forge 编译 simulations）+ `pnpm build`，部署于 `/home/ubuntu/infraX-1/projects/bundler/alto/`（迁移后）；**node ≥20.10 必需**（alto 产物依赖 `import attributes` 语法，原 18 报 SyntaxError，已升级 20.20.2）
 > - ⚠️ **上游 `DETERMINISTIC_DEPLOYER_TRANSACTION` 常量损坏**（hex 中含 `V` 字符），且 OxaChain 无 deterministic deployer（`0x4e59b44847b379578588920ca78fbf26c0b4956c` 未部署）→ **禁用 Alto 自动部署**（`--deploy-simulations-contract false`），改手动 CREATE 部署 simulations 合约后以 `--pimlico-simulation-contract` / `--entrypoint-simulation-contract-v7/v8/v9` 显式传地址
-> - 配置：全部走 `ALTO_*` env（yargs `.env("ALTO")`），私钥/地址在 `/opt/pocketx/alto/.env`（chmod 600，**不入库**）：`ALTO_RPC_URL=https://rpc-oxa.0xainet.top` / `ALTO_ENTRYPOINTS=0x97e4cddc...` / `ALTO_UTILITY_PRIVATE_KEY` / `ALTO_EXECUTOR_PRIVATE_KEYS`（同一部署钱包，余额 ~4.99 OXA）/ `ALTO_PORT=4338` / `ALTO_ENABLE_CORS=true` / `ALTO_BLOCK_TIME=31000`（OxaChain 区块 ~31s）
-> - 验证：`eth_supportedEntryPoints` → `["0x97e4Cddc...82798a"]` ✅、`eth_chainId` → `0x4c31` ✅、`pimlico_getUserOperationGasPrice` ✅（maxFee ≈1 gwei）
-> - ✅ 安全组已放行 `4338`（外部可直达）→ **P0.2 链上实测通过**（2026-08-07，首笔 UserOp 上链成功）
+> - 配置：全部走 `ALTO_*` env（yargs `.env("ALTO")`），私钥/地址在 `/home/ubuntu/infraX-1/projects/bundler/alto/.env`（chmod 600，**不入库**）：`ALTO_RPC_URL=https://rpc-oxa.0xainet.top` / `ALTO_ENTRYPOINTS=0x97e4cddc...` / `ALTO_UTILITY_PRIVATE_KEY` / `ALTO_EXECUTOR_PRIVATE_KEYS`（同一执行钱包 `0xF434e525...65c8B`，余额 5 OXA 周转）/ `ALTO_PORT=4338` / `ALTO_ENABLE_CORS=true` / `ALTO_BLOCK_TIME=31000`（OxaChain 区块 ~31s）
+> - 验证：`eth_supportedEntryPoints` → `["0x97e4Cddc...82798a"]` ✅、`eth_chainId` → `0x4c31` ✅、`pimlico_getUserOperationGasPrice` ✅（maxFee ≈1 gwei）、无效签名 UserOp 模拟 → 标准 `AA30 paymaster not deployed`（补丁生效）✅
+> - ✅ 安全组已放行 `4338`（163.105 直连验证）→ **P0.2 链路恢复**（2026-08-19 迁移后）
 
 > **Alto 定制补丁（OxaChain 定制 EP 模拟解码，2026-08-07）**：
 > - **背景**：OxaChain 的 EntryPoint 是 v0.7 定制 fork——模拟通过 `delegateAndRevert(target, data)`（selector `0x850aaf62`）最终 `revert DelegateAndRevert(bool success, bytes ret)`（error selector `0x99410554`）传播结果。Alto `SafeValidator.getValidationResultWithTracerV07` 用 `pimlicoSimulationsAbi`（**无任何 error 定义**）对顶层 revert data 执行 `decodeErrorResult` → 抛 `AbiErrorSignatureNotFoundError` → `eth_sendUserOperation` 返回 HTTP 500。
@@ -747,7 +747,7 @@ AA_OXACHAIN_IMPLEMENTATION=0x5131d75af2126eba05edbb6bc24902c42d1b52b4
 AA_OXACHAIN_FACTORY=0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1
 AA_OXACHAIN_ECDSA_VALIDATOR=0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c
 AA_OXACHAIN_SESSION_MODULE=0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74  # ✅ P0.12 增强 Session 模块（2026-08-07 ABI 修复重部署，§7.5/§7.6）
-AA_OXACHAIN_BUNDLERS=http://43.159.60.46:4338  # ✅ 自建 Alto（2026-08-07），安全组放行后外部可用
+AA_OXACHAIN_BUNDLERS=http://43.156.78.59:4338  # ✅ 自建 Alto（2026-08-19 迁移，原 43.159.60.46 随 AgentX 系统盘丢失；infraX 通用服务）
 AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134  # ✅ 自建 verifying paymaster signer（2026-08-16，aa-paymaster :9134）
 ```
 

@@ -2034,3 +2034,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - **GX-3.5 扩展数据面试点**：`FundingRateAdapter`（crypto 衍生品情绪）+ `DefiTvlAdapter`（tvl/change_24h/dominance）+ `MoomooShortAttributeInjector`（卖空/资金流）；data-service `CryptoFactorsCollector`（300s 周期 → db_cache）+ `/factors/crypto-derivatives` 端点。
 >   - 生产验证：`/factors/crypto-derivatives?symbols=BTC,ETH,SOL,XRP` 4/4 真实数据（funding_rate 3.65e-05 / open_interest 6.86e9 / long_short_ratio 1.48 等）；`/snapshots?type=tvl` 可用；Coinglass 无 key 时 Binance 兜底降级正常。
 > - 关键修复：market_data 子模块拆分后 `__init__.py` 缺失 `_core_patch`（`MarketDataCollector.__init__`/`_crypto_metric_cache` 未挂载 → crypto 采集 AttributeError）；`APIKeys` 补 COINGLASS/CRYPTOQUANT 类属性。均已本地验证 + 生产复验。
+>
+> **AA Bundler 迁移与恢复（Alto，2026-08-19，完成）**：
+> - **背景**：原自建 Alto Bundler 部署于 AgentX 机 `43.159.60.46:4338`（`/opt/pocketx`，MQ-10 E-1 登记）。AgentX 侧重建系统盘后 `/opt/pocketx` 随盘丢失 → bundler 服务不可用（AgentX 提交的需求）
+> - **架构决策（用户裁定 2026-08-19）**：Bundler 属**通用服务**，**所有权与维护责任归 infraX**，部署于 infraX 服务器（`43.156.78.59:4338`，与 ragservicer 同机，腾讯云安全组已放行）；AgentX 等 B 端**仅通过 relay/SDK 调用**，不直接管理
+> - **重建内容**：① alto **v1.2.8** git clone + pnpm build（contracts 9 合约 + src 编译通过）；② **SafeValidator 补丁**重新应用（`DelegateAndRevert` 解码 + `validationResultParamV7`，编译产物 `src/esm/rpc/validation/SafeValidator.js` 已验证含补丁）；③ node 18.19.1 → **20.20.2** 升级（alto 产物依赖 `import attributes` 语法）+ pnpm 8.15.4；④ **新执行钱包 `0xF434e5254C4a4DD314F1e80087FBC54533065c8B`**（utility=executor 同 key，beneficiary 退款回流）；⑤ `.env`（chmod 600）：RPC `https://rpc-oxa.0xainet.top`、EntryPoint v0.7 `0x97e4cddc...`、4 个 simulations 合约地址显式传入 + `ALTO_DEPLOY_SIMULATIONS_CONTRACT=false`、`ALTO_BLOCK_TIME=31000`、port 4338；⑥ pm2 进程 `pocketx-alto`（active，监听 4338）
+> - **验证**：`eth_supportedEntryPoints` → `0x97e4cddc...` ✅；`eth_chainId` → `0x4c31` ✅；`pimlico_getUserOperationGasPrice` → 1 gwei ✅；构造无效签名 UserOp 走模拟 → 返回标准 ERC-4337 错误 `AA30 paymaster not deployed`（补丁生效、模拟解码正常，非 500）✅
+> - **中转资金**：测试钱包 `0xd8e2cf...`（= `AA_DEPLOYER_PRIVATE_KEY`，46 网关 .env）转 **5 OXA** 至执行钱包（tx `0x4ea0da4e...`，块 `0x1d48d`，余额 5 OXA）；余额用于 bundler 广播 tx 周转，EntryPoint beneficiary 退款回流
+> - **relay 变更**：data 机 `AA_OXACHAIN_BUNDLERS` `http://43.159.60.46:4338` → **`http://43.156.78.59:4338`**（`infrax-aa-relay.service`，daemon-reload + restart active）；`AA_OXACHAIN_KERNEL_VERSION=0.3.0-beta`/escrow/paymaster 配置全部保留；163.105 → 78.59:4338 公网连通验证 ✅
+> - **遗留**：① escrow 充值路径设计（§5，待落地，用户自充 gas 方向已确认）；② AgentX 侧全链路回归（§6，AgentX 执行：alipay/无 gas 等场景重跑 E2E）；③ 旧机 60.46 `pocketx` 目录已丢失无需清理
