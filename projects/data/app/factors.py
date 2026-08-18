@@ -36,11 +36,14 @@ _BUILTIN = [
     {"id": "ma_20", "name": "MA(20)", "category": "technical", "type": "float", "range": None, "description": "20 周期简单移动平均", "unit": None},
     # -- macro (from external APIs, stored in raw_snapshots) --
     {"id": "vix", "name": "VIX Volatility", "category": "macro", "type": "float", "range": [0, None], "description": "CBOE VIX 波动率指数（市场恐慌度）", "unit": None},
+    {"id": "vxn", "name": "CBOE VXN", "category": "macro", "type": "float", "range": [0, None], "description": "CBOE 纳指 100 波动率指数", "unit": None},
+    {"id": "gvz", "name": "CBOE GVZ", "category": "macro", "type": "float", "range": [0, None], "description": "CBOE 黄金波动率指数", "unit": None},
     {"id": "dxy", "name": "US Dollar Index", "category": "macro", "type": "float", "range": [50, 150], "description": "美元指数（兑一篮子货币强弱）", "unit": None},
     {"id": "us10y", "name": "US 10Y Yield", "category": "macro", "type": "float", "range": [0, 10], "description": "美国 10 年期国债收益率", "unit": "%"},
     # -- sentiment (from external APIs) --
     {"id": "fear_greed", "name": "Fear & Greed Index", "category": "sentiment", "type": "int", "range": [0, 100], "description": "恐惧与贪婪指数（0 极度恐惧 - 100 极度贪婪）", "unit": None},
     {"id": "sentiment_score", "name": "News Sentiment Score", "category": "sentiment", "type": "float", "range": [-1, 1], "description": "新闻情绪得分（-1 负面 - 1 正面）", "unit": None},
+    {"id": "put_call_ratio", "name": "Put/Call Ratio", "category": "sentiment", "type": "float", "range": [0, None], "description": "期权认沽认购比（>1 偏空；含 interpretation/level 解读）", "unit": None},
     # -- onchain --
     {"id": "btc_difficulty", "name": "BTC Mining Difficulty", "category": "onchain", "type": "float", "range": [0, None], "description": "BTC 挖矿难度", "unit": "T"},
     {"id": "btc_hashrate", "name": "BTC Hashrate", "category": "onchain", "type": "float", "range": [0, None], "description": "BTC 全网算力", "unit": "EH/s"},
@@ -152,7 +155,7 @@ def get_catalog() -> list[dict]:
 # ─── Category → provider/data_type mapping ─────────────
 
 _CATEGORY_MAP = {
-    "external":   [("sentiment", "fear_greed"), ("macro", "vix"), ("macro", "dxy"), ("macro", "us10y")],
+    "external":   [("sentiment", "fear_greed"), ("macro", "vix"), ("volatility", "volatility"), ("macro", "dxy"), ("macro", "us10y"), ("sentiment", "sentiment_score"), ("sentiment", "put_call_ratio")],
     "sentiment":  [
         ("sentiment", "yield_curve"), ("sentiment", "put_call_ratio"),
         ("sentiment", "adanos_sentiment"), ("sentiment", "sentiment_score"),
@@ -272,6 +275,16 @@ def get_current_factors(
         except (json.JSONDecodeError, TypeError):
             continue
         if not data:
+            continue
+
+        # Compound snapshot → simple factors: volatility → vxn/gvz（PRD Arbitrage §2.1）
+        if fid == "volatility":
+            for sub in ("vxn", "gvz"):
+                if isinstance(data.get(sub), (int, float)):
+                    val = round(data[sub], 6)
+                    _track(sub, now_ms - (fetched or 0))
+                    for sym in target:
+                        result[sym][sub] = val
             continue
 
         # Simple numeric factors → map to each target symbol
