@@ -20,6 +20,21 @@
 
 ---
 
+## 0.1 因子端口全景（勿只认 `/factors/catalog`）
+
+| 端口 | 内容 | 用途 |
+|---|---|---|
+| `/factors/catalog` | **固定因子目录 49 个**（31 内置/ML + 18 graph，静态） | 字段名 / 单位 / 取值范围查阅 |
+| `/factors/current` | **最新因子值**（category 过滤）；附 `ml_factory`（挖掘因子）、`graph`、`_complex`（news / put_call_ratio） | 实时展示 / 决策 |
+| `/factors/history` | 逐 bar 因子时序（对齐 /bars ts） | 回测 |
+| `/factors/graph` + `/factors/graph/edges` | 语义图谱因子（gf_*）+ 相关性图边 | 图谱联动 / 传导分析 |
+| `/ml/predictions` | ML 预测快照明细（model=bolt/moirai/timesfm） | 模型明细核对 |
+| 因子工厂 MCP（:3014）/ `/factor-factory/*` | 挖掘任务编排（start/status/result/list/cancel） | 因子挖掘（平台侧） |
+
+> ⚠️ **因子工厂挖掘因子不在 `/factors/catalog`**（catalog 只含内置/ML/graph 固定因子）：激活因子列表与实时值一律走 `/factors/current` 的 `ml_factory`（`factors`=激活列表、`values`=各 symbol 实时值，随每日挖掘动态增减）。
+
+---
+
 ## 1. 开放问题 1：新闻标题流 —— ✅ 我方提供
 
 **非仅情绪因子，提供真实标题/摘要列表**（替换 B 端 mock）。

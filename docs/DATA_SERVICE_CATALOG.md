@@ -112,6 +112,19 @@
 
 ## 3. 因子与快照数据（infrax-data）
 
+> **因子端口全景（B 端必读，2026-08-19）**：因子分散在多个端口，按用途取用，勿只认一个：
+
+| 端口 | 内容 | 用途 |
+|---|---|---|
+| `/factors/catalog` | **固定因子目录 49 个**（31 内置/ML + 18 graph，静态清单） | 因子字段名 / 单位 / 取值范围查阅 |
+| `/factors/current` | **最新因子值**（symbol 维度，category 过滤）；附 `ml_factory`（挖掘因子）、`graph`（图谱因子）、`_complex`（news / put_call_ratio 等复合结构） | 实时展示 / 决策 |
+| `/factors/history` | 逐 bar 因子时序（对齐 /bars ts） | 回测 |
+| `/factors/graph` + `/factors/graph/edges` | 语义图谱因子（gf_*）+ 相关性图边 | 图谱联动 / 传导分析 |
+| `/ml/predictions` | ML 预测快照明细（model=bolt/moirai/timesfm） | 模型明细核对 |
+| 因子工厂 MCP（:3014）/ `/factor-factory/*` | 挖掘任务编排（factor_factory_start/status/result/list/cancel） | 因子挖掘（平台侧） |
+
+> ⚠️ **因子工厂挖掘因子不进 `/factors/catalog`**（catalog 只含内置/ML/graph 固定因子）：激活因子列表经 `/factors/current` 的 `ml_factory.factors` 查询、实时值经 `ml_factory.values`；inactive 因子不对外。挖掘/激活/停用生命周期见 §3.4。
+
 ### 3.1 因子端点（DS-2）
 
 | 端点 | 返回 |
@@ -139,7 +152,7 @@
 | `description` | 中文语义描述（新增 2026-08-07，下游展示用） |
 | `unit` | 单位：`%`（us10y）、`T`（btc_difficulty）、`EH/s`（btc_hashrate）；价格/概率/方向/指数类为 `null`（新增 2026-08-07） |
 
-**因子清单（31 个）**（catalog 另含 18 个 graph 因子，全量 **49**，见 §6）：
+**因子清单（31 个）**（catalog 另含 18 个 graph 因子，全量 **49**，见 §6；**因子工厂挖掘因子不在 catalog**，见 §3 端口全景与 §3.4）：
 
 - **technical（11）**：`rsi_14`、`macd`、`macd_signal`、`macd_hist`、`bb_upper`、`bb_middle`、`bb_lower`、`atr_14`、`ma_5`、`ma_10`、`ma_20`（kline_store 自动计算，与 bar 同源）
 - **macro（5）**：`vix`、`vxn`、`gvz`、`dxy`、`us10y`（unit=`%`）
