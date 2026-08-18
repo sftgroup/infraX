@@ -1924,6 +1924,13 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 > **GF-1.5 执行结果（2026-08-19 凌晨）**：向量重建完成。①全量核查：text chunks 1035 vs vdb 709，缺失 328（defi 239 + onchain 79 + other 10）；②重嵌入：dashscope `text-embedding-v4`（batch 上限 10，>10 报 400 InvalidParameter），NanoVectorDB 增量 upsert，修复后 vdb 1037 / still_missing=0（vector=base64(zlib(float16)) 1024d 格式对齐）；③残留索引清理：实体/关系 chunk 索引引用 6 个已删除 chunk id（e2e.txt 等清洗遗留，非向量缺失）→ 从 entity_chunks/relation_chunks 移除 93 条引用（48+45，relation count 同步）；④验证：`/api/v1/namespaces/market/retrieve` 命中 Arbitrum/DeFi TVL/BTC 上下文，日志 `data inconsistency` 计数归零，检索不再 fallback WEIGHT。备份：vdb_chunks.bak.json / entity_chunks.bak.json / relation_chunks.bak.json（/tmp）。
 > **GF-1.5 补充（检索稳定性回归，2026-08-19）**：服务重启后压测 10/10 串行 + 8/8 并发全部 200，响应 0.3~5s（cache 命中）；查日志仍有 2 个残留 chunk id（`onchain:checkpoints...2030` / `onchain:btc_transfers...1534`）——根因是 **graphml 图存储节点 `source_id`**（d3 属性，`&lt;SEP&gt;` 分隔）也引用已删除 chunk，且 **vdb_entities/vdb_relationships 的 `source_id` 同样需清理**（查询实体节点数据来自图存储，非 entity_chunks 文件）。处理：vdb_entities 清 28 行/32 id、vdb_relationships 清 22 行/22 id、graphml 清 28 处引用，重启后 `data inconsistency` 完全归零（仅剩 rerank 未配置/development server 无害提示）；误触发的 admin/market 空实例已删除。备份：vdb_entities.bak.json / graph_chunk_entity_relation.bak.graphml（/tmp）。
+> **GF-1.5 残留 chunk id 修复清单（已修复 ✅，2026-08-19）**：以下 6 个 chunk id 已从 text/vdb 删除但残留于 graphml（28 处）、vdb_entities（32 处）、vdb_relationships（22 处）、entity_chunks/relation_chunks（93 处）索引引用，**全部清除完毕**，检索日志 `data inconsistency` 归零：
+> - `onchain:checkpoints:daily:20260805T2030-chunk-000`（清洗遗留，日志最后一次报错 item）
+> - `onchain:btc_transfers:daily:20260805T1534-chunk-000`（清洗遗留）
+> - `onchain:btc:daily:20260805T1532-chunk-000`（清洗遗留）
+> - `okx:market:daily:20260805T2032-chunk-000`（清洗遗留）
+> - `defi:tvl:Polygon:20260807T1336-chunk-000`（清洗遗留）
+> - `e2e.txt-chunk-000`（e2e 测试文档残留）
 
 > **GF-2 执行拆分（图谱检索回归）**：
 > - GF-2.1 回归用例集：定义标准查询集（BTC/ETH/宏观/情绪/政策 ≥10 条），记录修复前基线（no-context 率）
