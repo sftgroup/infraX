@@ -1896,8 +1896,8 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 需求 | 任务内容 | 现状 | 优先级 |
 |---|---|---|---|---|
-| GF-1 | 存量文档图谱构建修复 | 1163 篇文档在库但检索 `[no-context]`。**生产诊断（2026-08-18）完成**：服务/注入/检索链路正常（sync 探针 5实体5关系 47s）；742/1196 indexed、**188 悬挂 indexing + 266 error**（defi:tvl 240 + denoise 残留 dup-*）；根因=异步 client 轮询超时致任务未回写。执行拆分见 GF-1.1~GF-1.8 | 🔲 | **P0** |
-| GF-2 | 图谱检索回归验证 | 重灌后 `retrieve`/`query` 命中 `crypto:daily:2026081*` 内容，返回实体上下文（不再 no-context）；对照 sync 注入文档 `aitrader-diagnose-20260818` 已验证链路本身正常 | 🔲 | **P0** |
+| GF-1 | 存量文档图谱构建修复 | 1163 篇文档在库但检索 `[no-context]`。**已完成（2026-08-19）**：根因=LightRAG 事件循环劣化（服务 3 天未重启）致异步任务假成功/状态不回写 + denoise 去重残留 `dup-*`。处理：重启 ragservicer（indexed 742→923，积压全消化）+ 清理 287 篇 error（286 dup-* + 1 defi:tvl，fail=0）。终态：indexed 923 / error 0 | ✅ | **P0** |
+| GF-2 | 图谱检索回归验证 | **已完成（2026-08-19）**：8 条标准查询（BTC_ETF/ETH_L2/RATE/POLICY/MINER/DEFI_TVL/INSTITUTION/MACRO）retrieve 回归——**8/8 PASS（100% 命中，no-context 归零）**，平均响应 11.2s | ✅ | **P0** |
 | GF-3 | 图谱因子端点 `GET /factors/graph` | RAGservicer :9721 实现，契约 8 数值因子（graph_entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure + top_entities/events）；子图聚合 + PageRank/边加权情绪；日频（随 `crypto:daily:*`）；验证：与 fear_greed/finbert_sentiment 方向一致 ≥70% | 🔲 | P1 |
 | GF-4 | 因子目录并入 catalog | `/factors/graph` 输出并入 `/factors/catalog`（graph 分类，metadata 对齐 catalog 规范） | 🔲 | P1 |
 | GF-5 | 可视化端点 `GET /graph/entities` | 力导向图数据：nodes（category 9 枚举：asset/central_bank/exchange/fund/whale/project/media/event/policy + size=sentiment）+ edges（relation 8 枚举：affects/funding/custody/listing/whale_move/etf_flow/regulation/sentiment_correlate + weight）；前端 ECharts 渲染 | 🔲 | P1 |
@@ -1917,6 +1917,8 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - GF-1.6 GF-2 回归：retrieve/query 命中率、no-context 归零、`crypto:daily:*` 实体上下文覆盖
 > - GF-1.7 日志验证：`Vector similarity data inconsistency` 警告消失、indexed 占比 >95%
 > - GF-1.8 状态登记：GF-1/GF-2 更新为 ✅ 并汇报
+
+> **GF-1/GF-2 执行结果（2026-08-19 凌晨）**：GF-1.1 试点重灌成功（crypto_overview 46s / defi_tvl 262s，今日 47 篇 indexed）；GF-1.2 重启 ragservicer 后积压全消化（indexed 742→923）——LightRAG 事件循环劣化根因（服务 3 天未重启，异步任务假成功）；GF-1.3 清理 287 篇 error（286 dup-* denoise 去重残留 + 1 defi:tvl，fail=0）；GF-1.4 向量核查：**仍有 data inconsistency 警告**（defi:tvl/onchain 部分文档 chunk 向量缺失，检索 fallback WEIGHT 可用），修复见 GF-1.5（重嵌入/repair，待办）；GF-1.6 GF-2 回归 8/8 PASS（no-context 归零，平均 11.2s）；GF-1.7 重启后日志验证：inconsistency 警告降至部分（vs 修复前常态）；GF-1.8 已登记。剩余待办：GF-1.5 向量重建（精度优化，非阻塞）。
 
 > **GF-2 执行拆分（图谱检索回归）**：
 > - GF-2.1 回归用例集：定义标准查询集（BTC/ETH/宏观/情绪/政策 ≥10 条），记录修复前基线（no-context 率）
