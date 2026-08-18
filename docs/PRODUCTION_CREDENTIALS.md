@@ -144,15 +144,19 @@
 > - 签发：生产机 78.59 `PYTHONPATH=. .venv/bin/python3 -c "from tenants.manager import create_tenant, generate_api_key; ..."`（需先 `load_config()` + `load_dotenv('.env')`）
 > - 验证：`/api/v1/factors/graph?symbol=BTC`（8 因子真实返回）/ `/api/v1/factors/catalog` / `/api/v1/graph/entities` 无 key 401、带 key 200；`/api/v1/namespaces/market/documents` 200
 >
-> **因子双轨收敛（2026-08-19，统一入口 + 旧 key 吊销）**：
+> **因子双轨收敛（2026-08-19，统一入口 + key 定位收窄）**：
 > - **背景**：语义图谱因子（ragservicer `/api/v1/factors/graph`，`lr_*` key）与 data-service 统一因子通道（`/factors/current`，`dx_*` key）此前双轨并行，B 端需分别持有 lr_*/dx_* 两类 key，调用方（尤其 AItrader）持有多个 key 易混乱。
-> - **收敛方案（用户裁定）**：语义图谱因子迁入 data-service **统一入口 `GET /factors/graph`**；data-service 内部持 ragservicer **default 租户服务 key** 透传，B 端**只需一个 data-service key（dx_*）即可消费全部因子**，无需再持有 ragservicer lr_* key。
-> - **data-service 内部服务 key（服务间鉴权专用，禁止外发）**：`data-service-internal`（default 租户）｜ `lr_16c4aa5d708348478b7b0365ec6dbd42303f8ca3147ac460`（永不过期；data 机 `.env` `RAGSERVICER_BASE_URL=http://43.156.78.59:9721` + `RAGSERVICER_SERVICE_KEY`）
-> - **旧 key 吊销记录（均 active=0，B 端调用已失效）**：
+> - **业务原则（用户裁定 2026-08-19）**：`lr_*` key **仅用于 ragservicer 文档写入 + 信息读取**（LightRAG 本职：documents 注入/列表、query/retrieve 检索、graph/entities 可视化数据）；**因子一律走 data-service `dx_*` key**（含语义图谱因子，统一入口 `/factors/graph`）。
+> - **统一入口**：data-service `GET /factors/graph?symbols=...`（B 端持 dx_* key）；data-service 内部经 ragservicer 服务 key 透传，B 端无需再持有 ragservicer 因子访问权。
+> - **ragservicer 因子端点锁服务间（commit `4e30aa1`）**：`/factors/graph`、`/factors/catalog` 仅允许 `RAGSERVICER_FACTOR_KEYS` 白名单内服务 key（`require_service`，非白名单 403）；`/graph/entities` 归读取信息，B 端 lr_ key 可用。
+> - **data-service 内部服务 key（服务间鉴权专用，禁止外发）**：`data-service-internal`（default 租户）｜ `lr_16c4aa5d708348478b7b0365ec6dbd42303f8ca3147ac460`（永不过期；ragservicer 机 .env `RAGSERVICER_FACTOR_KEYS`；data 机 .env `RAGSERVICER_BASE_URL=http://43.156.78.59:9721` + `RAGSERVICER_SERVICE_KEY`）
+> - **全部 B 端 lr_ key 已吊销（均 active=0，B 端调用已失效）**：
 >   - aitrader `prod`：`lr_db9f5e4c04bbffa88b46b98990805f7580d48a8a8dad5e45`（key_3f10effdd05ad073，2026-08-05 初始化，2026-08-19 吊销）
+>   - aitrader `aitrader-main`：`lr_a1a683d4…`（key_02f482602dec64a1，2026-08-19 吊销）
 >   - aihunter-saas `prod`：`lr_db0c2ac4c…`（key_eff09eb7e0a2d0fe，原有效至 2027-08-05，2026-08-19 吊销）
-> - **保留未吊销**：AItrader 专用 `lr_a1a683d4…`（aitrader-main）与 AIHunter SaaS `lr_09ef21e9…`（aihunter-saas-main）作为 B 端**备用图谱直连 key**（绕过 data-service 直连 ragservicer 时可用）；**推荐统一走 data-service `/factors/graph`**（数据面一致、单 key 单入口）。
-> - 生产部署与验证：data 机 163.105 `git pull` + `.env` 追加上述两变量 → `systemctl restart infrax-data`（active）；`GET /factors/graph?symbols=BTC,ETH` 无 key 401 / 带 dx_* key 200（8 因子真实返回 + catalog），服务日志无新增报错。
+>   - aihunter-saas `aihunter-saas-main`：`lr_09ef21e9…`（key_b6292b198082c2c8，2026-08-19 吊销）
+> - **后续**：B 端若有文档写入/检索/图谱可视化（graph/entities）需求，**按需重新申请 lr_ key**（签发方式同上）；因子消费仅需已有 dx_* key。
+> - 生产部署与验证：data 机 163.105 `git pull` + `.env` 追加上述两变量 → `systemctl restart infrax-data`（active）；ragservicer 机 78.59 部署 commit `4e30aa1` 三文件 + `.env` 追加 `RAGSERVICER_FACTOR_KEYS` → 重启 active。实测：服务 key → `/factors/graph` 200；B 端 lr_ key → `/factors/graph`/`/factors/catalog` 403；`/graph/entities`/documents → 200（吊销前）；吊销后 B 端 lr_ key 全 401；data-service `/factors/graph` 透传 200（8 因子 + catalog）。
 
 ---
 

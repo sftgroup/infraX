@@ -2055,3 +2055,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - **key 治理（立即吊销旧 key）**：吊销 aitrader `prod` `lr_db9f5e4c04bbffa88b46b98990805f7580d48a8a8dad5e45`（key_3f10effdd05ad073）与 aihunter-saas `prod` `lr_db0c2ac4c…`（key_eff09eb7e0a2d0fe），均 active=0；保留 data-service-internal（内部透传，禁外发）+ aitrader-main/aihunter-saas-main（B 端备用直连）。B 端最终 key 由用户转发（见 PRODUCTION_CREDENTIALS §7）
 > - **验证**：`GET /factors/graph?symbols=BTC,ETH` 无 key 401 / 带 dx_* key 200 → 8 因子真实返回（BTC graph_centrality=0.0165/graph_entity_count=205/graph_sentiment=0.2314/graph_momentum_affinity=-0.8426 等）+ catalog；服务日志无新增报错
 > - **遗留**：B 端（AItrader/AIHunter SaaS）确认是否迁移至 data-service key 消费 `/factors/graph`（备用 lr_* 直连 key 保留但非推荐）
+
+> **因子通道收敛·第二轮（2026-08-19，key 定位收窄：lr_ 仅文档，因子全走 dx_）**：
+> - **用户裁定**：业务逻辑上 `lr_*` key 应只用作 LightRAG 微服务**文档写入 + 信息读取**；**因子一律走 data-service `dx_*` key**。此前把 aitrader-main / aihunter-saas-main 定义为"B 端备用图谱直连 key"与原则冲突。
+> - **代码（commit `4e30aa1`）**：ragservicer `api/auth.py` 新增 `require_service` 装饰器（请求 key 必须在 `RAGSERVICER_FACTOR_KEYS` 白名单内，否则 403）；`routes/factors.py` `/factors/graph` + `/factors/catalog` 改用 `require_service`；`config.py` ServerConfig 新增 `factor_service_keys`（env `RAGSERVICER_FACTOR_KEYS`）；`/graph/entities` 归读取信息保留 `require_tenant`（B 端 lr_ key 可用）。
+> - **生产部署（78.59）**：scp 3 文件（MD5 全对齐，原文件 .bak.20260819 备份）+ `.env` 追加 `RAGSERVICER_FACTOR_KEYS=lr_16c4aa5d…`（data-service-internal 服务 key）→ `systemctl restart infrax-ragservicer` active。
+> - **验证（吊销前）**：服务 key → `/factors/graph`/`/factors/catalog` 200；B 端 lr_ key → 因子端点 **403**（`Service-level key required for factor endpoints`）、`/graph/entities` 200、documents 200；无 key 401。
+> - **key 治理（全吊销）**：`aitrader-main`（key_02f482602dec64a1）、`aihunter-saas-main`（key_b6292b198082c2c8）吊销 active=0；连同此前 aitrader prod / aihunter-saas prod，**B 端已无任何 ragservicer lr_ key**。
+> - **复验（吊销后）**：已吊销 key 全 401；服务 key 因子端点 200；**data-service `/factors/graph` 透传 200**（8 因子 + catalog，dx_* key 消费，用户可见链路正常）。
+> - **后续**：B 端文档写入/检索/图谱可视化需求按需**重新申请 lr_ key**；因子消费仅需已有 dx_* key（见 PRODUCTION_CREDENTIALS §7）。
