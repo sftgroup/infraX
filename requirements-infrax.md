@@ -3,6 +3,7 @@
 - 日期：2026-08-17
 - 接收方：B 端数据服务（infraX，43.163.105.172）
 - 来源：生产环境全量测试（28 用例）+ 市场状态页数据排查
+- **版本封版：2026-08-18 infraX v0.6.0**（data-service：REQ-1/REQ-2 实现 + 快照截断修复，生产已生效；配套 `infra-data-client` PyPI 0.2.0）
 
 ---
 
@@ -23,9 +24,9 @@
 
 ---
 
-## 二、待处理需求
+## 二、已完成修复（2026-08-18 infraX v0.6.0 封版上线）
 
-### REQ-1【高】K 线数据整体缺失（/bars 全周期 count:0）
+### REQ-1【高】K 线数据整体缺失（/bars 全周期 count:0）【已完成】
 
 - **根因**（2026-08-18 定位）：采集配置（`KL_SYMBOLS`/`KL_SWAP_SYMBOLS`）仅含 **USDT 对**（BTC/USDT、ETH/USDT、SOL/USDT），**从未采集 USDC 对** → B 端所用 `BTC/USDC`、`ETH/USDC` 全部周期 `count: 0`（USDT 对数据一直齐全且实时，非采集链路中断）。
 - **修复**（2026-08-18 已上线）：经 `PUT /admin/symbols` 将 `BTC/USDC`、`ETH/USDC` 加入 crypto（spot）与 swap 采集（运行时热更新 + `.env` 持久化，无需重启）；binance 原生支持该两对（ccxt 实测可拉取）。生产已验证回填深度：1d 1095 根 / 4h 2185 根 / 1h 8576 根 / 30m 8640 根 / 15m 17280 根 / 5m 51840 根 / 1m 43200 根（spot 与 swap 均达标）。
@@ -34,7 +35,7 @@
 - **期望**：恢复 kline 采集，BTC/ETH 各周期至少 500 根（1D 约 2 年）。
 - **验收**：`count >= 500` 且 `bars` 非空；连续 5 次采样（间隔 1h）均稳定。
 
-### REQ-2【中】热力图覆盖扩展：crypto-only → 全市场
+### REQ-2【中】热力图覆盖扩展：crypto-only → 全市场【已完成】
 
 - **现状**：`heatmap` 仅覆盖加密货币（8 类板块、每类 30 个 token，CoinGecko 免费源，30 req/min 限额）。
 - **原因**：生成器注释明确 Yahoo/Finnhub/Stooq 无 key 不可靠，故降级 crypto-only；但 `.env` 已配置 `FINNHUB_API_KEY` / `TWELVE_DATA_API_KEY` / `ALPHA_VANTAGE_KEY`，未在 heatmap 中启用。
@@ -66,6 +67,6 @@
 
 | 编号 | 需求 | 优先级 | 状态 |
 | ---- | ---- | ---- | ---- |
-| 1.1 | /snapshots 截断修复正式合入 | 高 | 已修复，待合入 |
-| REQ-1 | K 线数据整体缺失（/bars 全周期 count:0） | 高 | 已修复（2026-08-18 补采 USDC 对） |
-| REQ-2 | 热力图全市场覆盖（付费源启用） | 中 | 已上线（2026-08-18，commodities 部分受限于 yfinance/TD 限流，解封后自愈） |
+| 1.1 | /snapshots 截断修复正式合入 | 高 | ✅ 已合入（v0.6.0 附带修复） |
+| REQ-1 | K 线数据整体缺失（/bars 全周期 count:0） | 高 | ✅ 已完成（v0.6.0 封版，USDC 对补采） |
+| REQ-2 | 热力图全市场覆盖（付费源启用） | 中 | ✅ 已完成（v0.6.0 封版；commodities 部分受限于 yfinance/TD 限流，解封后自愈） |
