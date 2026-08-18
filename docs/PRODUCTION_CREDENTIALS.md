@@ -168,10 +168,10 @@
 |---|---|---|---|---|
 | arbitrage | data | `dx_7ee2af1fc6612bd3bf85a65b12b6492c881d86e8d6699e45` | 600/min | **Arbitrage 套利平台**（PRD arbitrage-data-requirements，2026-08-19 签发；公网实测 external/ml/calendar/bars 全 200） |
 | aitrader | data | `dx_9aa40733d144d972cc4df864d09c67e44d648b175cbb783e` | — | AItrader B 端（2026-08-19 用户提供明文，公网实测 200） |
-| aihunter-saas | data | `dx_…`（**待用户提供明文**） | — | AIHunter SaaS B 端 |
+| aihunter-saas | data | `dx_6d2a2d1c3932d2432e4c8c841ee0f5798b3b068f7109e870` | 600/min | AIHunter SaaS B 端（**2026-08-19 重新签发**替换历史 key，id=34，公网实测 200） |
 | aiservicer | data | `dx_9e9f2c585ed14dcd0d750d5f907ec29bb2574b1f693c586a` | — | 服务侧 bridge（2026-08-19 用户提供明文，公网实测 200） |
 
-> 说明：`dx_*` 完整明文只在签发响应 `data.api_key` 中返回一次，库中仅存 hash；arbitrage 为新签（明文完整）、aitrader/aiservicer 为历史签发（2026-08-19 用户提供明文补齐登记）、aihunter-saas 待用户提供。核对用 `GET /admin/api-keys`（掩码）或 `GET /api-keys/verify`。
+> 说明：`dx_*` 完整明文只在签发响应 `data.api_key` 中返回一次，库中仅存 hash；arbitrage/aihunter-saas 为平台侧新签（明文完整）、aitrader/aiservicer 为历史签发（2026-08-19 用户提供明文补齐登记）。核对用 `GET /admin/api-keys`（掩码）或 `GET /api-keys/verify`。
 
 ---
 
