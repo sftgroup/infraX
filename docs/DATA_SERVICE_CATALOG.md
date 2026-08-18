@@ -139,13 +139,16 @@
 | `description` | 中文语义描述（新增 2026-08-07，下游展示用） |
 | `unit` | 单位：`%`（us10y）、`T`（btc_difficulty）、`EH/s`（btc_hashrate）；价格/概率/方向/指数类为 `null`（新增 2026-08-07） |
 
-**因子清单（28 个）**：
+**因子清单（32 个）**：
 
 - **technical（11）**：`rsi_14`、`macd`、`macd_signal`、`macd_hist`、`bb_upper`、`bb_middle`、`bb_lower`、`atr_14`、`ma_5`、`ma_10`、`ma_20`（kline_store 自动计算，与 bar 同源）
-- **macro（3）**：`vix`、`dxy`、`us10y`（unit=`%`）
-- **sentiment（2）**：`fear_greed`（int 0-100）、`sentiment_score`（float -1~1）
+- **macro（5）**：`vix`、`vxn`、`gvz`、`dxy`、`us10y`（unit=`%`）
+- **sentiment（3）**：`fear_greed`（int 0-100）、`sentiment_score`（float -1~1）、`put_call_ratio`（期权认沽认购比，`_complex` 内含 `value/level/signal/interpretation` 解读，2026-08-19 登记）
 - **onchain（2）**：`btc_difficulty`（unit=`T`）、`btc_hashrate`（unit=`EH/s`）
 - **ml（10，DS-13，来源 ml-service）**：`tree_direction` / `tree_prob_up`（LightGBM）、`finbert_sentiment`（FinBERT）、`consensus_score`、`bolt_direction` / `bolt_prob_up`、`moirai_direction` / `moirai_prob_up`、`timesfm_direction` / `timesfm_prob_up`（direction 数值化：up=1 / flat=0 / down=-1）
+
+> **external category 覆盖（2026-08-19，Arbitrage 套利平台 PRD §2.1）**：
+> `GET /factors/current?symbols=BTC&category=external` 返回 `vix` / `vxn` / `gvz` / `dxy` / `us10y` / `fear_greed` / `sentiment_score`（symbol 维度标量）+ `_complex.put_call_ratio`（含 `value/level/signal/interpretation`）。vxn/gvz 由 `volatility` 复合快照拆分，60s 级更新。
 
 > **宏观因子数据源（2026-08-14 更新，Yahoo 限流后全免费源）**：
 > - `dxy`：**frankfurter（ECB 参考汇率）按 DXY 标准公式计算**——`50.14348112 × EURUSD^-0.576 × USDJPY^0.136 × GBPUSD^-0.119 × USDCAD^0.091 × USDSEK^0.042 × USDCHF^0.036`（实测 99.9174 vs 市场 99.898，误差 <0.1%；**勿用 FRED DTWEXBGS**——广义贸易加权指数数值体系 ~119 与 NYB DXY ~99.9 不符）
