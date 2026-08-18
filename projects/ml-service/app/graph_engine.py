@@ -925,6 +925,11 @@ def _graph_embedding(G: nx.Graph, dims: int = _NODE2VEC_DIMS) -> dict[str, list[
 
 # ── 全图构建 ───────────────────────────────────────────────
 
+# 最近一次成功构建的图快照（供 /ml/graph/edges 数据面复用，保证与 gf_* 完全同口径；
+# REQ-G1：相关性图边表 nodes(community/pagerank/size) + edges(corr/weight)）
+_LAST_GRAPH: dict | None = None
+
+
 def _build_graph() -> dict | None:
     """组装全市场图并计算 18 个图因子（后台线程重算，结果由调用方缓存）。
 
@@ -1056,6 +1061,16 @@ def _build_graph() -> dict | None:
 
     if not values:
         return None
+    # 缓存图快照（REQ-G1 边表数据面复用；仅成功构建后更新，引用赋值原子）
+    global _LAST_GRAPH
+    _LAST_GRAPH = {
+        "G": G,
+        "universe": universe,
+        "community": community,
+        "pagerank": pagerank,
+        "ctx": ctx,
+        "updated_at": int(time.time() * 1000),
+    }
     logger.info(
         "graph built: nodes=%d edges=%d sectors=%s communities=%d values=%d",
         G.number_of_nodes(), G.number_of_edges(),
@@ -1075,3 +1090,84 @@ def compute_graph_payload() -> dict | None:
         logger.debug("graph engine unavailable: networkx missing")
         return None
     return _build_graph()
+
+
+def compute_graph_edges_payload(
+    symbols: list[str] | None = None,
+    window: int = 60,
+    min_abs_corr: float = 0.6,
+    limit: int = 300,
+) -> dict | None:
+    """相关性图边数据面（REQ-G1：/ml/graph/edges → data-service /factors/graph/edges）。
+
+    复用最近一次成功构建的图快照（_LAST_GRAPH），保证 nodes 的 community/pagerank
+    与 gf_community / gf_pagerank **完全同口径**（同一图、同一计算），
+    不做另起炉灶的重算。
+
+    返回 {"updated_at", "window", "min_abs_corr", "nodes": [{id,symbol,community,pagerank,size}],
+          "edges": [{source,target,corr,abs_corr,weight,kind}]}；快照未就绪返回 None。
+    window/min_abs_corr 为契约兼容参数（当前图按 GX-2 固定窗口/阈值构建，仅记录进 meta）。
+    """
+    if not _NX_OK or not _LAST_GRAPH:
+        logger.debug("graph edges unavailable: no graph snapshot yet")
+        return None
+    G = _LAST_GRAPH["G"]
+    universe = _LAST_GRAPH["universe"]
+    community = _LAST_GRAPH["community"]
+    pagerank = _LAST_GRAPH["pagerank"]
+
+    # nodes：全图（size = pagerank 归一化 ×100，与需求对齐）
+    nodes: list[dict] = []
+    for sym in universe:
+        pr = float(pagerank.get(sym) or 0.0)
+        nodes.append({
+            "id": sym,
+            "symbol": sym,
+            "community": community.get(sym),
+            "pagerank": _r(pr),
+            "size": _r(pr * 100, 1),
+        })
+
+    # edges：MultiGraph 平行边逐条输出（corr 边带 rho；非 corr 边 corr=图层权重）
+    edges: list[dict] = []
+    for u, v, key, d in G.edges(data=True, keys=True):
+        if u not in universe or v not in universe:
+            continue
+        rho = d.get("rho")
+        corr = float(rho) if rho is not None else float(d.get("weight", 1.0))
+        edges.append({
+            "source": u,
+            "target": v,
+            "corr": _r(corr),
+            "abs_corr": _r(abs(corr)),
+            "weight": _r(abs(corr)),
+            "kind": d.get("kind", key),
+        })
+
+    if not edges:
+        return None
+
+    # 按 abs_corr 降序截断（可视化优先级：强相关在前）
+    edges.sort(key=lambda e: e["abs_corr"] or 0.0, reverse=True)
+    if limit and limit > 0:
+        edges = edges[:limit]
+
+    # symbols 过滤：保留目标节点及其 1-hop 邻边
+    if symbols:
+        keep: set[str] = set()
+        for s in symbols:
+            n = _norm_symbol(s) if s in universe else s
+            keep.add(n)
+        edge_keep = [e for e in edges if e["source"] in keep or e["target"] in keep]
+        if edge_keep:
+            edges = edge_keep
+            edge_ids = {e["source"] for e in edges} | {e["target"] for e in edges}
+            nodes = [n for n in nodes if n["id"] in edge_ids or n["id"] in keep]
+
+    return {
+        "updated_at": _LAST_GRAPH["updated_at"],
+        "window": window,
+        "min_abs_corr": min_abs_corr,
+        "nodes": nodes,
+        "edges": edges,
+    }

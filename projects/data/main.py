@@ -401,6 +401,38 @@ async def factors_graph(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/factors/graph/edges")
+async def factors_graph_edges(
+    symbols: str = Query("", description="Comma-separated symbols; empty = full graph"),
+    limit: int = Query(300, ge=1, le=1000, description="Max edges"),
+):
+    """相关性图边数据面（REQ-G1，AIHunter 图谱展示，统一入口）。
+
+    ml-service GX-2 图（60 日 |ρ|≥0.6 动态边 + Louvain 社区 + PageRank）边表外露；
+    nodes 的 community/pagerank 与 /factors/current 的 gf_community/gf_pagerank
+    **完全同口径**（同一图快照）。B 端仅需 data-service dx_* key。
+    fail-silent：ml-service 未配置/图未就绪 → 空 nodes/edges + meta.warning。
+    """
+    try:
+        from app.ml_client import fetch_graph_edges
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        data = await asyncio.to_thread(
+            fetch_graph_edges, sym_list or None, limit=limit)
+        meta: dict = {"source": "ml-service", "window": 60, "min_abs_corr": 0.6}
+        if not data:
+            meta["warning"] = "graph edges unavailable"
+            return {"ts": int(time.time() * 1000), "meta": meta,
+                    "nodes": [], "edges": []}
+        meta["updated_at"] = data.get("updated_at", 0)
+        meta["window"] = data.get("window", 60)
+        meta["min_abs_corr"] = data.get("min_abs_corr", 0.6)
+        return {"ts": int(time.time() * 1000), "meta": meta,
+                "nodes": data.get("nodes", []), "edges": data.get("edges", [])}
+    except Exception as e:
+        logger.error(f"/factors/graph/edges failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Crypto Derivatives（GX-3.5.3 资金费率数据面，db_cache 读取） ──
 
 @app.get("/factors/crypto-derivatives")

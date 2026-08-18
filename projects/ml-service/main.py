@@ -651,6 +651,41 @@ def graph_catalog_endpoint():
         return {"code": 0, "message": "ok", "data": []}
 
 
+# REQ-G1：相关性图边数据面（AIHunter 图谱展示）
+# 契约（对齐 data-service app.ml_client.fetch_graph_edges）：
+#   GET /ml/graph/edges?symbols=BTC,ETH&window=60&min_abs_corr=0.6&limit=300
+#   → {"code":0,"data":{"updated_at","window","min_abs_corr","nodes":[...],"edges":[...]}}
+# 复用最近一次图构建快照（_LAST_GRAPH），community/pagerank 与 gf_* 同口径；
+# 快照未就绪返回空结构（fail-silent）。
+
+@app.get("/ml/graph/edges")
+def graph_edges_endpoint(
+    symbols: str = Query("", description="Comma-separated symbols; empty = full graph"),
+    window: int = Query(60, ge=1, le=365, description="corr window days (record only)"),
+    min_abs_corr: float = Query(0.6, ge=0.0, le=1.0, description="corr threshold (record only)"),
+    limit: int = Query(300, ge=1, le=1000, description="max edges"),
+):
+    """相关性图边表（nodes: community/pagerank/size；edges: corr/abs_corr/weight/kind）。
+
+    symbols 缺省返回全图（受 limit 约束）；提供 symbols 返回其节点与 1-hop 邻边。
+    """
+    empty = {"updated_at": _now_ms(), "window": window, "min_abs_corr": min_abs_corr,
+             "nodes": [], "edges": []}
+    try:
+        from app.graph_engine import compute_graph_edges_payload
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        payload = compute_graph_edges_payload(
+            symbols=sym_list or None, window=window,
+            min_abs_corr=min_abs_corr, limit=limit,
+        )
+        if not payload:
+            return {"code": 0, "message": "ok", "data": empty}
+        return {"code": 0, "message": "ok", "data": payload}
+    except Exception as exc:
+        logger.warning("graph edges failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": empty}
+
+
 # ── 宏观特征（FRED 历史趋势 + DXY/VIX/US10Y） ─────────────
 
 @app.get("/ml/macro_features")

@@ -161,6 +161,8 @@ _GRAPH_FACTORS_CACHE: dict = {}
 _GRAPH_FACTORS_CACHE_TTL_S = 60
 _GRAPH_CATALOG_CACHE: dict = {}
 _GRAPH_CATALOG_CACHE_TTL_S = 60
+_GRAPH_EDGES_CACHE: dict = {}
+_GRAPH_EDGES_CACHE_TTL_S = 300
 
 
 def fetch_graph_factors(symbols: list[str]) -> dict | None:
@@ -228,6 +230,44 @@ def fetch_graph_catalog() -> list | None:
         return None
     except Exception as exc:
         logger.debug("ml-service /ml/graph/catalog parse failed: %s", exc)
+        return None
+
+
+def fetch_graph_edges(symbols: list[str] | None = None, limit: int = 300) -> dict | None:
+    """拉取 ml-service 相关性图边表（/ml/graph/edges，REQ-G1）。
+
+    返回 {"updated_at", "window", "min_abs_corr", "nodes": [...], "edges": [...]}
+    或 None（fail-silent）。300s TTL 缓存，**按 symbols 集合键控**。
+    data-service /factors/graph/edges 将其透传给 B 端（AIHunter 图谱展示）。
+    """
+    global _GRAPH_EDGES_CACHE  # 函数内赋值 → 需显式 global
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return None
+    cache_key = ",".join(sorted(symbols)) if symbols else "_all"
+    now = time.time()
+    if (_GRAPH_EDGES_CACHE.get("key") == cache_key
+            and now - _GRAPH_EDGES_CACHE.get("ts", 0) < _GRAPH_EDGES_CACHE_TTL_S):
+        return _GRAPH_EDGES_CACHE.get("data")
+    try:
+        params: dict = {"limit": limit}
+        if symbols:
+            params["symbols"] = ",".join(symbols)
+        resp = requests.get(f"{base}/ml/graph/edges",
+                            params=params, headers=_headers(), timeout=30)
+        if resp.status_code != 200:
+            logger.debug("ml-service /ml/graph/edges → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict) or not data.get("edges"):
+            return None
+        _GRAPH_EDGES_CACHE = {"key": cache_key, "ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ml-service /ml/graph/edges request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service /ml/graph/edges parse failed: %s", exc)
         return None
 
 
