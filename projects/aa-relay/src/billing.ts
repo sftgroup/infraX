@@ -398,7 +398,7 @@ export function aaPlansInfo(): Record<string, unknown> {
     fees,
     topup: (aaChargeConfigured() || escrowMode)
       ? escrowMode
-        ? { method: 'escrow deposit', steps: [`向托管合约 ${AA_ESCROW.address} 存入原生资产（deposit()）`, '链上 balanceOf 即时生效', '可同时 POST 引擎 /payments/verify 入账索引（可选）'] }
+        ? { method: 'escrow depositFor', steps: [`主钱包 EOA 单笔 tx 调 depositFor(<智能账户地址>) 代充值（或账户自身 session key 调 deposit() 自付，需白名单含 escrow.deposit）`, `托管合约 ${AA_ESCROW.address}`, '链上 balanceOf 即时生效（REQ-2c：计费主体为智能账户，deposit() 记 msg.sender 到不了子账户名下）'] }
         : { method: 'x402 deposit', steps: [`向平台钱包 ${AA_PAYMENTS.platformAddress} 转入原生资产`, `调用引擎 POST ${AA_PAYMENTS.baseUrl}/payments/verify {txHash} 入账`, '余额自动计入智能账户对应的 ledger 账户'] }
       : { method: 'n/a', note: 'metered billing 未配置（开发环境免费）' },
   };
