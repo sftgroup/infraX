@@ -1,5 +1,6 @@
 """Market data collector — split into logical submodules."""
 from .core import MarketDataCollector
+from .core import _attach_methods as _core_patch
 
 from .price_kline import _attach_methods as _price_patch
 from .indicators import _attach_methods as _ind_patch
@@ -8,6 +9,7 @@ from .crypto import _attach_methods as _crypto_patch
 from .cache_external import _attach_methods as _cache_patch
 from .macro_news import _attach_methods as _macro_patch
 
+_core_patch(MarketDataCollector)
 _price_patch(MarketDataCollector)
 _ind_patch(MarketDataCollector)
 _fund_patch(MarketDataCollector)

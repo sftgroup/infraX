@@ -60,7 +60,9 @@ class CryptoFactorsCollector:
     def collect(self) -> int:
         """刷新一轮衍生品因子，返回成功落库的标的数量。"""
         try:
-            from app.market_data.crypto import MarketDataCollector
+            # 必须经 app.market_data 包导入：__init__.py 执行 _attach_methods
+            # 补丁（crypto/indicators/macro_news 等方法），子模块直接导入不生效
+            from app.market_data import MarketDataCollector
         except Exception as exc:  # 依赖缺失/import 链异常 → fail-silent
             logger.warning("CryptoFactorsCollector deps unavailable: %s", exc)
             return 0
