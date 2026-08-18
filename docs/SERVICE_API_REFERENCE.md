@@ -447,7 +447,7 @@ X-API-Key: rx_...
 ## 7.7 aa-relay 智能账户中继（:9131，`@0xinfrax/aa-sdk`，2026-08-12 补录）
 
 **功能**：ERC-4337 UserOp 中继（Kernel v3）+ 链上 session 管理 + Paymaster 代理 + AA 套餐计费。
-**鉴权**：✅ `AA_RELAY_API_KEY`（Bearer/X-API-Key/X-Service-Key）；公开豁免 `/health`、`GET /v1/plans`。
+**鉴权**：✅ `AA_RELAY_API_KEY`（Bearer/X-API-Key/X-Service-Key）；公开豁免仅 `/health`（`/v1/plans` 实测需 key，2026-08-19）。
 
 | 端点 | 方法 | 功能 |
 |---|---|---|
@@ -459,8 +459,10 @@ X-API-Key: rx_...
 | `/v1/session` | POST/GET | 创建/查询链上 session |
 | `/v1/session/disable` | POST | 禁用 session（enable 模式 → default 模式） |
 | `/v1/session/validate` | POST | 校验 session 有效性 |
-| `/v1/plans` | GET | AA 套餐价目（公开） |
-| `/v1/ledger-balance` | POST | 统一账本余额（body `{token}`） |
+| `/v1/plans` | GET | AA 套餐价目（需 key；escrow 模式含 `topup.method=escrow depositFor` 充值指引，REQ-2c） |
+| `/v1/ledger-balance` | POST | 智能账户余额（body `{account}`；escrow 模式读链上托管 + 资金总览 `funds{escrowWei, epDepositWei, nativeWei}`，REQ-2a/2b） |
+
+> **计费语义**（A-10 / OE-6）：预扣=固定费（`AA_USEROP_FEE_WEI` 默认 0.0001 OXA）+ 预估 gas；收据后按 actualGasCost 退差（refund/extra，广播失败全额退）。充值：主钱包 EOA 调 `InfraXEscrow.depositFor(子账户)` 单笔 tx 代充（REQ-1）。完整文档见 [AA_RELAY_BILLING.md](AA_RELAY_BILLING.md)。
 
 **调用样例**（2026-08-12 补）：
 

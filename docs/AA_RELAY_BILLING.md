@@ -81,7 +81,7 @@ AgentX 生产实测（2026-08-18/19）：
 
 | 端点 | 鉴权 | 说明 |
 |---|---|---|
-| `GET /v1/plans` | 公开 | 价目/模式/充值指引（`aaPlansInfo`） |
+| `GET /v1/plans` | `AA_RELAY_API_KEY`（实测需 key，2026-08-19） | 价目/模式/充值指引（`aaPlansInfo`） |
 | `POST /v1/ledger-balance` | `AA_RELAY_API_KEY` | 余额 + 资金总览（REQ-2b） |
 | `POST /v1/userops` | `AA_RELAY_API_KEY` | UserOp 广播（同步/异步） |
 | `GET /v1/userops/:hash` | `AA_RELAY_API_KEY` | 收据/状态轮询 |
