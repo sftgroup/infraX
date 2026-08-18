@@ -117,8 +117,8 @@ curl -s http://127.0.0.1:9112/health   # 免鉴权
 
 > 以下 key 均为占位符，替换为实际签发的 key 即可。BASE_URL 三选一：
 > - 直连（仅生产机本机）：`http://127.0.0.1:9112`
-> - 公网 nginx：`https://infrax.0xainet.top/api/data`
-> - 域名恢复前走 IP + Host 头：`curl -k -H 'Host: infrax.0xainet.top' https://43.163.105.172/api/data/...`
+> - 公网 nginx（主域名）：`https://infrax.0xainet.top/api/data`（兼容域名 `https://infrax.0xainet.top/api/data`，已生效）
+> - 注意：域名已生效，不再需要 IP + Host 头方式
 
 ### 4.1 curl
 
@@ -142,10 +142,9 @@ curl -s "http://127.0.0.1:9112/stats" \
   -H "X-Service-Key: <DATA_API_KEY>"
 # {"kline_rows":1070000,"snapshot_rows":...,"symbols":...,"quality":{...}}
 
-# ── 公网示例（nginx 前缀 + IP 直连 + Host 头）──
-curl -sk -H 'Host: infrax.0xainet.top' \
-  -H "X-API-Key: <DATA_API_KEY>" \
-  "https://43.163.105.172/api/data/ticker?symbol=BTC/USDT"
+# ── 公网示例（域名直连）──
+curl -s -H "X-API-Key: <DATA_API_KEY>" \
+  "https://infrax.0xainet.top/api/data/ticker?symbol=BTC/USDT"
 ```
 
 ### 4.2 JS SDK（`@0xinfrax/infrax-dk` v0.6.0）

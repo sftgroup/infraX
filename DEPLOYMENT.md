@@ -30,7 +30,7 @@ ssh ubuntu@43.156.25.197   # ML 机
 | 项目 | 值 |
 |------|-----|
 | 服务端口 | 区块链栈 9100-9111；平台服务 9130-9132/9200-9201/3500；MCP 3008/3011/3012/3013/9103/9105/9108/9110；nginx 80/443 |
-| 公网入口 | 统一经 nginx（80 → 301 → 443）；主域名 `infrax.app`（2026-08-16 迁移后 `/api/data`、`/api/rag`、`/api/v1` 全 200）；兼容域名 `infrax.0xainet.top`（DNS→Cloudflare） |
+| 公网入口 | 统一经 nginx（80 → 301 → 443）；**唯一对外域名 `https://infrax.0xainet.top`**（DNS→Cloudflare→172，2026-08-19 实测全前缀 200）；⚠️ `infrax.app` 已失效（解析至 Google Frontend，非本栈，勿用） |
 | DB | postgres 已迁新机（`10.3.8.6:5432`），本机 `postgresql@14-main` 已 disable |
 
 ## 当前运行服务（25 个 systemd，分布两台）
@@ -148,7 +148,7 @@ ssh ubuntu@43.156.25.197   # ML 机
 └── ragservicer/        → RAGservicer :9721                 ← 运行于 43.156.78.59
 ```
 
-> ml-service 位于独立服务器 **43.156.25.197**:9120（`projects/ml-service`，不在 172）。rag/ki 代码在 172 与新机 78.59 各一份（新机为运行副本，git 同源）。
+> ml-service 位于独立服务器 **43.156.25.197**:9120（`projects/ml-service`，不在 172）。公网经 nginx `/api/ml/*`、`/ml/*` 域名化（2026-08-19，`/api/ml/health` 200 实测）。rag/ki 代码在 172 与新机 78.59 各一份（新机为运行副本，git 同源）。
 
 ## Web Proxy 路由 (`server.js`，172)
 
@@ -172,12 +172,16 @@ ssh ubuntu@43.156.25.197   # ML 机
 |---|---|---|
 | `/api/data/*`、`/api/v1/*` | `http://127.0.0.1:9112/` | 数据栈（`/api/v1/*` 为旧契约兼容段） |
 | `/api/rag/*` | **`http://10.3.8.6:9721/`** | ragservicer（**已指向新机**，M-3 调整） |
+| `/api/ml/*` | **`http://43.156.25.197:9120/ml/`** | ml-service 推理机（`/api/ml/health` → `/health`，2026-08-19 新增） |
 | `/api/v2/*`、`/api/vault` | web `server.js` → 各 91xx 服务 | 区块链栈 |
+| `/mcp/*` | `http://127.0.0.1:3008/` | hub-index 统一 MCP 入站（`/mcp/message`，2026-08-19 实测 `/mcp/health` 200） |
+| `/mcp/vault/*`、`/mcp/mpc/*`、`/mcp/dc/*`、`/mcp/wallet/*`、`/mcp/chain-rpc/*`、`/mcp/market/*` | `http://127.0.0.1:9108/` 等对应端口 | 7 个独立 HTTP MCP 子路由（2026-08-19 新增；`/mcp/session-key/*`→:3011） |
 | `/api-keys/verify`、`/metrics` | — | 鉴权校验 / 监控指标 |
 | `/` | admin/web 前端 | InfraX Web3 平台（需登录态） |
 
-- 80 端口一律 301 → 443；TLS 证书为 **Cloudflare Origin CA**（为 `infrax.app` 签发，过期 2041）
-- 公网主域名 `https://infrax.app`（DNS→Cloudflare→172）；**2026-08-16 迁移后验证：`/api/rag/v1/health`、`/api/data/health`、`/api/v1/health`、`/api/v2/data/stats` 全部 200**；兼容域名 `infrax.0xainet.top`
+- 80 端口一律 301 → 443；TLS 经 Cloudflare 边缘证书（自动续期）
+- **唯一对外域名 `https://infrax.0xainet.top`**（DNS→Cloudflare→172）；2026-08-19 实测：`/api/data/health`、`/api/rag/api/v1/health`、`/api/v1/health`、`/api/v2/data/stats`（需 key）、`/mcp/health` 均到达本栈并返回 JSON
+- ⚠️ **`infrax.app` 域名已失效**：2026-08-19 实测解析至 `34.111.179.208`（Google Frontend），返回外部页面而非 infraX；对外一律使用 `infrax.0xainet.top`，`infrax.app` 待域名方处理/回收（此前文档若引用均需改用 `infrax.0xainet.top`）
 - Chain RPC 公网 HTTPS 入口：`https://rpc-gw.0xainet.top`（nginx TLS 反代 `:9130`，certbot 自动续期，见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)）
 - AA Relay 公网入口：`https://rpc-gw.0xainet.top/aa-relay/`（9131 对外 / 9134 内部 signer 仅内网）
 
@@ -583,11 +587,12 @@ ss -tlnp | grep -E ':(5432|9721|9113|1884[8-9]|1885[0-2])'
 curl -s http://127.0.0.1:9120/health
 ```
 
-### 公网（迁移后验证全 200）
+### 公网（域名验证全 200）
 ```bash
-curl -s https://infrax.app/api/rag/v1/health
-curl -s https://infrax.app/api/data/health
-curl -s https://infrax.app/api/v1/health
+curl -s https://infrax.0xainet.top/api/rag/api/v1/health
+curl -s https://infrax.0xainet.top/api/data/health
+curl -s https://infrax.0xainet.top/api/v1/health
+curl -s https://infrax.0xainet.top/api/ml/health
 ```
 
 ## 负载参考（2026-08-16 迁移后实测）

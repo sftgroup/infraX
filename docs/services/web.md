@@ -20,7 +20,7 @@ SDK 的 `baseUrl` 指向 web 代理（:9111），代理自动注入 `X-Service-K
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9111',   // 内网直连；公网 http://43.163.105.172:9111（生产 IP）
+  baseUrl: 'http://127.0.0.1:9111',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top（nginx 80→443，/api/v2/* 路由至此）
   apiKey: process.env.INFRAX_API_KEY, // 平台 key：自动带 x-api-key，透传到后端
   dcApiKey: process.env.DC_API_KEY,   // DC 数据面：x-dc-api-key（经代理透传）
 });
@@ -34,7 +34,7 @@ const dcStats = await infrax.dc.stats();     // 需 dcApiKey（数据面）
 
 ```bash
 curl -s http://127.0.0.1:9111/health   # 公开；返回服务状态 + 后端路由表
-# 公网：curl -s http://43.163.105.172:9111/health
+# 公网：curl -s https://infrax.0xainet.top/api/v2/health
 ```
 
 > 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。

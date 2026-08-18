@@ -28,7 +28,7 @@ LightRAG 知识栈由两个服务组成：
 | 健康检查（免鉴权） | 外网 `GET /api/rag/api/v1/health`；injector 仅内网 `GET http://127.0.0.1:9113/health` |
 | OpenAPI（免鉴权） | 外网 `GET /api/rag/api/v1/openapi.json`；injector 仅内网 `GET http://127.0.0.1:9113/openapi.json` |
 
-> ⚠️ `infrax.0xainet.top` DNS 切到 `43.163.105.172` 后可用；切换前用 `https://43.163.105.172/...`。
+> ⚠️ 公网统一经域名访问：`https://infrax.0xainet.top/api/rag`（兼容域名 `https://infrax.0xainet.top/api/rag`），已生效，无需 IP + Host 头。
 
 ---
 

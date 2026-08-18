@@ -20,7 +20,7 @@ npm install @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9109',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  baseUrl: 'http://127.0.0.1:9109',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top
   apiKey: process.env.WAAS_TENANT_API_KEY, // 租户 API key（自动带 x-api-key 头）
 });
 
@@ -33,7 +33,7 @@ console.log(plans.data);
 
 ```bash
 curl -s http://127.0.0.1:9109/health
-# 或公网经代理：curl -s http://43.163.105.172:9111/api/v2/subscription/plans
+# 或公网经代理：curl -s https://infrax.0xainet.top/api/v2/subscription/plans
 ```
 
 > 完整端点清单 / 鉴权细节 / 错误码见下文对应章节。
@@ -44,10 +44,10 @@ curl -s http://127.0.0.1:9109/health
 
 生产访问：
 - 内网直连 `http://127.0.0.1:9109`
-- 公网经 web 代理（:9111，自动注入 `X-Service-Key`）：
-  - `http://43.163.105.172:9111/api/v2/wallet/...`
-  - `http://43.163.105.172:9111/api/v2/saas/...`
-  - `http://43.163.105.172:9111/api/v2/subscription/...`
+- 公网经 nginx→web 代理（自动注入 `X-Service-Key`）：
+  - `https://infrax.0xainet.top/api/v2/wallet/...`
+  - `https://infrax.0xainet.top/api/v2/saas/...`
+  - `https://infrax.0xainet.top/api/v2/subscription/...`
 
 ### 1.1 签名模型（类 CEX 托管：平台内部签名，外部零链上签名）
 
@@ -117,8 +117,8 @@ WAAS 定位为**类中心化交易所（CEX）的托管模型**，链上签名�
 # ═══ 内网直连 ═══
 BASE=http://127.0.0.1:9109
 
-# ═══ 公网经 web 代理（:9111）═══
-# BASE=http://43.163.105.172:9111
+# ═══ 公网经 nginx→web 代理（:9111）═══
+# BASE=https://infrax.0xainet.top
 
 # ── 套餐列表（公开，生产实测 200：Starter free / MPC Wallets 3 / Safe 3 等）──
 curl -s $BASE/api/v2/subscription/plans
@@ -150,7 +150,7 @@ import { Wallet } from 'ethers';
 const signer = new Wallet(process.env.WALLET_PRIVATE_KEY!); // EIP-191 签名者
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9109',      // 内网直连；公网换 http://43.163.105.172:9111
+  baseUrl: 'http://127.0.0.1:9109',      // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top
   walletAddress: signer.address,          // x-wallet-address
   walletSign: (msg) => signer.signMessage(msg), // EIP-191 签名回调（x-wallet-signature）
 });

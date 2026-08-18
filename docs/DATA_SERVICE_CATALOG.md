@@ -21,7 +21,7 @@
 > - **data**：传统行情 + 因子（crypto/美股/港股/A股/外汇/期货，见 §2），因子 catalog 所在服务；
 > - **dc**：链上 DEX 数据采集（base 链等，`/api/v2/data/tokens|market/*`），是 data 的**数据源之一**，当前仅内网消费（knowledge-injector 经 `inject_parsed("infrax_dc")` 拉取）。
 > - **SDK 接入**：`infrax.data.*` → data（`dataUrl` 可配，默认回退 `baseUrl`）；`infrax.dc.*`、`infrax.market.*` → dc（走 `baseUrl`，nginx 已配 `/api/v2/data/*` 路由）。
-> - **公网访问（2026-08-07 实测）**：域名 `infrax.0xainet.top` 经 Cloudflare 回源 `/api/*` 仍 502（面板回源配置问题，见 infrax_tasklist §2.1）；**公网 IP 直连可用**——`https://43.163.105.172/api/v2/data/*`（dc，header `x-dc-api-key` = 租户 `tenants.dc_api_key`）、`https://43.163.105.172/api/data/*`（data，`DATA_API_KEY` 或签发 `dx_*` key）。无需 Host 头，nginx 已按 default_server 路由。B 端临时接入可将 SDK `baseUrl` 配为 `https://43.163.105.172`。
+> - **公网访问（2026-08-19 实测）**：统一域名 `https://infrax.0xainet.top`，全前缀可用——`/api/data/*`（data，`DATA_API_KEY` 或签发 `dx_*` key）、`/api/v2/data/*`（dc，header `x-dc-api-key` = 租户 `tenants.dc_api_key`）。无需 Host 头/IP 直连。
 
 > **旧栈 collector（`infrax-collector` :9101）**：链上区块扫描 + 行情代理（OKX ChainOS 等）。**行情端点按量计费**（MQ-16 T-2，`marketQuotaEnforce` 中间件）：`market_free` 10000 次/月、`market_pro` 100000 次/月（49/月，payments 链上订阅）。**配额耗尽 → 503 + `{used, quota, plan}` 响应体**，下游 fail-silent 会静默停摆（2026-08-14 实测 okx_hot_tokens 停摆 70h）。data 侧已按配额降频：`OKX_CHAINOS_COLLECT_INTERVAL_SEC=3600` 且仅 hot-tokens（index/candles 关闭），月用量 ≈2160 次。
 
@@ -159,22 +159,22 @@
 
 **灵活扩展（不改代码热扩展）**：`FACTORS_CONFIG_PATH=factors.json` 已启用，向 `factors.json` 的 `extra` 数组追加条目即可（字段规则与上表一致，`category` 默认 `external`、`type` 默认 `float`、`range`/`unit` 默认 `null`、`description` 默认空串），重启后自动进入 catalog。当前 extra 为空。
 
-**B 端使用方式（2026-08-08 定稿）**：统一鉴权头三选一 `Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`（`dx_*` 租户 key 或 `DATA_API_KEY`）；时间戳一律 unix ms；公网直连 `https://43.163.105.172`（详见 §1）。
+**B 端使用方式（2026-08-08 定稿）**：统一鉴权头三选一 `Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`（`dx_*` 租户 key 或 `DATA_API_KEY`）；时间戳一律 unix ms；公网统一域名 `https://infrax.0xainet.top`（详见 §1）。
 
 ```bash
 export DX_KEY='dx_...'   # 已向 5 家 B 端签发的租户 key
 
 # 1) 行情 K 线（含技术指标 + 最近因子 join）
-curl "https://43.163.105.172/api/data/bars?symbol=BTC/USDT&timeframe=1d&limit=100" -H "X-API-Key: $DX_KEY"
+curl "https://infrax.0xainet.top/api/data/bars?symbol=BTC/USDT&timeframe=1d&limit=100" -H "X-API-Key: $DX_KEY"
 
 # 2) 最新因子值（category=ml 取全部 ML 因子）
-curl "https://43.163.105.172/api/data/factors/current?symbols=BTC,ETH&category=ml" -H "X-API-Key: $DX_KEY"
+curl "https://infrax.0xainet.top/api/data/factors/current?symbols=BTC,ETH&category=ml" -H "X-API-Key: $DX_KEY"
 
 # 3) 因子历史（回测，逐 bar 对齐 /bars ts；不传 limit 默认 500 根）
-curl "https://43.163.105.172/api/data/factors/history?symbol=BTC/USDT&timeframe=1d&ids=tree_direction,bolt_prob_up,moirai_direction,timesfm_direction&limit=500" -H "X-API-Key: $DX_KEY"
+curl "https://infrax.0xainet.top/api/data/factors/history?symbol=BTC/USDT&timeframe=1d&ids=tree_direction,bolt_prob_up,moirai_direction,timesfm_direction&limit=500" -H "X-API-Key: $DX_KEY"
 
 # 4) ML 预测快照明细（data=null 表示该时刻无快照，需容错）
-curl "https://43.163.105.172/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
+curl "https://infrax.0xainet.top/api/data/ml/predictions?model=bolt&symbol=BTC" -H "X-API-Key: $DX_KEY"
 ```
 
 Python SDK：`infra-data-client`（**PyPI 已发布 v0.2.0，2026-08-11**；`get_ml_predictions` 等）用法与集成样例见 [SDK_INTEGRATION.md](SDK_INTEGRATION.md)。

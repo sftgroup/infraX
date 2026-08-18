@@ -20,7 +20,7 @@ npm install @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9104',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  baseUrl: 'http://127.0.0.1:9104',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top
   apiKey: process.env.MPC_API_KEY,    // 自动带 x-api-key 头
 });
 
@@ -132,7 +132,7 @@ curl -s -X POST http://127.0.0.1:9104/api/v2/mpc/sign-message \
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9104',   // 或经 web 代理 http://<host>:9111
+  baseUrl: 'http://127.0.0.1:9104',   // 或公网 baseUrl 用 https://infrax.0xainet.top
   apiKey: process.env.MPC_API_KEY,    // ← 平台统一 key（MPC_API_KEY 或 mp_ key）
 });
 

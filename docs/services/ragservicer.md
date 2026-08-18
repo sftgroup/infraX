@@ -146,9 +146,9 @@ curl -s -X POST "$BASE/api/v1/namespaces/market/query" \
   -d '{"query": "比特币近期走势如何？", "mode": "mix"}'
 # {"code":0,"message":"ok","data":{"context":[...],"mode":"mix","tenant":"default","namespace":"market"}}
 
-# ── 公网示例（nginx 前缀 + IP + Host 头）──
-curl -sk -H 'Host: infrax.0xainet.top' -H "X-API-Key: $KEY" \
-  "https://43.163.105.172/api/rag/api/v1/namespaces/market/documents?limit=5"
+# ── 公网示例（域名直连）──
+curl -s -H "X-API-Key: $KEY" \
+  "https://infrax.0xainet.top/api/rag/api/v1/namespaces/market/documents?limit=5"
 ```
 
 ### 4.2 Python SDK（`lightrag-client` v2.0.0）

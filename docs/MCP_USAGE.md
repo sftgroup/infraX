@@ -21,7 +21,7 @@
 
 > **MQ-16（2026-08-11）**：dc-mcp +4（订阅）、market-mcp +5（订阅）、rpc-mcp +6（订阅）、mpc-mcp +2（计费）、wallet-mcp +15（payments batch/invite/transfer），共 **+32 个套餐工具**；market-mcp 新增独立 unit `infrax-market-mcp.service`（:3013，此前代码存在未部署）。
 
-**对外暴露**：hub-index 经 nginx 以 `/mcp/*` 对外；其余 HTTP MCP 端口监听 `0.0.0.0` 且未经 nginx 代理（受信方直连）。
+**对外暴露（2026-08-19 全域名化）**：hub-index 经 nginx `/mcp/*` 对外；其余 7 个独立 HTTP MCP 服务经 nginx 子路由 `/mcp/<name>/*` 对外（`/mcp/vault/*`→:9108、`/mcp/mpc/*`→:9105、`/mcp/session-key/*`→:3011、`/mcp/dc/*`→:9103、`/mcp/wallet/*`→:9110、`/mcp/chain-rpc/*`→:3012、`/mcp/market/*`→:3013；前缀剥离，上游端点不变）。统一域名 `https://infrax.0xainet.top`。
 
 ---
 
@@ -32,19 +32,29 @@
 **Streamable HTTP（hub / session-key / dc）**——POST `/mcp/message`：
 
 ```bash
+# 公网统一域名端点（2026-08-19 起，全部 MCP 可经域名访问）：
+#   hub-index         https://infrax.0xainet.top/mcp/message
+#   vault-mcp         https://infrax.0xainet.top/mcp/vault/mcp/message
+#   mpc-mcp           https://infrax.0xainet.top/mcp/mpc/mcp/message
+#   session-key-mcp   https://infrax.0xainet.top/mcp/session-key/mcp/message
+#   dc-mcp            https://infrax.0xainet.top/mcp/dc/mcp/message
+#   wallet-mcp        https://infrax.0xainet.top/mcp/wallet/mcp/message
+#   chain-rpc-mcp     https://infrax.0xainet.top/mcp/chain-rpc/mcp/message
+#   market-mcp        https://infrax.0xainet.top/mcp/market/mcp/message
+# 内网直连仍用 http://<host>:<port>/mcp/message
 # initialize
-curl -s -X POST http://<host>:3008/mcp/message \
+curl -s -X POST https://infrax.0xainet.top/mcp/message \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: <MCP_KEY>' \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}'
 
 # 列工具
-curl -s -X POST http://<host>:3008/mcp/message \
+curl -s -X POST https://infrax.0xainet.top/mcp/message \
   -H 'Content-Type: application/json' -H 'X-API-Key: <MCP_KEY>' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 
 # 调工具
-curl -s -X POST http://<host>:3008/mcp/message \
+curl -s -X POST https://infrax.0xainet.top/mcp/message \
   -H 'Content-Type: application/json' -H 'X-API-Key: <MCP_KEY>' \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"data_ticker","arguments":{"symbol":"BTC/USDT"}}}'
 ```
@@ -109,7 +119,7 @@ curl -s -X POST http://<host>:3008/mcp/message \
 ### 3.3 示例
 
 ```bash
-curl -s -X POST http://43.163.105.172/mcp/message \
+curl -s -X POST https://infrax.0xainet.top/mcp/message \
   -H 'Content-Type: application/json' -H 'X-API-Key: <mx_...>' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"rag_query","arguments":{"namespace":"market","query":"BTC 近三个月资金面变化","mode":"mix"}}}'
 ```
@@ -358,14 +368,27 @@ ragservicer 自带 STDIO MCP（`projects/ragservicer/mcp_server/`），经 AI �
 - **dc_tokens 必失败（B-10-3，✅ 2026-08-10 已修）**：dc-mcp `dc_tokens` 调用 dc `/api/v2/data/tokens` 401——根因生产 dc-mcp 缺 `DC_API_KEY`（默认发 test-key）。已注入生产 `infrax-dc-mcp.service.d/dc-api-key.conf`（租户 dc_api_key）+ 代码 fail-fast（2026-08-11，dc_tokens 返回真实数据）
 - **支付工具 404（B-10-5，✅ 2026-08-11 已闭环）**：wallet-mcp 旧 `payment_create/payment_status/x402_pay` 依赖 waas paymentRoutes——现 payment/mpp 26 个工具已迁移通用支付引擎 :9132，生产 `infrax-wallet-mcp.service.d/payments.conf` 注入 `PAYMENTS_URL`+`PAYMENTS_API_KEY`，`payment_price` 实测返回真实套餐数据
 - **market-index 已部署（✅ 2026-08-11）**：市场指数 MCP 服务此前代码存在但生产未运行——现新增 `infrax-market-mcp.service`（:3013，DC_URL=collector :9101 + 生产 DC_API_KEY），18 工具全量可用
-- **hub-index 注释过时**：nginx 注释称"端点无入站鉴权"，实际 hub-index 已有鉴权，建议更新注释
+- **hub-index 注释已更新（✅ 2026-08-19）**：nginx 注释已改为"端点有入站鉴权（MCP_API_KEYS / mx_ scope）"
 
 ---
 
 ## 11. 生产验证方式
 
 ```bash
-# 健康检查
+# 健康检查（公网统一域名，2026-08-19 实测全 200）
+curl -s https://infrax.0xainet.top/mcp/health                        # hub-index
+curl -s https://infrax.0xainet.top/mcp/vault/health                 # vault-mcp
+curl -s https://infrax.0xainet.top/mcp/mpc/health                   # mpc-mcp（tools=17）
+curl -s https://infrax.0xainet.top/mcp/dc/health                    # dc-mcp（tools=11）
+curl -s https://infrax.0xainet.top/mcp/wallet/health                # wallet-mcp（tools=34）
+curl -s https://infrax.0xainet.top/mcp/chain-rpc/health             # chain-rpc-mcp（tools=10）
+curl -s https://infrax.0xainet.top/mcp/market/health                # market-mcp（tools=18）
+# session-key-mcp 无 /health（上游原生），用 message 端点验证：
+curl -s -X POST https://infrax.0xainet.top/mcp/session-key/mcp/message \
+  -H 'Content-Type: application/json' -H 'X-API-Key: <key>' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 内网直连健康检查（生产机）
 curl -s http://127.0.0.1:3008/health   # hub-index
 curl -s http://127.0.0.1:9108/health   # vault-mcp
 curl -s http://127.0.0.1:9105/health   # mpc-mcp（tools=17）
@@ -375,8 +398,8 @@ curl -s http://127.0.0.1:9110/health   # wallet-mcp（tools=34）
 curl -s http://127.0.0.1:3012/health   # chain-rpc-mcp（tools=10）
 curl -s http://127.0.0.1:3013/health   # market-mcp（tools=18）
 
-# 工具清单
-curl -s -X POST http://127.0.0.1:3008/mcp/message \
+# 工具清单（公网）
+curl -s -X POST https://infrax.0xainet.top/mcp/message \
   -H 'Content-Type: application/json' -H 'X-API-Key: <key>' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```

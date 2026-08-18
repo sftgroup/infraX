@@ -24,12 +24,12 @@ data-service 是 InfraX 的统一市场数据服务，提供：
 
 | 项 | 值 |
 |---|---|
-| 内网地址 | `http://172.43.163.105.172:9112`（同 VPC/内网访问） |
+| 内网地址 | `http://127.0.0.1:9112`（本机直连；服务绑定 127.0.0.1 仅本机可达） |
 | 外网地址（HTTPS） | `https://infrax.0xainet.top/api/data`（经 nginx，路径前缀 `/api/data` 会被剥离，如 `/api/data/bars` → `/bars`） |
 | OpenAPI | `GET /openapi.json`（需携带有效 key） |
 | 鉴权 | 见 §3 |
 
-> ⚠️ 域名 `infrax.0xainet.top` 的 DNS 切到 `43.163.105.172` 后外网地址方可使用；切换前可先用 `https://43.163.105.172/api/data/...`（`--insecure` 或正确 SNI）。
+> 公网已生效，直接使用域名（主域名 `https://infrax.0xainet.top`，兼容域名 `https://infrax.0xainet.top`），无需 IP + Host 头。
 
 ---
 

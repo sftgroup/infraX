@@ -47,7 +47,7 @@ const RELAY_KEY = process.env.AA_RELAY_API_KEY || '';
 
 // E-1c: 外部 apikey 实时校验（data /api-keys/verify，chain-rpc 同款 fail-closed 模式）
 //   AA_RELAY_API_KEY                 静态本地 bridge key（内部服务调用，保留）
-//   AA_API_KEY_VERIFY_URL            data 服务 URL（如 https://infrax.app/api/data 或 http://127.0.0.1:9112）
+//   AA_API_KEY_VERIFY_URL            data 服务 URL（如 https://infrax.0xainet.top/api/data 或 http://127.0.0.1:9112）
 //   AA_API_KEY_VERIFY_KEY            调 data 的鉴权 key（DATA_API_KEY，Bearer）
 //   AA_API_KEY_VERIFY_SCOPE          签发 scope（默认 aa-relay → ar_ 前缀 key）
 // 未配置 VERIFY_URL → 仅静态 key；配置后外部 key（ar_）实时校验，静态 key 仍放行。

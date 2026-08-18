@@ -14,8 +14,8 @@
 
 运行（生产参数）：
   python examples/ml_predictions_integration.py --symbol BTC/USDT --model bolt \
-      --data-url https://43.163.105.172/api/data --data-key <dx_... 或 DATA_API_KEY> \
-      --ml-url http://43.156.25.197:9120 --ml-key <ML_API_KEY>
+      --data-url https://infrax.0xainet.top/api/data --data-key <dx_... 或 DATA_API_KEY> \
+      --ml-url https://infrax.0xainet.top --ml-key <ML_API_KEY>
 
 本地（无鉴权开发环境可省略 --*-key）。
 """
@@ -164,9 +164,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="ML 预测集成示例：快照优先 + data=null 兜底")
     ap.add_argument("--symbol", default="BTC/USDT", help="符号，如 BTC/USDT / EURUSD=X（data 服务端归一化）")
     ap.add_argument("--model", default="bolt", choices=sorted(_MODEL_ENDPOINT), help="P2 模型")
-    ap.add_argument("--data-url", default="http://127.0.0.1:9112", help="data-service（生产 https://43.163.105.172/api/data）")
+    ap.add_argument("--data-url", default="http://127.0.0.1:9112", help="data-service（生产 https://infrax.0xainet.top/api/data）")
     ap.add_argument("--data-key", default=None, help="data 鉴权 key（dx_* 或 DATA_API_KEY）")
-    ap.add_argument("--ml-url", default="http://127.0.0.1:9120", help="ml-service")
+    ap.add_argument("--ml-url", default="http://127.0.0.1:9120", help="ml-service（生产 https://infrax.0xainet.top）")
     ap.add_argument("--ml-key", default=None, help="ml-service 鉴权 key（ML_API_KEY，未配置开放）")
     ap.add_argument("--verify", action="store_true", help="启用 TLS 校验（生产证书暂不可信时省略）")
     args = ap.parse_args()

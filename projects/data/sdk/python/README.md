@@ -25,9 +25,9 @@ pip install -e .
 from infra_data_client import InfraDataClient
 
 client = InfraDataClient(
-    base_url="http://127.0.0.1:9112",   # 生产经 nginx 前缀如 https://host/api/data 亦可
+    base_url="https://infrax.0xainet.top/api/data",  # 生产统一域名；本机直连 http://127.0.0.1:9112
     api_key="infrax-bridge-...",         # X-Service-Key 自动携带（DS-12）
-    verify=False,                        # 生产证书暂不可信时关闭校验
+    verify=True,                         # 生产域名证书有效（Cloudflare Origin CA），无需关闭校验
 )
 
 # K 线（start/end 秒或毫秒均可，自动归一化）
@@ -81,7 +81,7 @@ hits = client.search_symbols("btc", market="crypto", limit=10)
 cd projects/data/sdk/python
 python examples/quickstart.py --base-url http://127.0.0.1:9112 --api-key <KEY>
 python examples/ml_predictions_integration.py --symbol BTC/USDT --model bolt \
-    --data-url http://127.0.0.1:9112 --data-key <KEY> --ml-url http://43.156.25.197:9120
+    --data-url https://infrax.0xainet.top/api/data --data-key <KEY> --ml-url https://infrax.0xainet.top
 ```
 
 ## 发布（SemVer）

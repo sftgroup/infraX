@@ -263,7 +263,7 @@ export class HttpClient {
   private timeout: number;
 
   constructor(config: InfraXConfig) {
-    this.baseUrl = config.baseUrl || 'https://api.infrax.io';
+    this.baseUrl = config.baseUrl || 'https://infrax.0xainet.top';
     this.timeout = config.timeout || 30000;
     this.headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) this.headers['x-api-key'] = config.apiKey;

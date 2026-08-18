@@ -136,7 +136,7 @@ X-Service-Key: <key>      # 服务间调用约定
 
 ```bash
 # 数据服务（金融量化平台）
-export INFRAX_DATA_URL="https://infrax.0xainet.top/api/data"   # DNS 切换前用 https://43.163.105.172/api/data
+export INFRAX_DATA_URL="https://infrax.0xainet.top/api/data"
 export INFRAX_DATA_KEY="dx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # LightRAG（服务平台）
@@ -307,7 +307,7 @@ curl -X POST http://127.0.0.1:9113/inject \
 
 | 问题 | 处理 |
 |---|---|
-| 外网地址 502 / 连不上 | DNS 是否已切到 `43.163.105.172`？切换前用 IP + `-k` |
+| 外网地址 502 / 连不上 | 统一走域名 `https://infrax.0xainet.top`（已生效 2026-08-19）；内网验证用 `curl -sk -H 'Host: infrax.0xainet.top' https://127.0.0.1/...` |
 | 返回 `401 {"detail":"unauthorized"}` | key 缺失/非法/已吊销；检查 header 名与值 |
 | 返回 `403 API key disabled` | key 被管理员禁用（数据服务） |
 | 返回 `429 Rate limit exceeded` | 超出该 key 的 RPM 限流，联系管理员调高或稍后重试 |

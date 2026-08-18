@@ -77,7 +77,7 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 ### 基础信息
 
 ```
-Base URL:  https://api.infrax.io
+Base URL:  https://infrax.0xainet.top
 ```
 
 ### 认证
@@ -429,11 +429,11 @@ GET  /api/v2/data/market/portfolio-dex-history ?address=&chains=&limit=
 ```bash
 # 过去24小时按净流入排名
 curl -H "x-api-key: YOUR_KEY" \
-  "https://api.infrax.io/api/v2/data/market/hot-tokens?chainIndex=1&rankingTimeFrame=4&rankBy=14&limit=20"
+  "https://infrax.0xainet.top/api/v2/data/market/hot-tokens?chainIndex=1&rankingTimeFrame=4&rankBy=14&limit=20"
 
 # Pump.fun 协议 Meme 币
 curl -H "x-api-key: YOUR_KEY" \
-  "https://api.infrax.io/api/v2/data/market/mempump/list?chainIndex=501&protocol=120596&sortBy=volume24h"
+  "https://infrax.0xainet.top/api/v2/data/market/mempump/list?chainIndex=501&protocol=120596&sortBy=volume24h"
 ```
 
 ### 1.7 行情 RPC（`POST /v1/market-rpc`，A-12，Collector `:9101`）
@@ -674,7 +674,7 @@ pnpm add @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const ix = new InfraX({
-  baseUrl: 'https://api.infrax.io',
+  baseUrl: 'https://infrax.0xainet.top',
   apiKey: 'your-waas-api-key',
   dcApiKey: 'your-dc-api-key',
 });

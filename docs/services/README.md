@@ -30,7 +30,7 @@
 
 - **内网直连**：`http://127.0.0.1:<端口>/...`（仅服务器本机）
 - **公网经 web 代理**（:9111）：`http://<host>:9111/api/v2/...` → 转发到各 91xx 服务（路由表见 [web.md](./web.md)）
-- **公网经 nginx**（80/443，域名 `infrax.0xainet.top`）：`/api/v2/*` → web 代理；`/api/data/*` → data；`/api/rag/*` → ragservicer
+- **公网经 nginx**（80/443，域名 `infrax.0xainet.top`）：`/api/v2/*` → web 代理；`/api/data/*` → data；`/api/rag/*` → ragservicer；`/api/ml/*` → ml-service；`/mcp/*` → hub-index、`/mcp/<name>/*` → 各独立 MCP
 
 ### 2. 鉴权契约（全站统一）
 

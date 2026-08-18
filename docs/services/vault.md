@@ -20,7 +20,7 @@ npm install @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9107',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/vault/*
+  baseUrl: 'http://127.0.0.1:9107',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top（前缀 /api/vault/*）
   apiKey: process.env.VAULT_API_KEY,  // 自动带 x-api-key 头
 });
 
@@ -47,7 +47,7 @@ curl -s http://127.0.0.1:9107/health
 
 生产访问：
 - 内网直连 `http://127.0.0.1:9107`
-- 公网经 web 代理（:9111）：`http://43.163.105.172:9111/api/vault/...`（代理自动注入 `X-Service-Key`，前端无需带 key）
+- 公网经 nginx→web 代理：`https://infrax.0xainet.top/api/vault/...`（代理自动注入 `X-Service-Key`，前端无需带 key）
 
 ### 1.1 签名责任（签名方 = Safe owner，用户本人）
 
@@ -100,7 +100,7 @@ X-Service-Key: <key>
 BASE=http://127.0.0.1:9107
 
 # ═══ 公网经 web 代理（:9111，自动注入 X-Service-Key；直连调用方需自带 key）═══
-# BASE=http://43.163.105.172:9111
+# BASE=https://infrax.0xainet.top
 KEY="X-API-Key: <VAULT_API_KEY>"
 
 # ── dashboard（生产实测 200）──
@@ -127,7 +127,7 @@ curl -s -X POST $BASE/api/vault/safe/propose -H "$KEY" -H 'Content-Type: applica
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9107',   // 内网直连；公网换 http://43.163.105.172:9111（经 /api/vault 代理）
+  baseUrl: 'http://127.0.0.1:9107',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top（经 /api/vault 代理）
   apiKey: process.env.VAULT_API_KEY,  // 自动带 x-api-key 头
 });
 

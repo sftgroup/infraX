@@ -1,7 +1,7 @@
 # B 端 InfraX RAGservicer 图谱因子需求文档（AItrader 侧提交）
 
 > 提交方：AItrader 项目 ｜ 日期：2026-08-18
-> 背景：AItrader 已接入 B 端 InfraX RAGservicer（LightRAG 知识图谱，`https://43.163.105.172/api/rag`，namespace `market`）。当前可注入/可列出文档（1163 篇，更新至 08-16），但**存量文档检索返回 `[no-context]`**，无法产出图谱上下文；且 B 端尚无**图谱派生数值因子**端点。本文档为图谱因子的完整需求：存量修复（GF-1/GF-2）+ 图谱因子端点（GF-3/GF-4）+ 可视化数据（GF-5）+ 密钥治理（GF-6）。
+> 背景：AItrader 已接入 B 端 InfraX RAGservicer（LightRAG 知识图谱，`https://infrax.0xainet.top/api/rag`，namespace `market`）。当前可注入/可列出文档（1163 篇，更新至 08-16），但**存量文档检索返回 `[no-context]`**，无法产出图谱上下文；且 B 端尚无**图谱派生数值因子**端点。本文档为图谱因子的完整需求：存量修复（GF-1/GF-2）+ 图谱因子端点（GF-3/GF-4）+ 可视化数据（GF-5）+ 密钥治理（GF-6）。
 > 状态标记：🔲 待 B 端实现 ｜ ⚠️ 待确认 ｜ ✅ 已完成（AItrader 侧）。
 
 ---
@@ -125,4 +125,4 @@ GET /graph/entities
 - `analysis-service/app/services/graph_client.py`：查询 `/api/v1/namespaces/{ns}/query`（mode mix，Bearer key，fail-silent 过滤 no-context）
 - 快速分析响应新增 `knowledge_graph` 字段；前端 FastAnalysisReport 新增「知识图谱 (LightRAG)」section
 - 自部署 lightrag-service / knowledge-injector / app.services.graph 已清理下线（commit 76f6116）
-- 生产 `.env` 已配 `LIGHTRAG_URL=https://43.163.105.172/api/rag` + `RAGSERVICER_API_KEY`（暂借用 aiservicer，见 GF-6）
+- 生产 `.env` 已配 `LIGHTRAG_URL=https://infrax.0xainet.top/api/rag` + `RAGSERVICER_API_KEY`（暂借用 aiservicer，见 GF-6）

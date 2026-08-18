@@ -4,7 +4,7 @@
 - 接收方：B 端数据服务（infraX：data-service 43.163.105.172 / ragservicer 43.156.78.59）
 - 来源：AIHunter 图谱展示界面 + 因子增强规划（复用 B 端 GF-1~GF-6 / GX-1~GX-3 已落地能力）
 - 前置事实（已确认，**不重复提需求**）：
-  - ragservicer 公网**已开放**：`https://infrax.app/api/rag/*` → `http://10.3.8.6:9721`（`/api/rag/v1/health` 已 200 验证）；鉴权三选一（`x-api-key` / `Authorization: Bearer` / `X-Service-Key`）
+  - ragservicer 公网**已开放**：`https://infrax.0xainet.top/api/rag/*` → `http://10.3.8.6:9721`（`/api/rag/api/v1/health` 已 200 验证；注意实际前缀为 `/api/rag/api/v1/*`）；鉴权三选一（`x-api-key` / `Authorization: Bearer` / `X-Service-Key`）
   - 知识图谱可视化 **GF-5 已存在**：`GET /api/v1/graph/entities`（nodes category 9 枚举 + size；edges relation 8 枚举 + weight；支持 1-hop 子图）
   - 图谱因子 **GF-3/GF-4 已存在**：`GET /api/v1/factors/graph`、`/api/v1/factors/catalog`
   - 市场图谱因子 `gf_*`（18 项）已经 data-service `/factors/current` 的 `graph` 字段透传（60s TTL）
@@ -87,9 +87,9 @@ ragservicer 公网已开放（`/api/rag/*`），AIHunter 需消费 GF-3/4/5 + `r
 
 | 调用 | 期望 |
 | ---- | ---- |
-| `GET https://infrax.app/api/rag/v1/graph/entities?namespace=market&limit=50` | 200，nodes+edges |
-| `POST https://infrax.app/api/rag/v1/namespaces/market/retrieve` body `{"query":"..."}` | 200，上下文文本 |
-| `GET https://infrax.app/api/rag/v1/factors/catalog` | 200，graph 分类目录 |
+| `GET https://infrax.0xainet.top/api/rag/api/v1/graph/entities?namespace=market&limit=50` | 200，nodes+edges |
+| `POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/market/retrieve` body `{"query":"..."}` | 200，上下文文本 |
+| `GET https://infrax.0xainet.top/api/rag/api/v1/factors/catalog` | 200，graph 分类目录 |
 
 ---
 

@@ -321,9 +321,9 @@ docker run -d \
 
 **模式 B — 独立服务（nginx `/api/data/*` 前缀）**
 ```
-Your Platform → HTTP → https://43.163.105.172/api/data/bars?symbol=...
-                        https://43.163.105.172/api/data/factors/current
-                        https://43.163.105.172/api/data/snapshots?type=heatmap
+Your Platform → HTTP → https://infrax.0xainet.top/api/data/bars?symbol=...
+                        https://infrax.0xainet.top/api/data/factors/current
+                        https://infrax.0xainet.top/api/data/snapshots?type=heatmap
 ```
 
 ### 调用示例
@@ -331,7 +331,7 @@ Your Platform → HTTP → https://43.163.105.172/api/data/bars?symbol=...
 ```python
 import requests
 
-BASE = "http://<host>:9112"   # 生产：https://43.163.105.172/api/data
+BASE = "http://<host>:9112"   # 生产：https://infrax.0xainet.top/api/data
 HEADERS = {"X-API-Key": "<DATA_API_KEY 或 dx_ key>"}
 
 # K线

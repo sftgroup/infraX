@@ -57,33 +57,31 @@ npm install @0xinfrax/infrax-dk        # Node >=18
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'https://43.163.105.172',   // 生产入口（域名恢复后用 https://infrax.0xainet.top）
+  baseUrl: 'https://infrax.0xainet.top',   // 生产入口（统一对外域名，nginx 80→443）
   apiKey: process.env.INFRAX_API_KEY,  // 平台签发 key（dx_/vx_/mp_ 等，自动带 x-api-key 头）
-  // ⚠️ JS SDK 无内置 TLS 跳过选项：当前生产自签证书下需
-  //    NODE_TLS_REJECT_UNAUTHORIZED=0（Node）或待域名证书恢复后再用 https；
-  //    内网直连 http://<host>:9112 无此问题。
 });
 ```
 
 > **数据域双服务区分（data :9112 vs dc :9102）**：
 > - `infrax.data.*` → **data** 行情/因子服务：配置 `dataUrl`（及 `dataApiKey`）指向 :9112，未配置则回退 `baseUrl`；
-> - `infrax.dc.*`、`infrax.market.*` → **dc** 链上 DEX 数据服务（:9102），走 `baseUrl`；nginx 已配 `/api/v2/data/*` 路由（2026-08-07），公网可达性受 Cloudflare 回源状态影响（见 infrax_tasklist §2.1）。
+> - `infrax.dc.*`、`infrax.market.*` → **dc** 链上 DEX 数据服务（:9102），走 `baseUrl`；nginx 已配 `/api/v2/data/*` 路由（2026-08-07），公网已生效（2026-08-19 实测）。
+> - `infrax.ml.*` → **ml-service**（独立推理机 :9120）：默认走 `baseUrl`（nginx `/ml/*` 路由，2026-08-19 新增），也可显式配 `mlUrl` 指向 `/api/ml/*` 前缀。
 >
 > ```ts
 > const infrax = new InfraX({
->   baseUrl: 'https://43.163.105.172',
+>   baseUrl: 'https://infrax.0xainet.top',
 >   apiKey: process.env.INFRAX_API_KEY,
 >   // data 服务独立入口（:9112；缺省回退 baseUrl）
->   dataUrl: 'http://<host>:9112',
+>   dataUrl: 'https://infrax.0xainet.top/api/data',  // data-service 域名入口（缺省回退 baseUrl）
 >   dataApiKey: process.env.DATA_API_KEY,   // X-API-Key；缺省回退 apiKey
->   // ml-service 独立入口（:9120；缺省回退 baseUrl）
->   mlUrl: 'http://43.156.25.197:9120',
+>   // ml-service 独立入口（:9120；缺省回退 baseUrl，nginx 已配 /ml/* 与 /api/ml/* 双路由）
+>   mlUrl: 'https://infrax.0xainet.top/api',    // ml-service 域名入口（/api/ml/*，缺省回退 baseUrl）
 >   mlApiKey: process.env.ML_API_KEY,       // X-API-Key；缺省回退 apiKey
 > });
 > await infrax.data.factorsCatalog();       // → data
 > await infrax.ml.cacheStats();             // → ml-service（免鉴权）
 > await infrax.ml.bolt();                   // → ml-service（统一 dict；缓存 miss 时 data=null）
-> await infrax.dc.tokens({ limit: 5 });     // → dc（公网受 Cloudflare 回源 502 影响，见 §2.1）
+> await infrax.dc.tokens({ limit: 5 });     // → dc
 > ```
 
 ### 2.3 模块与方法（按服务分组）
@@ -107,7 +105,7 @@ const infrax = new InfraX({
 >
 > ```ts
 > import { InfraX, X402RequiredError } from '@0xinfrax/infrax-dk';
-> const infrax = new InfraX({ baseUrl: 'https://api.infrax.io', apiKey: 'rx_...' });
+> const infrax = new InfraX({ baseUrl: 'https://infrax.0xainet.top', apiKey: 'rx_...' });
 > try {
 >   await infrax.marketRpc.tokenInfo({ chainIndex: '1', tokenAddress: '0x...' });
 > } catch (e) {
@@ -125,9 +123,9 @@ const infrax = new InfraX({
 >
 > ```ts
 > const infrax = new InfraX({
->   baseUrl: 'https://43.163.105.172',
+>   baseUrl: 'https://infrax.0xainet.top',
 >   apiKey: process.env.INFRAX_API_KEY,           // 读 key（x-api-key）
->   chainRpcUrl: 'http://<host>:9130',            // 网关（缺省回退 baseUrl）
+>   chainRpcUrl: 'https://rpc-gw.0xainet.top',   // 网关公网入口（缺省回退 baseUrl）
 >   chainRpcBroadcastKey: process.env.CHAIN_RPC_BROADCAST_KEY, // 独立广播 key
 > });
 > // 读：走读 key
@@ -142,7 +140,7 @@ const infrax = new InfraX({
 > import { Wallet } from 'ethers';
 > const signer = new Wallet(process.env.WALLET_PRIVATE_KEY!);
 > const infrax = new InfraX({
->   baseUrl: 'https://43.163.105.172',
+>   baseUrl: 'https://infrax.0xainet.top',
 >   walletAddress: signer.address,                       // 钱包地址（x-wallet-address）
 >   walletSign: (msg) => signer.signMessage(msg),        // EIP-191 签名回调（x-wallet-signature）
 > });
@@ -307,7 +305,7 @@ pip install lightrag-client==2.0.0    # PyPI 官方发布（2026-08-11）；源�
 from lightrag_client import LightRAGClient  # 实际导入名以包为准
 
 client = LightRAGClient(
-    base_url="https://43.163.105.172/api/rag/v1",  # ragservicer
+    base_url="https://infrax.0xainet.top/api/rag/v1",  # ragservicer 公网入口
     api_key="<lr_...>",                            # 租户签发 key
 )
 
@@ -337,7 +335,7 @@ client.get_task(namespace="market", task_id="<task_id>")
 
 ```bash
 # 示例：data 服务生成 TS 客户端
-npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.json -g typescript-axios -o ./client
+npx openapi-generator-cli generate -i https://infrax.0xainet.top/api/data/openapi.json -g typescript-axios -o ./client
 ```
 
 ### 4.1 ml-service（:9120）消费要点
@@ -392,7 +390,7 @@ npx openapi-generator-cli generate -i https://43.163.105.172/api/data/openapi.js
 1. **统一三选一**：所有服务请求带任一 header——`Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`。
 2. **key 获取（B-12-1 统一 key 签发）**：data `POST /admin/api-keys`（body `{scope, label}`，需 `ADMIN_API_KEY`；平台方操作）签发，按 scope 前缀区分：`dx_`（data）/`mx_`（MCP 入站）/`px_`（payment）/`vx_`（vault）/`mp_`（mpc）/`cr_`（chain-rpc scope=`rpc_broadcast`）/`wa_`（waas）；chain-rpc 订阅面另签发 `rx_` 读 key / `bx_` 广播 key（读写分离，issue-key `kind:"broadcast"` 签发广播 key）。区块链服务另支持各服务 `.env` bridge key（`VAULT_API_KEY`/`MPC_API_KEY`/`WAAS_API_KEY`/…）作为等价凭据。
 3. **WAAS 已接统一鉴权（B-12-1 已闭环）**：所有端点 `authenticate`（非 saas 租户路由）。写操作（`/api/v2/wallet/*`、`/api/v2/tx/*`）额外要求**钱包签名鉴权（B-11-3）**——三头 `x-wallet-address` / `x-wallet-signature` / `x-wallet-timestamp`（EIP-191，消息 `InfraX auth: <ts>`，毫秒 UTC，24h TTL，服务端按地址缓存 24h）。SDK 0.5.1+ 通过 `walletAddress`+`walletSign` 回调自动生成；未配置时 `wallet.*` 明确抛错（fail-closed）。
-4. **HTTP 层**：域名 `infrax.0xainet.top` 证书生效前，直连 `https://43.163.105.172` 需 `-k`/`verifyTls:false`；`/api/*` 域名 502 为 Cloudflare 回源待配置（见部署文档 §2.1）。
+> **HTTP 层**：公网统一经域名 `https://infrax.0xainet.top`（nginx 80→443，Cloudflare Origin CA 证书），无需 `-k`/`verifyTls:false`；内网直连各服务 `http://127.0.0.1:<port>`。
 5. **时间戳**：毫秒 UTC（unix ms）。
 
 ---

@@ -15,7 +15,7 @@
 **3）最小示例**
 
 ```ts
-const base = 'http://127.0.0.1:9100';   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/v2/admin/*
+const base = 'http://127.0.0.1:9100';   // 内网直连；公网经 nginx→web 代理 https://infrax.0xainet.top/api/v2/admin/*
 
 // 登录 → token（生产实测 200）
 const login = await fetch(base + '/api/v2/admin/login', {

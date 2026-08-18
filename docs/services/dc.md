@@ -20,7 +20,7 @@ npm install @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9102',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111/api/v2/data
+  baseUrl: 'http://127.0.0.1:9102',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top（nginx→web 代理，前缀 /api/v2/data）
   dcApiKey: process.env.DC_API_KEY,   // ← x-dc-api-key（数据面必需）
 });
 
@@ -128,7 +128,7 @@ curl -s http://127.0.0.1:9102/api/v2/data/usage \
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9102',   // 或经 web 代理 http://<host>:9111
+  baseUrl: 'http://127.0.0.1:9102',   // 或公网 baseUrl 用 https://infrax.0xainet.top
   dcApiKey: process.env.DC_API_KEY,   // ← x-dc-api-key（数据面必需）
 });
 

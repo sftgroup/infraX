@@ -20,7 +20,7 @@ npm install @0xinfrax/infrax-dk
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9101',   // 内网直连；公网经 web 代理 http://43.163.105.172:9111
+  baseUrl: 'http://127.0.0.1:9101',   // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top
   apiKey: process.env.MARKET_API_KEY, // ← X-API-Key（pkx_ key）
 });
 
@@ -203,7 +203,7 @@ curl -s -X POST http://127.0.0.1:9101/api/v2/market/checkout \
 import { InfraX } from '@0xinfrax/infrax-dk';
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9101',          // 或经 web 代理 http://<host>:9111
+  baseUrl: 'http://127.0.0.1:9101',          // 或公网 baseUrl 用 https://infrax.0xainet.top
   apiKey: process.env.MARKET_API_KEY,        // ← X-API-Key（api_keys 表签发的 pkx_ key）
 });
 

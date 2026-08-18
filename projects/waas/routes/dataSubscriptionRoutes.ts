@@ -119,7 +119,7 @@ router.get('/key', authenticate, asyncHandler(async (req, res) => {
 // ─── Docs ───
 router.get('/docs', asyncHandler(async (_req, res) => {
   res.json(apiResponse({
-    title: 'InfraX Data Center API', version: '1.0.0', baseUrl: 'https://api.infrax.io/api/v2/data',
+    title: 'InfraX Data Center API', version: '1.0.0', baseUrl: 'https://infrax.0xainet.top/api/v2/data',
     authentication: { method: 'API Key', header: 'x-dc-api-key', description: 'Use your Data Center API Key (independent from WaaS key) to authenticate requests.' },
     endpoints: [
       { method: 'GET', path: '/events', description: 'Query on-chain events', params: [
