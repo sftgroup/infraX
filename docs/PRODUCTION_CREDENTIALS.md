@@ -160,7 +160,22 @@
 
 ---
 
-## 8. 安全提醒
+## 8. B 端 data-service（:9112）dx_* key 登记（2026-08-19 更新）
+
+> 因子/行情消费统一走 data-service `dx_*` key（见 §7 因子双轨收敛）。公网入口 `https://infrax.0xainet.top/api/data/*`，鉴权头三选一：`Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`。签发/轮换/吊销走 `POST /admin/api-keys`（Bearer ADMIN_API_KEY）。
+
+| label | scope | key（明文，仅 admin 可见一次） | rate_limit | 备注 |
+|---|---|---|---|---|
+| arbitrage | data | `dx_7ee2af1fc6612bd3bf85a65b12b6492c881d86e8d6699e45` | 600/min | **Arbitrage 套利平台**（PRD arbitrage-data-requirements，2026-08-19 签发；公网实测 external/ml/calendar/bars 全 200） |
+| aitrader | data | `dx_…`（既有，历史签发） | — | AItrader B 端 |
+| aihunter-saas | data | `dx_…`（既有，历史签发） | — | AIHunter SaaS B 端 |
+| aiservicer | data | `dx_9e9f2…586a`（既有） | — | 服务侧 bridge |
+
+> 说明：`dx_*` 完整明文只在签发响应 `data.api_key` 中返回一次，库中仅存 hash；上表仅 arbitrage 为本次新签（明文完整可见），其余请以签发时留存或 `GET /admin/api-keys` 掩码核对。
+
+---
+
+## 9. 安全提醒
 
 - **MPC_ENCRYPTION_SECRET 曾泄漏于 git 历史**（建议轮换后再更新本文件）。
 - 轮换任一 key 时需同步：对应 systemd unit env + 本文件 + 使用方配置（如 SDK/代理）。

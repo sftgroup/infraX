@@ -45,7 +45,7 @@
 |---|---|
 | OHLCV | `ts`, `open`, `high`, `low`, `close`, `volume` |
 | 技术指标（自动计算） | `rsi_14`, `macd`, `macd_signal`, `macd_hist`, `bb_upper`, `bb_middle`, `bb_lower`, `atr_14`, `ma_5`, `ma_10`, `ma_20` |
-| 外部因子（按最近时间 join） | catalog 中声明的因子：`fear_greed`, `vix`, `dxy`, `us10y`, `btc_difficulty`, `sentiment_score` 等 |
+| 外部因子（按最近时间 join） | catalog 中声明的因子：`fear_greed`, `vix`, `vxn`, `gvz`, `dxy`, `us10y`, `btc_difficulty`, `sentiment_score`, `put_call_ratio` 等（2026-08-19 补齐 external 8 字段） |
 
 **timeframe 与覆盖达标**（生产实测 2026-08-08，46 符号）：
 
@@ -116,7 +116,7 @@
 
 | 端点 | 返回 |
 |---|---|
-| `/factors/catalog` | 因子目录（**28 个**：18 内置 + 10 ML；七字段结构见下） |
+| `/factors/catalog` | 因子目录（**49 个**：31 内置/ML + 18 graph；七字段结构见下，2026-08-19 实测） |
 | `/factors/current?symbols=&category=` | 最新因子值（category：external/sentiment/news/opportunities/heatmap/calendar/snapshot） |
 | `/factors/history?symbol=&timeframe=&ids=` | 逐 bar 因子时序（对齐 /bars ts，回测用） |
 
@@ -139,7 +139,7 @@
 | `description` | 中文语义描述（新增 2026-08-07，下游展示用） |
 | `unit` | 单位：`%`（us10y）、`T`（btc_difficulty）、`EH/s`（btc_hashrate）；价格/概率/方向/指数类为 `null`（新增 2026-08-07） |
 
-**因子清单（32 个）**：
+**因子清单（31 个）**（catalog 另含 18 个 graph 因子，全量 **49**，见 §6）：
 
 - **technical（11）**：`rsi_14`、`macd`、`macd_signal`、`macd_hist`、`bb_upper`、`bb_middle`、`bb_lower`、`atr_14`、`ma_5`、`ma_10`、`ma_20`（kline_store 自动计算，与 bar 同源）
 - **macro（5）**：`vix`、`vxn`、`gvz`、`dxy`、`us10y`（unit=`%`）
@@ -165,7 +165,7 @@
 **B 端使用方式（2026-08-08 定稿）**：统一鉴权头三选一 `Authorization: Bearer <key>` / `X-API-Key: <key>` / `X-Service-Key: <key>`（`dx_*` 租户 key 或 `DATA_API_KEY`）；时间戳一律 unix ms；公网统一域名 `https://infrax.0xainet.top`（详见 §1）。
 
 ```bash
-export DX_KEY='dx_...'   # 已向 5 家 B 端签发的租户 key
+export DX_KEY='dx_...'   # 已向 B 端签发的租户 key（登记清单见 PRODUCTION_CREDENTIALS §8，如 arbitrage 等）
 
 # 1) 行情 K 线（含技术指标 + 最近因子 join）
 curl "https://infrax.0xainet.top/api/data/bars?symbol=BTC/USDT&timeframe=1d&limit=100" -H "X-API-Key: $DX_KEY"
