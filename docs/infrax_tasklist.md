@@ -1889,7 +1889,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 需求 | 任务内容 | 现状 | 优先级 |
 |---|---|---|---|---|
-| GF-1 | 存量文档图谱构建修复 | 1163 篇文档（`crypto:daily:*`）在库但 retrieve/query 全返回 `[no-context]`；疑异步注入任务（202+task_id）实体抽取/向量化失败。排查：`/admin/tasks` 状态分布 → `/admin/config` 确认 LLM(DeepSeek)/embedding(all-MiniLM-L6-v2/DashScope) → 存量批量同步重灌（`/documents/batch async=false`）→ 回归 | 🔲 | **P0** |
+| GF-1 | 存量文档图谱构建修复 | 1163 篇文档在库但检索 `[no-context]`。**生产诊断（2026-08-18）完成**：服务/注入/检索链路正常（sync 探针 5实体5关系 47s）；742/1196 indexed、**188 悬挂 indexing + 266 error**（defi:tvl 240 + denoise 残留 dup-*）；根因=异步 client 轮询超时致任务未回写。执行拆分见 GF-1.1~GF-1.8 | 🔲 | **P0** |
 | GF-2 | 图谱检索回归验证 | 重灌后 `retrieve`/`query` 命中 `crypto:daily:2026081*` 内容，返回实体上下文（不再 no-context）；对照 sync 注入文档 `aitrader-diagnose-20260818` 已验证链路本身正常 | 🔲 | **P0** |
 | GF-3 | 图谱因子端点 `GET /factors/graph` | RAGservicer :9721 实现，契约 8 数值因子（graph_entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure + top_entities/events）；子图聚合 + PageRank/边加权情绪；日频（随 `crypto:daily:*`）；验证：与 fear_greed/finbert_sentiment 方向一致 ≥70% | 🔲 | P1 |
 | GF-4 | 因子目录并入 catalog | `/factors/graph` 输出并入 `/factors/catalog`（graph 分类，metadata 对齐 catalog 规范） | 🔲 | P1 |
@@ -1899,3 +1899,54 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | GX-2 | 相关性动态图 + 图嵌入 + FF 联动（M2 扩展） | `/bars` 滚动 60 日 |ρ|≥0.6 动态边 + 社区动量 + Node2Vec（`gf_node2vec_1..k`）；FF 挖掘候选 IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4） | 🔲 | P2 |
 
 > **要点记录**：GF-1 已锁定根因方向——AItrader 对照实验证明注入→实体抽取→检索链路正常（sync=1 注入 `aitrader-diagnose-20260818` 命中），问题在存量异步任务。moomoo MM-11 F10 含财报（income/balance/cashflow）可作 GX-1 供应链传导的数据基础（生产权限待验证，`fetch_financials` 本地 ret=0 空）。验证基线：GF-2 回归、GF-3 方向一致 ≥70%、GF-5 ECharts 渲染、GX 单因子 IC/分层收益单调性、回测区间 2024-09 起（对齐 ML 因子）。
+
+> **GF-1 执行拆分（2026-08-18 生产验证后）**：
+> - GF-1.1 试点重灌：`POST /inject/crypto_overview` + `POST /inject/defi_tvl`（ki :9113，X-API-Key=INJECTOR/RAGSERVICER key），验证新 doc_id 为 indexed（打通链路）
+> - GF-1.2 批量重灌：其余 17 个来源逐个 `POST /inject/<source>`（onchain/tech_analysis/indices/macro/sentiment/volatility/news_sentiment/major_events/fred_economics/earnings_index/global_macro/evm/macro_trend/tree_ml/consensus/p2_predictions/ml_predictions）
+> - GF-1.3 残留清理：脚本翻页收集 `status∈{error,indexing}` 的 doc_id（454 篇）→ `DELETE /documents/<doc_id>?sync=1`（先重灌后清理）
+> - GF-1.4 向量一致性核查：重灌后对比 expected vs retrieved chunk（日志 `data inconsistency` 是否消失）
+> - GF-1.5 缺失向量重建：对仍缺失 chunk 的文档重嵌入（重灌/re-embed）
+> - GF-1.6 GF-2 回归：retrieve/query 命中率、no-context 归零、`crypto:daily:*` 实体上下文覆盖
+> - GF-1.7 日志验证：`Vector similarity data inconsistency` 警告消失、indexed 占比 >95%
+> - GF-1.8 状态登记：GF-1/GF-2 更新为 ✅ 并汇报
+
+> **GF-2 执行拆分（图谱检索回归）**：
+> - GF-2.1 回归用例集：定义标准查询集（BTC/ETH/宏观/情绪/政策 ≥10 条），记录修复前基线（no-context 率）
+> - GF-2.2 执行回归：重灌清理后跑用例集，统计命中率、no-context 归零
+> - GF-2.3 登记：GF-2 更新 ✅，基线对比存档
+
+> **GF-3 执行拆分（/factors/graph 端点，RAGservicer :9721）**：
+> - GF-3.1 子图提取：从 LightRAG 图谱取目标 symbol 子图（实体/关系/边权重）
+> - GF-3.2 因子计算：8 数值因子（entity_count/relation_count/sentiment/event_intensity/centrality/momentum_affinity/policy_exposure）+ top_entities/events；子图聚合 + PageRank + 边加权情绪
+> - GF-3.3 端点接入：新增 `GET /factors/graph` 路由 + 鉴权 + 日频缓存（随 `crypto:daily:*`）
+> - GF-3.4 方向一致性验证：与 `/factors/live` fear_greed/finbert_sentiment 对比 ≥70%
+
+> **GF-4 执行拆分（catalog 并入）**：
+> - GF-4.1 契约对齐：`/factors/graph` 输出 metadata 对齐 catalog 规范
+> - GF-4.2 目录合并：`/factors/catalog` 新增 graph 分类条目
+> - GF-4.3 文档同步：catalog/数据服务文档更新
+
+> **GF-5 执行拆分（/graph/entities 可视化）**：
+> - GF-5.1 数据端点：`GET /graph/entities` 返回 nodes（category 9 枚举 + size=sentiment）+ edges（relation 8 枚举 + weight）
+> - GF-5.2 前端验证：ECharts 力导向图渲染
+> - GF-5.3 文档：前端集成说明
+
+> **GF-6 执行拆分（AItrader 专用 key）**：
+> - GF-6.1 签发专用 `RAGSERVICER_API_KEY`（多租户，对齐 app_auth）
+> - GF-6.2 迁移：AItrader 接入方替换新 key，废弃借用 aiservicer
+> - GF-6.3 凭证/文档更新
+
+> **GX-1 执行拆分（moomoo 供应链/行业图 + 结构因子，M1）**：
+> - GX-1.1 数据准备：moomoo 行业分类 + 供应链映射 + F10 财报字段（生产权限验证，`fetch_financials` ret=0 待实机确认）
+> - GX-1.2 graph_engine 静态图：networkx 构图（same_industry/supply_chain 边）+ SQLite graph_factor.db（nodes/edges/features）
+> - GX-1.3 结构特征：`gf_degree/gf_betweenness/gf_pagerank/gf_community/gf_structural_hole`
+> - GX-1.4 邻居聚合特征：`gf_neighbor_mom/gf_neighbor_vol/gf_sector_mom/gf_cc_spillover`
+> - GX-1.5 data-service 接入：`/factors/current?category=graph` 透传 + catalog（graph 分类，60s TTL）
+> - GX-1.6 验证：单因子 IC/分层收益单调性、回测 2024-09 起（对齐 ML 因子）
+
+> **GX-2 执行拆分（相关性动态图 + 图嵌入 + FF 联动，M2）**：
+> - GX-2.1 动态相关边：`/bars` 滚动 60 日 |ρ|≥0.6 建边
+> - GX-2.2 社区动量：Louvain 社区 + 社区动量因子
+> - GX-2.3 Node2Vec：64 维嵌入取前 k（`gf_node2vec_1..k`）
+> - GX-2.4 FF 联动：`gf_*` 入挖掘候选池，IC/ICIR 评估 → 自动激活/衰退淘汰（FF-4.4）
+> - GX-2.5 全链路验证：端到端 + 回测
