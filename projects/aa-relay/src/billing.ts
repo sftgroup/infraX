@@ -351,7 +351,7 @@ export async function aaLedgerBalance(subscriber: string): Promise<{
     if (ep) {
       try {
         const { publicClient } = escrowClient();
-        const [deposit] = await Promise.all([
+        const [depositInfo, nativeBal] = await Promise.all([
           publicClient.readContract({
             address: ep,
             abi: entryPointAbi,
@@ -360,8 +360,8 @@ export async function aaLedgerBalance(subscriber: string): Promise<{
           }) as Promise<[bigint, boolean, bigint, number, number]>,
           publicClient.getBalance({ address: account }),
         ]);
-        funds.epDepositWei = deposit[0].toString();
-        funds.nativeWei = deposit[1].toString();
+        funds.epDepositWei = depositInfo[0].toString();
+        funds.nativeWei = nativeBal.toString();
       } catch (err: any) {
         // 资金总览为增强信息，EP/native 读取失败不阻断 escrow 余额返回
         console.error('[aa-relay] funds query failed (ep/native):', err?.shortMessage || err?.message);
