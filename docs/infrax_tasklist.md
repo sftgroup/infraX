@@ -2043,3 +2043,15 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - **中转资金**：测试钱包 `0xd8e2cf...`（= `AA_DEPLOYER_PRIVATE_KEY`，46 网关 .env）转 **5 OXA** 至执行钱包（tx `0x4ea0da4e...`，块 `0x1d48d`，余额 5 OXA）；余额用于 bundler 广播 tx 周转，EntryPoint beneficiary 退款回流
 > - **relay 变更**：data 机 `AA_OXACHAIN_BUNDLERS` `http://43.159.60.46:4338` → **`http://43.156.78.59:4338`**（`infrax-aa-relay.service`，daemon-reload + restart active）；`AA_OXACHAIN_KERNEL_VERSION=0.3.0-beta`/escrow/paymaster 配置全部保留；163.105 → 78.59:4338 公网连通验证 ✅
 > - **遗留**：① escrow 充值路径设计（§5，待落地，用户自充 gas 方向已确认）；② AgentX 侧全链路回归（§6，AgentX 执行：alipay/无 gas 等场景重跑 E2E）；③ 旧机 60.46 `pocketx` 目录已丢失无需清理
+
+> **因子双轨收敛：统一入口 `/factors/graph`（GF-3 语义图谱因子并入 data-service，2026-08-19 完成）**：
+> - **背景**：语义图谱因子（ragservicer `/api/v1/factors/graph`，`lr_*` key）与 data-service 统一因子通道（`/factors/current`，`dx_*` key）双轨并行，B 端需分别持有 lr_*/dx_* 两类 key，调用方（AItrader 等）持多个 key 易混乱。
+> - **方案（用户裁定 2026-08-19）**：语义图谱因子迁入 data-service **统一入口 `GET /factors/graph`**（`/factors/current` 与 `/factors/crypto-derivatives` 之间）；data-service 内部持 ragservicer default 租户服务 key 透传，B 端**仅需 data-service key（dx_*）**，单 key 单入口消费全部因子。
+> - **代码（commit `96accd3`）**：
+>   - `projects/data/app/config.py`：新增 `RAGSERVICER_BASE_URL` + `RAGSERVICER_SERVICE_KEY`（注释说明统一入口方案）
+>   - `projects/data/app/ml_client.py`：新增 `fetch_rag_graph_factors(symbols)`（逐 symbol 调 `/api/v1/factors/graph`，数值因子过滤，60s TTL 按 symbols 集合键控）+ `fetch_rag_graph_catalog()`（300s TTL），均 fail-silent
+>   - `projects/data/main.py`：新增 `GET /factors/graph` 端点（返回 `{"ts","meta":{"source":"ragservicer","catalog","updated_at"},"factors":{symbol:{...}}}`）
+> - **生产部署**：data 机 163.105 `git pull` → `.env` 追加 `RAGSERVICER_BASE_URL=http://43.156.78.59:9721` + `RAGSERVICER_SERVICE_KEY=lr_16c4aa5d…`（data-service-internal 服务 key）→ `systemctl restart infrax-data`（active）
+> - **key 治理（立即吊销旧 key）**：吊销 aitrader `prod` `lr_db9f5e4c04bbffa88b46b98990805f7580d48a8a8dad5e45`（key_3f10effdd05ad073）与 aihunter-saas `prod` `lr_db0c2ac4c…`（key_eff09eb7e0a2d0fe），均 active=0；保留 data-service-internal（内部透传，禁外发）+ aitrader-main/aihunter-saas-main（B 端备用直连）。B 端最终 key 由用户转发（见 PRODUCTION_CREDENTIALS §7）
+> - **验证**：`GET /factors/graph?symbols=BTC,ETH` 无 key 401 / 带 dx_* key 200 → 8 因子真实返回（BTC graph_centrality=0.0165/graph_entity_count=205/graph_sentiment=0.2314/graph_momentum_affinity=-0.8426 等）+ catalog；服务日志无新增报错
+> - **遗留**：B 端（AItrader/AIHunter SaaS）确认是否迁移至 data-service key 消费 `/factors/graph`（备用 lr_* 直连 key 保留但非推荐）

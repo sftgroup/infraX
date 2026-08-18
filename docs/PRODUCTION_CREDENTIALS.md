@@ -2,7 +2,7 @@
 
 > **用途**：记录生产环境访问凭证与服务密钥，供授权运维/开发人员本地查阅。
 > **安全提示**：本文件含真实密钥，禁止外泄、禁止推送公开仓库；如需分享请走安全渠道。
-> **最后更新**：2026-08-19（§7 新增 ragservicer AItrader 专用租户 key，GF-6 隔离治理）
+> **最后更新**：2026-08-19（§7 因子双轨收敛：data-service 统一入口 `/factors/graph` + 旧 key 吊销登记）
 
 ---
 
@@ -143,6 +143,16 @@
 > - key 名：`aihunter-saas-main` ｜ 明文 key：`lr_09ef21e954fa4af57301df273200a52fc02e1aedcb658e5a` ｜ 永不过期
 > - 签发：生产机 78.59 `PYTHONPATH=. .venv/bin/python3 -c "from tenants.manager import create_tenant, generate_api_key; ..."`（需先 `load_config()` + `load_dotenv('.env')`）
 > - 验证：`/api/v1/factors/graph?symbol=BTC`（8 因子真实返回）/ `/api/v1/factors/catalog` / `/api/v1/graph/entities` 无 key 401、带 key 200；`/api/v1/namespaces/market/documents` 200
+>
+> **因子双轨收敛（2026-08-19，统一入口 + 旧 key 吊销）**：
+> - **背景**：语义图谱因子（ragservicer `/api/v1/factors/graph`，`lr_*` key）与 data-service 统一因子通道（`/factors/current`，`dx_*` key）此前双轨并行，B 端需分别持有 lr_*/dx_* 两类 key，调用方（尤其 AItrader）持有多个 key 易混乱。
+> - **收敛方案（用户裁定）**：语义图谱因子迁入 data-service **统一入口 `GET /factors/graph`**；data-service 内部持 ragservicer **default 租户服务 key** 透传，B 端**只需一个 data-service key（dx_*）即可消费全部因子**，无需再持有 ragservicer lr_* key。
+> - **data-service 内部服务 key（服务间鉴权专用，禁止外发）**：`data-service-internal`（default 租户）｜ `lr_16c4aa5d708348478b7b0365ec6dbd42303f8ca3147ac460`（永不过期；data 机 `.env` `RAGSERVICER_BASE_URL=http://43.156.78.59:9721` + `RAGSERVICER_SERVICE_KEY`）
+> - **旧 key 吊销记录（均 active=0，B 端调用已失效）**：
+>   - aitrader `prod`：`lr_db9f5e4c04bbffa88b46b98990805f7580d48a8a8dad5e45`（key_3f10effdd05ad073，2026-08-05 初始化，2026-08-19 吊销）
+>   - aihunter-saas `prod`：`lr_db0c2ac4c…`（key_eff09eb7e0a2d0fe，原有效至 2027-08-05，2026-08-19 吊销）
+> - **保留未吊销**：AItrader 专用 `lr_a1a683d4…`（aitrader-main）与 AIHunter SaaS `lr_09ef21e9…`（aihunter-saas-main）作为 B 端**备用图谱直连 key**（绕过 data-service 直连 ragservicer 时可用）；**推荐统一走 data-service `/factors/graph`**（数据面一致、单 key 单入口）。
+> - 生产部署与验证：data 机 163.105 `git pull` + `.env` 追加上述两变量 → `systemctl restart infrax-data`（active）；`GET /factors/graph?symbols=BTC,ETH` 无 key 401 / 带 dx_* key 200（8 因子真实返回 + catalog），服务日志无新增报错。
 
 ---
 
