@@ -242,10 +242,10 @@ curl -H "X-API-Key: dx_xxx" \
 | 用途 | 端点 | 说明 |
 |---|---|---|
 | 图谱数值因子（多币种） | `GET /factors/current?symbols=BTC,ETH,...` | **symbols 必须显式传参**（默认仅 BTC）；每 symbol 18 项 `gf_*`，覆盖市值前 150 标的 |
-| 力导向图可视化 | `GET /factors/graph/entities?symbol=&namespace=market&limit=` | symbol 非空=该实体一跳子图；空=全图 top-N by PageRank；**namespace 默认 market**（onchain/default 可选） |
+| 力导向图可视化 | `GET /factors/graph/entities?symbol=&namespace=market&limit=` | symbol 非空=该实体一跳子图；空=全图 top-N by PageRank；**namespace 默认 market**（onchain/default 可选）；节点含 `name_en`（REQ-G8：中文实体英文名，未命中 null，英文界面免混排） |
 | 语义检索知识增强 | `POST /rag/retrieve` | body `{"query","namespaces":["market","onchain"],"top_k":10}` → 各 namespace context 片段（自带 LLM 组装答案） |
 | 语义图谱 8 因子 | `GET /factors/graph?symbols=` | ragservicer 知识图谱因子（graph_entity_count 等），`meta.catalog` 附定义 |
-| 相关性图边 | `GET /factors/graph/edges?symbols=&limit=300` | GX-2 口径：60 日 \|ρ\|≥0.6 + community/pagerank（与 gf_* 同快照） |
+| 相关性图边 | `GET /factors/graph/edges?symbols=&limit=300` | GX-2 口径：60 日 \|ρ\|≥0.6 + community/pagerank（与 gf_* 同快照）；**REQ-G9：仅真实 corr 边**——`corr` 带符号 ρ∈[-1,1]、`abs_corr`=\|ρ\|、按 abs_corr 降序，非 corr 图层边不再输出 |
 | 图谱因子历史（回测） | `GET /factors/graph/history?symbols=&days=` | 自然日归一化 asof 语义；历史自 2026-08-18 累积 |
 
 **调用示例**：

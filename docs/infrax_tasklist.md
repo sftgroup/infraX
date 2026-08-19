@@ -1879,6 +1879,14 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | AX-13 | MPC-1 2-of-3 阈值演进 | TSS_EVALUATION 加片3（独立签名机/HSM）落地：签名/恢复路径支持 3 片 2 阈值 + 2-of-3 测试 + 2-of-2 平滑兼容 | ✅ mpc_signer `/v1/import` 3 片 t=2 + `/v1/sign` `partner_index` 1/2（TSS_SIGNER_URL_1/2 路由）；tss_signer `TSS_PARTY_ID` 实例标签；`m4_2of3` 3 子集签名全部有效 + `verify-2of3.mjs` HTTP 级两路径复核；server.ts 六端点 `partnerIndex` 透传 + `recovery_shard2` 列迁移（存量 2-of-2 平滑兼容）；文档见 [TSS_EVALUATION.md §7](docs/TSS_EVALUATION.md) | P2 |
 
 > **现状核对记录（2026-08-17）**：三组 search 调研确认——OE-2/OE-4 已实现；OE-1 部分（服务层透传断裂）；SK-2/3/4 部分；OE-3、PC-1/2/3、A2A-1、SK-1、MPC-1 未实现。详见上方任务表。
+>
+> **REQ-1~5 智能账户充值闭环（AgentX 自动续订需求，源：docs/aa-auto-renew-funding-requirements-infrax.md，2026-08-19 提交）**：
+> - **REQ-1（P0 合约）`depositFor`/`depositForERC20`**：EOA 代子账户入账（`_balances[user] += msg.value`，与 EP depositTo 同语义，无权限要求）+ 事件 `DepositedFor(user, amount, token, by)`。✅ **已上链**（commit `62d6d27`，4 单测/30 passing；UUPS 升级 impl `0x5ff8638103723d38b5103bf6bb9ba2abf36e3bca`，2026-08-19 生产机执行 + 链上实测 tx status 1；`depositFor` selector eth_call 复核可调用）
+> - **REQ-2（P0 relay）计费/资金能力**：✅ **生产部署**（commits `62d6d27`/`bce1491`/`71f6892`）——2a `/v1/ledger-balance` escrow 模式放行（不再误 503）；2b 资金总览 `funds{escrowWei, epDepositWei, nativeWei}`；2c 402 `topupHint` 按计费主体区分（子账户场景指引 depositFor）。生产实测（2026-08-20）：`POST /v1/ledger-balance` 返回 `funds{escrowWei:0, epDepositWei:0, nativeWei:10.09 OXA}`（escrow 模式 200）
+> - **REQ-3（P1 文档）价目与结算语义**：✅ **已完成**——`docs/AA_RELAY_BILLING.md`（预扣构成=固定费+预估 gas、退差语义 refund/extra/全额退、SLA 建议 ≥150s、异步提交模式 202+轮询）
+> - **REQ-4（P2 AgentX 备选）self-pay fallback**：AgentX 侧自理（session 白名单加 `escrow.deposit()`）；infraX 已文档化兜底路径（AA_RELAY_BILLING.md §5 / AA_STACK_GOTCHAS.md §4）——REQ-1 落地后不再需要
+> - **REQ-5（P2 批量）`depositForBatch`/`depositForERC20Batch`**：✅ **已上链**（commit `d6dd9b3`，3 单测；与 REQ-1 同批升级 impl；生产实测 tx `0x0bd95a6c` 两账户精确入账）
+> - **遗留**：AgentX 前端按 REQ-1 落地（一次 depositFor 引导 + 续订资金预检告警）；tasklist 原 §9.20「OE-3 第三方审计」仍未排。
 
 ---
 
@@ -2066,6 +2074,15 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 > - **REQ-G1（commit `c796f14`）**：ml-service `_LAST_GRAPH` 图快照 + `compute_graph_edges_payload()` + `GET /ml/graph/edges`；data-service `fetch_graph_edges()`（300s TTL）+ **`GET /factors/graph/edges`** 统一入口。生产部署（197/163.105 git pull + restart）验证：BTC `gf_community=0/gf_pagerank=0.007843` 与 edges 节点完全同口径（同图快照）。
 > - **REQ-G3 回复**：market 图谱 1176 节点（graphml 3.4MB，limit 建议 200~500）、日频持续灌入、category 9 枚举 + relation 8 枚举清单（详见 requirements-infrax-graph-rag.md「B 端回复」）。
 > - **后续**：因子消费仅需已有 dx_* key；文档写入/检索/图谱可视化继续用现有 lr_ key（全部有效，见 PRODUCTION_CREDENTIALS §7）。
+
+> **REQ-G8 / REQ-G9 修复（aihunter-saas 需求，2026-08-20 完成）**：
+> - **REQ-G8 图谱实体双语（name_en 映射表）**：`projects/ragservicer/api/entity_name_en.json`（439 条中文→英文映射，覆盖 top-300 有意义术语与值后缀变体）；`graph_engine.py` 新增 `load_name_en_map()`/`name_en_of()`，`build_graph_payload()` 节点新增 `name_en`（精确查表 → 剥离值后缀回查核心词，如「机会评分48/100」→ Opportunity Score 48/100，`美元`→` USD` 语言化 → 未命中 null）。生产部署（78.59）：`/factors/graph/entities?namespace=market&limit=300` 300 节点中 124 个带 name_en（加密货币市场→Crypto Market、机会评分→Opportunity Score），噪音降级 null。
+> - **REQ-G9 edges 真实相关系数（组合方案）**：
+>   - **根因**：data-service `kline` 表 1d 仅 40 symbols（crypto 仅 BTC/ETH/SOL/XRP 5 对）→ ml-service 150 标的 universe 大多无 bars → returns 空 → 真实 corr 边为 0 → `compute_graph_edges_payload` 把非 corr 边图层权重（industry weight=1.0）当 `corr` 输出恒 1。
+>   - **修复**：① ml-service `graph_engine.py` edges 仅输出真实 corr 边（`rho` 存在才输出，`corr` 带符号、`abs_corr`=|ρ|，abs_corr 降序截断）；② data 机 `.env` `KL_SYMBOLS` 5 对 → **81 对**主流币（`data_config.json` `kline.symbols` 同步），预置 75 新币 1d bars（ccxt binance，5 个非现货对 POPCAT/MNT/CRO/OKB/KAS 剔除）。
+>   - **生产验证**：data 机 163.105 + ml 机 156.25.197 重启，ml 预热重建图 `nodes=129 edges=1373 sectors=10 communities=11`；`/factors/graph/edges` 透传返回全 kind=corr 真实相关性（BTC-ETH ρ=0.9147、SPY-QQQ ρ=0.9098、GC=F/SI=F ρ=0.8960），无伪造 1.0。
+> - **遗留**：AIHunter 前端按 |ρ| 归一化线宽 + corr 正负染色、英文界面 name_en 消费，实测无回归（B 端确认）。
+> - 需求原文与实现依据见 `requirements-infrax-graph-rag.md` REQ-G8 / REQ-G9。
 
 ### 9.9 WAAS 优化任务（源：arb 上传 `prd/arbitrage-waas-design.md` 对照评审，2026-08-19）
 

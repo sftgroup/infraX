@@ -4,7 +4,7 @@
 > 日期：2026-08-19
 > 接收方：InfraX（`projects/escrow` / `projects/aa-relay`）
 > 性质：aa-relay A-10 计费 + InfraXEscrow 的**充值路径闭环**增量需求（不覆盖 `PAYMASTER_ONCHAIN_ESCROW_DESIGN.md` 的通用托管设计，与之衔接）
-> 状态：待 infraX 评审排期
+> 状态：✅ **已实施并生产验证**（2026-08-19 实施/上链，2026-08-20 复核：REQ-1/2/3/5 全部交付，REQ-4 为 AgentX 侧自理 fallback；详见 infrax_tasklist §9.20 REQ-1~5 登记与 AA_RELAY_BILLING.md）
 
 ---
 

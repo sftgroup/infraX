@@ -81,7 +81,10 @@ B 端只需 **data-service dx_\* key**（无需另持 ragservicer / ml-service k
 
 - 数据源：ml-service GX-2 图（60 日滚动对数收益，`|ρ|≥0.6` 建边、共同交易日 ≥30）
 - 响应 `{ts, meta: {source:"ml-service", window:60, min_abs_corr:0.6, updated_at}, nodes[], edges[]}`
-- nodes 的 `community` / `pagerank` 与 `/factors/current` 的 `gf_community` / `gf_pagerank` **同口径**（同一图快照）；`symbols` 为空 = 全图（实测 128 节点 / 300 边）
+- nodes 结构：`{id, symbol, community, pagerank, size}`（`community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同口径**，同一图快照）
+- edges 结构：`{source, target, corr, abs_corr, weight, kind}`——**REQ-G9（2026-08-20）**：edges **仅输出真实相关性边**（`kind="corr"`），`corr` 为**带符号** ρ∈[-1,1]（正值=正相关、负值=负相关），`abs_corr`=`weight`=|ρ|，按 `abs_corr` **降序**截断（`limit` 上限 1000）；**非 corr 图层边（industry/supply_chain 等）不再输出**（旧版曾把图层权重 1.0 伪装成 corr，恒为 1 误导前端）
+- `symbols` 为空 = 全图（实测 129 节点 / 1373 边，按 limit 截断）；提供 symbols 返回其节点与 1-hop 邻边
+- 前端渲染：线宽按 |ρ| 在 [0.6, 1] 归一化、颜色按 corr 正负区分
 
 **③ `GET /factors/graph/history?symbols=&days=90` — gf_\* 日频历史（REQ-G2.5）**
 
@@ -99,6 +102,7 @@ B 端只需 **data-service dx_\* key**（无需另持 ragservicer / ml-service k
 **⑤ `GET /factors/graph/entities?symbol=&namespace=market&limit=200` — 力导向图数据（REQ-G2.1）**
 
 - 透传 ragservicer 知识图谱可视化数据（LightRAG graphml 结构），响应 `{ts, meta: {source:"ragservicer", namespace}, nodes[], edges[]}`
+- nodes 结构：`{id, name_en, category, sentiment, size}`——**REQ-G8（2026-08-20）**：新增 `name_en`（中文实体的英文名，预存 439 条中文→英文映射表），未命中返回 `null`；值后缀变体自动剥离回查核心词（如「机会评分48/100」→ `Opportunity Score 48/100`、「76.14美元」→ `76.14 USD`）。实测 `limit=300` 时 300 节点中 124 个带 `name_en`，英文界面可直接渲染避免中文混排
 - `symbol` 非空 → 该实体**一跳子图**（实测 BTC → 81 节点/131 边）；空 → 全图 top-N by PageRank（`limit` 上限 500）
 - `namespace` 枚举同 /rag/retrieve：`market`（默认，金融主空间）/ `onchain` / `default`；**必须显式给命名空间**（ragservicer 默认 `default` 无图数据会 503，此端点已固定默认 market）
 - B 端不再需要 lr_ key 做图谱可视化——语义检索走 `POST /rag/retrieve`、相关性图走 `/factors/graph/edges`、知识图谱因子走 `/factors/graph`，**全部 dx_ key 单入口**
@@ -125,6 +129,7 @@ B 端只需 **data-service dx_\* key**（无需另持 ragservicer / ml-service k
 | `/ml/consensus` | GET | 跨模型信号共识聚合（tree+Kronos+FinBERT+P2） | `{generated_at, signals, n_symbols, avg_consensus_score, market_risk_flag, n_divergence, symbols[]}` |
 | `/ml/sentiment` | POST | FinBERT 文本情绪（body: `{"articles":[...]}`） | 聚合情绪统计或 null |
 | `/ml/macro_features` | GET | FRED 宏观特征 + DXY/VIX/US10Y 快照 | 特征 dict 或 null |
+| `/ml/graph/edges` | GET | 相关性图边表（GX-2/REQ-G1 直连版，同 data-service 透传同源） | `{code, message, data: {ts, meta, nodes[], edges[]}}`——edges 仅真实 corr 边（REQ-G9）：`corr` 带符号 ρ∈[-1,1]、`abs_corr`=|ρ|、按 abs_corr 降序 |
 | `/ml/cache/stats` | GET | 缓存统计（命中/未命中/耗时/各端点缓存状态） | `{code, message, data}`（豁免鉴权，监控用） |
 
 > 直连端点鉴权：配置 `ML_API_KEY` 后需带 `Authorization: Bearer` / `X-API-Key` / `X-Service-Key`；未配置保持开放（内网部署建议配置）。统一 401 响应 `{"detail":"unauthorized"}`。

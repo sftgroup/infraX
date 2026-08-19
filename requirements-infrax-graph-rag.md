@@ -33,16 +33,27 @@ GET /factors/current?symbols=BTC,ETH,SOL,BNB,XRP,DOGE,ADA,AVAX,LINK,DOT
 - **关键**：symbols 参数默认只返回 BTC，必须显式传参
 - graph.values 覆盖市值前 150 标的（全市场，可传任意白名单）
 
-### 2.2 相关性图边数据（③，REQ-G1 ✅）
+### 2.2 相关性图边数据（③，REQ-G1 ✅ / REQ-G9 ✅ 已修复）
 
 ```
 GET /factors/graph/edges?symbols=&limit=300
 ```
 - 响应 `{ts, meta:{window:60, min_abs_corr:0.6, updated_at}, nodes[], edges[]}`
 - 口径：60 日共同交易日对数收益、|ρ|≥0.6、共同交易日≥30
-- nodes 的 `community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同一图快照**（updated_at 一致）
-- symbols 空 = 全图（nodes 含全市场资产，图谱页建议按 community 过滤或主流币白名单展示）
-- 实测：nodes 150，edges 5（当前窗口高相关边较少，正常）；边含 `kind` 字段（如 industry）
+- nodes 结构 `{id, symbol, community, pagerank, size}`：`community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同一图快照**（updated_at 一致）
+- edges 结构 `{source, target, corr, abs_corr, weight, kind}`——**REQ-G9（2026-08-20）**：edges **仅输出真实相关性边**（`kind="corr"`），`corr` 为**带符号** ρ∈[-1,1]（正值=正相关、负值=负相关），`abs_corr`=`weight`=|ρ|，按 `abs_corr` **降序**截断（limit 上限 1000）；**非 corr 图层边（industry/supply_chain 等）不再输出**（旧版曾把图层权重 1.0 伪装成 corr 恒为 1）
+- symbols 空 = 全图（修复后实测 **nodes 129、edges 1373**，按 limit 截断；BTC-ETH ρ=0.9147、SPY-QQQ ρ=0.9098、GC=F/SI=F ρ=0.8960）；提供 symbols 返回其节点与 1-hop 邻边
+- 前端渲染：线宽按 |ρ| 在 [0.6, 1] 归一化、颜色按 corr 正负区分
+
+### 2.2.1 力导向图实体（REQ-G2.1 ✅ / REQ-G8 ✅ 已修复）
+
+```
+GET /factors/graph/entities?symbol=&namespace=market&limit=300
+```
+- 响应 `{ts, meta:{source:"ragservicer", namespace}, nodes[], edges[]}`（data-service 透传，B 端免 lr_ key）
+- nodes 结构 `{id, name_en, category, sentiment, size}`：`name_en`（REQ-G8，2026-08-20）为中文实体的英文名（预存 439 条中文→英文映射表），未命中返回 null；值后缀变体自动剥离回查核心词（「机会评分48/100」→ Opportunity Score 48/100、「76.14美元」→ 76.14 USD）。实测 limit=300 时 300 节点中 124 个带 name_en
+- `symbol` 非空 → 该实体一跳子图（实测 BTC → 81 节点/131 边）；空 → 全图 top-N by PageRank（limit 上限 500）
+- namespace 枚举：`market`（默认，金融主空间）/ `onchain` / `default`（ragservicer 默认 default 无图数据 503，此端点已固定默认 market）
 
 ### 2.3 rag 知识检索（④，REQ-G2 ✅ 无需新 key）
 
@@ -110,21 +121,31 @@ GET /factors/graph/history?symbols=&days=
 
 - 实时值 30min 重算；历史日频；meta.age_ms 随重算更新
 
-### REQ-G8【中】RAG 知识库 / 图谱实体双语支持 — ⏳ 待处理（2026-08-19）
+### REQ-G8【中】RAG 知识库 / 图谱实体双语支持 — ✅ 已修复（2026-08-20）
 
 - **背景**: AIHunter 支持中 / 英 / 繁三语界面。实测 B 端 `/rag/retrieve` 返回的 context 与 `/factors/graph/entities` 的节点 id 大量为中文（如「链上BTC」「市场情绪」「机会评分」「恐惧与贪婪指数」「加密货币市场」），英文界面下出现中文混排，影响体验。
 - **AIHunter 现状（临时兜底）**: 英文界面下对常见中文实体做前端映射（ChatPage 知识增强，高频实体名替换为英文 + 提示模型用英文作答），但长文本描述无法前端翻译。
 - **期望（按优先级）**:
   1. RAG 检索支持按语言返回英文内容（知识库双语存储），如 `/rag/retrieve` 增加 `lang` 参数（`en` / `zh`）；
   2. 或 `/factors/graph/entities` 节点增加 `name_en` 字段（实体英文名），RAG context 中实体名提供英文。
-- **验收**: 英文界面下知识增强回复与图谱节点无中文混排。
+- **实现方案（用户裁定 2026-08-19：预存中文→英文映射表）**:
+  - `projects/ragservicer/api/entity_name_en.json`：439 条中文→英文映射表（覆盖 top-300 图谱中的有意义术语与值后缀变体，如 比特币→Bitcoin、机会评分→Opportunity Score、恐惧与贪婪指数→Fear & Greed Index、美联储→Federal Reserve）
+  - `projects/ragservicer/api/graph_engine.py`：新增 `load_name_en_map()` / `name_en_of()`；`build_graph_payload()` 节点结构新增 `name_en` 字段。`name_en_of` 三段式：精确查表 → 剥离值后缀回查核心词（如「机会评分48/100」→ Opportunity Score 48/100，`美元`→` USD` 语言化）→ 未命中返回 null
+- **生产部署（2026-08-20，78.59）**：ragservicer 重启后 data-service 透传 `/factors/graph/entities?namespace=market&limit=300` 返回 300 节点中 124 个带 `name_en`（加密货币市场→Crypto Market、机会评分→Opportunity Score 等），未命中噪音（如「50篇文章」）降级 null
+- **验收**: 英文界面下知识增强回复与图谱节点无中文混排（AIHunter 实测待 B 端确认）。
 
-### REQ-G9【中】edges 端点返回真实相关系数 — ⏳ 待处理（2026-08-19）
+### REQ-G9【中】edges 端点返回真实相关系数 — ✅ 已修复（2026-08-20）
 
 - **背景**: `/factors/graph/edges` 的 `corr` / `abs_corr` / `weight` 当前全部恒为 1（300 条边均为 1.0，meta 声明 `min_abs_corr: 0.6`）。前端按文档「线宽=相关强度、绿色=正相关、红色=负相关」渲染时无任何区分度（全绿全粗），hover 显示「相关系数 1.000」对用户产生误导。
 - **AIHunter 现状（临时兜底）**: 检测到无真实相关值（corr 全相等）时降级为统一中性样式，tooltip 仅显示 kind 与阈值，不再显示伪造的相关系数。
 - **期望**: edges 返回真实相关系数——`corr`（带符号，范围 [-1,1]）与 `abs_corr`（绝对值）。若无法提供符号，至少提供绝对值。
-- **验收**: 前端相关性图线宽按 |ρ| 在 [0.6, 1] 归一化、颜色按 corr 正负区分。
+- **根因**: data-service `kline` 表 1d 周期仅覆盖 40 symbols（crypto 仅 BTC/ETH/SOL/XRP 5 对）→ ml-service 150 标的 universe 中绝大多数查不到 bars → `returns` 为空 → 真实 corr 边数量为 0 → `compute_graph_edges_payload` 把非 corr 边（industry 图层 weight=1.0）的图层权重当作 `corr` 输出（恒为 1）。
+- **实现方案（用户裁定 2026-08-19：组合方案）**:
+  - ① 修正输出逻辑（`projects/ml-service/app/graph_engine.py` `compute_graph_edges_payload`）：edges **仅输出真实 corr 边**（`rho` 存在才输出），`corr` 带符号 ρ∈[-1,1]、`abs_corr`=`weight`=|ρ|，按 abs_corr 降序截断；非 corr 图层边（industry/supply_chain）不再伪装成 corr=1.0
+  - ② 扩大 crypto 采集覆盖：data 机 `.env` `KL_SYMBOLS` 从 5 对扩至 **81 对**主流币（`data_config.json` `kline.symbols` 同步）；预置脚本灌入 75 个新币 1d bars（ccxt binance spot，limit=1500，跳过存量 ≥1000 根的对），5 个非 binance 现货交易对（POPCAT/MNT/CRO/OKB/KAS）剔除避免日志噪音
+- **生产部署（2026-08-20）**：data 机 163.105（infrax-data）+ ml 机 156.25.197（infrax-ml-service）重启；ml-service 预热后自动重建图 `graph built: nodes=129 edges=1373 sectors=10 communities=11`
+- **验证**: `/ml/graph/edges` 与 data-service 透传 `/factors/graph/edges` 返回 nodes=129、edges 全为 kind=corr、真实相关性（BTC-ETH ρ=0.9147、SPY-QQQ ρ=0.9098、GC=F 与 SI=F ρ=0.8960），无伪造 1.0
+- **验收**: 前端相关性图线宽按 |ρ| 在 [0.6, 1] 归一化、颜色按 corr 正负区分（AIHunter 实测待 B 端确认）。
 
 ---
 
@@ -139,8 +160,8 @@ GET /factors/graph/history?symbols=&days=
 | REQ-G5 | ml 日更链路恢复（契约+torch 修复） | 高 | ✅ 已修复 |
 | REQ-G6 | graph 因子历史序列（/factors/graph/history） | 中 | ✅ 已新增 |
 | REQ-G7 | gf_* 有效期/频率确认（30min/日频） | 中 | ✅ 已确认 |
-| REQ-G8 | RAG 知识库 / 图谱实体双语支持（lang 参数或 name_en） | 中 | ⏳ 待 B 端确认 |
-| REQ-G9 | edges 端点返回真实相关系数（corr 带符号 / abs_corr） | 中 | ⏳ 待 B 端确认 |
+| REQ-G8 | RAG 知识库 / 图谱实体双语支持（lang 参数或 name_en） | 中 | ✅ 已修复（name_en 映射表） |
+| REQ-G9 | edges 端点返回真实相关系数（corr 带符号 / abs_corr） | 中 | ✅ 已修复（组合方案） |
 
 ---
 

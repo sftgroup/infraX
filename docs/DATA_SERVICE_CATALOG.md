@@ -391,8 +391,8 @@ B 端只需 **data-service dx_\* key**，无需另持 ragservicer/ml-service key
 | 端点 | 说明 |
 |---|---|
 | `GET /api/data/factors/graph?symbols=BTC,ETH` | 语义图谱因子（ragservicer 知识图谱），`{ts, meta, factors: {SYM: {factor_key: value}}}` |
-| `GET /api/data/factors/graph/entities?symbol=&namespace=market&limit=` | **力导向图节点/边**（ragservicer 图谱可视化，REQ-G2.1）——symbol 非空=一跳子图，空=全图 top-N by PageRank；默认 namespace=market（B 端免 lr_ key） |
-| `GET /api/data/factors/graph/edges?symbols=&limit=` | 相关性图边表（ml-service GX-2 同一图快照），`{ts, meta, nodes[], edges[]}`；nodes 的 `community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同口径**（60 日窗、\|ρ\|≥0.6、共同交易日 ≥30） |
+| `GET /api/data/factors/graph/entities?symbol=&namespace=market&limit=` | **力导向图节点/边**（ragservicer 图谱可视化，REQ-G2.1）——symbol 非空=一跳子图，空=全图 top-N by PageRank；默认 namespace=market（B 端免 lr_ key）；节点含 `name_en`（REQ-G8：中文实体英文名，未命中 null，实测 limit=300 时 124 个带 name_en） |
+| `GET /api/data/factors/graph/edges?symbols=&limit=` | 相关性图边表（ml-service GX-2 同一图快照），`{ts, meta, nodes[], edges[]}`；nodes 的 `community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同口径**（60 日窗、\|ρ\|≥0.6、共同交易日 ≥30）；**REQ-G9：仅真实 corr 边**（`corr` 带符号 ρ∈[-1,1]、`abs_corr`=\|ρ\|、按 abs_corr 降序截断，非 corr 图层边不再输出） |
 | `GET /api/data/factors/graph/history?symbols=&days=` | gf_\* 日频历史（graph_history.db 自然日 0 时归一化，asof 语义），`{ts, meta, series: {SYM: {factor_key: [[ts_ms, val], ...]}}}`；历史自 2026-08-18 起累积 |
 | `POST /api/data/rag/retrieve` | 只读 RAG 检索透传，body `{"query","namespaces":["market","onchain"],"top_k":10}` → `{ts, meta, results: [{namespace, context, top_k, mode}]}`；namespace 枚举（default 租户）`market`（行情/宏观/新闻）/ `onchain`（链上/DeFi）/ `default` |
 

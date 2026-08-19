@@ -24,7 +24,7 @@ systemd：`sudo cp infrax-data.service /etc/systemd/system/ && sudo systemctl da
 |---|---|---|
 | `DATA_SERVICE_PORT` | 9112 | 服务端口 |
 | `DATA_DB_PATH` | data/data.db | SQLite 存储路径 |
-| `KL_SYMBOLS` | BTC/USDT,ETH/USDT,SOL/USDT | K 线采集标的 |
+| `KL_SYMBOLS` | BTC/USDT,ETH/USDT,SOL/USDT | K 线采集标的（REQ-G9 起扩至 ~85 主流币，覆盖 ml-service 图谱 universe；完整清单见 data_config.json `kline.symbols`） |
 | `KL_TIMEFRAMES` | 1m | 采集周期 |
 | `KL_INTERVAL_SEC` | 300 | 采集间隔 |
 | `DATA_CONFIG_PATH` | data_config.json | 采集配置（代币/指数/链上等） |
@@ -38,6 +38,11 @@ systemd：`sudo cp infrax-data.service /etc/systemd/system/ && sudo systemctl da
 | GET | `/factors/catalog` | 因子目录 |
 | GET | `/factors/current` | 最新因子值 |
 | GET | `/factors/history` | 因子历史（回测/因子研究） |
+| GET | `/factors/graph` | 语义图谱因子（ragservicer 8 因子透传） |
+| GET | `/factors/graph/entities` | 力导向图节点/边（REQ-G2.1，节点含 name_en） |
+| GET | `/factors/graph/edges` | 相关性图边表（REQ-G1，仅真实 corr 边） |
+| GET | `/factors/graph/history` | gf_\* 日频历史（asof 语义，可回测） |
+| POST | `/rag/retrieve` | 只读 RAG 检索透传（市场/链上知识增强） |
 | GET | `/snapshots` | 复杂快照（heatmap/calendar/indices/tvl 等） |
 | GET | `/stats` | DB 统计 |
 
