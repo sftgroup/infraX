@@ -1,5 +1,6 @@
 import {
   concatHex,
+  encodeAbiParameters,
   encodeFunctionData,
   toHex,
   type Address,
@@ -38,7 +39,7 @@ const DEFAULT_EXEC_MODE =
 /**
  * 编码 Kernel v3 单调用 callData（ERC-7579 DEFAULT 模式）：
  *   executionCalldata = concatHex([target, toHex(value, 32), data])
- * 批量（batchcall，多个 call）在 M4+ 补充。
+ * 批量（batchcall，多个 call）见 encodeExecuteBatch。
  */
 export function encodeExecute(target: Address, value: bigint, data: Hex): Hex {
   return encodeFunctionData({
@@ -47,6 +48,48 @@ export function encodeExecute(target: Address, value: bigint, data: Hex): Hex {
     args: [
       DEFAULT_EXEC_MODE,
       concatHex([target, toHex(value ?? 0n, { size: 32 }), data ?? '0x']),
+    ],
+  });
+}
+
+/** 批量执行单条（ERC-7579 Execution = (target, value, data)） */
+export interface Execution {
+  target: Address;
+  value?: bigint;
+  data: Hex;
+}
+
+/**
+ * BATCH execMode（Kernel v3 ExecLib.encodeSimpleBatch()，AA 会话轮换实证）：
+ *   CALLTYPE_BATCH(0x01) | EXECTYPE_DEFAULT(0x00) → 高 2 字节 0x0100，其余 0（MSB 布局）。
+ */
+export const BATCH_EXEC_MODE =
+  '0x0100000000000000000000000000000000000000000000000000000000000000' as Hex;
+
+/** ERC-7579 Execution 结构体（abi.encode(Execution[])） */
+const ExecutionTuple = [
+  { name: 'target', type: 'address' },
+  { name: 'value', type: 'uint256' },
+  { name: 'data', type: 'bytes' },
+] as const;
+
+/**
+ * 编码 Kernel v3 批量调用 callData（AA-2，会话轮换/disable 上链用）：
+ *   callData = execute(BATCH_EXEC_MODE, abi.encode(Execution[]))
+ * ⚠️ Kernel v3 无独立 executeBatch —— 批量只能走 execute(execMode, calldata)（实证见
+ *   docs/aa-relay-session-rollover-fix-infrax.md §2.4，selector 0xe9ae5c53）。
+ */
+export function encodeExecuteBatch(executions: Execution[]): Hex {
+  const normalized = executions.map((e) => ({ target: e.target, value: e.value ?? 0n, data: e.data }));
+  return encodeFunctionData({
+    abi: KernelV3ExecuteAbi,
+    functionName: 'execute',
+    args: [
+      BATCH_EXEC_MODE,
+      encodeAbiParameters(
+        [{ name: 'executions', type: 'tuple[]', components: ExecutionTuple }],
+        [normalized],
+      ),
     ],
   });
 }

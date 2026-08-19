@@ -16,11 +16,18 @@ import {
   getEnabledChains,
   userOpToRpc,
   createKernelAccount,
+  createAAClient,
   ExternalWalletSigner,
   assertValidPolicy,
   encodeEnableSessionCall,
   encodeDisableSessionCall,
   validateSessionCall,
+  buildDisableSessionUserOp,
+  verifyDisableSignature,
+  isSessionModuleInstalled,
+  estimateFeesPerGas,
+  FALLBACK_GAS,
+  DEFAULT_GAS_PRICE,
   type ChainAAConfig,
   type UserOperationV7,
   type SessionPolicy,
@@ -420,10 +427,20 @@ app.post('/v1/session', asyncHandler(async (req: any, res: any) => {
   await sessionStore.save(product, policy, account.address);
   // ④ enable 编码（owner 组装 UserOp 签名后发 /v1/userops）
   const enableCallData = encodeEnableSessionCall({ accountAddress: account.address, policy, chainConfig: cfg });
+  // AA-4: 残留检测 —— 链上探测账户是否已绑定 session validator（ERC-7579 视图）。
+  // 已绑定（残留）→ needsSessionRevoke=true，调用方应先撤销再 enable（防 L12 AA23 复现）。
+  let isBound = false;
+  try {
+    isBound = await isSessionModuleInstalled({ client: createAAClient(cfg), chainConfig: cfg, account: account.address });
+  } catch (e: any) {
+    console.warn(`[aa-relay] session bound probe failed (${chain}): ${e.message}`);
+  }
   res.json(apiResponse({
     product,
     accountAddress: account.address,
     isDeployed: account.isDeployed,
+    isBound,
+    needsSessionRevoke: isBound,
     sessionId: policy.sessionId,
     signer,
     sessionKey: privateKey,
@@ -451,7 +468,10 @@ app.get('/v1/session', asyncHandler(async (req: any, res: any) => {
   }))));
 }));
 
-// POST /v1/session/disable —— 撤销
+// POST /v1/session/disable —— 撤销（AA-1 阶段 1：本地停用 + 返回上链撤销 draft）
+// 兼容旧行为：本地 remove + 返回 disableCallData（单调用 uninstall）；
+// 新增 AA-1 draft：完整 disable UserOp（root nonce + 批量 uninstall+invalidateNonce，
+// 解决 L12 InvalidNonce）。调用方对 draft.userOpHash 签名后 POST /v1/session/revoke 上链。
 app.post('/v1/session/disable', asyncHandler(async (req: any, res: any) => {
   const { chain, product = 'default', account, sessionId } = req.body || {};
   if (!account || !sessionId) return res.status(400).json(apiResponse(null, 'account + sessionId required', 1001));
@@ -459,12 +479,119 @@ app.post('/v1/session/disable', asyncHandler(async (req: any, res: any) => {
   const found = (await sessionStore.list(product, account as Address, 'evm')).some((p) => p.sessionId === sessionId);
   await sessionStore.remove(product, sessionId, 'evm');
   const disableCallData = encodeDisableSessionCall({ accountAddress: account as Address, sessionId, chainConfig: cfg });
+  // AA-1: 上链撤销 draft（估 gas/fee 后重算 hash；失败则 draft=null，调用方仍可用单调用 disableCallData）
+  let draft = null;
+  try {
+    const client = createAAClient(cfg);
+    const draft0 = await buildDisableSessionUserOp({
+      client, chainConfig: cfg, account: account as Address, sessionId,
+    });
+    let gas: Partial<Pick<UserOperationV7, 'callGasLimit' | 'verificationGasLimit' | 'preVerificationGas' | 'maxFeePerGas' | 'maxPriorityFeePerGas'>> = {};
+    try {
+      gas = await new BundlerClient(cfg).estimateUserOperationGas(draft0.op);
+    } catch {
+      gas = { ...FALLBACK_GAS };
+    }
+    let fee: Record<string, bigint> = {};
+    try {
+      fee = await estimateFeesPerGas(cfg);
+    } catch {
+      fee = { maxFeePerGas: DEFAULT_GAS_PRICE, maxPriorityFeePerGas: DEFAULT_GAS_PRICE };
+    }
+    draft = await buildDisableSessionUserOp({
+      client, chainConfig: cfg, account: account as Address, sessionId, gas: { ...gas, ...fee },
+    });
+  } catch (e: any) {
+    console.warn(`[aa-relay] disable draft build failed (${chain}): ${e.message}`);
+  }
   res.json(apiResponse({
     accountAddress: account,
     sessionId,
     found,
     disableCallData,
+    draft,
   }, 'session disabled'));
+}));
+
+// POST /v1/session/revoke —— AA-1 阶段 2：带签名上链撤销（owner 签名 disable UserOp）
+// body: { chain, account, owner, sessionId, userOpHash, signature, op, wait? }
+//   ① 校验 owner 派生账户 === account（防篡改）
+//   ② 校验 recoverAddress(userOpHash, signature) === owner
+//   ③ 广播 disable UserOp（root nonce + 批量 uninstall+invalidateNonce），链上彻底撤销
+app.post('/v1/session/revoke', asyncHandler(async (req: any, res: any) => {
+  const { chain, account, owner, sessionId, userOpHash, signature, op, wait } = req.body || {};
+  if (!account || !owner || !sessionId || !userOpHash || !signature || !op) {
+    return res.status(400).json(apiResponse(null, 'account + owner + sessionId + userOpHash + signature + op required', 1001));
+  }
+  const cfg = getChain(chain);
+  // ① owner 派生账户一致性（ExternalWalletSigner 只用于地址派生，无 provider 调用）
+  const ownerSigner = new ExternalWalletSigner(
+    { request: () => { throw new Error('no provider on server'); } } as any,
+    owner as Address,
+  );
+  const derived = await createKernelAccount({ owner: ownerSigner, chainConfig: cfg });
+  if (derived.address.toLowerCase() !== String(account).toLowerCase()) {
+    return res.status(400).json(apiResponse(null, 'owner does not derive the given account', 1001));
+  }
+  // ② 签名校验（owner 对 userOpHash 的 ECDSA；eth_sign 原始签名，viem recoverAddress）
+  const valid = await verifyDisableSignature({ userOpHash, signature, owner: owner as Address });
+  if (!valid) {
+    return res.status(400).json(apiResponse(null, 'signature verification failed', 1001));
+  }
+  // ③ 广播（A-10 计费同 /v1/userops；wait=false 仅广播，调用方用 GET /v1/userops/:hash 查收据）
+  const userOp = normalizeOp(op);
+  const subscriber = String(account).toLowerCase();
+  let chargeTotal = 0n;
+  let chargeRef = '';
+  if (aaChargeConfigured()) {
+    const fixed = BigInt(aaFees().userop.feeWei);
+    const gasEst = estimateUserOpGasWei(userOp);
+    chargeTotal = fixed + gasEst;
+    if (chargeTotal > 0n) {
+      chargeRef = `aa:revoke:${randomUUID()}`;
+      await chargeUserOp(subscriber, chargeRef, chargeTotal);
+    }
+  }
+  if (wait === false) {
+    try {
+      const { userOpHash: hash, bundlerUrl } = await broadcast(cfg, userOp);
+      return res.json(apiResponse({ userOpHash: hash, bundlerUrl, receipt: null }, 'session revoked'));
+    } catch (e) {
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] revoke refund failed:', bErr.message); }
+      }
+      throw e;
+    }
+  }
+  const client = new BundlerClient(cfg);
+  try {
+    const result = await client.sendUserOperation(userOp, {
+      waitTimeoutMs: 120_000,
+      onBroadcast: (h) => console.log(`[aa-relay] revoke ${chain} userOpHash=${h} accepted`),
+    });
+    if (chargeTotal > 0n && result.receipt) {
+      try {
+        await settleUserOp(subscriber, chargeRef, chargeTotal, BigInt(aaFees().userop.feeWei) + result.receipt.actualGasCost);
+      } catch (bErr: any) {
+        console.warn('[aa-relay] revoke gas settle failed:', bErr.message);
+      }
+    }
+    res.json(apiResponse({
+      userOpHash: result.userOpHash,
+      bundlerUrl: result.bundlerUrl,
+      receipt: result.receipt ?? null,
+    }, 'session revoked'));
+  } catch (e: any) {
+    if (isBundlerBusinessError(e)) {
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] revoke refund failed:', bErr.message); }
+      }
+      return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
+    }
+    throw e;
+  }
 }));
 
 // POST /v1/session/validate —— 链下预检（E-3b：与链上模块策略一致）

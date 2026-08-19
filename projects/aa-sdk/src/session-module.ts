@@ -1,13 +1,15 @@
 import {
   encodeFunctionData,
   isHex,
+  parseAbi,
   toHex,
   type Address,
   type Hex,
+  type PublicClient,
 } from 'viem';
 import type { ChainAAConfig, SessionPermission, SessionPolicy, TokenLimit } from './types.js';
 import { ConfigError } from './errors.js';
-import { encodeExecute } from './userop.js';
+import { encodeExecute, encodeExecuteBatch } from './userop.js';
 
 // ============================================================================
 // Session validator 模块的链上 enable/disable 编码（ERC-7579 validator 模块管理）
@@ -265,4 +267,83 @@ export function encodeDisableSessionCall(params: DisableSessionCallParams): Hex 
     args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.sessionId)],
   });
   return encodeExecute(params.accountAddress, 0n, uninstallCalldata);
+}
+
+// ============================================================================
+// AA-1/AA-2：disable 上链闭环（批量撤销）
+// 单纯 uninstallModule 后紧接着 enable 会因 Kernel ValidationManager 的
+// validationConfig[vId].nonce 残留而 revert InvalidNonce（AA23，0x756688fe）。
+// 修复：批量 execute [uninstallModule, invalidateNonce(cur+1)] 推进账户 nonce，
+// 后续 enable 读到推进后的 currentNonce，不再触发 InvalidNonce。
+// （实证见 docs/aa-relay-session-rollover-fix-infrax.md §2.4）
+// ============================================================================
+
+/** Kernel invalidateNonce(uint32) ABI（KernelStorage，推进 currentNonce/validNonceFrom） */
+const KernelInvalidateNonceAbi = parseAbi(['function invalidateNonce(uint32 newNonce)']);
+
+export interface EncodeDisableSessionBatchParams {
+  accountAddress: Address;
+  sessionId: string;
+  chainConfig: ChainAAConfig;
+  /** 账户 currentNonce()（uint32）；invalidate 目标 = currentNonce + 1 */
+  currentNonce: number;
+  dataBuilder?: SessionModuleDataBuilder;
+}
+
+/**
+ * 编码"撤销 + 推进 nonce"批量 execute callData（Kernel v3 无 executeBatch，
+ * 批量走 execute(BATCH, abi.encode(Execution[]))，AA-2 encodeExecuteBatch）：
+ *   execute(BATCH, [uninstallModule(VALIDATOR, module, disableData),
+ *                   invalidateNonce(currentNonce + 1)])
+ */
+export function encodeDisableSessionBatch(params: EncodeDisableSessionBatchParams): Hex {
+  const module = resolveSessionModule(params.chainConfig);
+  const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
+  const uninstallCalldata = encodeFunctionData({
+    abi: ERC7579ModuleManagerAbi,
+    functionName: 'uninstallModule',
+    args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.sessionId)],
+  });
+  const invalidateCalldata = encodeFunctionData({
+    abi: KernelInvalidateNonceAbi,
+    functionName: 'invalidateNonce',
+    args: [params.currentNonce + 1],
+  });
+  return encodeExecuteBatch([
+    { target: params.accountAddress, value: 0n, data: uninstallCalldata },
+    { target: params.accountAddress, value: 0n, data: invalidateCalldata },
+  ]);
+}
+
+// ============================================================================
+// AA-3：链上探测账户是否已绑定 session validator（ERC-7579 视图）
+// 正确判定 = isModuleInstalled(1 VALIDATOR, sessionModule, 0x) 针对 session 模块
+// 调用；勿用 storage slot 判残留（存的是常驻 ECDSA root validator 绑定，恒非零，
+// 卸载 session 后不变 → 误报，见 docs/aa-relay-session-rollover-fix-infrax.md §2.1）。
+// ============================================================================
+
+export interface IsSessionModuleInstalledParams {
+  /** viem PublicClient（链上读，aa-sdk createAAClient 构造） */
+  client: PublicClient;
+  chainConfig: ChainAAConfig;
+  account: Address;
+}
+
+/**
+ * 探测账户是否已绑定 session validator（ERC-7579 isModuleInstalled 视图）。
+ * 账户未部署（无 code）→ 返回 false（未绑定）；链上读失败抛错由调用方决定。
+ */
+export async function isSessionModuleInstalled(p: IsSessionModuleInstalledParams): Promise<boolean> {
+  const module = resolveSessionModule(p.chainConfig);
+  const code = await p.client.getCode({ address: p.account });
+  if (code === undefined || code === '0x') return false;
+  const installed = (await p.client.readContract({
+    address: p.account,
+    abi: parseAbi([
+      'function isModuleInstalled(uint256 moduleTypeId, address module, bytes extraData) view returns (bool)',
+    ]),
+    functionName: 'isModuleInstalled',
+    args: [MODULE_TYPE_VALIDATOR, module, '0x'],
+  })) as boolean;
+  return installed;
 }

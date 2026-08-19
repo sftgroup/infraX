@@ -2114,10 +2114,10 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| AA-1 | **disable 上链闭环（B1）**：`POST /v1/session/disable` 仅本地 remove + 返回 disableCallData，链上 session 永不撤销 → 提供"带签名上链"撤销端点（调用方传 owner 签名，relay 组装 disable UserOp=批量 uninstall+invalidateNonce、估 gas、广播返回收据）；保留本地停用 + 返回 draft 兼容路径（AgentX §2.2/§4 路径 B1） | 🔲 | P1 |
-| AA-2 | **aa-sdk 补 encodeExecuteBatch**：仅 `encodeExecute`（单调用）→ 新增批量 execute 编码（`ExecLib.encodeSimpleBatch` = CALLTYPE_BATCH\|EXECTYPE_DEFAULT 布局，`execute(bytes32,bytes)`），供 disable 批量 uninstall+invalidateNonce 复用（AgentX §2.4 实证 + 提示） | 🔲 | P1 |
-| AA-3 | **aa-sdk 补 isModuleInstalled 探测**：新增 ERC-7579 `isModuleInstalled(1 VALIDATOR, sessionModule, 0x)` 链上视图探测账户 session 绑定；注意勿用 storage slot 判残留（误报，见 AgentX §2.1 探测修正） | 🔲 | P1 |
-| AA-4 | **relay 残留自愈（enable 前检测）**：`POST /v1/session` 创建前用 isModuleInstalled 探测链上绑定；已绑定 → 响应 `isBound:true` + `needsSessionRevoke`，引导调用方先撤销再 enable（AgentX 路径 A relay 侧配合） | 🔲 | P1 |
+| AA-1 | **disable 上链闭环（B1）**：`POST /v1/session/disable` 仅本地 remove + 返回 disableCallData，链上 session 永不撤销 → 提供"带签名上链"撤销端点（调用方传 owner 签名，relay 组装 disable UserOp=批量 uninstall+invalidateNonce、估 gas、广播返回收据）；保留本地停用 + 返回 draft 兼容路径（AgentX §2.2/§4 路径 B1） | ✅ | P1 |
+| AA-2 | **aa-sdk 补 encodeExecuteBatch**：仅 `encodeExecute`（单调用）→ 新增批量 execute 编码（`ExecLib.encodeSimpleBatch` = CALLTYPE_BATCH\|EXECTYPE_DEFAULT 布局，`execute(bytes32,bytes)`），供 disable 批量 uninstall+invalidateNonce 复用（AgentX §2.4 实证 + 提示） | ✅ | P1 |
+| AA-3 | **aa-sdk 补 isModuleInstalled 探测**：新增 ERC-7579 `isModuleInstalled(1 VALIDATOR, sessionModule, 0x)` 链上视图探测账户 session 绑定；注意勿用 storage slot 判残留（误报，见 AgentX §2.1 探测修正） | ✅ | P1 |
+| AA-4 | **relay 残留自愈（enable 前检测）**：`POST /v1/session` 创建前用 isModuleInstalled 探测链上绑定；已绑定 → 响应 `isBound:true` + `needsSessionRevoke`，引导调用方先撤销再 enable（AgentX 路径 A relay 侧配合） | ✅ | P1 |
 
 **9.10.2 P2 体验/复用（中期）**
 

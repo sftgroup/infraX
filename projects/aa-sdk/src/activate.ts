@@ -54,14 +54,14 @@ export const entryPointAbi = parseAbi([
 ]);
 
 /** 估算失败时的保守 gas 兜底（避免 0 被 bundler 拒绝；UI 展示时标注为估算失败兜底） */
-const FALLBACK_GAS = {
+export const FALLBACK_GAS = {
   callGasLimit: 1_500_000n,
   verificationGasLimit: 500_000n,
   preVerificationGas: 50_000n,
 } as const;
 
 /** baseFee / gas price 估算兜底（1 gwei；避免 fee 为零被 bundler 拒绝） */
-const DEFAULT_GAS_PRICE = 1_000_000_000n;
+export const DEFAULT_GAS_PRICE = 1_000_000_000n;
 
 /** 从链上读取 EIP-1559 fee（eth_maxPriorityFeePerGas + latest block baseFee） */
 export async function estimateFeesPerGas(

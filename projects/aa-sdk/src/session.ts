@@ -11,4 +11,5 @@
 export * from './session-store.js';
 export * from './session-module.js';
 export * from './session-enable.js';
+export * from './session-revoke.js';
 export * from './session-validate.js';
