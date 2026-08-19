@@ -183,6 +183,7 @@ ssh ubuntu@43.156.25.197   # ML 机
 | `/api/rag/*` | **`http://10.3.8.6:9721/`** | ragservicer（**已指向新机**，M-3 调整） |
 | `/api/ml/*` | **`http://43.156.25.197:9120/ml/`** | ml-service 推理机（`/api/ml/health` → `/health`，2026-08-19 新增） |
 | `/api/v2/*`、`/api/vault` | web `server.js` → 各 91xx 服务 | 区块链栈 |
+| `/api/v2/data/my-keys` | **`http://127.0.0.1:9111/`** | **nginx 专用 location（2026-08-20 新增）**：`/api/v2/data/my-keys`（B-11-3 用户级 key）必须走 web `server.js` → data `:9112`（钱包签名鉴权）；若不经此专用路由，会被下方 `location /api/v2/data/`（→ dc `:9102`）截获导致 404。勿删！ |
 | `/mcp/*` | `http://127.0.0.1:3008/` | hub-index 统一 MCP 入站（`/mcp/message`，2026-08-19 实测 `/mcp/health` 200） |
 | `/mcp/vault/*`、`/mcp/mpc/*`、`/mcp/dc/*`、`/mcp/wallet/*`、`/mcp/chain-rpc/*`、`/mcp/market/*` | `http://127.0.0.1:9108/` 等对应端口 | 7 个独立 HTTP MCP 子路由（2026-08-19 新增；`/mcp/session-key/*`→:3011） |
 | `/api-keys/verify`、`/metrics` | — | 鉴权校验 / 监控指标 |
