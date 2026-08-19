@@ -2162,3 +2162,13 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - AA-6 已绑定→复用/409 分支需真实链上绑定状态触发，逻辑由 aa-sdk 单测（session-reuse.test.ts 18 用例）覆盖；生产未造链上绑定测试数据。
 - 无生产数据污染：测试 session 已清理。
 
+**AA-7 生产部署记录**（2026-08-19，生产机 43.163.105.172，`/home/ubuntu/infraX-1`）：
+
+- 部署 commit：`9eebf3d → 801d45e`（fast-forward；新增 `encodeReplaceSessionBatch`/`buildReplaceSessionUserOp` + relay `/v1/session/replace` `/v1/session/replace/submit`；未改 package.json，无需 npm install）。
+- 服务：`sudo systemctl restart infrax-aa-relay` → `active`；日志 `aa-relay running on port 9131`；`/health` 返回 `{"status":"ok","chains":["oxachain"]}`。
+- 端点冒烟：`POST /v1/session/replace` 缺参 → 400（参数校验正常）；完整 draft 请求 → 返回新 sessionId/sessionKey/accountAddress；`isDeployed:false` 未部署账户安全降级（draft=null 不抛 500，与 AA-1 disable 同构）。
+- 未部署账户 `currentNonce()` 返回 `0x` 导致 draft=null —— 预期行为：replace 只适用于已部署已绑定账户，未部署走正常 `POST /v1/session` 创建。
+- 回归：`aa-relay-e2e.mjs` 8/10（2 个 FAIL 为测试 op 无 ledger 余额 → 402 余额不足，计费预期行为，非回归）。
+- 单测：aa-sdk 125 用例全绿（含 AA-7 新增 4 用例：encodeReplaceSessionBatch 三段 batch 结构 + buildReplaceSessionUserOp draft）；SDK typecheck/build 通过。
+- 无生产数据污染：`aa-replace-verify*` 测试 session 已 DELETE 清理。
+
