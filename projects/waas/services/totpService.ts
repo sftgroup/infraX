@@ -95,7 +95,7 @@ export async function setupTotp(userId: string, account: string): Promise<{ secr
     `INSERT INTO users (id, email, payment_password_hash, totp_secret, totp_enabled)
      VALUES ($1, $2, NULL, $3, false)
      ON CONFLICT (id) DO UPDATE SET totp_secret = EXCLUDED.totp_secret, totp_enabled = false`,
-    [userId, account]
+    [userId, account, secret]
   );
   // 若用户已存在则直接更新 secret（上面的 ON CONFLICT 已覆盖）
   await pool.query('UPDATE users SET totp_secret = $1, totp_enabled = false WHERE id = $2', [secret, userId]);
