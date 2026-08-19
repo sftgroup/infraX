@@ -1,4 +1,5 @@
 import {
+  encodeAbiParameters,
   encodeFunctionData,
   isHex,
   toHex,
@@ -16,14 +17,15 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { randomBytes } from 'node:crypto';
 import type { ChainAAConfig, NetworkId, SessionPermission, SessionPolicy, Signer, TokenLimit, UserOperationV7 } from './types.js';
 import { ConfigError } from './errors.js';
-import { encodeExecute, buildUserOp, getUserOpHash } from './userop.js';
+import { encodeExecute, encodeExecuteBatch, buildUserOp, getUserOpHash } from './userop.js';
 import { enableNonceKey, validatorNonceKey } from './nonce.js';
 
 // ============================================================================
 // Session Key 权限管理（对齐 §7.2-§7.3，角色 B 免确认交易核心）
 // 安全边界：白名单 + 单笔/日限额 + 有效期；session key 无权改 owner。
 // 生命周期：本地密钥生成 + 登记 → 一次 UserOp 安装 session validator（用户签 1 次）
-//           → 有效期内免签名交易 → 撤销（本地即时失效 + 链上 disableSession）。
+//           → 有效期内免签名交易 → 撤销（本地即时失效 + 链上三段批量
+//           disableSession + uninstallModule + invalidateNonce，对齐 aa-sdk）。
 // 零硬编码：session validator 模块地址来自 chainConfig.sessionModule
 //           （env AA_{CHAIN}_SESSION_MODULE），缺失抛 ConfigError。
 // ============================================================================
@@ -133,7 +135,8 @@ export async function createSessionKey(
 
 /**
  * 撤销 session key（本地登记即时失效；链上 disable 由调用方通过
- * encodeDisableSessionCall 组装 UserOp 完成，撤销后立即生效）。
+ * encodeDisableSessionBatch（三段批量：disableSession + uninstall + invalidateNonce）
+ * 组装 UserOp 完成，撤销后立即生效）。
  */
 export async function revokeSessionKey(
   sessionId: string,
@@ -159,6 +162,32 @@ export const MODULE_TYPE_VALIDATOR = 1n;
 
 /** 任意地址转账哨兵（P0.12 §7.6）：enableSession calls 中 target=哨兵地址表示原生币任意转账授权 */
 export const ANY_TRANSFER_SENTINEL = '0x0000000000000000000000000000000000000001' as Address;
+
+/**
+ * Kernel v3.0-beta installModule 的 initData 编码（Kernel.sol installModule 实证，对齐 aa-sdk）：
+ *   initData = abi.encode(hook, validatorData, hookData)
+ *     hook          = validator 的 hook（address(1) = 无 hook）
+ *     validatorData = 传给 validator.onInstall 的数据（session enableData）
+ *     hookData      = hook 安装数据（无 hook 时任意，'0xff'）
+ * ⚠️ 勿把 enableData 直接当 initData：hook 字段会被解成 enableSession 前 20B
+ *    （sessionId 高位）垃圾地址 → config.hook ≠ 1 → validateUserOp 走"要求 hook"
+ *    分支 → OnlyExecuteUserOp revert → EntryPoint 报 AA24 signature error
+ *    （AA-7 链上 E2E 实测，docs/aa-relay-session-rollover-fix-infrax.md §2.5.2）。
+ */
+export function encodeValidatorInstallData(
+  enableData: Hex,
+  hook: Address = '0x0000000000000000000000000000000000000001',
+  hookData: Hex = '0xff',
+): Hex {
+  return encodeAbiParameters(
+    [
+      { type: 'address' },
+      { type: 'bytes' },
+      { type: 'bytes' },
+    ],
+    [hook, enableData, hookData],
+  );
+}
 
 /**
  * 单条 CallPermission（对齐链上 KernelSessionWithTokenLimitModule.CallPermission 结构）：
@@ -252,7 +281,8 @@ export interface SessionModuleDataBuilder {
   disableData(sessionId: string): Hex;
 }
 
-function toBytes32(id: string): Hex {
+/** bytes32 归一化（已是 0x+64 hex 直接用，否则左对齐补零；对齐 aa-sdk 导出） */
+export function toBytes32(id: string): Hex {
   return (isHex(id) && id.length === 66 ? id : toHex(id, { size: 32 })) as Hex;
 }
 
@@ -375,6 +405,8 @@ export interface EnableSessionCallParams {
 /**
  * 编码安装 session validator 的 UserOp callData（Kernel execute → ERC-7579
  * installModule(VALIDATOR, sessionModule, enableData)）。调用方据此组装 UserOp 并签名。
+ * initData 必须用 encodeValidatorInstallData 包装（Kernel v3.0-beta 要求
+ * abi.encode(hook, validatorData, hookData)，直传 enableData 会 AA24）。
  */
 export function encodeEnableSessionCall(params: EnableSessionCallParams): Hex {
   const module = resolveSessionModule(params.chainConfig);
@@ -382,7 +414,7 @@ export function encodeEnableSessionCall(params: EnableSessionCallParams): Hex {
   const installCalldata = encodeFunctionData({
     abi: ERC7579ModuleManagerAbi,
     functionName: 'installModule',
-    args: [MODULE_TYPE_VALIDATOR, module, builder.enableData(params.policy)],
+    args: [MODULE_TYPE_VALIDATOR, module, encodeValidatorInstallData(builder.enableData(params.policy))],
   });
   return encodeExecute(params.accountAddress, 0n, installCalldata);
 }
@@ -394,7 +426,12 @@ export interface DisableSessionCallParams {
   dataBuilder?: SessionModuleDataBuilder;
 }
 
-/** 编码卸载 session validator 的 UserOp callData（uninstallModule → disableSession） */
+/**
+ * 编码卸载 session validator 的 UserOp callData（uninstallModule → disableSession）。
+ * ⚠️ 遗留单调用版本（对齐 aa-sdk 保留兼容）：仅卸载模块，不删除 session 记录
+ *    （部署模块 onUninstall 为空实现）、不推进 nonce → 撤销不彻底（旧 key 残留）
+ *    + 重 enable 触发 AA23 InvalidNonce。新代码应使用 encodeDisableSessionBatch。
+ */
 export function encodeDisableSessionCall(params: DisableSessionCallParams): Hex {
   const module = resolveSessionModule(params.chainConfig);
   const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
@@ -404,6 +441,58 @@ export function encodeDisableSessionCall(params: DisableSessionCallParams): Hex 
     args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.sessionId)],
   });
   return encodeExecute(params.accountAddress, 0n, uninstallCalldata);
+}
+
+// --- AA-1/AA-2 对齐：disable 上链闭环（三段批量撤销） ------------------------
+// 单纯 uninstallModule 后紧接着 enable 会因 Kernel ValidationManager 的
+// validationConfig[vId].nonce 残留而 revert InvalidNonce（AA23，0x756688fe）。
+// 修复：批量 execute [disableSession, uninstallModule, invalidateNonce(cur+1)]
+// （对齐 aa-sdk encodeDisableSessionBatch，链上 E2E 实证 docs/aa-relay-session-rollover-fix-infrax.md §2.5）。
+
+/** Kernel invalidateNonce(uint32) ABI（KernelStorage，推进 currentNonce/validNonceFrom） */
+const KernelInvalidateNonceAbi = parseAbi(['function invalidateNonce(uint32 newNonce)']);
+
+export interface EncodeDisableSessionBatchParams {
+  accountAddress: Address;
+  sessionId: string;
+  chainConfig: ChainAAConfig;
+  /** 账户 currentNonce()（uint32）；invalidate 目标 = currentNonce + 1 */
+  currentNonce: number;
+  dataBuilder?: SessionModuleDataBuilder;
+}
+
+/**
+ * 编码"撤销 + 推进 nonce"批量 execute callData（Kernel v3 无 executeBatch，
+ * 批量走 execute(BATCH, abi.encode(Execution[]))）：
+ *   execute(BATCH, [disableSession(sessionId)@module,
+ *                   uninstallModule(VALIDATOR, module, disableData),
+ *                   invalidateNonce(currentNonce + 1)])
+ * ⚠️ 必须直接调用 disableSession（deployed session module 的 onUninstall 为空实现，
+ * deInitData 传 disableData 也不会删除 session 记录 → 仅卸载+重装后旧 session 仍可验证）。
+ */
+export function encodeDisableSessionBatch(params: EncodeDisableSessionBatchParams): Hex {
+  const module = resolveSessionModule(params.chainConfig);
+  const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
+  const disableCalldata = encodeFunctionData({
+    abi: SessionModuleAbi,
+    functionName: 'disableSession',
+    args: [toBytes32(params.sessionId)],
+  });
+  const uninstallCalldata = encodeFunctionData({
+    abi: ERC7579ModuleManagerAbi,
+    functionName: 'uninstallModule',
+    args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.sessionId)],
+  });
+  const invalidateCalldata = encodeFunctionData({
+    abi: KernelInvalidateNonceAbi,
+    functionName: 'invalidateNonce',
+    args: [params.currentNonce + 1],
+  });
+  return encodeExecuteBatch([
+    { target: module, value: 0n, data: disableCalldata },                  // ①a 直接删除 session 记录
+    { target: params.accountAddress, value: 0n, data: uninstallCalldata }, // ①b 卸载模块（清 validationConfig）
+    { target: params.accountAddress, value: 0n, data: invalidateCalldata }, // ①c 推进 nonce（防 AA23）
+  ]);
 }
 
 // --- Kernel v3 ENABLE-mode enable（nonce 路由 + EIP-712 digest） --------------

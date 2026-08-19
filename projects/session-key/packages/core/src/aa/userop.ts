@@ -1,5 +1,6 @@
 import {
   concatHex,
+  encodeAbiParameters,
   encodeFunctionData,
   toHex,
   type Address,
@@ -12,6 +13,7 @@ import type { Signer, UserOperationV7 } from './types.js';
 // UserOp 构建 / 编码 / 签名（ERC-4337 v0.7，对齐 §5.1-§5.3，M2 实现）
 // callData = Kernel v3 execute(execMode, executionCalldata)（ERC-7579 单调用模式）
 // userOpHash = viem getUserOperationHash（v0.7 EIP-712，含 chainId 防跨链重放）
+// 批量（batchcall）见 encodeExecuteBatch（AA-2 对齐 aa-sdk）。
 // ============================================================================
 
 /** Kernel v3 execute ABI（ERC-7579：execMode + executionCalldata） */
@@ -38,7 +40,7 @@ const DEFAULT_EXEC_MODE =
 /**
  * 编码 Kernel v3 单调用 callData（ERC-7579 DEFAULT 模式）：
  *   executionCalldata = concatHex([target, toHex(value, 32), data])
- * 批量（batchcall，多个 call）在 M4+ 补充。
+ * 批量（batchcall，多个 call）见 encodeExecuteBatch。
  */
 export function encodeExecute(target: Address, value: bigint, data: Hex): Hex {
   return encodeFunctionData({
@@ -47,6 +49,48 @@ export function encodeExecute(target: Address, value: bigint, data: Hex): Hex {
     args: [
       DEFAULT_EXEC_MODE,
       concatHex([target, toHex(value ?? 0n, { size: 32 }), data ?? '0x']),
+    ],
+  });
+}
+
+/** 批量执行单条（ERC-7579 Execution = (target, value, data)） */
+export interface Execution {
+  target: Address;
+  value?: bigint;
+  data: Hex;
+}
+
+/**
+ * BATCH execMode（Kernel v3 ExecLib.encodeSimpleBatch()，AA-2/AA-7 链上实证）：
+ *   CALLTYPE_BATCH(0x01) | EXECTYPE_DEFAULT(0x00) → 高 2 字节 0x0100，其余 0（MSB 布局）。
+ */
+export const BATCH_EXEC_MODE =
+  '0x0100000000000000000000000000000000000000000000000000000000000000' as Hex;
+
+/** ERC-7579 Execution 结构体（abi.encode(Execution[])） */
+const ExecutionTuple = [
+  { name: 'target', type: 'address' },
+  { name: 'value', type: 'uint256' },
+  { name: 'data', type: 'bytes' },
+] as const;
+
+/**
+ * 编码 Kernel v3 批量调用 callData（AA-2，会话轮换/disable 上链用）：
+ *   callData = execute(BATCH_EXEC_MODE, abi.encode(Execution[]))
+ * ⚠️ Kernel v3 无独立 executeBatch —— 批量只能走 execute(execMode, calldata)
+ *   （链上实证，见 docs/aa-relay-session-rollover-fix-infrax.md §2.4）。
+ */
+export function encodeExecuteBatch(executions: Execution[]): Hex {
+  const normalized = executions.map((e) => ({ target: e.target, value: e.value ?? 0n, data: e.data }));
+  return encodeFunctionData({
+    abi: KernelV3ExecuteAbi,
+    functionName: 'execute',
+    args: [
+      BATCH_EXEC_MODE,
+      encodeAbiParameters(
+        [{ name: 'executions', type: 'tuple[]', components: ExecutionTuple }],
+        [normalized],
+      ),
     ],
   });
 }
