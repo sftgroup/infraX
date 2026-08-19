@@ -529,6 +529,8 @@ curl -X POST http://127.0.0.1:9131/v1/userops \
 | **A. HTTP 服务接口** | agentx / aitrader 等（仅需代执行/托管） | 调 aa-relay `/v1/session/*`（链上 session 管理）+ session-key `/api/v1/sessions`（托管执行）+ MCP :3011；鉴权 Bearer key，零 SDK 依赖 |
 | **B. npm SDK 直用** | PocketX 等（自建智能账户流程） | `npm i @0xinfrax/aa-sdk`（peer：`viem>=2`、`permissionless>=0.2`）→ import 构建函数自组 UserOp → 经 relay `/v1/userops` 上链 |
 
+> SDK 直用完整接入（env 配置 + 完整轮换流程）见 **`docs/AA_SDK_QUICKSTART.md`**。
+
 **SDK 构建示例（会话轮换 ② enable，与 `/v1/session/replace/submit` 配合）**：
 
 ```ts
