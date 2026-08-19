@@ -315,6 +315,51 @@ export function encodeDisableSessionBatch(params: EncodeDisableSessionBatchParam
   ]);
 }
 
+export interface EncodeReplaceSessionBatchParams {
+  accountAddress: Address;
+  /** 当前链上绑定的旧 sessionId（uninstall 目标） */
+  oldSessionId: string;
+  /** 新 session 策略（install + enableSession 目标） */
+  policy: SessionPolicy;
+  chainConfig: ChainAAConfig;
+  /** 账户 currentNonce()（uint32）；invalidate 目标 = currentNonce + 1 */
+  currentNonce: number;
+  dataBuilder?: SessionModuleDataBuilder;
+}
+
+/**
+ * AA-7：编码"单笔轮换"批量 execute callData —— 一次 UserOp 完成 撤销旧 session +
+ * 推进 nonce + 安装新 session（C1 幂等覆盖的 SDK 层等价实现，不改合约）：
+ *   execute(BATCH, [uninstallModule(VALIDATOR, module, disableData(old)),
+ *                   invalidateNonce(currentNonce + 1),
+ *                   installModule(VALIDATOR, module, enableData(new))])
+ * owner 仅签一次；uninstall+install 同模块地址（先卸清 config，再装新 config）。
+ */
+export function encodeReplaceSessionBatch(params: EncodeReplaceSessionBatchParams): Hex {
+  const module = resolveSessionModule(params.chainConfig);
+  const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
+  const uninstallCalldata = encodeFunctionData({
+    abi: ERC7579ModuleManagerAbi,
+    functionName: 'uninstallModule',
+    args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.oldSessionId)],
+  });
+  const invalidateCalldata = encodeFunctionData({
+    abi: KernelInvalidateNonceAbi,
+    functionName: 'invalidateNonce',
+    args: [params.currentNonce + 1],
+  });
+  const installCalldata = encodeFunctionData({
+    abi: ERC7579ModuleManagerAbi,
+    functionName: 'installModule',
+    args: [MODULE_TYPE_VALIDATOR, module, builder.enableData(params.policy)],
+  });
+  return encodeExecuteBatch([
+    { target: params.accountAddress, value: 0n, data: uninstallCalldata },
+    { target: params.accountAddress, value: 0n, data: invalidateCalldata },
+    { target: params.accountAddress, value: 0n, data: installCalldata },
+  ]);
+}
+
 // ============================================================================
 // AA-3：链上探测账户是否已绑定 session validator（ERC-7579 视图）
 // 正确判定 = isModuleInstalled(1 VALIDATOR, sessionModule, 0x) 针对 session 模块

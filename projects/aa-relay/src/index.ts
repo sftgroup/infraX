@@ -23,6 +23,7 @@ import {
   encodeDisableSessionCall,
   validateSessionCall,
   buildDisableSessionUserOp,
+  buildReplaceSessionUserOp,
   verifyDisableSignature,
   getUserOpHash,
   isSessionModuleInstalled,
@@ -633,6 +634,181 @@ app.post('/v1/session/revoke', asyncHandler(async (req: any, res: any) => {
       if (chargeTotal > 0n) {
         try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
         catch (bErr: any) { console.warn('[aa-relay] revoke refund failed:', bErr.message); }
+      }
+      return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
+    }
+    throw e;
+  }
+}));
+
+// POST /v1/session/replace —— AA-7 阶段 1：构建"单笔轮换"draft（一次 UserOp 完成
+//   撤销旧 session + 推进 nonce + 安装新 session，owner 仅签一次）
+// body: { chain, product='default', owner, oldSessionId, permissions, validUntil, validAfter }
+// 流程：
+//   ① owner EOA 派生账户（counterfactual）
+//   ② 生成新 session key + 策略，落库（新 session 即刻可复用）
+//   ③ 链上探测是否已绑定 session validator（残留/未部署判定）
+//   ④ 构建 replace draft（估 gas/fee 后重算 userOpHash）—— owner 对 draft.userOpHash
+//      签名后 POST /v1/session/replace/submit 上链
+app.post('/v1/session/replace', asyncHandler(async (req: any, res: any) => {
+  const { chain, product = 'default', owner, oldSessionId, permissions, validUntil, validAfter } = req.body || {};
+  if (!owner || !oldSessionId || !Array.isArray(permissions) || permissions.length === 0 || !validUntil) {
+    return res.status(400).json(apiResponse(null, 'owner + oldSessionId + permissions + validUntil required', 1001));
+  }
+  const cfg = getChain(chain);
+  // ① 派生账户（counterfactual；owner EOA 无需签名，服务端无窗口 provider 不会触发）
+  const ownerSigner = new ExternalWalletSigner(
+    { request: () => { throw new Error('no provider on server'); } } as any,
+    owner as Address,
+  );
+  const account = await createKernelAccount({ owner: ownerSigner, chainConfig: cfg });
+  // ② 生成新 session key + 策略（落库持久化 sessionKey，供后续复用）
+  const privateKey = generatePrivateKey();
+  const signer = privateKeyToAccount(privateKey).address;
+  const policy: SessionPolicy = {
+    network: 'evm',
+    sessionId: toHex(randomBytes(32)),
+    signer,
+    validAfter: BigInt(validAfter ?? 0),
+    validUntil: BigInt(validUntil),
+    permissions,
+  };
+  assertValidPolicy(policy);
+  await sessionStore.save(product, policy, account.address, privateKey);
+  // ③ 链上绑定探测（旧 session 是否在链上 → 是否真的需要轮换）
+  let isBound = false;
+  try {
+    isBound = await isSessionModuleInstalled({ client: createAAClient(cfg), chainConfig: cfg, account: account.address });
+  } catch (e: any) {
+    console.warn(`[aa-relay] replace bound probe failed (${chain}): ${e.message}`);
+  }
+  // ④ 构建 replace draft（估 gas/fee 后重算 hash；失败则 draft=null，仍返回新 session 信息）
+  let draft = null;
+  try {
+    const client = createAAClient(cfg);
+    const draft0 = await buildReplaceSessionUserOp({
+      client, chainConfig: cfg, account: account.address, oldSessionId, policy,
+    });
+    let gas: Partial<Pick<UserOperationV7, 'callGasLimit' | 'verificationGasLimit' | 'preVerificationGas' | 'maxFeePerGas' | 'maxPriorityFeePerGas'>> = {};
+    try {
+      gas = await new BundlerClient(cfg).estimateUserOperationGas(draft0.op);
+    } catch {
+      gas = { ...FALLBACK_GAS };
+    }
+    let fee: Record<string, bigint> = {};
+    try {
+      fee = await estimateFeesPerGas(cfg);
+    } catch {
+      fee = { maxFeePerGas: DEFAULT_GAS_PRICE, maxPriorityFeePerGas: DEFAULT_GAS_PRICE };
+    }
+    draft = await buildReplaceSessionUserOp({
+      client, chainConfig: cfg, account: account.address, oldSessionId, policy, gas: { ...gas, ...fee },
+    });
+  } catch (e: any) {
+    console.warn(`[aa-relay] replace draft build failed (${chain}): ${e.message}`);
+  }
+  res.json(apiResponse({
+    product,
+    accountAddress: account.address,
+    isDeployed: account.isDeployed,
+    isBound,
+    oldSessionId,
+    sessionId: policy.sessionId,
+    signer,
+    sessionKey: privateKey,
+    validAfter: policy.validAfter.toString(),
+    validUntil: policy.validUntil.toString(),
+    permissions: policy.permissions,
+    draft,
+  }, 'session replace draft'));
+}));
+
+// POST /v1/session/replace/submit —— AA-7 阶段 2：带签名上链轮换（owner 签名 replace UserOp）
+// body: { chain, account, owner, oldSessionId, userOpHash, signature, op, wait? }
+//   ① 校验 owner 派生账户 === account（防篡改）
+//   ② 校验 recoverAddress(userOpHash, signature) === owner
+//   ③ 校验 op 实际 userOpHash === 已签名 userOpHash（防篡改/错配）
+//   ④ 广播 replace UserOp（root nonce + 批量 uninstall+invalidateNonce+install）
+//   ⑤ 成功后移除旧 session 记录（链上已 uninstall，防旧 key 复用）
+app.post('/v1/session/replace/submit', asyncHandler(async (req: any, res: any) => {
+  const { chain, product = 'default', account, owner, oldSessionId, userOpHash, signature, op, wait } = req.body || {};
+  if (!account || !owner || !oldSessionId || !userOpHash || !signature || !op) {
+    return res.status(400).json(apiResponse(null, 'account + owner + oldSessionId + userOpHash + signature + op required', 1001));
+  }
+  const cfg = getChain(chain);
+  // ① owner 派生账户一致性（ExternalWalletSigner 只用于地址派生，无 provider 调用）
+  const ownerSigner = new ExternalWalletSigner(
+    { request: () => { throw new Error('no provider on server'); } } as any,
+    owner as Address,
+  );
+  const derived = await createKernelAccount({ owner: ownerSigner, chainConfig: cfg });
+  if (derived.address.toLowerCase() !== String(account).toLowerCase()) {
+    return res.status(400).json(apiResponse(null, 'owner does not derive the given account', 1001));
+  }
+  // ② 签名校验（owner 对 userOpHash 的 ECDSA；eth_sign 原始签名，viem recoverAddress）
+  const valid = await verifyDisableSignature({ userOpHash, signature, owner: owner as Address });
+  if (!valid) {
+    return res.status(400).json(apiResponse(null, 'signature verification failed', 1001));
+  }
+  // ③ 组装待广播 UserOp（draft op 无签名）：校验 op hash 一致 + 注入 owner 签名
+  const userOp = normalizeOp(op);
+  const opHash = getUserOpHash(userOp, cfg.entryPoint, cfg.chainId);
+  if (opHash.toLowerCase() !== String(userOpHash).toLowerCase()) {
+    return res.status(400).json(apiResponse(null, 'op does not match signed userOpHash', 1001));
+  }
+  userOp.signature = signature;
+  const subscriber = String(account).toLowerCase();
+  let chargeTotal = 0n;
+  let chargeRef = '';
+  if (aaChargeConfigured()) {
+    const fixed = BigInt(aaFees().userop.feeWei);
+    const gasEst = estimateUserOpGasWei(userOp);
+    chargeTotal = fixed + gasEst;
+    if (chargeTotal > 0n) {
+      chargeRef = `aa:replace:${randomUUID()}`;
+      await chargeUserOp(subscriber, chargeRef, chargeTotal);
+    }
+  }
+  // ④ 广播（wait=false 直接返回 hash；否则等收据）
+  if (wait === false) {
+    try {
+      const { userOpHash: hash, bundlerUrl } = await broadcast(cfg, userOp);
+      // ⑤ 移除旧 session（链上已 uninstall；新 session 阶段 1 已落库）
+      await sessionStore.remove(product, oldSessionId, 'evm').catch(() => undefined);
+      return res.json(apiResponse({ userOpHash: hash, bundlerUrl, receipt: null }, 'session replaced'));
+    } catch (e) {
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] replace refund failed:', bErr.message); }
+      }
+      throw e;
+    }
+  }
+  const client = new BundlerClient(cfg);
+  try {
+    const result = await client.sendUserOperation(userOp, {
+      waitTimeoutMs: 120_000,
+      onBroadcast: (h) => console.log(`[aa-relay] replace ${chain} userOpHash=${h} accepted`),
+    });
+    if (chargeTotal > 0n && result.receipt) {
+      try {
+        await settleUserOp(subscriber, chargeRef, chargeTotal, BigInt(aaFees().userop.feeWei) + result.receipt.actualGasCost);
+      } catch (bErr: any) {
+        console.warn('[aa-relay] replace gas settle failed:', bErr.message);
+      }
+    }
+    // ⑤ 移除旧 session（链上已 uninstall；新 session 阶段 1 已落库）
+    await sessionStore.remove(product, oldSessionId, 'evm').catch(() => undefined);
+    res.json(apiResponse({
+      userOpHash: result.userOpHash,
+      bundlerUrl: result.bundlerUrl,
+      receipt: result.receipt ?? null,
+    }, 'session replaced'));
+  } catch (e: any) {
+    if (isBundlerBusinessError(e)) {
+      if (chargeTotal > 0n) {
+        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        catch (bErr: any) { console.warn('[aa-relay] replace refund failed:', bErr.message); }
       }
       return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
     }

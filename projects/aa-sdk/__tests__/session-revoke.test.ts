@@ -12,11 +12,12 @@ import type { ChainAAConfig, UserOperationV7 } from '../src/types.js';
 import { encodeExecuteBatch, getUserOpHash, type Execution } from '../src/userop.js';
 import {
   encodeDisableSessionBatch,
+  encodeReplaceSessionBatch,
   isSessionModuleInstalled,
   MODULE_TYPE_VALIDATOR,
   toBytes32,
 } from '../src/session-module.js';
-import { buildDisableSessionUserOp, verifyDisableSignature } from '../src/session-revoke.js';
+import { buildDisableSessionUserOp, buildReplaceSessionUserOp, verifyDisableSignature } from '../src/session-revoke.js';
 import { ConfigError } from '../src/errors.js';
 
 const ACCOUNT = '0x2222222222222222222222222222222222222222' as Address;
@@ -349,5 +350,214 @@ describe('verifyDisableSignature (AA-1 revoke)', () => {
       84532,
     );
     expect(await verifyDisableSignature({ userOpHash: hash, signature: '0xdeadbeef' as Hex, owner: owner.address })).toBe(false);
+  });
+});
+
+// ============================================================================
+// AA-7：encodeReplaceSessionBatch —— 单笔轮换（uninstall + invalidateNonce + install）
+// ============================================================================
+
+const InstallAbi = [
+  {
+    type: 'function',
+    name: 'installModule',
+    inputs: [
+      { name: 'moduleTypeId', type: 'uint256' },
+      { name: 'module', type: 'address' },
+      { name: 'initData', type: 'bytes' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
+const EnableSessionAbi = [
+  {
+    type: 'function',
+    name: 'enableSession',
+    inputs: [
+      { name: 'sessionId', type: 'bytes32' },
+      { name: 'sessionKey', type: 'address' },
+      { name: 'validUntil', type: 'uint48' },
+      { name: 'validAfter', type: 'uint48' },
+      {
+        name: 'calls',
+        type: 'tuple[]',
+        components: [
+          { name: 'target', type: 'address' },
+          { name: 'selectors', type: 'bytes4[]' },
+          { name: 'valueLimit', type: 'uint256' },
+          { name: 'countLimit', type: 'uint256' },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
+/** AA-7 测试用新 session 策略（含 calls 白名单） */
+function makeNewPolicy(): SessionPolicy {
+  return {
+    network: 'evm',
+    sessionId: `0x${'ab'.repeat(32)}`,
+    signer: '0x4444444444444444444444444444444444444444',
+    validAfter: 0n,
+    validUntil: 9999999999n,
+    permissions: [
+      {
+        targets: ['0x5555555555555555555555555555555555555555'],
+        selectors: ['0x12345678'],
+        valueLimit: 0n,
+        countLimit: 0,
+      },
+    ],
+  };
+}
+
+describe('encodeReplaceSessionBatch (AA-7 单笔轮换)', () => {
+  it('encodes execute(BATCH, [uninstall, invalidateNonce(cur+1), install])', () => {
+    const oldSessionId = `0x${'cd'.repeat(32)}`;
+    const policy = makeNewPolicy();
+    const callData = encodeReplaceSessionBatch({
+      accountAddress: ACCOUNT,
+      oldSessionId,
+      policy,
+      chainConfig: makeChainConfig(),
+      currentNonce: 5,
+    });
+
+    const outer = decodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'execute',
+          inputs: [
+            { name: 'execMode', type: 'bytes32' },
+            { name: 'executionCalldata', type: 'bytes' },
+          ],
+          outputs: [],
+          stateMutability: 'payable',
+        },
+      ] as const,
+      data: callData,
+    });
+    expect(outer.functionName).toBe('execute');
+    expect(outer.args[0]).toBe('0x0100000000000000000000000000000000000000000000000000000000000000'); // CALLTYPE_BATCH
+
+    const [executions] = decodeAbiParameters(
+      [{ name: 'executions', type: 'tuple[]', components: ExecutionTuple }],
+      outer.args[1] as Hex,
+    ) as [Execution[]];
+    // 三笔：① uninstall 旧 session ② invalidateNonce ③ install 新 session
+    expect(executions).toHaveLength(3);
+
+    // ① uninstallModule(VALIDATOR, sessionModule, disableSession(oldSessionId))
+    const uninstall = executions[0];
+    expect(uninstall.target.toLowerCase()).toBe(ACCOUNT.toLowerCase());
+    const u = decodeFunctionData({ abi: UninstallAbi, data: uninstall.data });
+    expect(u.functionName).toBe('uninstallModule');
+    expect(u.args[0]).toBe(MODULE_TYPE_VALIDATOR);
+    expect((u.args[1] as Address).toLowerCase()).toBe(SESSION_MODULE.toLowerCase());
+    expect((u.args[2] as Hex).toLowerCase()).toContain(oldSessionId.slice(2).toLowerCase());
+
+    // ② invalidateNonce(currentNonce + 1)
+    const invalidate = executions[1];
+    expect(invalidate.target.toLowerCase()).toBe(ACCOUNT.toLowerCase());
+    const inv = decodeFunctionData({ abi: InvalidateAbi, data: invalidate.data });
+    expect(inv.functionName).toBe('invalidateNonce');
+    expect(inv.args[0]).toBe(6); // 5 + 1 (uint32 → number)
+
+    // ③ installModule(VALIDATOR, sessionModule, enableSession(newPolicy))
+    const install = executions[2];
+    expect(install.target.toLowerCase()).toBe(ACCOUNT.toLowerCase());
+    const inst = decodeFunctionData({ abi: InstallAbi, data: install.data });
+    expect(inst.functionName).toBe('installModule');
+    expect(inst.args[0]).toBe(MODULE_TYPE_VALIDATOR);
+    expect((inst.args[1] as Address).toLowerCase()).toBe(SESSION_MODULE.toLowerCase());
+    const enableData = inst.args[2] as Hex;
+    const enable = decodeFunctionData({ abi: EnableSessionAbi, data: enableData });
+    expect(enable.functionName).toBe('enableSession');
+    expect((enable.args[0] as Hex).toLowerCase()).toBe(toBytes32(policy.sessionId).toLowerCase());
+    expect((enable.args[1] as Address).toLowerCase()).toBe(policy.signer.toLowerCase());
+    const calls = enable.args[4] as { target: Address; selectors: Hex[]; valueLimit: bigint; countLimit: bigint }[];
+    expect(calls).toHaveLength(1);
+    expect(calls[0].target.toLowerCase()).toBe('0x5555555555555555555555555555555555555555'.toLowerCase());
+    expect(calls[0].selectors[0]).toBe('0x12345678');
+  });
+
+  it('throws ConfigError when sessionModule not configured', () => {
+    expect(() =>
+      encodeReplaceSessionBatch({
+        accountAddress: ACCOUNT,
+        oldSessionId: `0x${'cd'.repeat(32)}`,
+        policy: makeNewPolicy(),
+        chainConfig: makeChainConfig({ sessionModule: undefined }),
+        currentNonce: 1,
+      }),
+    ).toThrow(ConfigError);
+  });
+});
+
+// ============================================================================
+// AA-7：buildReplaceSessionUserOp —— 单笔轮换 draft（root nonce + 三段批量 callData）
+// ============================================================================
+
+describe('buildReplaceSessionUserOp (AA-7 draft)', () => {
+  const oldSessionId = `0x${'ef'.repeat(32)}`;
+
+  it('builds unsigned draft with root nonce + 3-step batch callData + oldSessionIdBytes', async () => {
+    const client = {
+      readContract: async ({ functionName }: { functionName: string }) => {
+        if (functionName === 'currentNonce') return 7;
+        if (functionName === 'getNonce') return 123n;
+        throw new Error(`unexpected ${functionName}`);
+      },
+    } as unknown as PublicClient;
+
+    const draft = await buildReplaceSessionUserOp({
+      client,
+      chainConfig: makeChainConfig(),
+      account: ACCOUNT,
+      oldSessionId,
+      policy: makeNewPolicy(),
+      gas: { callGasLimit: 2_000_000n, verificationGasLimit: 300_000n },
+    });
+
+    expect(draft.currentNonce).toBe(7);
+    expect(draft.oldSessionIdBytes).toBe(toBytes32(oldSessionId));
+    expect(draft.op.sender.toLowerCase()).toBe(ACCOUNT.toLowerCase());
+    expect(draft.op.nonce).toBe(123n);
+    expect(draft.op.callGasLimit).toBe(2_000_000n);
+    expect(draft.op.signature).toBe('0x');
+
+    // callData = 批量 uninstall + invalidateNonce(8) + install
+    const outer = decodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'execute',
+          inputs: [
+            { name: 'execMode', type: 'bytes32' },
+            { name: 'executionCalldata', type: 'bytes' },
+          ],
+          outputs: [],
+          stateMutability: 'payable',
+        },
+      ] as const,
+      data: draft.op.callData,
+    });
+    const [executions] = decodeAbiParameters(
+      [{ name: 'executions', type: 'tuple[]', components: ExecutionTuple }],
+      outer.args[1] as Hex,
+    ) as [Execution[]];
+    expect(executions).toHaveLength(3);
+    const inv = decodeFunctionData({ abi: InvalidateAbi, data: executions[1].data });
+    expect(inv.args[0]).toBe(8); // currentNonce 7 + 1 (uint32 → number)
+    const inst = decodeFunctionData({ abi: InstallAbi, data: executions[2].data });
+    expect(inst.functionName).toBe('installModule');
+
+    // userOpHash 与 getUserOpHash 重算一致（绑定构建时 nonce/gas）
+    expect(draft.userOpHash).toBe(getUserOpHash(draft.op, ENTRYPOINT_V07, 84532));
   });
 });

@@ -2130,7 +2130,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C） | 🔲 | P3 |
+| AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C）。**已改为 SDK 层"单笔轮换 batch"等价实现（不改合约）**：一次 UserOp 完成 撤销旧 session + 推进 nonce + 安装新 session（owner 仅签一次），达到与合约升级等价的幂等覆盖效果 | ✅（SDK 方案） | P3→已落地 |
 
 **AA-7 版本规划评估记录**（2026-08-19，来源 `docs/aa-relay-session-rollover-fix-infrax.md` §3 路径 C）：
 
@@ -2138,7 +2138,20 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **前提/代价**：改合约 + 重新部署 + 重新审计 + 版本兼容管理（已集成方同步升级 aa-sdk 指向新模块地址）。
 - **覆盖授权边界（必答）**：谁有权覆盖旧 session？建议**仅同 owner、同 product 允许覆盖；跨 product 拒绝并提示先撤销**。
 - **存量迁移**：已部署账户不受影响（模块升级只影响新 enable），但旧账户在旧模块逻辑下无法覆盖，重新 enable 前仍需一次显式撤销（配合 AA-1 disable 上链闭环 / AA-6 复用完成迁移）。
-- **状态**：🔲 记录不排期。短期/中期由 AA-1（disable 上链闭环）+ AA-6（B2 session 复用）覆盖轮换诉求；是否走合约升级由版本规划决策，不与 AA-1/AA-6 互相阻塞。
+- **状态**：~~🔲 记录不排期~~ → **✅ 已落地（2026-08-19，SDK 单笔轮换 batch 方案，不改合约）**。
+
+**AA-7 实现方案（SDK 层单笔轮换 batch，等效 C1 幂等覆盖）**：
+
+- **核心**：新增 `encodeReplaceSessionBatch`（aa-sdk `session-module.ts`）—— 一次 UserOp 批量执行
+  `execute(BATCH, [uninstallModule(VALIDATOR, module, disableData(old)),
+                    invalidateNonce(currentNonce+1),
+                    installModule(VALIDATOR, module, enableData(new))])`，
+  owner 仅签一次，链上原子完成"撤销旧 session → 推进 nonce → 安装新 session"。
+- **根治点**：`invalidateNonce` 推进 `validationConfig[vId].nonce`，从根上消除重 enable 的 `InvalidNonce`（AA23/0x756688fe）；uninstall+install 同模块地址先卸清 config 再装新 config，天然幂等覆盖。
+- **draft 构建**：`buildReplaceSessionUserOp`（aa-sdk `session-revoke.ts`）—— root nonce + 三段批量 callData + gas/fee 注入后重算 `userOpHash`。
+- **relay 端点**：`POST /v1/session/replace`（阶段 1：owner EOA 派生账户 + 生成新 session 落库 + 构建 draft 返回 `userOpHash`）；`POST /v1/session/replace/submit`（阶段 2：owner 签名校验 + op hash 一致性校验 + 广播 + 移除旧 session 记录）。调用方：owner 对 draft.userOpHash 签名 → submit 上链。
+- **覆盖授权边界**：端点要求 owner 派生账户 === account（防篡改），即仅账户 owner 可轮换，天然满足"仅同 owner 允许覆盖"。
+- **相比合约升级**：零合约改动、零重部署、零审计；SDK/relay 即可交付，已集成方无需升级链上模块。
 
 **AA-1~AA-7 生产部署记录**（2026-08-19，生产机 43.163.105.172，`/home/ubuntu/infraX-1`）：
 
