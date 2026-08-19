@@ -43,6 +43,7 @@
 | `/api/data/factors/current` | GET | 最新因子值 | ✅ |
 | `/api/data/factors/history` | GET | 逐 bar 因子时序 | ✅ |
 | `/api/data/factors/graph` | GET | 语义图谱因子（ragservicer 知识图谱 8 因子透传） | ✅ |
+| `/api/data/factors/graph/entities` | GET | 力导向图节点/边（ragservicer 知识图谱可视化，REQ-G2.1） | ✅ |
 | `/api/data/factors/graph/edges` | GET | 相关性图边表（GX-2：60 日 \|ρ\|≥0.6 + community/pagerank，REQ-G1） | ✅ |
 | `/api/data/factors/graph/history` | GET | gf_\* 日频历史（自然日归一化，asof 语义，REQ-G2.5） | ✅ |
 | `/api/data/rag/retrieve` | POST | 只读 RAG 检索透传（market/onchain/default，REQ-G2） | ✅ |
@@ -94,6 +95,13 @@ B 端只需 **data-service dx_\* key**（无需另持 ragservicer / ml-service k
 - 响应 `{ts, meta: {source:"ragservicer", namespaces, top_k}, results: [{namespace, context, top_k, mode:"mix"}, ...]}`
 - namespace 枚举（default 租户）：`market`（行情/宏观/新闻）/ `onchain`（链上/DeFi）/ `default`
 - 只读：不注入、不写库，返回 context 片段供调用方自带 LLM 做知识增强
+
+**⑤ `GET /factors/graph/entities?symbol=&namespace=market&limit=200` — 力导向图数据（REQ-G2.1）**
+
+- 透传 ragservicer 知识图谱可视化数据（LightRAG graphml 结构），响应 `{ts, meta: {source:"ragservicer", namespace}, nodes[], edges[]}`
+- `symbol` 非空 → 该实体**一跳子图**（实测 BTC → 81 节点/131 边）；空 → 全图 top-N by PageRank（`limit` 上限 500）
+- `namespace` 枚举同 /rag/retrieve：`market`（默认，金融主空间）/ `onchain` / `default`；**必须显式给命名空间**（ragservicer 默认 `default` 无图数据会 503，此端点已固定默认 market）
+- B 端不再需要 lr_ key 做图谱可视化——语义检索走 `POST /rag/retrieve`、相关性图走 `/factors/graph/edges`、知识图谱因子走 `/factors/graph`，**全部 dx_ key 单入口**
 
 > **ml 因子新鲜度说明（2026-08-19 修复上线）**：`/factors/current` 中 bolt / moirai / timesfm 因子的 `meta.age_ms` 以 **ml_predictions 的 `generated_at`**（模型最新生成时间）计，非采集时间。链路已恢复日更（修复 data-service P2 采集契约 + ML 机 torch 升级），公网实测 age≈11s、`fresh=true`。调用方按 `meta.age_ms` 做过期过滤的约定不变。
 

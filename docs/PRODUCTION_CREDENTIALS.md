@@ -147,7 +147,8 @@
 > **因子双轨收敛（2026-08-19，统一入口 + key 定位收窄）**：
 > - **背景**：语义图谱因子（ragservicer `/api/v1/factors/graph`，`lr_*` key）与 data-service 统一因子通道（`/factors/current`，`dx_*` key）此前双轨并行，B 端需分别持有 lr_*/dx_* 两类 key，调用方（尤其 AItrader）持有多个 key 易混乱。
 > - **业务原则（用户裁定 2026-08-19）**：`lr_*` key **属于独立 LightRAG 微服务**（供项目方**上传自己的资料 + 读取资料**：documents 注入/列表、query/retrieve 检索、graph/entities 可视化数据），**与因子/金融数据方案无关**；**今日（2026-08-19）以前发放的 `lr_` key 全部保持有效**。**因子一律走 data-service `dx_*` key**（含语义图谱因子，统一入口 `/factors/graph`）。
-> - **统一入口**：data-service `GET /factors/graph`（语义图谱 8 因子）+ `GET /factors/graph/edges`（相关性图，REQ-G1）+ `/factors/current`（gf_* 18 因子），B 端持 dx_* key；data-service 内部经 ragservicer/ml-service 服务 key 透传。
+> - **统一入口**：data-service `GET /factors/graph`（语义图谱 8 因子）+ `GET /factors/graph/entities`（力导向图可视化，REQ-G2.1）+ `GET /factors/graph/edges`（相关性图，REQ-G1）+ `/factors/current`（gf_* 18 因子），B 端持 dx_* key；data-service 内部经 ragservicer/ml-service 服务 key 透传。
+> - **图谱可视化/语义检索打包进金融套餐（2026-08-19，REQ-G2/G2.1）**：B 端做图谱页力导向图 + 快速分析知识增强**不再需要 lr_ key**——`GET /factors/graph/entities`（力导向图，默认 namespace=market）+ `POST /rag/retrieve`（语义检索）均为 dx_* key 单入口。**与项目方 lr_ 服务不重叠**：data-service 内部持 default 租户 `data-service-internal` key 只读共享金融图谱（`data/default/market|onchain`），项目方 lr_ key 读写各自租户空间（`data/{tenant_id}/…`），目录隔离。
 > - **ragservicer 因子端点锁服务间（commit `4e30aa1`）**：`/factors/graph`、`/factors/catalog` 仅允许 `RAGSERVICER_FACTOR_KEYS` 白名单内服务 key（`require_service`，非白名单 403）；`/graph/entities` 归读取信息，B 端 lr_ key 可用。
 > - **data-service 内部服务 key（服务间鉴权专用，禁止外发）**：`data-service-internal`（default 租户）｜ `lr_16c4aa5d708348478b7b0365ec6dbd42303f8ca3147ac460`（永不过期；ragservicer 机 .env `RAGSERVICER_FACTOR_KEYS`；data 机 .env `RAGSERVICER_BASE_URL=http://43.156.78.59:9721` + `RAGSERVICER_SERVICE_KEY`）
 > - **B 端 lr_ key 状态（lightrag 服务用途，全部有效 active=1）**：

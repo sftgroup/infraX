@@ -120,6 +120,7 @@
 | `/factors/current` | **最新因子值**（symbol 维度，category 过滤）；**顶层恒附** `ml_factory`（挖掘因子，与 category 无关）、`graph`（图谱因子，`?symbols=` 多币种时返回对应 gf_*，2026-08-19 实测 10 币全量）、`_complex`（news / put_call_ratio 等复合结构） | 实时展示 / 决策 |
 | `/factors/history` | 逐 bar 因子时序（对齐 /bars ts） | 回测 |
 | `/factors/graph` | 语义图谱因子（ragservicer 知识图谱 8 因子，data-service 统一透传） | 图谱联动 / 传导分析 |
+| `/factors/graph/entities` | **力导向图节点/边**（ragservicer 知识图谱可视化，REQ-G2.1，B 端免 lr_ key） | 图谱页力导向图（ECharts） |
 | `/factors/graph/edges` | **相关性图边**（ml-service GX-2，60 日 \|ρ\|≥0.6 + community/pagerank，REQ-G1） | 相关性图页面（多节点展示） |
 | `/factors/graph/history` | **gf_\* 日频历史序列**（自然日归一化，asof 语义，回测用，REQ-G2.5） | 图谱因子回测 |
 | `/rag/retrieve` | **只读 RAG 检索透传**（ragservicer market/onchain/default 知识检索，REQ-G2） | 快速分析知识增强 |
@@ -341,18 +342,21 @@ SDK：`infra-data-client`（Python，**0.3.0**：`get_ml_factory`/`get_current_f
 - 写入：**knowledge-injector**（9113）把外部数据源/文档批量转成 LightRAG 注入
 - 存储与检索：**ragservicer**（9721）持有图谱实例（LightRAG 存储落盘 `projects/ragservicer/data/`，已在 .gitignore）
 
-### 6.2 图谱查询端点（ragservicer，前缀 `/api/rag/v1/`）
+### 6.2 图谱查询端点（ragservicer，公网前缀 `/api/rag/api/v1/`）
+
+> ⚠️ **公网路径**：nginx 将 `/api/rag/*` 去前缀转发到 ragservicer，故公网地址为 `https://infrax.0xainet.top/api/rag/api/v1/...`（2026-08-19 实测，`/api/rag/v1/...` 会 404）。另注意 `/api/v1/*` 走的是 data-service 旧契约兼容段，**不是** ragservicer。
 
 | 端点 | 说明 |
 |---|---|
-| `POST /api/rag/v1/namespaces/{ns}/query` | 图谱混合检索，返回 **entities + relations + chunks**（不生成 LLM 答案，供调用方自接 LLM） |
-| `POST /api/rag/v1/namespaces/{ns}/retrieve` | 纯检索（`top_k` 可调），只回上下文 |
-| `POST /api/rag/v1/namespaces/{ns}/documents` | 注入单篇文档 → 自动抽实体关系建图 + 向量化 |
-| `POST /api/rag/v1/namespaces/{ns}/documents/batch` | 批量注入 |
-| `GET /api/rag/v1/namespaces/{ns}/documents` / `DELETE .../{doc_id}` | 文档列表 / 删除 |
-| `GET /api/rag/v1/namespaces/{ns}/tasks/{task_id}` | 注入任务状态（读写分离异步队列） |
-| `GET /api/rag/v1/tenants`、`POST /api/rag/v1/tenants`、`.../{id}/keys` | 租户与 key 管理（admin） |
-| `GET /api/rag/v1/instances`、`/api/rag/v1/admin/config`、`/admin/tasks` | 实例 / 热配置 / 任务（admin） |
+| `POST /api/rag/api/v1/namespaces/{ns}/query` | 图谱混合检索，返回 **entities + relations + chunks**（不生成 LLM 答案，供调用方自接 LLM） |
+| `POST /api/rag/api/v1/namespaces/{ns}/retrieve` | 纯检索（`top_k` 可调），只回上下文 |
+| `POST /api/rag/api/v1/namespaces/{ns}/documents` | 注入单篇文档 → 自动抽实体关系建图 + 向量化 |
+| `POST /api/rag/api/v1/namespaces/{ns}/documents/batch` | 批量注入 |
+| `GET /api/rag/api/v1/namespaces/{ns}/documents` / `DELETE .../{doc_id}` | 文档列表 / 删除 |
+| `GET /api/rag/api/v1/namespaces/{ns}/tasks/{task_id}` | 注入任务状态（读写分离异步队列） |
+| `GET /api/rag/api/v1/tenants`、`POST /api/rag/api/v1/tenants`、`.../{id}/keys` | 租户与 key 管理（admin） |
+| `GET /api/rag/api/v1/graph/entities?symbol=&namespace=market` | **力导向图可视化（GF-5）**——`namespace` 必须显式（默认 `default` 无图数据 → 503；`market`/`onchain` 才有） |
+| `GET /api/rag/api/v1/instances`、`/api/rag/api/v1/admin/config`、`/admin/tasks` | 实例 / 热配置 / 任务（admin） |
 
 **查询 mode**（LightRAG QueryParam，`/query` 与 `/retrieve` 共用）：
 
@@ -387,6 +391,7 @@ B 端只需 **data-service dx_\* key**，无需另持 ragservicer/ml-service key
 | 端点 | 说明 |
 |---|---|
 | `GET /api/data/factors/graph?symbols=BTC,ETH` | 语义图谱因子（ragservicer 知识图谱），`{ts, meta, factors: {SYM: {factor_key: value}}}` |
+| `GET /api/data/factors/graph/entities?symbol=&namespace=market&limit=` | **力导向图节点/边**（ragservicer 图谱可视化，REQ-G2.1）——symbol 非空=一跳子图，空=全图 top-N by PageRank；默认 namespace=market（B 端免 lr_ key） |
 | `GET /api/data/factors/graph/edges?symbols=&limit=` | 相关性图边表（ml-service GX-2 同一图快照），`{ts, meta, nodes[], edges[]}`；nodes 的 `community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同口径**（60 日窗、\|ρ\|≥0.6、共同交易日 ≥30） |
 | `GET /api/data/factors/graph/history?symbols=&days=` | gf_\* 日频历史（graph_history.db 自然日 0 时归一化，asof 语义），`{ts, meta, series: {SYM: {factor_key: [[ts_ms, val], ...]}}}`；历史自 2026-08-18 起累积 |
 | `POST /api/data/rag/retrieve` | 只读 RAG 检索透传，body `{"query","namespaces":["market","onchain"],"top_k":10}` → `{ts, meta, results: [{namespace, context, top_k, mode}]}`；namespace 枚举（default 租户）`market`（行情/宏观/新闻）/ `onchain`（链上/DeFi）/ `default` |
