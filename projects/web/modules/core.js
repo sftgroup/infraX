@@ -203,10 +203,11 @@ function initActivePage() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); });
+  document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 100); });
 } else {
   setupNav();
   setTimeout(initActivePage, 50);
+  setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 150);
 }
 
 // Tab clicks
