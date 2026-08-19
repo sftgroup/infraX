@@ -3,7 +3,26 @@
 
   "kline": {
     "_comment": "symbols/timeframes/exchange/fetch_limit 由 .env (KL_* 变量) 控制，此处仅供文档参考。indicators 参数由此处读取。深度标准对齐 AItrader 回测区间上限（DS-8）：1m≥30天、5m/15m/30m≥180天、1h/4h≥1年、1D≥3年。",
-    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BTC/USDC", "ETH/USDC"],
+    "symbols": [
+      "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "XRP/USDT",
+      "ADA/USDT", "DOGE/USDT", "AVAX/USDT", "DOT/USDT", "TRX/USDT",
+      "LINK/USDT", "LTC/USDT", "BCH/USDT", "NEAR/USDT", "ATOM/USDT",
+      "UNI/USDT", "TON/USDT", "SHIB/USDT", "XLM/USDT", "ETC/USDT",
+      "ICP/USDT", "FIL/USDT", "APT/USDT", "SUI/USDT", "ARB/USDT",
+      "OP/USDT", "MATIC/USDT", "POL/USDT", "INJ/USDT", "SEI/USDT",
+      "MKR/USDT", "AAVE/USDT", "CRV/USDT", "SNX/USDT", "LDO/USDT",
+      "RUNE/USDT", "GMX/USDT", "PENDLE/USDT", "DYDX/USDT", "JUP/USDT",
+      "WIF/USDT", "BONK/USDT", "FLOKI/USDT", "POPCAT/USDT", "PEPE/USDT",
+      "FET/USDT", "RNDR/USDT", "TAO/USDT", "WLD/USDT", "ARKM/USDT",
+      "SAND/USDT", "MANA/USDT", "AXS/USDT", "GALA/USDT", "ALGO/USDT",
+      "EGLD/USDT", "HBAR/USDT", "FLOW/USDT", "XTZ/USDT", "ROSE/USDT",
+      "STRK/USDT", "MANTA/USDT", "METIS/USDT", "IMX/USDT", "GRT/USDT",
+      "ANKR/USDT", "BAND/USDT", "PYTH/USDT", "TRB/USDT", "HNT/USDT",
+      "IOTX/USDT", "LPT/USDT", "AR/USDT", "VET/USDT", "THETA/USDT",
+      "STX/USDT", "MNT/USDT", "APE/USDT", "BLUR/USDT", "TIA/USDT",
+      "ORDI/USDT", "CRO/USDT", "OKB/USDT", "KAS/USDT",
+      "BTC/USDC", "ETH/USDC"
+    ],
     "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
     "exchange": "binance",
     "fetch_limit": 500,

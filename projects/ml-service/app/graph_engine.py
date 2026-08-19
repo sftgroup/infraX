@@ -1106,7 +1106,9 @@ def compute_graph_edges_payload(
 
     返回 {"updated_at", "window", "min_abs_corr", "nodes": [{id,symbol,community,pagerank,size}],
           "edges": [{source,target,corr,abs_corr,weight,kind}]}；快照未就绪返回 None。
-    window/min_abs_corr 为契约兼容参数（当前图按 GX-2 固定窗口/阈值构建，仅记录进 meta）。
+    edges 仅含真实相关性边（kind=corr，corr=带符号 ρ）；非 corr 图层边不进入本数据面
+    （REQ-G9：杜绝把图层权重伪装成相关系数）。window/min_abs_corr 为契约兼容参数
+    （当前图按 GX-2 固定窗口/阈值构建，仅记录进 meta）。
     """
     if not _NX_OK or not _LAST_GRAPH:
         logger.debug("graph edges unavailable: no graph snapshot yet")
@@ -1128,24 +1130,24 @@ def compute_graph_edges_payload(
             "size": _r(pr * 100, 1),
         })
 
-    # edges：MultiGraph 平行边逐条输出（corr 边带 rho；非 corr 边 corr=图层权重）
+    # edges：仅输出真实相关性边（REQ-G9——非 corr 图层边不再伪装成 corr=1.0）。
+    # corr 带符号 ρ∈[-1,1]；abs_corr=|ρ|；weight=|ρ|（前端线宽归一化 / 正负着色输入）。
     edges: list[dict] = []
     for u, v, key, d in G.edges(data=True, keys=True):
         if u not in universe or v not in universe:
             continue
         rho = d.get("rho")
-        corr = float(rho) if rho is not None else float(d.get("weight", 1.0))
+        if rho is None:
+            continue  # industry/supply_chain 等非相关边不进入相关性边数据面
+        rho = float(rho)
         edges.append({
             "source": u,
             "target": v,
-            "corr": _r(corr),
-            "abs_corr": _r(abs(corr)),
-            "weight": _r(abs(corr)),
+            "corr": _r(rho),
+            "abs_corr": _r(abs(rho)),
+            "weight": _r(abs(rho)),
             "kind": d.get("kind", key),
         })
-
-    if not edges:
-        return None
 
     # 按 abs_corr 降序截断（可视化优先级：强相关在前）
     edges.sort(key=lambda e: e["abs_corr"] or 0.0, reverse=True)
