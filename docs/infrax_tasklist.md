@@ -2104,3 +2104,31 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | W-15 | **提现/购买 2FA**：当前仅 paymentPassword → 增加 TOTP（arb §5 强校验） | ✅ | P2 |
 | W-16 | **冷热分离动态额度**：热钱包只留当日预估流水，超出自动归冷（arb §6） | ✅ | P2 |
 
+### 9.10 AA Session 会话轮换优化任务（源：AgentX 修复文档 `docs/aa-relay-session-rollover-fix-infrax.md`，2026-08-19 对照评审）
+
+**背景**：AgentX 生产复现 L12 —— Kernel v3 **单 session** 结构下，同一智能账户重复 enable 自动续订失败（AA23）。根因：① 本地 disable 从不上链 → 链上 session validator 残留，再次 `installModule`/`enableSession` 覆盖被拒；② 撤销后重 enable 的 `InvalidNonce`（`uninstallModule` 不清 `validationConfig[vId].nonce`），需批量 execute `uninstallModule + invalidateNonce(cur+1)` 推进 nonce。AgentX 路径 A（调用方自愈）已上线；推荐 infraX 评估路径 B（relay 层会话轮换/复用）。
+
+**infraX 现状对照**：`aa-relay /v1/session/disable` 仅本地 `sessionStore.remove` + 返回 disableCallData（**从不上链**，与缺陷完全一致）；aa-sdk 无 `encodeExecuteBatch`、无 `isModuleInstalled` 探测；`GET /v1/session` 不返回 createdAt/isBound；无 session 复用。
+
+**9.10.1 P1 缺陷修复（disable 上链闭环 + 残留自愈）**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|---|
+| AA-1 | **disable 上链闭环（B1）**：`POST /v1/session/disable` 仅本地 remove + 返回 disableCallData，链上 session 永不撤销 → 提供"带签名上链"撤销端点（调用方传 owner 签名，relay 组装 disable UserOp=批量 uninstall+invalidateNonce、估 gas、广播返回收据）；保留本地停用 + 返回 draft 兼容路径（AgentX §2.2/§4 路径 B1） | 🔲 | P1 |
+| AA-2 | **aa-sdk 补 encodeExecuteBatch**：仅 `encodeExecute`（单调用）→ 新增批量 execute 编码（`ExecLib.encodeSimpleBatch` = CALLTYPE_BATCH\|EXECTYPE_DEFAULT 布局，`execute(bytes32,bytes)`），供 disable 批量 uninstall+invalidateNonce 复用（AgentX §2.4 实证 + 提示） | 🔲 | P1 |
+| AA-3 | **aa-sdk 补 isModuleInstalled 探测**：新增 ERC-7579 `isModuleInstalled(1 VALIDATOR, sessionModule, 0x)` 链上视图探测账户 session 绑定；注意勿用 storage slot 判残留（误报，见 AgentX §2.1 探测修正） | 🔲 | P1 |
+| AA-4 | **relay 残留自愈（enable 前检测）**：`POST /v1/session` 创建前用 isModuleInstalled 探测链上绑定；已绑定 → 响应 `isBound:true` + `needsSessionRevoke`，引导调用方先撤销再 enable（AgentX 路径 A relay 侧配合） | 🔲 | P1 |
+
+**9.10.2 P2 体验/复用（中期）**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|---|
+| AA-5 | **GET /v1/session 补 createdAt + isBound**：`session-store.list()` 未返回 `created_at`；新增链上 isBound 字段，供调用方选残留 session（AgentX「给 infraX 的最小配合」） | 🔲 | P2 |
+| AA-6 | **B2 session 复用**：`POST /v1/session` 创建前探测链上绑定；已绑定且策略兼容（同 product、target/selector 白名单覆盖、限额 ≥ 请求、未过期）→ 复用既有 session（sessionId/sessionKey），零额外链上交易；不兼容返回 `409 session-conflict` 引导先撤销再 enable（AgentX 路径 B2；复用判断必须以链上状态为准，且需鉴权确认同一 owner） | 🔲 | P2 |
+
+**9.10.3 P3 远期（记录不排期）**
+
+| 编号 | 任务 | 现状 | 优先级 |
+|---|---|---|---|
+| AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C） | 🔲 | P3 |
+
