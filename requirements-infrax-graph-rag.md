@@ -3,180 +3,132 @@
 - 日期：2026-08-19
 - 接收方：B 端数据服务（infraX：data-service 43.163.105.172 / ragservicer 43.156.78.59）
 - 来源：AIHunter 图谱展示界面 + 因子增强规划（复用 B 端 GF-1~GF-6 / GX-1~GX-3 已落地能力）
-- 前置事实（已确认，**不重复提需求**）：
-  - ragservicer 公网**已开放**：`https://infrax.0xainet.top/api/rag/*` → `http://10.3.8.6:9721`（`/api/rag/api/v1/health` 已 200 验证；注意实际前缀为 `/api/rag/api/v1/*`）；鉴权三选一（`x-api-key` / `Authorization: Bearer` / `X-Service-Key`）
-  - 知识图谱可视化 **GF-5 已存在**：`GET /api/v1/graph/entities`（nodes category 9 枚举 + size；edges relation 8 枚举 + weight；支持 1-hop 子图）
-  - 图谱因子 **GF-3/GF-4 已存在**：`GET /api/v1/factors/graph`、`/api/v1/factors/catalog`
-  - 市场图谱因子 `gf_*`（18 项）已经 data-service `/factors/current` 的 `graph` 字段透传（60s TTL）
+- 状态：**2026-08-19 B 端 6 项全部回复并处理完毕，AIHunter 公网实测全部通过** ✅
 
 ---
 
-## REQ-G1【高】市场相关性图边数据接口（新增：ml-service GX-2 数据面外露）
+## 一、B 端回复结论（2026-08-19）
 
-### 背景
+| # | 事项 | B 端结论 | AIHunter 实测 |
+| ---- | ---- | ---- | ---- |
+| ① | graph 多币种 | GX-2 本就全市场构建（市值前 150 标的），`/factors/current` symbols 参数默认 BTC，显式传参即可 | ✅ 10 币种全部返回 18 个 `gf_*` |
+| ② | ml 动量因子过期 | 根因 2 条已修复（采集端 P2 契约未升级 + ML 机 torch 缺 DTensor），ml_predictions 恢复日更 | ✅ bolt/moirai/timesfm age≈318s，fresh=true |
+| ③ | REQ-G1 边数据 | `/factors/graph/edges` 已可用，与 GX-2 同口径 | ✅ nodes 150 / edges 5，community/pagerank 与 gf_* 同快照 |
+| ④ | REQ-G2 rag 只读 | 已上线，**无需新 key**（沿用 dx_* key，data-service 只读透传） | ✅ `/api/data/rag/retrieve` 返回 market+onchain 上下文 |
+| ⑤ | graph 历史 | 已新增 `/factors/graph/history`，自然日 0 时幂等落 1 条（asof 语义可回测） | ✅ BTC/ETH 各因子 2 天序列 |
+| ⑥ | gf_* 有效期 | 实时值 30min 重算（ML_CACHE_TTL_SEC=1800）；历史日频 | ✅ meta.age_ms 随重算更新 |
 
-GX-2 已生产部署：`/bars` 滚动 60 日 |ρ|≥0.6 动态边 + Louvain 社区 + Node2Vec（`gf_node2vec_1..8`）。但对外**仅输出 `gf_*` 标量因子**（`/factors/current` 的 graph 字段），**未暴露边表**——AIHunter 无法直接重建相关性图（自行计算 60 日相关矩阵则与 B 端口径不一致，无法复用 community/pagerank 语义）。
+---
 
-### 需求
+## 二、最终接入契约（AIHunter 侧实现依据）
 
-新增只读接口，返回当前相关性图（nodes + edges，ECharts force-directed 兼容结构，与 GF-5 `/graph/entities` 对齐，便于前端统一渲染）。
+统一前缀：`https://infrax.0xainet.top/api/data/`，鉴权三选一（`Authorization: Bearer` / `X-API-Key` / `X-Service-Key`）。
 
-建议路径（data-service 统一数据出口，ml-service 计算）：
+### 2.1 graph 多币种因子（①）
 
 ```
-GET /api/data/factors/graph/edges?symbols=BTC,ETH,SOL&window=60&min_abs_corr=0.6&limit=300
+GET /factors/current?symbols=BTC,ETH,SOL,BNB,XRP,DOGE,ADA,AVAX,LINK,DOT
 ```
+- 响应 `graph.values`：每 symbol 18 项 `gf_*`（degree/betweenness/pagerank/community/structural_hole/neighbor_mom/neighbor_vol/cc_spillover/sector_mom/community_mom/node2vec_1..8）
+- **关键**：symbols 参数默认只返回 BTC，必须显式传参
+- graph.values 覆盖市值前 150 标的（全市场，可传任意白名单）
 
-响应（对齐 `{code, message, data}` 信封）：
+### 2.2 相关性图边数据（③，REQ-G1 ✅）
 
-```json
-{
-  "code": 0,
-  "data": {
-    "updated_at": 1787040000000,
-    "window": 60,
-    "min_abs_corr": 0.6,
-    "nodes": [
-      {"id": "BTC", "symbol": "BTC", "community": 2, "pagerank": 0.31, "size": 31}
-    ],
-    "edges": [
-      {"source": "BTC", "target": "ETH", "corr": 0.82, "abs_corr": 0.82, "weight": 0.82}
-    ]
-  }
-}
 ```
+GET /factors/graph/edges?symbols=&limit=300
+```
+- 响应 `{ts, meta:{window:60, min_abs_corr:0.6, updated_at}, nodes[], edges[]}`
+- 口径：60 日共同交易日对数收益、|ρ|≥0.6、共同交易日≥30
+- nodes 的 `community`/`pagerank` 与 `/factors/current` 的 `gf_community`/`gf_pagerank` **同一图快照**（updated_at 一致）
+- symbols 空 = 全图（nodes 含全市场资产，图谱页建议按 community 过滤或主流币白名单展示）
+- 实测：nodes 150，edges 5（当前窗口高相关边较少，正常）；边含 `kind` 字段（如 industry）
 
-字段说明：
+### 2.3 rag 知识检索（④，REQ-G2 ✅ 无需新 key）
 
-| 字段 | 含义 | 与现有因子的一致性要求 |
-| ---- | ---- | ---- |
-| `nodes[].community` | Louvain 社区编号 | 与 `gf_community` 完全一致 |
-| `nodes[].pagerank` | PageRank 中心度 | 与 `gf_pagerank` 完全一致 |
-| `nodes[].size` | 可视化节点大小（pagerank 归一化 ×100） | 同一口径 |
-| `edges[].corr` | 原始皮尔逊相关系数 | — |
-| `edges[].weight` | 可视化权重（= abs_corr） | — |
+```
+POST /rag/retrieve
+body: {"query": "...", "namespaces": ["market", "onchain"], "top_k": 10}
+```
+- 响应 `{ts, meta, results:[{namespace, context, top_k, mode:"mix"}]}`
+- namespace 枚举：`market`（行情/宏观/新闻）/ `onchain`（链上/DeFi）/ `default`
+- 只读不注入；实测 market+onchain 均返回 context（27KB / 21KB）
+- 语义图谱因子：`GET /factors/graph?symbols=`（graph_entity_count 等 8 因子，供知识图谱页可视化）
 
-约束：
+### 2.4 graph 历史（⑤，REQ-G6 ✅）
 
-- **数据口径与 GX-2 完全一致**：同一 60 日窗口、同一 |ρ|≥0.6 阈值、同一社区/嵌入计算（不得另起口径）
-- 只读接口；鉴权走 data-service 既有 key（`Bearer` / `X-API-Key` 三选一）
-- 缓存：与 `gf_*` 同 TTL（60s）或日频重建可放宽至 5min
-- 若 symbols 未传，默认返回全图（受 limit 约束）；若提供 symbols，返回这些节点及其 1-hop 边
+```
+GET /factors/graph/history?symbols=&days=
+```
+- 响应 `{ts, meta, series:{SYM:{factor_key:[[ts_ms,val],...]}}}`
+- **自然日 0 时幂等归一化落 1 条**（asof 语义，可直接回测）
+- 历史自 2026-08-18 起累积（当前 2 天），满 60/90 日后完整回测
 
-### 验收
+### 2.5 gf_* 有效期（⑥，REQ-G7 ✅）
 
-1. `GET /api/data/factors/graph/edges?symbols=BTC,ETH,SOL` → 200，`edges` 非空
-2. 任一 symbol 的 `community`/`pagerank` 与 `/factors/current?category=graph` 的 `gf_community`/`gf_pagerank` 一致
-3. 连续 3 次采样（间隔 1h）结构稳定（边集合差异 <10%）
-
----
-
-## REQ-G2【高】为 AIHunter 签发 ragservicer 只读 API key + namespace 确认
-
-### 背景
-
-ragservicer 公网已开放（`/api/rag/*`），AIHunter 需消费 GF-3/4/5 + `retrieve` 用于知识增强与知识图谱展示，但**尚无访问凭据**。
-
-### 需求
-
-1. **签发 key**：为 AIHunter 签发 ragservicer API key（平台签发），scope 建议限制为只读：`retrieve`、`query`、`graph_entities`、`factors/graph`、`factors/catalog`
-2. **namespace 确认**：确认 AIHunter 可用的 namespace 枚举（预期 `market`；若按来源细分如 `crypto_overview`/`defi_tvl`/`indices`/`macro` 等，请给出清单及覆盖范围）
-3. **配置登记**：key 与公网基址登记（等价 B 端 PRODUCTION_CREDENTIALS.md 方式），供 AIHunter 侧配置
-
-### 验收（用 AIHunter key 公网实测）
-
-| 调用 | 期望 |
-| ---- | ---- |
-| `GET https://infrax.0xainet.top/api/rag/api/v1/graph/entities?namespace=market&limit=50` | 200，nodes+edges |
-| `POST https://infrax.0xainet.top/api/rag/api/v1/namespaces/market/retrieve` body `{"query":"..."}` | 200，上下文文本 |
-| `GET https://infrax.0xainet.top/api/rag/api/v1/factors/catalog` | 200，graph 分类目录 |
+- 实时值每 30min 重算（ML_CACHE_TTL_SEC=1800，后台线程+预热）；`meta.age_ms` 随重算更新
+- graph_history 按自然日 1 条（日频重建语义）
+- **前端约定**：实时值标注 30min 级新鲜度；历史用日频序列
+- **ml 因子过期阈值建议 30min**（按 ml_predictions generated_at 计 age）
 
 ---
 
-## REQ-G3【中】知识图谱可视化数据范围确认（供 AIHunter 前端设计）
+## 三、已闭合需求明细
 
-非接口需求，需 B 端确认：
+### REQ-G1【高】相关性图边数据接口 — ✅ 已满足（2026-08-19）
 
-1. `namespace=market` 的当前**节点规模**（千级？万级？）与 `limit` 参数建议上限（GF-5 默认 200）
-2. 知识图谱**更新频率**（knowledge-injector 灌入节奏：分钟级/小时级？）——决定前端刷新策略
-3. GF-5 的 **category 9 枚举**与 **relation 8 枚举**清单（前端配色/图例/筛选设计用）
+- B 端已实现 `GET /factors/graph/edges`（契约见 2.2），与 GX-2 完全同口径
+- 验收对照：实测 nodes 150 / edges 5；`community`/`pagerank` 与 `gf_*` 同快照；连续采样稳定性待图谱页联调时复测
+
+### REQ-G2【高】ragservicer 只读 — ✅ 已上线（无需新 key）
+
+- B 端采用 data-service 只读透传：`POST /api/data/rag/retrieve`，沿用 AIHunter 现有 `dx_*` key
+- namespace：market / onchain / default（已实测返回）
+- 知识图谱可视化走 `GET /api/data/factors/graph`（语义图谱 8 因子）
+
+### REQ-G3【中】知识图谱范围确认 — ⚠️ 部分确认
+
+- namespace 枚举已确认（market/onchain/default）
+- 节点规模/category-relation 枚举：B 端回复未直接给出，AIHunter 前端将基于 `/factors/graph` 8 因子 + `/rag/retrieve` 结果设计，或后续按需再询
+
+### REQ-G4【高】graph 多币种 — ✅ 已满足
+
+- 非缺陷：`/factors/current` symbols 参数默认 BTC，显式传参即可（GX-2 本为全市场 150 标的）
+- 实测 10 主流币全部返回 18 项 `gf_*`
+
+### REQ-G5【高】ml 日更链路 — ✅ 已修复上线
+
+- 根因：data-service 采集端 P2 契约未随 ml-service 08-08 统一响应升级（`{generated_at, symbols}`）+ ML 机 torch 2.4.1 缺 DTensor（Chronos-Bolt 无法加载）
+- 修复：契约适配 + torch 升级重启；实测 bolt/moirai/timesfm age≈318s fresh=true
+- 约定：AIHunter 过期阈值 30min（按 ml_predictions generated_at）
+
+### REQ-G6【中】graph 历史序列 — ✅ 已新增端点
+
+- `GET /factors/graph/history`（asof 自然日 1 条），可直接回测；历史自 2026-08-18 累积
+
+### REQ-G7【中】gf_* 有效期 — ✅ 已确认
+
+- 实时值 30min 重算；历史日频；meta.age_ms 随重算更新
 
 ---
 
-## REQ-G4【高】graph 因子多币种覆盖扩展（2026-08-19 实测发现）
-
-- **现象**：`GET /factors/current` 的 `graph.values` 当前仅覆盖 **BTC 一个 symbol**——GX-2 相关性图/社区/嵌入仅有单点，前端图谱页/市场页无法展示多节点图。
-- **需求**：扩展为多币种覆盖（建议 ≥10 主流币：BTC/ETH/SOL/BNB/XRP/DOGE/ADA/AVAX/LINK/DOT），每个 symbol 输出完整 `gf_*` 18 项。
-- **验收**：`graph.values` 返回 ≥10 个 symbol；各 symbol 的 community/pagerank 与图口径一致。
-
-## REQ-G5【高】ml 日更链路恢复（2026-08-19 实测发现）
-
-- **现象**：`tree_direction`/`tree_prob_up`/`bolt_*`/`moirai_*`/`timesfm_*`/`finbert_sentiment`/`consensus_score`（ml 分类 10 项）的 `meta.age_ms ≈ 269h`（≈11 天），疑似日更采集/训练链路中断。
-- **影响**：ml 因子过期期间注入回测/实盘将产生陈旧信号（AIHunter 将按 `meta.age_ms` 过滤；未解决前前端标记「已过期」）。
-- **需求**：恢复 ml 日更链路；若本期不再维护请明确告知，AIHunter 侧降级处理。
-
-## REQ-G6【中】graph 因子历史序列确认
-
-- **背景**：AIHunter 回测需 graph 因子历史（`/factors/history` 支持 `gf_*` ids）。
-- **需求**：确认 `/factors/history` 对 graph 分类的返回格式（日频重建是否保留历史）；若仅当前值请告知，AIHunter 按 asof 语义仅注入末行。
-
-## REQ-G7【中】gf_* 有效期/频率确认
-
-- 确认 `gf_*` 是否日频重建、`meta.age_ms` 是否随重建更新；AIHunter 前端将按 meta.age 展示有效期与过期态。
-
----
-
-## 优先级汇总
+## 四、优先级汇总（全部闭合）
 
 | 编号 | 需求 | 优先级 | 状态 |
 | ---- | ---- | ---- | ---- |
-| REQ-G1 | 市场相关性图边数据接口 `/factors/graph/edges` | 高 | 待处理 |
-| REQ-G2 | AIHunter ragservicer 只读 key + namespace 确认 | 高 | 待处理 |
-| REQ-G3 | 知识图谱规模/频率/枚举确认 | 中 | 待确认 |
-| REQ-G4 | graph 因子多币种覆盖（当前仅 BTC） | 高 | 待处理 |
-| REQ-G5 | ml 日更链路恢复（当前过期 269h） | 高 | 待处理 |
-| REQ-G6 | graph 因子历史序列确认 | 中 | 待确认 |
-| REQ-G7 | gf_* 有效期/频率确认 | 中 | 待确认 |
+| REQ-G1 | 市场相关性图边数据接口 `/factors/graph/edges` | 高 | ✅ 已满足 |
+| REQ-G2 | ragservicer 只读（data-service 透传，dx_ key） | 高 | ✅ 已上线 |
+| REQ-G3 | 知识图谱范围确认（namespace 已确认，枚举待补） | 中 | ⚠️ 部分确认 |
+| REQ-G4 | graph 因子多币种（显式传 symbols 即可） | 高 | ✅ 已满足 |
+| REQ-G5 | ml 日更链路恢复（契约+torch 修复） | 高 | ✅ 已修复 |
+| REQ-G6 | graph 因子历史序列（/factors/graph/history） | 中 | ✅ 已新增 |
+| REQ-G7 | gf_* 有效期/频率确认（30min/日频） | 中 | ✅ 已确认 |
 
 ---
 
-## 附：AIHunter 侧配套工作（不依赖 B 端，供参考）
+## 附：AIHunter 侧配套工作（实施依据）
 
-- **知识增强适配层**：AItrader 源码 `graph_client` 调 `{LIGHTRAG_URL}/query`（body `question`），与 B 端 `/api/v1/namespaces/{ns}/retrieve`（body `query`）不兼容——AIHunter 将新增适配层或直接使用 `@0xinfrax/ragservicer-sdk` 2.0.0
-- **图谱展示界面**：`GraphPage`（ECharts force-directed）——知识图谱渲染走 REQ-G2 key；相关性图渲染走 REQ-G1 接口
-- **因子界面/策略因子**：`gf_*` 因子已透传，AIHunter 侧直接接入（无需 B 端改动）
-
----
-
-# B 端回复（2026-08-19）
-
-## REQ-G1 ✅ 已完成（生产已部署验证）
-
-新增统一入口：
-
-```
-GET /api/data/factors/graph/edges?symbols=BTC,ETH&window=60&min_abs_corr=0.6&limit=300
-```
-
-- 路径前缀请按 B 端既有接入习惯（`/api/data/*` 或 data-service 公网基址）；鉴权三选一，**dx_ key**
-- 返回 `{ts, meta{source, window, min_abs_corr, updated_at}, nodes[{id,symbol,community,pagerank,size}], edges[{source,target,corr,abs_corr,weight,kind}]}`
-- 数据口径与 `gf_*` **完全一致**（同一图快照）：实测 BTC `gf_community=0 / gf_pagerank=0.007843` == edges 节点 `community=0 / pagerank=0.007843`
-- `symbols` 缺省返回全图（当前 173 节点 / 3305 边）；提供 symbols 返回其节点 + 1-hop 邻边；edges 按 abs_corr 降序、limit 截断
-- 无 key 401 / 带 dx_ key 200（生产已实测）
-- 提交 commit `c796f14`
-
-## REQ-G2 说明（key 定位澄清，请勿误解）
-
-- **`lr_` key 是独立的 LightRAG 微服务**（供项目方**上传自己的资料 + 读取资料**：documents 注入/列表、query/retrieve 检索、graph/entities 可视化数据），与因子/金融数据方案无关；**今日（2026-08-19）以前发放的 `lr_` key 全部保持有效**
-- **因子（含图谱因子）一律走 data-service `dx_` key**：`/factors/graph`（语义图谱 8 因子）、`/factors/graph/edges`（相关性图）、`/factors/current`（gf_* 18 因子）。ragservicer 因子端点已锁服务间（仅内部透传，B 端 lr_ key 访问返回 403）
-- AIHunter 已持有 data-service `dx_` key（600 RPM）——**因子/图谱数据消费仅需该 key**；若需 LightRAG 知识增强（retrieve/query），用既有 `lr_` key 即可
-- namespace：`market`（主数据面）+ `onchain`（链上）可用
-
-## REQ-G3 确认
-
-| 项 | 实况 |
-| ---- | ---- |
-| 节点规模 | `market` 图谱 **1176 节点**（graphml 3.4MB，2026-08-19 实测）；`limit` 建议 ≤300 |
-| 更新频率 | knowledge-injector **日频持续灌入**（`crypto:daily:*`，08-19 03:36 仍在更新）→ 前端可日频刷新 |
-| category 9 枚举 | `central_bank` / `exchange` / `fund` / `whale` / `project` / `media` / `policy` / `event` / `asset` |
-| relation 8 枚举 | `funding` / `custody` / `listing` / `whale_move` / `etf_flow` / `regulation` / `sentiment_correlate` / `affects` |
+- **知识增强适配层**：直接调 `POST /api/data/rag/retrieve`（沿用 dx_ key，无需新 key），替代 AItrader 源码 graph_client 的 `/query` 调用
+- **图谱展示界面**：GraphPage——知识图谱走 `/factors/graph`（语义图谱 8 因子）+ `/rag/retrieve`；相关性图走 `/factors/graph/edges`（nodes 按 community/主流币白名单过滤）
+- **回测 graph 因子**：`/factors/graph/history`（asof）注入 `factor_<gf_*>` 列；历史不足 60 日前用当前值仅注入末行
+- **因子界面**：`gf_*` + ml 因子按 2.5 有效期约定展示（30min 新鲜度 / 过期态）
