@@ -1,6 +1,6 @@
 # WaaS 钱包即服务 使用指南（:9109）
 
-> 最后更新：2026-08-11 | 生产状态：🟢 已验证可用（2026-08-11 生产实测）
+> 最后更新：2026-08-19 | 生产状态：🟢 已验证可用（2026-08-19 WAAS 16 项安全优化部署 + 冒烟测试通过）
 
 ## 0. 快速开始（Quick Start）
 
@@ -108,6 +108,20 @@ WAAS 定位为**类中心化交易所（CEX）的托管模型**，链上签名�
 | POST | `/api/v2/data/subscribe` | 钱包签名 | 订阅 DC 套餐（`{planId}` → 返回 `dcApiKey`） |
 | GET | `/api/v2/data/usage` | 钱包签名 | DC 订阅用量 |
 | GET | `/api/v2/data/key` | 钱包签名 | 获取/轮换 DC API key（`?regenerate=true`） |
+| POST | `/api/v2/auth/totp/setup` | 钱包签名 | W-15 TOTP 绑定（返回 `secret` + `otpauthUrl`，未启用） |
+| POST | `/api/v2/auth/totp/enable` | 钱包签名 | W-15 TOTP 激活（body `{code}`） |
+| POST | `/api/v2/auth/totp/disable` | 钱包签名 | W-15 TOTP 关闭（body `{code}`，需当前有效码） |
+| GET | `/api/v2/auth/totp/status` | 钱包签名 | W-15 TOTP 状态（`{configured, enabled}`） |
+| GET | `/api/v2/internal/config` | admin | W-14 SystemConfig 白名单列表（敏感值脱敏回显） |
+| PUT | `/api/v2/internal/config/:key` | admin | W-14 写白名单配置（body `{value}`；非白名单 key 403） |
+
+**W-15 TOTP 强制场景**（用户启用 TOTP 后，以下资金操作必须带 `totpCode`，否则 400）：
+- `POST /api/v2/tx/send`（body 增 `idempotencyKey?`、`totpCode?`）——W-8 幂等键：相同 `idempotencyKey` 命中直接返回既有结果，不重复广播
+- `POST /api/v2/tx/:id/confirm`（body 增 `totpCode?`）
+- `POST /api/v2/saas/withdraw`、`POST /api/v2/saas/withdraw/:id/approve`
+- `POST /api/v2/subscription/subscribe`、`POST /api/v2/data/subscribe`
+
+> ⚠️ 生产访问注意（2026-08-19 复核）：waas 目前**仅内网直连** `http://127.0.0.1:9109`，生产 nginx 无 waas 公网映射（钱包 API 属资金敏感服务，未公网暴露）。旧文档中「公网经 nginx→web 代理 `/api/v2/wallet` 等」路径当前不再成立，如需公网接入需另配代理并加服务端鉴权。
 
 ## 4. 样例代码
 
@@ -193,3 +207,30 @@ await infrax.saas.rotateApiKey('<TENANT_ID>');
 | 404 | 2002 | 无租户 / 订阅不存在 |
 | 502 | 1003 | 支付引擎（:9132）不可达 |
 | 503 | 1003 | `/payment-callback` 未配置 webhook secret |
+| 403 | 1002 | W-14 写非白名单 config key；W-15 错 TOTP 码 / 启用后缺失（400） |
+
+## 5. 安全与可靠性增强（2026-08-19 部署）
+
+依据 arb 上传的 WAAS 设计方案（`prd/arbitrage-waas-design.md`）对照评审，落地 16 项优化（清单见 `docs/infrax_tasklist.md §9.9`，全部通过 `tsc --noEmit`）：
+
+| 编号 | 优化 | 说明 |
+|---|---|---|
+| W-1 | 充值入账原子化 | 余额 UPDATE / 入账 INSERT / webhook 同事务；`transactions` 加 `UNIQUE(wallet_id, tx_hash)` 部分唯一索引 + `ON CONFLICT DO NOTHING` |
+| W-2 | 确认数门槛 | 扫描到未达确认数 → `deposit_pending` 两段式入账；`receipt.blockNumber` 与当前块号对比（`MIN_CONFIRMATIONS` 按 chainId） |
+| W-3 | 广播重试 | 广播失败 → `retrying` + `retry_count`；worker（30s 周期）重试，≥3 次 → `failed`（资金回退语义） |
+| W-4 | gas 熔断 | 广播前检查 gas pool 余额（`GAS_POOL_ALERT_THRESHOLD`，默认 0.05），不足 → `gas_blocked` |
+| W-5/W-6/W-7 | 风控 USD 口径 | 先 `convertToUsd` 再判限额；日限额仅计**出账**（`from_address=钱包`）、排除 failed/rejected、纳入 pending 态；`getUserLimits` 应用 DB `risk_rules` 参数 |
+| W-8 | 幂等键 | `idempotency_key` 部分唯一索引；命中返回既有结果，防双击/超时重试重复广播 |
+| W-9 | 分布式锁 | PG `pg_try_advisory_lock`（零依赖）`withLock` 接入 block-scan / 广播重试 / sweep / 冷热归集调度，多实例不重复执行 |
+| W-10 | DRY_RUN | `DRY_RUN=true` 模拟广播（随机 hash 落审计），不触链上 |
+| W-11/W-12 | sweep 闭环 | `sweepTenantFunds` 改用**链上真实余额** + dust/gas 阈值建 pending；执行器 `processPendingSweeps` 解密 HD 私钥广播确认；`batch_id` 聚合审计 |
+| W-13 | 生产 fail-closed | 生产缺 `HD_WALLET_SEED` / `WALLET_ENCRYPTION_KEY` 启动即抛错（⚠️ 见下方部署注意） |
+| W-14 | SystemConfig | `system_config` 表白名单配置（risk_*/sig_*/gas_pool_*/sweep_*/hot_wallet_*/webhook_*），admin 端点读写，敏感值脱敏回显 |
+| W-15 | TOTP 2FA | RFC 6238（SHA-1/6 位/30s±1，node crypto 零依赖）；提现/审批/发送/购买强校验 |
+| W-16 | 冷热分离 | 热钱包原生余额超 `HOT_WALLET_COLD_SWEEP_THRESHOLD`（默认 5.0）自动排期归集 master wallet |
+
+**新增配置项（env）**：`GAS_POOL_ALERT_THRESHOLD`、`DRY_RUN`、`SWEEP_WORKER_INTERVAL_MS`（默认 30000）、`SWEEP_DUST_THRESHOLD`、`SWEEP_GAS_RESERVE`、`HOT_WALLET_COLD_SWEEP_THRESHOLD`、`MIN_CONFIRMATIONS`（按 chainId JSON）。
+
+**部署记录（2026-08-19）**：commit `f3154eb`（16 项主体）+ `18b731f`（购买链路 TOTP）+ `92552ff`/`ef8a180`（生产冒烟修复：`/internal/config` 补挂 authenticate、`setupTotp` SQL 占位符）。DB 迁移随 `initDatabase` 自动执行，已核验：`transactions` 新列/新 CHECK、`deposit_pending`/`system_config` 表、`sweep_records` 新列、`users.totp_*`、两个唯一索引全部落库。
+
+> ⚠️ **W-13 部署注意**：生产 unit 当前**未设 `NODE_ENV`**（服务按 development 运行），且未配置 `HD_WALLET_SEED` / `WALLET_ENCRYPTION_KEY`——因此生产暂未触发 fail-closed。若要真正启用 W-13，需在 systemd unit 补 `NODE_ENV=production` **并同时**提供上述两个密钥（涉及托管私钥派生，换值会导致旧派生地址无法解密，需评审后执行）。

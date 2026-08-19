@@ -1,6 +1,6 @@
 # InfraX 部署文档
 
-> 最后更新: 2026-08-16 | 版本 `v0.8.0-20260816`
+> 最后更新: 2026-08-19 | 版本 `v0.8.0-20260816`（2026-08-19 WAAS 16 项安全优化发布，详见 [docs/services/waas.md §5](./docs/services/waas.md)）
 
 > 📌 **生产环境为三台服务器**（2026-08-16 扩容迁移完成，详见 [docs/INFRAX_MIGRATION_SCALE_OUT.md](./docs/INFRAX_MIGRATION_SCALE_OUT.md)）：
 > - **43.163.105.172**（主，新加坡·腾讯云）：区块链栈（9100-9111）+ 平台服务（9130-9132/9200-9201/3500）+ MCP（3008/3011/3012/3013/9103/9105/9108/9110）+ admin/web + nginx 公网入口（80/443）同机部署（**23 个 systemd 服务 + 清理 timer**）；postgres 数据盘已物理迁移新机，本机 postgres 已 disable。
