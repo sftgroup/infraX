@@ -26,6 +26,7 @@ import {
   verifyDisableSignature,
   getUserOpHash,
   isSessionModuleInstalled,
+  isPolicySuperset,
   estimateFeesPerGas,
   FALLBACK_GAS,
   DEFAULT_GAS_PRICE,
@@ -399,7 +400,7 @@ app.post('/v1/paymaster', asyncHandler(async (req: any, res: any) => {
 // enable/disable 的链上生效由 owner EOA 签名 UserOp 后经 /v1/userops 完成（验收：链上验证）。
 // ============================================================================
 
-// POST /v1/session —— 创建
+// POST /v1/session —— 创建 / 复用（AA-6 B2）
 app.post('/v1/session', asyncHandler(async (req: any, res: any) => {
   const { chain, product = 'default', owner, permissions, validUntil, validAfter } = req.body || {};
   if (!owner || !Array.isArray(permissions) || permissions.length === 0 || !validUntil) {
@@ -424,24 +425,52 @@ app.post('/v1/session', asyncHandler(async (req: any, res: any) => {
     permissions,
   };
   assertValidPolicy(policy);
-  // ③ 落库（product 维度隔离，E-3b 三维键）
-  await sessionStore.save(product, policy, account.address);
-  // ④ enable 编码（owner 组装 UserOp 签名后发 /v1/userops）
-  const enableCallData = encodeEnableSessionCall({ accountAddress: account.address, policy, chainConfig: cfg });
-  // AA-4: 残留检测 —— 链上探测账户是否已绑定 session validator（ERC-7579 视图）。
-  // 已绑定（残留）→ needsSessionRevoke=true，调用方应先撤销再 enable（防 L12 AA23 复现）。
+  // ③ 残留检测（AA-3 链上探测）：账户是否已绑定 session validator（ERC-7579 视图）
   let isBound = false;
   try {
     isBound = await isSessionModuleInstalled({ client: createAAClient(cfg), chainConfig: cfg, account: account.address });
   } catch (e: any) {
     console.warn(`[aa-relay] session bound probe failed (${chain}): ${e.message}`);
   }
+  // ④ AA-6 B2：已绑定 → 尝试复用既有兼容 session（同 product 由 list 过滤；复用判断以链上状态为准）
+  if (isBound) {
+    const existing = await sessionStore.list(product, account.address, 'evm');
+    const candidate = existing.find((e) => isPolicySuperset({ existing: e, requested: policy }));
+    if (candidate) {
+      // 复用：返回既有 sessionId/sessionKey，零额外链上交易（复用即再次下发 key，调用方为同 owner）
+      const withKey = await sessionStore.getWithKey(product, candidate.sessionId, 'evm');
+      return res.json(apiResponse({
+        product,
+        accountAddress: account.address,
+        isDeployed: account.isDeployed,
+        isBound: true,
+        needsSessionRevoke: false,
+        reused: true,
+        sessionId: candidate.sessionId,
+        signer: candidate.signer,
+        sessionKey: withKey?.sessionKey,
+        validAfter: candidate.validAfter.toString(),
+        validUntil: candidate.validUntil.toString(),
+        permissions: candidate.permissions,
+        enableCallData: null, // 无需上链
+      }, 'session reused'));
+    }
+    // 无兼容 session → 409：引导先撤销再 enable（防 L12 AA23 复现）
+    return res.status(409).json(apiResponse({
+      accountAddress: account.address,
+      isBound: true,
+      needsSessionRevoke: true,
+    }, 'session-conflict: account already bound to an incompatible session; disable + revoke first, then enable again', 1001));
+  }
+  // ⑤ 未绑定 → 正常创建：落库（持久化 sessionKey 供复用）+ enable 编码（owner 组装 UserOp 签名后发 /v1/userops）
+  await sessionStore.save(product, policy, account.address, privateKey);
+  const enableCallData = encodeEnableSessionCall({ accountAddress: account.address, policy, chainConfig: cfg });
   res.json(apiResponse({
     product,
     accountAddress: account.address,
     isDeployed: account.isDeployed,
-    isBound,
-    needsSessionRevoke: isBound,
+    isBound: false,
+    needsSessionRevoke: false,
     sessionId: policy.sessionId,
     signer,
     sessionKey: privateKey,
@@ -451,13 +480,20 @@ app.post('/v1/session', asyncHandler(async (req: any, res: any) => {
   }, 'session created'));
 }));
 
-// GET /v1/session —— 查询
+// GET /v1/session —— 查询（AA-5：补 createdAt + 链上 isBound，供调用方选残留 session）
 app.get('/v1/session', asyncHandler(async (req: any, res: any) => {
   const account = req.query.account;
   const product = req.query.product ?? 'default';
   if (!account) return res.status(400).json(apiResponse(null, 'account required', 1001));
-  getChain(req.query.chain);
+  const cfg = getChain(req.query.chain);
   const policies = await sessionStore.list(product, account as Address, 'evm');
+  // 链上绑定探测（账户级，一次探测供所有 session 行复用；isBound 为账户是否绑定 session validator）
+  let isBound = false;
+  try {
+    isBound = await isSessionModuleInstalled({ client: createAAClient(cfg), chainConfig: cfg, account: account as Address });
+  } catch (e: any) {
+    console.warn(`[aa-relay] session bound probe failed (${req.query.chain}): ${e.message}`);
+  }
   // BigInt 无法被 res.json 序列化 → 时间戳转字符串输出
   res.json(apiResponse(policies.map((p) => ({
     network: p.network,
@@ -466,6 +502,8 @@ app.get('/v1/session', asyncHandler(async (req: any, res: any) => {
     validAfter: p.validAfter.toString(),
     validUntil: p.validUntil.toString(),
     permissions: p.permissions,
+    createdAt: p.createdAt,
+    isBound,
   }))));
 }));
 

@@ -2108,7 +2108,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **背景**：AgentX 生产复现 L12 —— Kernel v3 **单 session** 结构下，同一智能账户重复 enable 自动续订失败（AA23）。根因：① 本地 disable 从不上链 → 链上 session validator 残留，再次 `installModule`/`enableSession` 覆盖被拒；② 撤销后重 enable 的 `InvalidNonce`（`uninstallModule` 不清 `validationConfig[vId].nonce`），需批量 execute `uninstallModule + invalidateNonce(cur+1)` 推进 nonce。AgentX 路径 A（调用方自愈）已上线；推荐 infraX 评估路径 B（relay 层会话轮换/复用）。
 
-**infraX 现状对照**：`aa-relay /v1/session/disable` 仅本地 `sessionStore.remove` + 返回 disableCallData（**从不上链**，与缺陷完全一致）；aa-sdk 无 `encodeExecuteBatch`、无 `isModuleInstalled` 探测；`GET /v1/session` 不返回 createdAt/isBound；无 session 复用。
+**infraX 现状对照（2026-08-19 更新）**：`aa-relay /v1/session/disable` 已实现上链闭环（本地 remove + draft + `/v1/session/revoke` 签名广播）；aa-sdk 已补 `encodeExecuteBatch`、`isModuleInstalled` 探测、`isPolicySuperset` 复用判定；`GET /v1/session` 已返回 createdAt/isBound；`POST /v1/session` 已实现 B2 复用（兼容复用 / 不兼容 409）。
 
 **9.10.1 P1 缺陷修复（disable 上链闭环 + 残留自愈）**
 
@@ -2123,12 +2123,20 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| AA-5 | **GET /v1/session 补 createdAt + isBound**：`session-store.list()` 未返回 `created_at`；新增链上 isBound 字段，供调用方选残留 session（AgentX「给 infraX 的最小配合」） | 🔲 | P2 |
-| AA-6 | **B2 session 复用**：`POST /v1/session` 创建前探测链上绑定；已绑定且策略兼容（同 product、target/selector 白名单覆盖、限额 ≥ 请求、未过期）→ 复用既有 session（sessionId/sessionKey），零额外链上交易；不兼容返回 `409 session-conflict` 引导先撤销再 enable（AgentX 路径 B2；复用判断必须以链上状态为准，且需鉴权确认同一 owner） | 🔲 | P2 |
+| AA-5 | **GET /v1/session 补 createdAt + isBound**：`session-store.list()` 未返回 `created_at`；新增链上 isBound 字段，供调用方选残留 session（AgentX「给 infraX 的最小配合」） | ✅ | P2 |
+| AA-6 | **B2 session 复用**：`POST /v1/session` 创建前探测链上绑定；已绑定且策略兼容（同 product、target/selector 白名单覆盖、限额 ≥ 请求、未过期）→ 复用既有 session（sessionId/sessionKey），零额外链上交易；不兼容返回 `409 session-conflict` 引导先撤销再 enable（AgentX 路径 B2；复用判断必须以链上状态为准，且需鉴权确认同一 owner） | ✅ | P2 |
 
 **9.10.3 P3 远期（记录不排期）**
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
 | AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C） | 🔲 | P3 |
+
+**AA-7 版本规划评估记录**（2026-08-19，来源 `docs/aa-relay-session-rollover-fix-infrax.md` §3 路径 C）：
+
+- **目标（治本）**：合约层支持"轮换"语义 —— C1：`enableSession` 已有 session 时先自动 `disableSession(oldId)` 再启用（幂等覆盖）；C2：`installModule` 已安装时不再 revert，改为执行数据替换。
+- **前提/代价**：改合约 + 重新部署 + 重新审计 + 版本兼容管理（已集成方同步升级 aa-sdk 指向新模块地址）。
+- **覆盖授权边界（必答）**：谁有权覆盖旧 session？建议**仅同 owner、同 product 允许覆盖；跨 product 拒绝并提示先撤销**。
+- **存量迁移**：已部署账户不受影响（模块升级只影响新 enable），但旧账户在旧模块逻辑下无法覆盖，重新 enable 前仍需一次显式撤销（配合 AA-1 disable 上链闭环 / AA-6 复用完成迁移）。
+- **状态**：🔲 记录不排期。短期/中期由 AA-1（disable 上链闭环）+ AA-6（B2 session 复用）覆盖轮换诉求；是否走合约升级由版本规划决策，不与 AA-1/AA-6 互相阻塞。
 
