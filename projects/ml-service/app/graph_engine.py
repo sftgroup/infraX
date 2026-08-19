@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -826,8 +827,19 @@ def _r(v, nd: int = 6) -> float | None:
 
 
 def _fetch_bars_parallel(symbols: list[str]) -> dict[str, list[dict]]:
-    """并行拉取各标的日线（fail-silent：失败标的直接缺失）。"""
+    """并行拉取各标的日线（fail-silent：失败标的直接缺失）。
+
+    GP-3：300s 结果缓存按标的集合键控复用——universe 在快照新鲜窗口内稳定，
+    避免每次全量构建重复拉取全市场日线。
+    """
     from concurrent.futures import ThreadPoolExecutor
+
+    global _BARS_CACHE
+    cache_key = "|".join(sorted(symbols)) if symbols else ""
+    now = time.time()
+    if (cache_key and _BARS_CACHE.get("key") == cache_key
+            and now - _BARS_CACHE.get("ts", 0) < _BARS_CACHE_TTL_S):
+        return _BARS_CACHE.get("data", {})
 
     out: dict[str, list[dict]] = {}
 
@@ -844,6 +856,8 @@ def _fetch_bars_parallel(symbols: list[str]) -> dict[str, list[dict]]:
             list(pool.map(_one, symbols))
     except Exception as exc:
         logger.debug("parallel bars fetch failed: %s", exc)
+    if cache_key:
+        _BARS_CACHE = {"key": cache_key, "ts": time.time(), "data": out}
     return out
 
 
@@ -929,6 +943,14 @@ def _graph_embedding(G: nx.Graph, dims: int = _NODE2VEC_DIMS) -> dict[str, list[
 # REQ-G1：相关性图边表 nodes(community/pagerank/size) + edges(corr/weight)）
 _LAST_GRAPH: dict | None = None
 
+# 图快照新鲜窗口（秒，GP-1/GP-3）：窗口内复用 _LAST_GRAPH，避免 graph_factors /
+# graph_edges / 预热线程在同一窗口内重复全量构建（构建含 bars 拉取 + 全市场相关性）。
+_GRAPH_SNAPSHOT_TTL_S = float(os.getenv("ML_GRAPH_SNAPSHOT_TTL_S", "1800"))
+
+# bars 拉取结果缓存（秒，GP-3：全市场日线每次构建重复拉取，300s 按标的集合键控复用）
+_BARS_CACHE: dict = {}
+_BARS_CACHE_TTL_S = float(os.getenv("ML_GRAPH_BARS_CACHE_TTL_S", "300"))
+
 
 def _build_graph() -> dict | None:
     """组装全市场图并计算 18 个图因子（后台线程重算，结果由调用方缓存）。
@@ -936,6 +958,13 @@ def _build_graph() -> dict | None:
     返回 {"updated_at": ms, "values": {sym: {gf_*: value}}}；任一步骤失败/无节点
     返回 None（fail-silent）。
     """
+    global _LAST_GRAPH
+    # 快照新鲜检查（GP-1/GP-3）：_LAST_GRAPH 在新鲜窗口内直接复用，多入口
+    # （graph_factors / graph_edges / 预热）共享一次构建结果，不重复全量构建。
+    if _LAST_GRAPH is not None and _LAST_GRAPH.get("values"):
+        age_ms = int(time.time() * 1000) - _LAST_GRAPH["updated_at"]
+        if 0 <= age_ms < _GRAPH_SNAPSHOT_TTL_S * 1000:
+            return {"updated_at": _LAST_GRAPH["updated_at"], "values": _LAST_GRAPH["values"]}
     ctx: dict[str, Any] = {"nodes": {}, "edges": [], "bars": {}, "returns": {}, "meta": {}}
 
     # 1) Source Adapter：heatmap 数据面 → 节点
@@ -1062,13 +1091,13 @@ def _build_graph() -> dict | None:
     if not values:
         return None
     # 缓存图快照（REQ-G1 边表数据面复用；仅成功构建后更新，引用赋值原子）
-    global _LAST_GRAPH
     _LAST_GRAPH = {
         "G": G,
         "universe": universe,
         "community": community,
         "pagerank": pagerank,
         "ctx": ctx,
+        "values": values,
         "updated_at": int(time.time() * 1000),
     }
     logger.info(
@@ -1149,27 +1178,43 @@ def compute_graph_edges_payload(
             "kind": d.get("kind", key),
         })
 
-    # 按 abs_corr 降序截断（可视化优先级：强相关在前）
+    # 按 abs_corr 降序（可视化优先级：强相关在前）
     edges.sort(key=lambda e: e["abs_corr"] or 0.0, reverse=True)
-    if limit and limit > 0:
-        edges = edges[:limit]
 
-    # symbols 过滤：保留目标节点及其 1-hop 邻边
-    if symbols:
-        keep: set[str] = set()
-        for s in symbols:
-            n = _norm_symbol(s) if s in universe else s
-            keep.add(n)
-        edge_keep = [e for e in edges if e["source"] in keep or e["target"] in keep]
-        if edge_keep:
-            edges = edge_keep
-            edge_ids = {e["source"] for e in edges} | {e["target"] for e in edges}
-            nodes = [n for n in nodes if n["id"] in edge_ids or n["id"] in keep]
-
-    return {
+    payload = {
         "updated_at": _LAST_GRAPH["updated_at"],
         "window": window,
         "min_abs_corr": min_abs_corr,
         "nodes": nodes,
         "edges": edges,
     }
+    # symbols（1-hop）与 limit 裁剪由端点侧按请求参数执行（全图缓存复用）
+    return filter_graph_edges_payload(payload, symbols=symbols, limit=limit)
+
+
+def filter_graph_edges_payload(
+    payload: dict,
+    symbols: list[str] | None = None,
+    limit: int = 300,
+) -> dict:
+    """按请求 symbols（目标节点 1-hop 邻边）与 limit 裁剪全图边表 payload。
+
+    GP-1：/ml/graph/edges 缓存全图边表（TTL 1800s），不同 symbols/limit 请求
+    从全图裁剪，避免逐参数缓存。空 symbols 仅按 limit 截断（强相关在前）。
+    """
+    nodes = list(payload.get("nodes", []))
+    edges = list(payload.get("edges", []))
+    if symbols:
+        node_ids = {nd["id"] for nd in nodes}
+        keep: set[str] = set()
+        for s in symbols:
+            n = _norm_symbol(s) if s in node_ids else s
+            keep.add(n)
+        edge_keep = [e for e in edges if e["source"] in keep or e["target"] in keep]
+        if edge_keep:
+            edges = edge_keep
+            edge_ids = {e["source"] for e in edges} | {e["target"] for e in edges}
+            nodes = [n for n in nodes if n["id"] in edge_ids or n["id"] in keep]
+    if limit and limit > 0:
+        edges = edges[:limit]
+    return {**payload, "nodes": nodes, "edges": edges}

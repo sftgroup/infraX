@@ -389,7 +389,9 @@ async def factors_graph(
         meta: dict = {"source": "ragservicer"}
         if not data:
             meta["warning"] = "ragservicer graph factors unavailable"
+            meta["status"] = "building"  # GP-4：结构化状态（生成中/未就绪，客户端可重试）
         else:
+            meta["status"] = "ready"
             catalog = await asyncio.to_thread(fetch_rag_graph_catalog)
             if catalog:
                 meta["catalog"] = catalog
@@ -425,8 +427,10 @@ async def factors_graph_entities(
         meta: dict = {"source": "ragservicer", "namespace": namespace}
         if not data:
             meta["warning"] = "graph entities unavailable"
+            meta["status"] = "building"  # GP-4：结构化状态（生成中/未就绪，客户端可重试）
             return {"ts": int(time.time() * 1000), "meta": meta,
                     "nodes": [], "edges": []}
+        meta["status"] = "ready"
         return {"ts": int(time.time() * 1000), "meta": meta,
                 "nodes": data.get("nodes", []), "edges": data.get("edges", [])}
     except Exception as e:
@@ -454,8 +458,10 @@ async def factors_graph_edges(
         meta: dict = {"source": "ml-service", "window": 60, "min_abs_corr": 0.6}
         if not data:
             meta["warning"] = "graph edges unavailable"
+            meta["status"] = "building"  # GP-4：结构化状态（ml-service 后台构建中，客户端可重试）
             return {"ts": int(time.time() * 1000), "meta": meta,
                     "nodes": [], "edges": []}
+        meta["status"] = "ready"
         meta["updated_at"] = data.get("updated_at", 0)
         meta["window"] = data.get("window", 60)
         meta["min_abs_corr"] = data.get("min_abs_corr", 0.6)
@@ -529,7 +535,9 @@ async def factors_graph_history(
         meta: dict = {"source": "ml-service", "days": days}
         if not data:
             meta["warning"] = "graph history unavailable"
+            meta["status"] = "building"  # GP-4：结构化状态（无历史/生成中，客户端可重试）
             return {"ts": int(time.time() * 1000), "meta": meta, "series": {}}
+        meta["status"] = "ready"
         return {"ts": int(time.time() * 1000), "meta": meta,
                 "series": data.get("series", {})}
     except Exception as e:

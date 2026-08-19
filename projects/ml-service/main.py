@@ -217,6 +217,20 @@ def _compute_graph_factors():
     return payload
 
 
+def _compute_graph_edges():
+    """GX 相关性图边数据面（REQ-G1：/ml/graph/edges → data-service /factors/graph/edges）。
+
+    GP-1：先确保图快照就绪（与 graph_factors 同源 _build_graph，快照新鲜窗口内
+    不重复全量构建），再读 _LAST_GRAPH 生成**全图**边表 payload（limit 取上限 1000）
+    缓存；端点侧按请求 symbols/limit 裁剪，秒回。快照未就绪返回 None（由
+    _async_runner 后台重试 / 预热补齐）。
+    """
+    from app.graph_engine import compute_graph_edges_payload, compute_graph_payload
+    if compute_graph_payload() is None:
+        return None
+    return compute_graph_edges_payload(limit=1000)
+
+
 # 预热任务表：全部重计算端点（启用与否由 compute 内部 fail-silent 决定）
 _PRECOMPUTE: dict = {
     "tree_predictions": _compute_tree,
@@ -226,6 +240,7 @@ _PRECOMPUTE: dict = {
     "timesfm": _compute_timesfm,
     "consensus": _compute_consensus,
     "graph_factors": _compute_graph_factors,
+    "graph_edges": _compute_graph_edges,
 }
 
 # R4-3.2：预热表从 provider registry 遍历生成（新 provider 注册即自动纳入预热）
@@ -667,23 +682,32 @@ def graph_edges_endpoint(
 ):
     """相关性图边表（nodes: community/pagerank/size；edges: corr/abs_corr/weight/kind）。
 
-    symbols 缺省返回全图（受 limit 约束）；提供 symbols 返回其节点与 1-hop 邻边。
+    GP-1/GP-2：全图边表由 _async_runner 后台计算 + TTL 缓存（ML_CACHE_TTL_SEC，
+    默认 1800s）并纳入预热，缓存常满；请求按 symbols（1-hop）/limit 从全图裁剪，
+    命中秒回。冷态（快照未就绪）不阻塞：立即返回空结构 + meta.status="building"，
+    后台构建完成后随预热/下次请求自动就绪。
+
+    GP-4：meta.status 结构化状态（ready/building/error）替代 fail-silent，
+    客户端可据此区分「生成中 / 就绪 / 故障」。
     """
     empty = {"updated_at": _now_ms(), "window": window, "min_abs_corr": min_abs_corr,
              "nodes": [], "edges": []}
     try:
-        from app.graph_engine import compute_graph_edges_payload
+        from app.graph_engine import filter_graph_edges_payload
         sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
-        payload = compute_graph_edges_payload(
-            symbols=sym_list or None, window=window,
-            min_abs_corr=min_abs_corr, limit=limit,
-        )
-        if not payload:
-            return {"code": 0, "message": "ok", "data": empty}
-        return {"code": 0, "message": "ok", "data": payload}
+        payload = _async_runner.get("graph_edges", _compute_graph_edges)
+        if payload:
+            data = filter_graph_edges_payload(payload, symbols=sym_list or None, limit=limit)
+            if data.get("nodes") or data.get("edges"):
+                return {"code": 0, "message": "ok", "data": data,
+                        "meta": {"status": "ready"}}
+        return {"code": 0, "message": "ok", "data": empty,
+                "meta": {"status": "building",
+                         "reason": "graph snapshot not ready; background build in progress"}}
     except Exception as exc:
         logger.warning("graph edges failed: %s", exc)
-        return {"code": 0, "message": "ok", "data": empty}
+        return {"code": 0, "message": "ok", "data": empty,
+                "meta": {"status": "error", "reason": str(exc)}}
 
 
 # REQ-G2.5：gf_* 历史序列（回测数据面）

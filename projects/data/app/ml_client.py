@@ -156,13 +156,16 @@ def fetch_factor_factory_values(symbols: list[str]) -> dict | None:
         return None
 
 
-# GX-1.5: 图谱因子（ml-service graph 引擎，60s TTL，fail-silent）
+# GX-1.5: 图谱因子（ml-service graph 引擎，TTL 与 AITRADER_GRAPH_PERF_REQ R1 对齐，fail-silent）
+# R1：entities/factors 服务端缓存 1h；edges/history 30m（ml-service 侧 TTL 1800s，此处同口径对齐）
 _GRAPH_FACTORS_CACHE: dict = {}
-_GRAPH_FACTORS_CACHE_TTL_S = 60
+_GRAPH_FACTORS_CACHE_TTL_S = 3600
 _GRAPH_CATALOG_CACHE: dict = {}
-_GRAPH_CATALOG_CACHE_TTL_S = 60
+_GRAPH_CATALOG_CACHE_TTL_S = 3600
 _GRAPH_EDGES_CACHE: dict = {}
-_GRAPH_EDGES_CACHE_TTL_S = 300
+_GRAPH_EDGES_CACHE_TTL_S = 1800
+_GRAPH_HISTORY_CACHE: dict = {}
+_GRAPH_HISTORY_CACHE_TTL_S = 1800
 
 
 def fetch_graph_factors(symbols: list[str]) -> dict | None:
@@ -276,10 +279,17 @@ def fetch_graph_history(symbols: list[str] | None = None, days: int = 90) -> dic
 
     返回 {"days", "series": {SYM: {factor_key: [[ts_ms, val], ...]}}} 或 None
     （fail-silent：ml-service 未配置 / 无历史）。历史不足时 series 为空 dict。
+    R1（GP-1）：1800s TTL 缓存按 (symbols, days) 键控（历史按自然日累积，30 分钟刷新）。
     """
+    global _GRAPH_HISTORY_CACHE  # 函数内赋值 → 需显式 global
     base = (ML_SERVICE_URL or "").strip().rstrip("/")
     if not base:
         return None
+    cache_key = f"{','.join(sorted(symbols)) if symbols else '_all'}|{days}"
+    now = time.time()
+    if (_GRAPH_HISTORY_CACHE.get("key") == cache_key
+            and now - _GRAPH_HISTORY_CACHE.get("ts", 0) < _GRAPH_HISTORY_CACHE_TTL_S):
+        return _GRAPH_HISTORY_CACHE.get("data")
     try:
         params: dict = {"days": days}
         if symbols:
@@ -292,6 +302,7 @@ def fetch_graph_history(symbols: list[str] | None = None, days: int = 90) -> dic
         data = (resp.json() or {}).get("data")
         if not isinstance(data, dict):
             return None
+        _GRAPH_HISTORY_CACHE = {"key": cache_key, "ts": now, "data": data}
         return data
     except requests.RequestException as exc:
         logger.debug("ml-service /ml/graph/history request failed: %s", exc)
@@ -393,7 +404,7 @@ def fetch_timesfm() -> list[dict] | None:
 # ragservicer 服务 key 逐 symbol 调用 ragservicer /api/v1/factors/graph，
 # B 端无需再持有 ragservicer key（双轨收敛为单入口单 key）。
 _RAG_GRAPH_FACTORS_CACHE: dict = {}
-_RAG_GRAPH_FACTORS_CACHE_TTL_S = 60
+_RAG_GRAPH_FACTORS_CACHE_TTL_S = 3600
 
 
 def fetch_rag_graph_factors(symbols: list[str]) -> dict | None:
@@ -492,7 +503,7 @@ def fetch_rag_graph_catalog() -> list | None:
 # ragservicer 服务 key（default 租户，共享金融知识图谱）调 /api/v1/graph/entities，
 # 默认 namespace=market（金融主空间），可按需 onchain。fail-silent。
 _RAG_GRAPH_ENTITIES_CACHE: dict = {}
-_RAG_GRAPH_ENTITIES_CACHE_TTL_S = 60
+_RAG_GRAPH_ENTITIES_CACHE_TTL_S = 3600
 
 
 def fetch_rag_graph_entities(symbol: str = "", namespace: str = "market",

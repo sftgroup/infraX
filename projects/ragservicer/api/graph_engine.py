@@ -18,6 +18,7 @@ picked up on the next call.
 import ast
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -82,10 +83,53 @@ _NEGATIVE_WORDS = (
     "新低", "悲观", "拒绝", "否决", "bearish", "fall", "drop", "crash", "sell", "fear",
 )
 
-# ── 模块级缓存（只缓存成功加载，文件后创建也能被下次请求拾取）──
-_graph_cache: dict[tuple[str, str], Optional[nx.Graph]] = {}
-_entities_cache: dict[tuple[str, str], Optional[dict]] = {}
-_relations_cache: dict[tuple[str, str], Optional[dict]] = {}
+# ── 模块级缓存（SWR：只缓存成功加载 + TTL 过期后台重建，旧图始终可用）──
+# R1（AITRADER_GRAPH_PERF_REQ）：实体/文档增量更新时保持旧图可用、后台重建 + 原子切换。
+# 缓存值为 (ts, data)；TTL 内直接返回，过期返回旧值并起后台线程重建（防重入）。
+_graph_cache: dict[tuple[str, str], tuple[float, Optional[nx.Graph]]] = {}
+_entities_cache: dict[tuple[str, str], tuple[float, Optional[dict]]] = {}
+_relations_cache: dict[tuple[str, str], tuple[float, Optional[dict]]] = {}
+
+_GRAPH_CACHE_TTL_S = float(os.getenv("GRAPH_CACHE_TTL_S", "1800"))
+_rebuild_keys: set[tuple[str, str]] = set()
+_rebuild_lock = threading.Lock()
+
+
+def _rebuild_async(key: tuple[str, str], cache: dict, loader) -> None:
+    """TTL 过期后后台重建（防重入：同 key 已在重建则跳过），原子替换缓存。"""
+    with _rebuild_lock:
+        if key in _rebuild_keys:
+            return
+        _rebuild_keys.add(key)
+
+    def _run():
+        try:
+            data = loader()
+            if data is not None:
+                cache[key] = (time.time(), data)
+        except Exception:
+            logger.exception("graph cache rebuild failed: %s", key)
+        finally:
+            with _rebuild_lock:
+                _rebuild_keys.discard(key)
+
+    threading.Thread(target=_run, name=f"graph-rebuild-{key[0]}-{key[1]}", daemon=True).start()
+
+
+def _cache_get(key: tuple[str, str], cache: dict, loader, ttl: float):
+    """SWR 读：命中新鲜返回；过期返回旧值 + 后台重建；未缓存则同步加载。"""
+    entry = cache.get(key)
+    if entry is not None:
+        ts, data = entry
+        if data is not None and time.time() - ts < ttl:
+            return data
+        # 过期：旧值立即可用（R1：保持旧图可用），后台重建 + 原子切换
+        _rebuild_async(key, cache, loader)
+        return data
+    data = loader()
+    if data is not None:
+        cache[key] = (time.time(), data)
+    return data
 
 
 def graph_dir(tenant_id: str, namespace: str = "default") -> Path:
@@ -118,43 +162,42 @@ def resolve_graph_dir(tenant_id: str, namespace: str = "default") -> Path:
 def load_graphml(tenant_id: str, namespace: str = "default") -> Optional[nx.Graph]:
     """Load the entity-relation GraphML as a networkx Graph.
 
-    Returns None when the file is missing or unreadable.
+    SWR（R1）：TTL 内返回缓存；过期返回旧图 + 后台重建；返回 None when missing.
     """
     key = (tenant_id, namespace)
-    if key in _graph_cache:
-        return _graph_cache[key]
 
-    path = resolve_graph_dir(tenant_id, namespace) / GRAPHML_FILE
-    graph: Optional[nx.Graph] = None
-    if path.exists():
-        try:
-            graph = nx.read_graphml(str(path))
-        except Exception:
-            logger.exception("Failed to read GraphML: %s", path)
+    def _load() -> Optional[nx.Graph]:
+        path = resolve_graph_dir(tenant_id, namespace) / GRAPHML_FILE
+        graph: Optional[nx.Graph] = None
+        if path.exists():
+            try:
+                graph = nx.read_graphml(str(path))
+            except Exception:
+                logger.exception("Failed to read GraphML: %s", path)
+        return graph
 
-    if graph is not None:
-        _graph_cache[key] = graph
-    return graph
+    return _cache_get(key, _graph_cache, _load, _GRAPH_CACHE_TTL_S)
 
 
 def load_entities(tenant_id: str, namespace: str = "default") -> Optional[dict]:
-    """Load {entity_name: {entity_type, description, ...}} from the kv store."""
+    """Load {entity_name: {entity_type, description, ...}} from the kv store.
+
+    SWR（R1）：TTL 内返回缓存；过期返回旧值 + 后台重建。
+    """
     key = (tenant_id, namespace)
-    if key in _entities_cache:
-        return _entities_cache[key]
 
-    path = resolve_graph_dir(tenant_id, namespace) / ENTITIES_FILE
-    data: Optional[dict] = None
-    if path.exists():
-        try:
-            with open(path, encoding="utf-8") as fh:
-                data = json.load(fh)
-        except Exception:
-            logger.exception("Failed to read entities store: %s", path)
+    def _load() -> Optional[dict]:
+        path = resolve_graph_dir(tenant_id, namespace) / ENTITIES_FILE
+        data: Optional[dict] = None
+        if path.exists():
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except Exception:
+                logger.exception("Failed to read entities store: %s", path)
+        return data
 
-    if data is not None:
-        _entities_cache[key] = data
-    return data
+    return _cache_get(key, _entities_cache, _load, _GRAPH_CACHE_TTL_S)
 
 
 def load_name_en_map() -> dict[str, str]:
@@ -193,28 +236,27 @@ def load_relations(tenant_id: str, namespace: str = "default") -> Optional[dict]
 
     The raw kv-store keys are serialized (source, target) pairs — e.g.
     '["比特币", "ETF"]' (json.dumps) or "('比特币', 'ETF')" (str of tuple).
+    SWR（R1）：TTL 内返回缓存；过期返回旧值 + 后台重建。
     """
     key = (tenant_id, namespace)
-    if key in _relations_cache:
-        return _relations_cache[key]
 
-    path = resolve_graph_dir(tenant_id, namespace) / RELATIONS_FILE
-    relations: Optional[dict] = None
-    if path.exists():
-        try:
-            with open(path, encoding="utf-8") as fh:
-                raw = json.load(fh)
-            relations = {}
-            for raw_key, value in (raw or {}).items():
-                pair = _parse_relation_key(raw_key)
-                if pair and isinstance(value, dict):
-                    relations[pair] = value
-        except Exception:
-            logger.exception("Failed to read relations store: %s", path)
+    def _load() -> Optional[dict]:
+        path = resolve_graph_dir(tenant_id, namespace) / RELATIONS_FILE
+        relations: Optional[dict] = None
+        if path.exists():
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    raw = json.load(fh)
+                relations = {}
+                for raw_key, value in (raw or {}).items():
+                    pair = _parse_relation_key(raw_key)
+                    if pair and isinstance(value, dict):
+                        relations[pair] = value
+            except Exception:
+                logger.exception("Failed to read relations store: %s", path)
+        return relations
 
-    if relations is not None:
-        _relations_cache[key] = relations
-    return relations
+    return _cache_get(key, _relations_cache, _load, _GRAPH_CACHE_TTL_S)
 
 
 # ── 内部工具函数 ──────────────────────────────────────────
