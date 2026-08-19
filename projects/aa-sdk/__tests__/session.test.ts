@@ -1,6 +1,6 @@
 // Session Key 权限策略校验单测（对齐 §7.3 安全边界 + §10.1）
 import { describe, expect, it } from 'vitest';
-import { decodeFunctionData, sliceHex, type Address, type Hex } from 'viem';
+import { decodeAbiParameters, decodeFunctionData, sliceHex, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { ChainAAConfig, SessionPolicy } from '../src/types.js';
 import {
@@ -316,7 +316,17 @@ describe('encodeEnableSessionCall (ERC-7579 installModule → enableSession)', (
     expect(moduleTypeId).toBe(1n); // MODULE_TYPE_VALIDATOR
     expect(module.toLowerCase()).toBe(SESSION_MODULE.toLowerCase());
 
-    const enable = decodeFunctionData({ abi: SessionModuleDecodeAbi, data: initData as Hex });
+    // initData = abi.encode(hook, validatorData, hookData)（Kernel v3.0-beta installModule 格式）
+    const [hook, validatorData] = decodeAbiParameters(
+      [
+        { name: 'hook', type: 'address' },
+        { name: 'validatorData', type: 'bytes' },
+        { name: 'hookData', type: 'bytes' },
+      ],
+      initData as Hex,
+    ) as [Address, Hex, Hex];
+    expect(hook.toLowerCase()).toBe('0x0000000000000000000000000000000000000001'); // address(1) = 无 hook
+    const enable = decodeFunctionData({ abi: SessionModuleDecodeAbi, data: validatorData });
     expect(enable.functionName).toBe('enableSession');
     expect(enable.args[0]).toBe(policy.sessionId);
     expect((enable.args[1] as Address).toLowerCase()).toBe(policy.signer.toLowerCase());
@@ -542,10 +552,19 @@ describe('encodeEnableSessionCall (P0.12 增强编码)', () => {
 
     const { inner } = decodeExecutedInner(callData);
     const decoded = decodeFunctionData({ abi: ModuleManagerAbi, data: inner });
-    const enableData = decoded.args[2] as Hex;
+    // initData = abi.encode(hook, validatorData, hookData)（Kernel v3.0-beta installModule 格式）
+    const [hook, validatorData] = decodeAbiParameters(
+      [
+        { name: 'hook', type: 'address' },
+        { name: 'validatorData', type: 'bytes' },
+        { name: 'hookData', type: 'bytes' },
+      ],
+      decoded.args[2] as Hex,
+    ) as [Address, Hex, Hex];
+    expect(hook.toLowerCase()).toBe('0x0000000000000000000000000000000000000001'); // address(1) = 无 hook
     // 关键：selector 必须与链上 KernelSessionWithTokenLimitModule 6 参数 enableSession 一致
-    expect(enableData.slice(0, 10)).toBe('0xc620957b');
-    const enable = decodeFunctionData({ abi: EnhancedSessionModuleDecodeAbi, data: enableData });
+    expect(validatorData.slice(0, 10)).toBe('0xc620957b');
+    const enable = decodeFunctionData({ abi: EnhancedSessionModuleDecodeAbi, data: validatorData });
     expect(enable.functionName).toBe('enableSession');
     expect(enable.args[0]).toBe(policy.sessionId);
 
@@ -576,9 +595,19 @@ describe('encodeEnableSessionCall (P0.12 增强编码)', () => {
 
     const { inner } = decodeExecutedInner(callData);
     const decoded = decodeFunctionData({ abi: ModuleManagerAbi, data: inner });
-    const enableData = decoded.args[2] as Hex;
-    expect(enableData.slice(0, 10)).toBe('0xc620957b'); // 增强 6 参数 selector
-    const enable = decodeFunctionData({ abi: EnhancedSessionModuleDecodeAbi, data: enableData });
+    // initData = abi.encode(hook, validatorData, hookData)（Kernel v3.0-beta installModule 格式）
+    const [hook, validatorData, hookData] = decodeAbiParameters(
+      [
+        { name: 'hook', type: 'address' },
+        { name: 'validatorData', type: 'bytes' },
+        { name: 'hookData', type: 'bytes' },
+      ],
+      decoded.args[2] as Hex,
+    ) as [Address, Hex, Hex];
+    expect(hook.toLowerCase()).toBe('0x0000000000000000000000000000000000000001'); // address(1) = 无 hook
+    expect(hookData).toBe('0xff');
+    expect(validatorData.slice(0, 10)).toBe('0xc620957b'); // 增强 6 参数 selector
+    const enable = decodeFunctionData({ abi: EnhancedSessionModuleDecodeAbi, data: validatorData });
 
     const tokenLimits = enable.args[4] as { token: Address; maxPerTx: bigint; maxDaily: bigint }[];
     expect(tokenLimits).toHaveLength(1);
@@ -599,9 +628,18 @@ describe('encodeEnableSessionCall (P0.12 增强编码)', () => {
 
     const { inner } = decodeExecutedInner(callData);
     const decoded = decodeFunctionData({ abi: ModuleManagerAbi, data: inner });
-    const enableData = decoded.args[2] as Hex;
-    expect(enableData.slice(0, 10)).toBe('0x7d993787'); // 5 参数 enableSession(CallPermission[])
-    const enable = decodeFunctionData({ abi: SessionModuleDecodeAbi, data: enableData });
+    // initData = abi.encode(hook, validatorData, hookData)（Kernel v3.0-beta installModule 格式）
+    const [hook, validatorData] = decodeAbiParameters(
+      [
+        { name: 'hook', type: 'address' },
+        { name: 'validatorData', type: 'bytes' },
+        { name: 'hookData', type: 'bytes' },
+      ],
+      decoded.args[2] as Hex,
+    ) as [Address, Hex, Hex];
+    expect(hook.toLowerCase()).toBe('0x0000000000000000000000000000000000000001'); // address(1) = 无 hook
+    expect(validatorData.slice(0, 10)).toBe('0x7d993787'); // 5 参数 enableSession(CallPermission[])
+    const enable = decodeFunctionData({ abi: SessionModuleDecodeAbi, data: validatorData });
     expect(enable.functionName).toBe('enableSession');
     const calls = enable.args[4] as { target: Address; selectors: Hex[]; valueLimit: bigint; countLimit: bigint }[];
     expect(calls).toHaveLength(1);

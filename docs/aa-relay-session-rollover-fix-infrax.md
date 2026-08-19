@@ -73,6 +73,15 @@ if (state.currentNonce != config.nonce || state.validationConfig[vId].nonce >= c
 
 **给 infraX 的提示**：`aa-sdk` 目前只有 `encodeExecute`（单调用），建议补充 `encodeExecuteBatch(executions)` 封装（`ExecLib.encodeSimpleBatch` 布局），业务方无需各自踩 batch 编码的坑。
 
+### 2.5 第三、四个坑（2026-08-20 infraX 链上 E2E 实证）
+
+- **2.5.1 `onUninstall` 为空实现 → 撤销必须直接调用 `disableSession`**：部署的 Session Module 合约 `onUninstall` 是**空实现**（字节码实证 `POP POP JUMP → STOP`），`uninstallModule` 的 deInitData 无论传 `disableSession(sessionId)` 编码还是空数据，都**不会删除 session 记录**。仅"卸载模块 + 重装新 session"后，旧 session 记录仍残留 → 旧 session key 仍可通过 `validateUserOp` 验证。**修复**：撤销 UserOp 的批量 callData 为**三段** `[disableSession(oldId)@module, uninstallModule(VALIDATOR, module, disableData), invalidateNonce(cur+1)]`，第一段直接删记录（`KernelV3SessionDataBuilder.disableData` 编码 `disableSession(bytes32)`，selector `0xf42c859d`）。
+- **2.5.2 单笔轮换（一次 UserOp `[uninstall + invalidateNonce + installModule]`）不可行 → AA24**：试图把"撤销旧 + 装新"合并为单笔 root-mode UserOp，在 Kernel v3.0-beta **两次链上实测均失败**——root-mode `installModule` 只写 `validationConfig`，**不调用 `ValidationManager._setSelector`** → `allowedSelectors[vId][executeSelector]` 不设置（缺省 false）→ `validateUserOp` 的 selector 检查 revert `InvalidValidator` → EntryPoint 报 **AA24 signature error**（`0x220266b6`）。
+- **正确轮换 = 两笔**（缺一不可，顺序不能反）：
+  1. **① root-mode** `[disableSession(旧) + uninstallModule + invalidateNonce(cur+1)]`（owner ECDSA 签 userOpHash）——删记录 + 卸载 + 推进 nonce；
+  2. **② ENABLE-mode** `enableSession(新)`（owner 签 digest + agent 签 op）——必须等 ① 上链确认后再构建（digest 绑定 ① 推进后的 `currentNonce`）。ENABLE-mode 经 `enableSession` 内部设置 selector → `validateUserOp` 正常放行。
+- **验证**：`aa-session-replace-e2e.ts`（OxaChain，12/12 全绿）：enable A → 复现 AA23（重复 enable 被拒）→ ① 三段批量 disable A 上链成功 + 模块卸载 → ② enable B 上链成功 + 模块重装 → agent B 调用成功 / **agent A 调用被拒（AA24）**——旧 session 彻底撤销、新 session 完整生效。
+
 ---
 
 ## 3. 推荐的三种解决路径
@@ -145,7 +154,7 @@ if (state.currentNonce != config.nonce || state.validationConfig[vId].nonce >= c
 ## 4. 建议
 
 1. **短期（AgentX 已上线并全链路验证）**：路径 A 作为立即止血方案，AgentX 生产已部署。2026-08-19 生产全链路验证通过：干净 enable → confirm → 残留检测 → 批量撤销（uninstall + invalidateNonce）→ 干净 enable → confirm，`L12_HEAL_VERIFY_PASS`。测试残留已清理。
-2. **中期（infraX）**：评估路径 B1（一键撤销端点）+ B2（session 复用）。B 对调用方侵入最小，且能消除"多一次签名"的体验成本。建议 relay 侧提供 `isBound` 与 disable-with-signature 两个 API，让调用方从"自建 disable 流程"中解脱。
+2. **中期（infraX）**：评估路径 B1（一键撤销端点）+ B2（session 复用）。B 对调用方侵入最小，且能消除"多一次签名"的体验成本。建议 relay 侧提供 `isBound` 与 disable-with-signature 两个 API，让调用方从"自建 disable 流程"中解脱。**infraX 落地结果（2026-08-19~20）**：B1/B2 已实现（`POST /v1/session/disable` + `/v1/session/revoke` 签名广播、`POST /v1/session` isBound 复用/409）；AA-7 会话轮换落地为**两笔**（`/v1/session/replace` → disable 旧 + `/v1/session/replace/submit` → enable 新走常规流程），链上 E2E 12/12 全绿（详见 §2.5）。
 3. **长期**：若多业务方都依赖 session key 能力，路径 C 是彻底解，但需走合约升级流程，建议放在版本规划里评估，不与短期止血互相阻塞。
 4. **保留既有兼容补丁**：Alto bundler 的 TIMESTAMP / Kernel DELEGATECALL storage 放行补丁与本问题独立，继续保留（见 `infrax-bundler-restore-handoff.md`）。
 

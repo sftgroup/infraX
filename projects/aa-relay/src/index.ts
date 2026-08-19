@@ -23,7 +23,6 @@ import {
   encodeDisableSessionCall,
   validateSessionCall,
   buildDisableSessionUserOp,
-  buildReplaceSessionUserOp,
   verifyDisableSignature,
   getUserOpHash,
   isSessionModuleInstalled,
@@ -641,15 +640,20 @@ app.post('/v1/session/revoke', asyncHandler(async (req: any, res: any) => {
   }
 }));
 
-// POST /v1/session/replace —— AA-7 阶段 1：构建"单笔轮换"draft（一次 UserOp 完成
-//   撤销旧 session + 推进 nonce + 安装新 session，owner 仅签一次）
+// POST /v1/session/replace —— AA-7（修订）阶段 1：构建"两笔轮换"第①笔 disable draft
+//  ⚠️ 单笔 replace（uninstall+invalidate+install 一次 UserOp）在 Kernel v3.0-beta 上不可行
+//     （root-mode installModule 不设置 allowedSelectors → validateUserOp revert InvalidValidator
+//      → EntryPoint 报 AA24），链上 E2E 实证（aa-session-replace-e2e.ts 12/12）。正确轮换 = 两笔：
+//       ① root-mode [disableSession(旧) + uninstallModule + invalidateNonce(cur+1)]（owner 签）
+//       ② ENABLE-mode enable 新 session（owner 签 digest + agent 签 op；digest 绑定 ① 后
+//          currentNonce，必须在 ① 上链确认后再构建 → 本端点只返回 ①）
 // body: { chain, product='default', owner, oldSessionId, permissions, validUntil, validAfter }
 // 流程：
 //   ① owner EOA 派生账户（counterfactual）
 //   ② 生成新 session key + 策略，落库（新 session 即刻可复用）
 //   ③ 链上探测是否已绑定 session validator（残留/未部署判定）
-//   ④ 构建 replace draft（估 gas/fee 后重算 userOpHash）—— owner 对 draft.userOpHash
-//      签名后 POST /v1/session/replace/submit 上链
+//   ④ 构建 disable draft（估 gas/fee 后重算 userOpHash）—— owner 对 disableDraft.userOpHash
+//      签名后 POST /v1/session/replace/submit 广播 ①；确认后再取 ② enable draft
 app.post('/v1/session/replace', asyncHandler(async (req: any, res: any) => {
   const { chain, product = 'default', owner, oldSessionId, permissions, validUntil, validAfter } = req.body || {};
   if (!owner || !oldSessionId || !Array.isArray(permissions) || permissions.length === 0 || !validUntil) {
@@ -682,12 +686,12 @@ app.post('/v1/session/replace', asyncHandler(async (req: any, res: any) => {
   } catch (e: any) {
     console.warn(`[aa-relay] replace bound probe failed (${chain}): ${e.message}`);
   }
-  // ④ 构建 replace draft（估 gas/fee 后重算 hash；失败则 draft=null，仍返回新 session 信息）
-  let draft = null;
+  // ④ 构建 ① disable draft（估 gas/fee 后重算 hash；失败则 disableDraft=null）
+  let disableDraft = null;
   try {
     const client = createAAClient(cfg);
-    const draft0 = await buildReplaceSessionUserOp({
-      client, chainConfig: cfg, account: account.address, oldSessionId, policy,
+    const draft0 = await buildDisableSessionUserOp({
+      client, chainConfig: cfg, account: account.address, sessionId: oldSessionId,
     });
     let gas: Partial<Pick<UserOperationV7, 'callGasLimit' | 'verificationGasLimit' | 'preVerificationGas' | 'maxFeePerGas' | 'maxPriorityFeePerGas'>> = {};
     try {
@@ -701,11 +705,11 @@ app.post('/v1/session/replace', asyncHandler(async (req: any, res: any) => {
     } catch {
       fee = { maxFeePerGas: DEFAULT_GAS_PRICE, maxPriorityFeePerGas: DEFAULT_GAS_PRICE };
     }
-    draft = await buildReplaceSessionUserOp({
-      client, chainConfig: cfg, account: account.address, oldSessionId, policy, gas: { ...gas, ...fee },
+    disableDraft = await buildDisableSessionUserOp({
+      client, chainConfig: cfg, account: account.address, sessionId: oldSessionId, gas: { ...gas, ...fee },
     });
   } catch (e: any) {
-    console.warn(`[aa-relay] replace draft build failed (${chain}): ${e.message}`);
+    console.warn(`[aa-relay] replace disable draft build failed (${chain}): ${e.message}`);
   }
   res.json(apiResponse({
     product,
@@ -719,8 +723,8 @@ app.post('/v1/session/replace', asyncHandler(async (req: any, res: any) => {
     validAfter: policy.validAfter.toString(),
     validUntil: policy.validUntil.toString(),
     permissions: policy.permissions,
-    draft,
-  }, 'session replace draft'));
+    disableDraft,
+  }, 'session replace draft (step 1/2: disable old)'));
 }));
 
 // POST /v1/session/replace/submit —— AA-7 阶段 2：带签名上链轮换（owner 签名 replace UserOp）

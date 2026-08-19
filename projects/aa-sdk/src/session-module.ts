@@ -1,4 +1,5 @@
 import {
+  encodeAbiParameters,
   encodeFunctionData,
   isHex,
   parseAbi,
@@ -22,6 +23,34 @@ export const MODULE_TYPE_VALIDATOR = 1n;
 
 /** 任意地址转账哨兵（P0.12 §7.6）：enableSession calls 中 target=哨兵地址表示原生币任意转账授权 */
 export const ANY_TRANSFER_SENTINEL = '0x0000000000000000000000000000000000000001' as Address;
+
+/**
+ * Kernel v3.0-beta installModule 的 initData 编码（Kernel.sol installModule 实证）：
+ *   initData = abi.encode(hook, validatorData, hookData)
+ *     hook          = validator 的 hook（address(1) = 无 hook，对齐 session-enable HOOK_NONE）
+ *     validatorData = 传给 validator.onInstall 的数据（session enableData）
+ *     hookData      = hook 安装数据（无 hook 时任意，'0xff'，对齐 session-enable NO_HOOK_DATA）
+ * 链上解码：config.hook = bytes20(initData[0:20])，validatorData/hookData 按
+ * abi.encode 偏移解出，随后 _installValidation 用 config.nonce = currentNonce。
+ * ⚠️ 勿把 enableData 直接当 initData：hook 字段会被解成 enableSession 前 20B
+ *    （sessionId 高位）垃圾地址 → config.hook ≠ 1 → validateUserOp 走"要求 hook"
+ *    分支 → bytes4(callData[0:4]) != executeUserOp.selector → OnlyExecuteUserOp
+ *    revert → EntryPoint 报 AA24 signature error（AA-7 链上 E2E 实测）。
+ */
+export function encodeValidatorInstallData(
+  enableData: Hex,
+  hook: Address = '0x0000000000000000000000000000000000000001',
+  hookData: Hex = '0xff',
+): Hex {
+  return encodeAbiParameters(
+    [
+      { type: 'address' },
+      { type: 'bytes' },
+      { type: 'bytes' },
+    ],
+    [hook, enableData, hookData],
+  );
+}
 
 /**
  * 单条 CallPermission（对齐链上 KernelSessionWithTokenLimitModule.CallPermission 结构）：
@@ -245,7 +274,7 @@ export function encodeEnableSessionCall(params: EnableSessionCallParams): Hex {
   const installCalldata = encodeFunctionData({
     abi: ERC7579ModuleManagerAbi,
     functionName: 'installModule',
-    args: [MODULE_TYPE_VALIDATOR, module, builder.enableData(params.policy)],
+    args: [MODULE_TYPE_VALIDATOR, module, encodeValidatorInstallData(builder.enableData(params.policy))],
   });
   return encodeExecute(params.accountAddress, 0n, installCalldata);
 }
@@ -293,12 +322,23 @@ export interface EncodeDisableSessionBatchParams {
 /**
  * 编码"撤销 + 推进 nonce"批量 execute callData（Kernel v3 无 executeBatch，
  * 批量走 execute(BATCH, abi.encode(Execution[]))，AA-2 encodeExecuteBatch）：
- *   execute(BATCH, [uninstallModule(VALIDATOR, module, disableData),
+ *   execute(BATCH, [disableSession(sessionId)@module,
+ *                   uninstallModule(VALIDATOR, module, disableData),
  *                   invalidateNonce(currentNonce + 1)])
+ *
+ * ⚠️ 必须直接调用 disableSession（deployed session module 的 onUninstall 为空实现，
+ * 字节码实证：uninstallModule 的 deInitData 传 disableData 也不会删除 session 记录 →
+ * 仅卸载模块 + 重装新 session 后旧 session 仍可验证。链上实证见 aa-session-replace-e2e.ts
+ * [6]：补 disableSession 后 agent A 调用 revert AA24，12/12 通过）。
  */
 export function encodeDisableSessionBatch(params: EncodeDisableSessionBatchParams): Hex {
   const module = resolveSessionModule(params.chainConfig);
   const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
+  const disableCalldata = encodeFunctionData({
+    abi: SessionModuleAbi,
+    functionName: 'disableSession',
+    args: [toBytes32(params.sessionId)],
+  });
   const uninstallCalldata = encodeFunctionData({
     abi: ERC7579ModuleManagerAbi,
     functionName: 'uninstallModule',
@@ -310,53 +350,9 @@ export function encodeDisableSessionBatch(params: EncodeDisableSessionBatchParam
     args: [params.currentNonce + 1],
   });
   return encodeExecuteBatch([
-    { target: params.accountAddress, value: 0n, data: uninstallCalldata },
-    { target: params.accountAddress, value: 0n, data: invalidateCalldata },
-  ]);
-}
-
-export interface EncodeReplaceSessionBatchParams {
-  accountAddress: Address;
-  /** 当前链上绑定的旧 sessionId（uninstall 目标） */
-  oldSessionId: string;
-  /** 新 session 策略（install + enableSession 目标） */
-  policy: SessionPolicy;
-  chainConfig: ChainAAConfig;
-  /** 账户 currentNonce()（uint32）；invalidate 目标 = currentNonce + 1 */
-  currentNonce: number;
-  dataBuilder?: SessionModuleDataBuilder;
-}
-
-/**
- * AA-7：编码"单笔轮换"批量 execute callData —— 一次 UserOp 完成 撤销旧 session +
- * 推进 nonce + 安装新 session（C1 幂等覆盖的 SDK 层等价实现，不改合约）：
- *   execute(BATCH, [uninstallModule(VALIDATOR, module, disableData(old)),
- *                   invalidateNonce(currentNonce + 1),
- *                   installModule(VALIDATOR, module, enableData(new))])
- * owner 仅签一次；uninstall+install 同模块地址（先卸清 config，再装新 config）。
- */
-export function encodeReplaceSessionBatch(params: EncodeReplaceSessionBatchParams): Hex {
-  const module = resolveSessionModule(params.chainConfig);
-  const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
-  const uninstallCalldata = encodeFunctionData({
-    abi: ERC7579ModuleManagerAbi,
-    functionName: 'uninstallModule',
-    args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.oldSessionId)],
-  });
-  const invalidateCalldata = encodeFunctionData({
-    abi: KernelInvalidateNonceAbi,
-    functionName: 'invalidateNonce',
-    args: [params.currentNonce + 1],
-  });
-  const installCalldata = encodeFunctionData({
-    abi: ERC7579ModuleManagerAbi,
-    functionName: 'installModule',
-    args: [MODULE_TYPE_VALIDATOR, module, builder.enableData(params.policy)],
-  });
-  return encodeExecuteBatch([
-    { target: params.accountAddress, value: 0n, data: uninstallCalldata },
-    { target: params.accountAddress, value: 0n, data: invalidateCalldata },
-    { target: params.accountAddress, value: 0n, data: installCalldata },
+    { target: module, value: 0n, data: disableCalldata },                 // ①a 直接删除 session 记录
+    { target: params.accountAddress, value: 0n, data: uninstallCalldata }, // ①b 卸载模块（清 validationConfig）
+    { target: params.accountAddress, value: 0n, data: invalidateCalldata }, // ①c 推进 nonce（防 AA23）
   ]);
 }
 

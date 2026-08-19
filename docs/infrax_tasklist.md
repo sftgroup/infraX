@@ -2114,7 +2114,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| AA-1 | **disable 上链闭环（B1）**：`POST /v1/session/disable` 仅本地 remove + 返回 disableCallData，链上 session 永不撤销 → 提供"带签名上链"撤销端点（调用方传 owner 签名，relay 组装 disable UserOp=批量 uninstall+invalidateNonce、估 gas、广播返回收据）；保留本地停用 + 返回 draft 兼容路径（AgentX §2.2/§4 路径 B1） | ✅ | P1 |
+| AA-1 | **disable 上链闭环（B1）**：`POST /v1/session/disable` 仅本地 remove + 返回 disableCallData，链上 session 永不撤销 → 提供"带签名上链"撤销端点（调用方传 owner 签名，relay 组装 disable UserOp=批量 `[disableSession@module, uninstallModule, invalidateNonce(cur+1)]`（三段，2026-08-20 修订：必须直接 disableSession 删记录——部署模块 onUninstall 为空实现）、估 gas、广播返回收据）；保留本地停用 + 返回 draft 兼容路径（AgentX §2.2/§4 路径 B1） | ✅ | P1 |
 | AA-2 | **aa-sdk 补 encodeExecuteBatch**：仅 `encodeExecute`（单调用）→ 新增批量 execute 编码（`ExecLib.encodeSimpleBatch` = CALLTYPE_BATCH\|EXECTYPE_DEFAULT 布局，`execute(bytes32,bytes)`），供 disable 批量 uninstall+invalidateNonce 复用（AgentX §2.4 实证 + 提示） | ✅ | P1 |
 | AA-3 | **aa-sdk 补 isModuleInstalled 探测**：新增 ERC-7579 `isModuleInstalled(1 VALIDATOR, sessionModule, 0x)` 链上视图探测账户 session 绑定；注意勿用 storage slot 判残留（误报，见 AgentX §2.1 探测修正） | ✅ | P1 |
 | AA-4 | **relay 残留自愈（enable 前检测）**：`POST /v1/session` 创建前用 isModuleInstalled 探测链上绑定；已绑定 → 响应 `isBound:true` + `needsSessionRevoke`，引导调用方先撤销再 enable（AgentX 路径 A relay 侧配合） | ✅ | P1 |
@@ -2130,7 +2130,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C）。**已改为 SDK 层"单笔轮换 batch"等价实现（不改合约）**：一次 UserOp 完成 撤销旧 session + 推进 nonce + 安装新 session（owner 仅签一次），达到与合约升级等价的幂等覆盖效果 | ✅（SDK 方案） | P3→已落地 |
+| AA-7 | **Session Module 合约升级支持覆盖**：`enableSession`/`installModule` 幂等覆盖（C1/C2），需改合约+重部署+审计+已集成方升级 aa-sdk；建议放版本规划评估（AgentX 路径 C）。**已改为 SDK 层"两笔轮换"等价实现（不改合约）**：① root-mode 批量 `[disableSession(旧)@module + uninstallModule + invalidateNonce(cur+1)]`（owner 签）→ ② ENABLE-mode enable 新 session（owner 签 digest + agent 签 op），达到与合约升级等价的幂等覆盖效果。⚠️ **单笔 installModule 轮换不可行**（root-mode installModule 不设置 allowedSelectors → validateUserOp revert InvalidValidator → AA24，2026-08-20 链上 E2E 实证，勿改回单笔） | ✅（SDK 两笔方案） | P3→已落地 |
 
 **AA-7 版本规划评估记录**（2026-08-19，来源 `docs/aa-relay-session-rollover-fix-infrax.md` §3 路径 C）：
 
@@ -2138,18 +2138,19 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **前提/代价**：改合约 + 重新部署 + 重新审计 + 版本兼容管理（已集成方同步升级 aa-sdk 指向新模块地址）。
 - **覆盖授权边界（必答）**：谁有权覆盖旧 session？建议**仅同 owner、同 product 允许覆盖；跨 product 拒绝并提示先撤销**。
 - **存量迁移**：已部署账户不受影响（模块升级只影响新 enable），但旧账户在旧模块逻辑下无法覆盖，重新 enable 前仍需一次显式撤销（配合 AA-1 disable 上链闭环 / AA-6 复用完成迁移）。
-- **状态**：~~🔲 记录不排期~~ → **✅ 已落地（2026-08-19，SDK 单笔轮换 batch 方案，不改合约）**。
+- **状态**：~~🔲 记录不排期~~ → **✅ 已落地（2026-08-19，SDK 方案，不改合约；2026-08-20 修订为"两笔轮换"——单笔 installModule 链上实证 AA24，见下）**。
 
-**AA-7 实现方案（SDK 层单笔轮换 batch，等效 C1 幂等覆盖）**：
+**AA-7 实现方案（SDK 层两笔轮换，等效 C1 幂等覆盖；2026-08-20 修订）**：
 
-- **核心**：新增 `encodeReplaceSessionBatch`（aa-sdk `session-module.ts`）—— 一次 UserOp 批量执行
-  `execute(BATCH, [uninstallModule(VALIDATOR, module, disableData(old)),
-                    invalidateNonce(currentNonce+1),
-                    installModule(VALIDATOR, module, enableData(new))])`，
-  owner 仅签一次，链上原子完成"撤销旧 session → 推进 nonce → 安装新 session"。
-- **根治点**：`invalidateNonce` 推进 `validationConfig[vId].nonce`，从根上消除重 enable 的 `InvalidNonce`（AA23/0x756688fe）；uninstall+install 同模块地址先卸清 config 再装新 config，天然幂等覆盖。
-- **draft 构建**：`buildReplaceSessionUserOp`（aa-sdk `session-revoke.ts`）—— root nonce + 三段批量 callData + gas/fee 注入后重算 `userOpHash`。
-- **relay 端点**：`POST /v1/session/replace`（阶段 1：owner EOA 派生账户 + 生成新 session 落库 + 构建 draft 返回 `userOpHash`）；`POST /v1/session/replace/submit`（阶段 2：owner 签名校验 + op hash 一致性校验 + 广播 + 移除旧 session 记录）。调用方：owner 对 draft.userOpHash 签名 → submit 上链。
+- **核心**：轮换 = **两笔 UserOp**（Kernel v3.0-beta 链上实证约束，勿改回单笔）：
+  - **① disable 旧 session**（root nonce，owner ECDSA 签名）：`encodeDisableSessionBatch` 批量 execute
+    `[disableSession(oldId)@module, uninstallModule(VALIDATOR, module, disableData(old)), invalidateNonce(currentNonce+1)]`
+    —— 直接调用 `disableSession` 删除 session 记录（部署模块 `onUninstall` 为空实现，deInitData 传 disableData 不会清记录）+ 卸载模块 + 推进 nonce。
+  - **② enable 新 session**（ENABLE-mode，owner 签 digest + agent 签 op）：必须**在 ① 上链确认后**再构建（enable digest 绑定 ① 推进后的 currentNonce），走常规 `buildEnableSessionUserOp`。
+- **根治点**：`disableSession` 真正删除旧 session 记录（防旧 key 复用）；`invalidateNonce` 推进 `currentNonce`，从根上消除重 enable 的 `InvalidNonce`（AA23/0x756688fe）；卸载 + 重装天然幂等覆盖。
+- **⚠️ 单笔方案为何废弃**：`encodeReplaceSessionBatch`（一次 UserOp `[uninstall + invalidate + install]`）在 Kernel v3.0-beta **链上实证不可行** —— root-mode `installModule` 不调用 `ValidationManager._setSelector`，`allowedSelectors[vId][executeSelector]` 不设置 → `validateUserOp` revert `InvalidValidator` → EntryPoint 报 **AA24**（aa-session-replace-e2e.ts 两轮实测）。两笔方案下 ② 走 ENABLE-mode，`_setSelector` 正常 → selector 放行。
+- **draft 构建**：① 由 `buildDisableSessionUserOp`（aa-sdk `session-revoke.ts`）—— root nonce + 三段批量 callData + gas/fee 注入后重算 `userOpHash`。
+- **relay 端点（修订）**：`POST /v1/session/replace`（阶段 1：owner 派生账户 + 生成新 session 落库 + 构建 ① disable draft 返回 `disableDraft.userOpHash`）；`POST /v1/session/replace/submit`（阶段 2：owner 签名校验 + op hash 一致性校验 + 广播 ① + 移除旧 session 记录）；② enable 由调用方用 SDK 对新 policy 构建（`buildEnableSessionUserOp`）后走 `/v1/userops` 上链。
 - **覆盖授权边界**：端点要求 owner 派生账户 === account（防篡改），即仅账户 owner 可轮换，天然满足"仅同 owner 允许覆盖"。
 - **相比合约升级**：零合约改动、零重部署、零审计；SDK/relay 即可交付，已集成方无需升级链上模块。
 
@@ -2171,4 +2172,16 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - 回归：`aa-relay-e2e.mjs` 8/10（2 个 FAIL 为测试 op 无 ledger 余额 → 402 余额不足，计费预期行为，非回归）。
 - 单测：aa-sdk 125 用例全绿（含 AA-7 新增 4 用例：encodeReplaceSessionBatch 三段 batch 结构 + buildReplaceSessionUserOp draft）；SDK typecheck/build 通过。
 - 无生产数据污染：`aa-replace-verify*` 测试 session 已 DELETE 清理。
+
+**AA-7 修订为"两笔轮换"（2026-08-20，链上 E2E 实证单笔方案不可行）**：
+
+- **背景**：单笔轮换 batch（`[uninstall + invalidateNonce + install]` 一次 UserOp）在 Kernel v3.0-beta **链上实测两次失败** —— root-mode `installModule` 不设置 `allowedSelectors` → `validateUserOp` revert `InvalidValidator` → EntryPoint **AA24 signature error**。此外链上实证部署的 session module `onUninstall` 为**空实现**（字节码 POP POP JUMP→STOP），`uninstallModule` 的 deInitData 传 disableData **不会删除 session 记录** → 仅卸载+重装后旧 session key 仍可验证。
+- **代码改造（工作区未提交，待 commit）**：
+  - aa-sdk `session-module.ts`：`encodeDisableSessionBatch` 改为**三段批量** `[disableSession(oldId)@module, uninstallModule(VALIDATOR,module,disableData), invalidateNonce(cur+1)]`（①a 直接删 session 记录，根治旧 key 复用）；新增 `encodeValidatorInstallData(hook, validatorData, hookData)`（Kernel v3.0-beta installModule initData 格式：`abi.encode(hook, validatorData, hookData)`，hook=address(1)）。
+  - aa-sdk `session-revoke.ts`：`buildDisableSessionUserOp` 走三段批量；**删除** `buildReplaceSessionUserOp`/`encodeReplaceSessionBatch`（单笔方案废弃）。
+  - aa-relay `src/index.ts`：`POST /v1/session/replace` 返回 `disableDraft`（阶段 1/2：disable 旧）；`/v1/session/replace/submit` 广播 ①；② enable 新 session 由调用方用 SDK `buildEnableSessionUserOp` 走 `/v1/userops`。
+  - `scripts/aa-session-replace-e2e.ts`：轮换流程改为 ① 三段批量 disable 旧 + ② ENABLE-mode enable 新 + agent B 成功 / agent A 被拒。
+- **验证**：`aa-session-replace-e2e.ts` 链上 E2E **12/12 全绿**（OxaChain，deployer=`0xF434e5254C4a4DD314F1e80087FBC54533065c8B` alto executor，块 `0x1dexx` 段）：注资/激活/deposit → enable A → 复现 AA23（重复 enable 被拒）→ ① 三段批量 disable A 上链成功+模块卸载 → ② enable B 上链成功+模块重装 → **agent B 调用成功 / agent A 调用被拒（AA24，旧 session 已彻底撤销）**。
+- **单测**：aa-sdk **122 用例全绿**（session-revoke.test.ts 13 用例适配三段 batch：disableSession@module + uninstall + invalidateNonce）；SDK typecheck + relay typecheck 通过。
+- **上线状态**：代码在本地工作区（含 E2E 脚本更新），**未提交、未部署生产**；待用户确认后 commit + 部署 43.163.105.172。
 

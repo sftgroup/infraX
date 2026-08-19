@@ -1,5 +1,5 @@
 // ============================================================================
-// AA-7 链上 E2E（OxaChain 19505）：验证"单笔轮换 batch"彻底解决 AA23
+// AA-7 链上 E2E（OxaChain 19505）：验证"两笔轮换"彻底解决 AA23
 // （Kernel v3 单 Session 结构下重复 enable 自动续订失败）问题。
 //
 // 流程：
@@ -7,8 +7,12 @@
 //   [2] enable session A（ENABLE-mode 一次 UserOp 安装 + 授权）→ 成功
 //   [3] 复现 AA23：不卸载 A 直接第二次 enable session B → 链上 revert
 //       （InvalidNonce / 模块已安装 —— 即"重复 enable 失败"的根因）
-//   [4] AA-7 replace 轮换：buildReplaceSessionUserOp（一次 UserOp =
-//       uninstall A + invalidateNonce(cur+1) + install B）→ owner 签 root-mode → 成功
+//   [4] AA-7 轮换（两笔，Kernel v3.0-beta 约束实证）：
+//       ① root-mode [disableSession(A) + uninstall A + invalidateNonce(cur+1)]（owner 签名）
+//          —— 部署模块 onUninstall 为空实现，必须直接 disableSession 删记录
+//       ② ENABLE-mode enable B（owner 签 digest + agent 签 op）→ 成功
+//       ⚠️ 单笔 installModule 方案不可行：installModule 不设置 allowedSelectors
+//          → validateUserOp revert InvalidValidator → AA24 signature error。
 //   [5] agent B（新 session key）调用白名单 target → 成功（B 已生效）
 //   [6] agent A（旧 session key）调用 → 被拒（A 已彻底撤销）
 //
@@ -17,7 +21,7 @@
 // 用法：set -a; source /tmp/aa-e2e.env; set +a; export OXACHAIN_DEPLOYER_PRIVATE_KEY=<deployer pk>;
 //       npx tsx scripts/aa-session-replace-e2e.ts
 // ============================================================================
-import { createWalletClient, http, parseAbi, encodeFunctionData, decodeErrorResult, zeroAddress, type Address, type Hex } from 'viem';
+import { createWalletClient, http, parseAbi, encodeFunctionData, encodeAbiParameters, parseAbiParameters, decodeErrorResult, concatHex, zeroAddress, type Address, type Hex } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import {
   getChainConfig,
@@ -30,7 +34,11 @@ import {
   buildEnableSessionUserOp,
   signEnableUserOp,
   buildSessionUserOp,
-  buildReplaceSessionUserOp,
+  buildDisableSessionUserOp,
+  encodeExecute,
+  encodeExecuteBatch,
+  toBytes32,
+  HOOK_NONE,
   packUserOpV7,
   type UserOperationV7,
 } from '../../aa-sdk/src/index.js';
@@ -238,21 +246,89 @@ async function main() {
     check('重复 enable 被链上拒绝（AA23 复现）', false, 'handleOps 未 revert（意外放行）');
   }
 
-  // [4] AA-7 replace 轮换：uninstall A + invalidateNonce(cur+1) + install B，一次 UserOp
-  console.log('\n[4] AA-7 replace 轮换（uninstall A + invalidateNonce + install B）→ handleOps 上链');
-  const replaceDraft = await buildReplaceSessionUserOp({
+  // [4] AA-7 轮换：Kernel v3.0-beta 约束下"单笔 installModule"无法设置 allowedSelectors
+  // （installModule 只装 validationConfig，validateUserOp 无 hook 分支需 selector 放行 →
+  //  缺省 false → InvalidValidator → EntryPoint 报 AA24，E2E 实证）。
+  // 正确轮换 = 两笔：① root-mode [uninstall A + invalidateNonce(cur+1)]（owner 签名）
+  //               ② ENABLE-mode enable B（owner 签 digest + agent 签 op，digest 绑定 ① 后 nonce）
+  console.log('\n[4] AA-7 轮换（① root-mode [uninstall A + invalidateNonce] → ② ENABLE-mode enable B）');
+  const vId = concatHex(['0x01', cfg.sessionModule!]);
+  const executeSelector = encodeExecute(HOOK_NONE, 0n, '0x').slice(0, 10) as Hex;
+  const isAllowed = () => publicClient.readContract({
+    address: addr,
+    abi: parseAbi(['function isAllowedSelector(bytes21 vId, bytes4 selector) view returns (bool)']),
+    functionName: 'isAllowedSelector',
+    args: [vId, executeSelector],
+  }) as Promise<boolean>;
+
+  // ① 撤销 A + 推进 nonce（root-mode，owner 签名）
+  //    deinitData 候选：abi.encode(bytes32 sessionId) —— 探测 onUninstall 接受格式
+  //    （ModuleLib.uninstallModule 走 ExcessivelySafeCall 静默吞 revert，格式错 = 记录残留）
+  const curNonce = (await publicClient.readContract({
+    address: addr,
+    abi: parseAbi(['function currentNonce() view returns (uint32)']),
+    functionName: 'currentNonce',
+  })) as number;
+  const rootNonce = (await publicClient.readContract({
+    address: cfg.entryPoint,
+    abi: parseAbi(['function getNonce(address sender, uint192 key) view returns (uint256)']),
+    functionName: 'getNonce',
+    args: [addr, 0n],
+  })) as bigint;
+  // deinitData：部署的 session module onUninstall 为空实现（字节码实证：POP POP JUMP → STOP），
+  // 传任何 deinitData 都不会删除 session 记录 → 必须直接调用 disableSession(sessionId) 真正撤销。
+  const deinitData = encodeAbiParameters(parseAbiParameters('bytes32'), [toBytes32(sessA.policy.sessionId)]);
+  const disableSessionCalldata = encodeFunctionData({
+    abi: parseAbi(['function disableSession(bytes32 sessionId)']),
+    functionName: 'disableSession',
+    args: [toBytes32(sessA.policy.sessionId)],
+  });
+  const uninstallCalldata = encodeFunctionData({
+    abi: parseAbi(['function uninstallModule(uint256 moduleTypeId, address module, bytes deInitData)']),
+    functionName: 'uninstallModule',
+    args: [1n, cfg.sessionModule!, deinitData],
+  });
+  const invalidateCalldata = encodeFunctionData({
+    abi: parseAbi(['function invalidateNonce(uint32 newNonce)']),
+    functionName: 'invalidateNonce',
+    args: [curNonce + 1],
+  });
+  const disableCallData = encodeExecuteBatch([
+    { target: cfg.sessionModule!, value: 0n, data: disableSessionCalldata }, // ①a 直接禁用 session 记录
+    { target: addr, value: 0n, data: uninstallCalldata },                    // ①b 卸载模块（清 validationConfig）
+    { target: addr, value: 0n, data: invalidateCalldata },                   // ①c 推进 nonce（防 AA23）
+  ]);
+  const disableOp = await signUserOp(
+    { ...(await buildDisableSessionUserOp({
+      client: publicClient, chainConfig: cfg, account: addr, sessionId: sessA.policy.sessionId,
+      gas: { ...FALLBACK_GAS, ...FEE },
+    })).op, callData: disableCallData },
+    cfg.entryPoint, cfg.chainId, ownerSigner,
+  );
+  const { rc: rcD, tx: txD } = await sendHandleOps(disableOp);
+  check('① disable A（uninstall + invalidateNonce）上链 success', rcD.status === 'success', `tx ${txD}`);
+  {
+    const topic = (await import('viem')).keccak256((await import('viem')).stringToHex('ModuleUninstallResult(address,bool)'));
+    const hit = rcD.logs.filter((l) => l.topics[0] === topic);
+    console.log('  ① onUninstall 结果事件:', hit.length ? hit.map((l) => `module=${(l as any).address} data=${l.data}`).join(';') : '未找到 ModuleUninstallResult');
+  }
+  check('① 后模块已卸载', await isModuleInstalled(addr) === false);
+  console.log('  allowedSelectors(① 后) =', await isAllowed(), '（installModule 不设置 → 预期 false，AA24 根因）');
+
+  // ② ENABLE-mode 启用 B（digest 重新绑定 ① 后的 currentNonce，不再 AA23）
+  const enableB2 = await buildEnableSessionUserOp({
     client: publicClient,
     chainConfig: cfg,
     account: addr,
-    oldSessionId: sessA.policy.sessionId,
     policy: sessB.policy,
-    gas: { ...FALLBACK_GAS, ...FEE },
+    benignCall: { target: TARGET, value: 0n, data: ApproveData },
+    gas: { ...AGENT_GAS, ...FEE },
   });
-  console.log('  replace nonce =', replaceDraft.op.nonce.toString(16).slice(0, 20), '… | currentNonce =', replaceDraft.currentNonce);
-  const replaceOp = await signUserOp(replaceDraft.op, cfg.entryPoint, cfg.chainId, ownerSigner);
-  const { rc: rcR, tx: txR } = await sendHandleOps(replaceOp);
-  check('replace 轮换上链 success', rcR.status === 'success', `tx ${txR}`);
-  check('replace 后 session module 仍已安装（B 生效）', await isModuleInstalled(addr) === true);
+  const enableB2Op = await signEnableUserOp({ chainConfig: cfg, draft: enableB2, ownerSigner, agentSigner: agentBSigner });
+  const { rc: rcE, tx: txE } = await sendHandleOps(enableB2Op);
+  check('② enable B（ENABLE-mode）上链 success', rcE.status === 'success', `tx ${txE}`);
+  check('② 后模块已安装（B 生效）', await isModuleInstalled(addr) === true);
+  console.log('  allowedSelectors(② 后) =', await isAllowed(), '（ENABLE-mode 设置 selector → 预期 true）');
 
   // [5] agent B（新 session key）调用 → 成功
   console.log('\n[5] agent B（新 session key）调用白名单 target → 应成功');
@@ -267,6 +343,39 @@ async function main() {
   });
   const { rc: rcB, tx: txB } = await sendHandleOps(agentBOp);
   check('agent B 调用成功（新 session 已生效）', rcB.status === 'success', `tx ${txB}`);
+
+  // 诊断：直接调用 session module.validateUserOp 观察 A/B 的 ValidationData 返回
+  const ValidateUserOpAbi = parseAbi([
+    'function validateUserOp((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes),bytes32)',
+  ]);
+  const readVd = async (op: UserOperationV7) => {
+    const hash = (await import('viem/account-abstraction')).getUserOperationHash({
+      chainId: cfg.chainId, entryPointAddress: cfg.entryPoint, entryPointVersion: '0.7',
+      userOperation: op as never,
+    });
+    const p = packUserOpV7(op);
+    const calldata = encodeFunctionData({
+      abi: ValidateUserOpAbi, functionName: 'validateUserOp',
+      args: [[p.sender, p.nonce, p.initCode, p.callData, p.accountGasLimits, p.preVerificationGas, p.gasFees, p.paymasterAndData, p.signature] as never, hash],
+    });
+    try {
+      const r = await publicClient.call({ to: cfg.sessionModule!, data: calldata });
+      const vd = BigInt(r.data ?? '0x0');
+      return vd === 0n ? 'success(0)' : vd === 1n ? 'failed(1)' : `vd=${vd}`;
+    } catch (e: any) {
+      return `revert: ${String(e?.shortMessage ?? e?.message ?? e).slice(0, 120)}`;
+    }
+  };
+  const agentADiag = await buildSessionUserOp({
+    client: publicClient,
+    chainConfig: cfg,
+    account: addr,
+    sessionId: sessA.policy.sessionId,
+    agentSigner: agentASigner,
+    call: { target: TARGET, value: 0n, data: ApproveData },
+    gas: { ...AGENT_GAS, ...FEE },
+  });
+  console.log('  诊断 module.validateUserOp → A:', await readVd(agentADiag), '| B:', await readVd(agentBOp));
 
   // [6] agent A（旧 session key）调用 → 被拒（A 已 uninstall）
   console.log('\n[6] agent A（旧 session key）调用 → 应被链上拒绝');
