@@ -110,6 +110,15 @@ GET /factors/graph/history?symbols=&days=
 
 - 实时值 30min 重算；历史日频；meta.age_ms 随重算更新
 
+### REQ-G8【中】RAG 知识库 / 图谱实体双语支持 — ⏳ 待处理（2026-08-19）
+
+- **背景**: AIHunter 支持中 / 英 / 繁三语界面。实测 B 端 `/rag/retrieve` 返回的 context 与 `/factors/graph/entities` 的节点 id 大量为中文（如「链上BTC」「市场情绪」「机会评分」「恐惧与贪婪指数」「加密货币市场」），英文界面下出现中文混排，影响体验。
+- **AIHunter 现状（临时兜底）**: 英文界面下对常见中文实体做前端映射（ChatPage 知识增强，高频实体名替换为英文 + 提示模型用英文作答），但长文本描述无法前端翻译。
+- **期望（按优先级）**:
+  1. RAG 检索支持按语言返回英文内容（知识库双语存储），如 `/rag/retrieve` 增加 `lang` 参数（`en` / `zh`）；
+  2. 或 `/factors/graph/entities` 节点增加 `name_en` 字段（实体英文名），RAG context 中实体名提供英文。
+- **验收**: 英文界面下知识增强回复与图谱节点无中文混排。
+
 ---
 
 ## 四、优先级汇总（全部闭合）
