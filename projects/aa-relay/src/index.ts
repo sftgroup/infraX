@@ -6,7 +6,7 @@
 // 链配置复用 aa-sdk（env AA_{CHAIN}_* 零硬编码）；bundler URL 由服务端注入（apikey 代理）。
 // ============================================================================
 import express from 'express';
-import { createClient, http, RpcError, toHex, type Address, type Hex } from 'viem';
+import { createClient, http, toHex, type Address, type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -24,6 +24,7 @@ import {
   validateSessionCall,
   buildDisableSessionUserOp,
   verifyDisableSignature,
+  getUserOpHash,
   isSessionModuleInstalled,
   estimateFeesPerGas,
   FALLBACK_GAS,
@@ -538,8 +539,15 @@ app.post('/v1/session/revoke', asyncHandler(async (req: any, res: any) => {
   if (!valid) {
     return res.status(400).json(apiResponse(null, 'signature verification failed', 1001));
   }
-  // ③ 广播（A-10 计费同 /v1/userops；wait=false 仅广播，调用方用 GET /v1/userops/:hash 查收据）
+  // ③ 组装待广播 UserOp（draft op 无签名）：
+  //    ③a 校验 op 实际 userOpHash === 已签名 userOpHash（防篡改/错配，先于计费失败快速返回）
+  //    ③b 注入 owner 签名（eth_sign 原始 ECDSA 对 digest 签名，Kernel validator ecrecover 校验）
   const userOp = normalizeOp(op);
+  const opHash = getUserOpHash(userOp, cfg.entryPoint, cfg.chainId);
+  if (opHash.toLowerCase() !== String(userOpHash).toLowerCase()) {
+    return res.status(400).json(apiResponse(null, 'op does not match signed userOpHash', 1001));
+  }
+  userOp.signature = signature;
   const subscriber = String(account).toLowerCase();
   let chargeTotal = 0n;
   let chargeRef = '';

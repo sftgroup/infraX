@@ -1,4 +1,4 @@
-import { createClient, http, type Address, type Hex } from 'viem';
+import { createClient, http, type Hex } from 'viem';
 import type { BundlerConfig, ChainAAConfig, UserOpReceipt, UserOperationV7, UserOpResult } from './types.js';
 import { BundlerError, toAAError } from './errors.js';
 import { userOpToRpc } from './userop.js';
