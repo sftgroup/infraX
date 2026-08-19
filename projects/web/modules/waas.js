@@ -22,6 +22,7 @@ async function waasInit() {
 // Overview tab loader — only called when dashboard is already visible
 
 // WaaS API fetch — uses tenant x-api-key auth
+function waasEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 async function waasFetch(url, opts) {
   if (!opts) opts = {};
   if (!opts.headers) opts.headers = {};
@@ -407,7 +408,8 @@ function waasLoadOverview(t) {
 }
 
 async function waasTokens() {
-  var listEl = document.getElementById('waas-tokens-list');
+  // HTML 中 id 为 waas-token-list（waas-tokens-list 为历史遗留名，双查兼容）
+  var listEl = document.getElementById('waas-token-list') || document.getElementById('waas-tokens-list');
   if (!listEl) return;
   if (!waasActiveTenantId) { 
     listEl.innerHTML = '<div class="empty">Activate WaaS first</div>'; 
@@ -416,6 +418,16 @@ async function waasTokens() {
   try {
     var d = await waasFetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/tokens');
     var tokens = d.items || d.data || d || [];
+    // 填充提币规则 Token 下拉（waas-wd-token）
+    var wdSel = document.getElementById('waas-wd-token');
+    if (wdSel) {
+      var opts = ['<option value="">— Add tokens in Tokens tab —</option>'];
+      for (var ti = 0; ti < tokens.length; ti++) {
+        var tsym = tokens[ti].token_symbol || tokens[ti].symbol;
+        if (tsym) opts.push('<option value="' + waasEsc(tsym) + '">' + waasEsc(tsym) + '</option>');
+      }
+      wdSel.innerHTML = opts.join('');
+    }
     if (!tokens.length) { listEl.innerHTML = '<div class="empty" style="padding:32px 24px;text-align:center"><div style="font-size:40px;margin-bottom:14px;opacity:0.8">&#x1fa99;</div><div class="empty-text">No Tokens Configured</div><div class="empty-sub" style="font-size:12px;color:var(--text-dim);line-height:1.6;max-width:420px;margin:6px auto 0">Use the form above to add ERC-20 tokens. Deposits for unlisted tokens are ignored during sweep.</div></div>'; return; }
     listEl.innerHTML = tokens.map(function(t) {
       var sym = t.token_symbol || t.symbol || '—';
@@ -442,7 +454,7 @@ async function waasAddToken() {
     });
     showToast('Token added', 'success');
     waasTokens();
-    document.getElementById('waas-token-contract').value = '';
+    document.getElementById('waas-token-addr').value = '';
     document.getElementById('waas-token-symbol').value = '';
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -582,4 +594,46 @@ async function waasRetryWithdrawal(wid) {
     showToast('Retry queued', 'success');
     waasWithdrawRulesLoad();
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Withdrawal Rules（保存到 tenant config）──
+function waasReadWithdrawRules() {
+  var rules = [];
+  try { rules = JSON.parse((waasTenantData && waasTenantData.withdrawRules) || '[]'); } catch(_) {}
+  return Array.isArray(rules) ? rules : [];
+}
+
+async function waasPersistWithdrawRules(rules) {
+  if (!waasActiveTenantId) return showToast('Activate WaaS first', 'error');
+  try {
+    await afetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/config', {
+      method: 'PATCH',
+      body: { withdrawRules: JSON.stringify(rules) }
+    });
+    if (waasTenantData) waasTenantData.withdrawRules = JSON.stringify(rules);
+  } catch (e) { throw e; }
+}
+
+async function waasSaveWithdrawRules() {
+  var chain = document.getElementById('waas-wd-chain').value;
+  var token = document.getElementById('waas-wd-token').value;
+  var auto = document.getElementById('waas-auto-threshold').value.trim();
+  var manual = document.getElementById('waas-manual-threshold').value.trim();
+  var webhook = document.getElementById('waas-wd-webhook').value.trim();
+  if (!chain || !auto) return showToast('Chain and auto-execute threshold required', 'error');
+  var rules = waasReadWithdrawRules();
+  var idx = -1;
+  for (var i = 0; i < rules.length; i++) {
+    if (rules[i].chain === chain && (rules[i].token || '') === token) { idx = i; break; }
+  }
+  var rule = { chain: chain, token: token, autoThreshold: Number(auto), manualThreshold: Number(manual) || null, callbackUrl: webhook || null };
+  if (idx >= 0) rules[idx] = rule; else rules.push(rule);
+  try {
+    await waasPersistWithdrawRules(rules);
+    showToast('Withdrawal rule saved for ' + chain.toUpperCase(), 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function waasAddWithdrawRule() {
+  return waasSaveWithdrawRules();
 }

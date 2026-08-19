@@ -8,10 +8,11 @@
 // ============================================================================
 import express from 'express';
 import { Pool } from 'pg';
-import { getChainConfig, getEnabledChains } from '../../aa-sdk/src/index.js';
+import { createKernelAccount, ExternalWalletSigner, getChainConfig, getEnabledChains } from '../../aa-sdk/src/index.js';
+import type { Address } from 'viem';
 import { PostgresSessionStore } from './session-store.js';
 import { aaChargeConfigured, escrowConfigured, aaLedgerBalance, aaPlansInfo, AABillingError } from './billing.js';
-import { apiResponse, asyncHandler, authMw } from './helpers.js';
+import { apiResponse, asyncHandler, authMw, getChain } from './helpers.js';
 import { relayRoutes } from './routes/relay.js';
 import { sessionRoutes } from './routes/session.js';
 
@@ -58,6 +59,19 @@ app.use(relayRoutes());
 app.use(sessionRoutes(sessionStore));
 
 // ═══ A-10: session 订阅计费（UserOp 次数费 + paymaster gas 代付）═══
+
+// POST /v1/account/derive —— 只读派生智能账户地址（AA 面板初始化用；counterfactual，无链上交易）
+app.post('/v1/account/derive', asyncHandler(async (req: any, res: any) => {
+  const { chain, owner } = req.body || {};
+  if (!owner) return res.status(400).json(apiResponse(null, 'owner required', 1001));
+  const cfg = getChain(chain);
+  const ownerSigner = new ExternalWalletSigner(
+    { request: () => { throw new Error('no provider on server'); } } as any,
+    owner as Address,
+  );
+  const account = await createKernelAccount({ owner: ownerSigner, chainConfig: cfg });
+  res.json(apiResponse({ accountAddress: account.address, isDeployed: account.isDeployed }, 'account derived'));
+}));
 
 // GET /v1/plans — 套餐价目（公开）
 app.get('/v1/plans', (_req: any, res: any) => {

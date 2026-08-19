@@ -127,7 +127,7 @@ function mpcRec() {}
 // ── Dashboard ──
 
 async function mpcDash() {
-  var grid = document.getElementById('mpc-bal-card'); if (!grid) return;
+  var grid = document.getElementById('mpc-bal-addr'); if (!grid) return;
   if (!mpcCurrentAddr) { grid.innerHTML = '<div class="kpi-val" style="font-size:16px">No MPC wallet yet</div><div class="kpi-sub">Register or Recover to create one</div>'; return; }
   try {
     var bal = await afetch('/api/v2/wallet/balance?nc=true'); var totalNative = 0;
