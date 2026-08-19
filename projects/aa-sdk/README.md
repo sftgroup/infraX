@@ -2,7 +2,7 @@
 
 InfraX 共享 ERC-4337 智能账户 SDK（白标自 PocketX `@pocketx/aa-sdk`）——Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key。
 
-- **npm**: `@0xinfrax/aa-sdk@0.1.1`（2026-08-16 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
+- **npm**: `@0xinfrax/aa-sdk@0.1.2`（2026-08-20 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`0.1.2` 发布三段批量 disable 等 session 新导出；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
 - **文档**: `docs/AA_SDK_TECH_DESIGN.md`（技术方案）、`docs/PAYMASTER_PROVISION_REQUEST.md` §八（PocketX 对接与公网入口）
 - **关联包**: `@0xinfrax/session-key-core`（`Aa` 命名空间导出同源能力，v0.2.1 已发布）——两通道并存，按需选用
 
@@ -69,8 +69,11 @@ const data  = await pm.getPaymasterData(op, { chain: 'oxachain', entryPoint, cha
 - 交易：`buildUserOp` / `signUserOp` / `estimateUserOpGas` / `userOpToRpc` / `PackedUserOperationV7`
 - 客户端：`BundlerClient` / `PaymasterClient`
 - 签名器：`MpcSigner`（email/token 双模式）/ `PrivateKeySigner` / `ExternalWalletSigner` / `SessionKeySigner`
-- Session：`encodeEnableSessionCall` / `encodeDisableSessionCall` / `validateSessionCall` / `SessionPolicy` / `SessionPermission`
+- Session（enable）：`encodeEnableSessionCall` / `buildEnableSessionUserOp` / `signEnableUserOp` / `buildSessionUserOp` / `validateSessionCall` / `SessionPolicy` / `SessionPermission`
+- Session（disable/轮换，0.1.2）：`buildDisableSessionUserOp`（三段批量 draft：`disableSession@module + uninstallModule + invalidateNonce`）/ `encodeDisableSessionBatch` / `encodeValidatorInstallData` / `KernelV3SessionDataBuilder` / `MODULE_TYPE_VALIDATOR` / `isSessionModuleInstalled` / `verifyDisableSignature`
 - 类型：`ChainAAConfig` / `BundlerConfig` / `PaymasterConfig` / `UserOperationV7` / `Signer` / `AAError` / `isAAError`
+
+> ⚠️ 遗留单调用 `encodeDisableSessionCall` 已于 2026-08-20 移除：仅 uninstallModule 不删 session 记录（onUninstall 空实现），旧 key 可复用。撤销/轮换一律用 `encodeDisableSessionBatch`（三段批量）。
 
 ## aa-relay 公网入口
 

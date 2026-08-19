@@ -520,6 +520,41 @@ curl -X POST http://127.0.0.1:9131/v1/userops \
 
 > E2E：`projects/aa-relay/scripts/aa-session-e2e.ts`（env：`AA_OXACHAIN_*` + `OXACHAIN_DEPLOYER_PRIVATE_KEY`）12/12 全绿。
 
+### 7.7.1 外部接入：两条通道（HTTP 服务接口 / npm SDK 直用）
+
+**aa-sdk（`@0xinfrax/aa-sdk`）是对外公开发布的 npm 包**（`--access public`，当前 0.1.2）。PocketX 及所有产品"只基于 SDK 构建"（`docs/AA_SDK_TECH_DESIGN.md` §1.3 三层架构）。外部集成方接入 session 能力有两条通道，可组合使用：
+
+| 通道 | 适用方 | 接入方式 |
+|---|---|---|
+| **A. HTTP 服务接口** | agentx / aitrader 等（仅需代执行/托管） | 调 aa-relay `/v1/session/*`（链上 session 管理）+ session-key `/api/v1/sessions`（托管执行）+ MCP :3011；鉴权 Bearer key，零 SDK 依赖 |
+| **B. npm SDK 直用** | PocketX 等（自建智能账户流程） | `npm i @0xinfrax/aa-sdk`（peer：`viem>=2`、`permissionless>=0.2`）→ import 构建函数自组 UserOp → 经 relay `/v1/userops` 上链 |
+
+**SDK 构建示例（会话轮换 ② enable，与 `/v1/session/replace/submit` 配合）**：
+
+```ts
+import { buildEnableSessionUserOp, signEnableUserOp, getChainConfig } from '@0xinfrax/aa-sdk';
+
+const cfg = getChainConfig('oxachain', process.env); // AA_OXACHAIN_* env
+// ① disable 旧：POST /v1/session/replace → 取 disableDraft.userOpHash → owner 签名 → POST /v1/session/replace/submit
+// ② enable 新（本地 SDK 构建）：
+const draft = await buildEnableSessionUserOp({
+  chainConfig: cfg, account, policy: newPolicy,
+  client, gas, ownerSigner, agentSigner,
+});
+const signedOp = await signEnableUserOp({
+  draft, chainConfig: cfg,
+  ownerSigner, agentSigner, sessionId: newPolicy.sessionId,
+});
+// ③ 上链（经 relay 中继 + 计费，而非直连 bundler）：
+await fetch('https://rpc-gw.0xainet.top/aa-relay/v1/userops', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${AA_RELAY_API_KEY}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ chain: 'oxachain', userOp: signedOp, sender: account }),
+});
+```
+
+**SDK 新增导出（0.1.2，三段批量 disable）**：`buildDisableSessionUserOp`（disable draft：`disableSession@module + uninstallModule + invalidateNonce`）、`encodeDisableSessionBatch`、`encodeValidatorInstallData`、`KernelV3SessionDataBuilder`、`MODULE_TYPE_VALIDATOR`、`buildEnableSessionUserOp`、`signEnableUserOp`、`verifyDisableSignature`。安装与 env 说明见 `projects/aa-sdk/README.md`。
+
 ---
 
 ## 8. LightRAG 知识图谱（ragservicer :9721 `/api/rag/*` + knowledge-injector :9113）

@@ -2209,5 +2209,5 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **`encodeDisableSessionCall` 不恢复**：已在上轮审查（Fix1）中删除（单调用只做 uninstallModule，链上实证不删 session 记录，旧 key 可复用 = AA23/AA24 根因）。消费方应改用三段批量 `encodeDisableSessionBatch`。
 - **动作**：`package.json` version → `0.1.2`；`npm run build`（tsc 全量）；`npm publish` 成功（`@0xinfrax/aa-sdk@0.1.2`，`stevenwang000x`）。
 - **发布产物验证**：`npm pack` 解包确认含 `session-module.js`/`session-revoke.js`（含 `.d.ts`）；运行时 import `dist/index.js` 验证 8 项新导出全部 OK（`encodeDisableSessionCall` MISSING 为预期）。
-- **消费方**：内部 aa-relay（相对路径直引源码）与 session-key core（`file:` 链接）均不受 npm 发布影响，无需变更。
+- **消费方**：**aa-sdk 是对外公开发布的 npm 包**（`--access public`），PocketX 及所有产品"只基于 SDK 构建"（`docs/AA_SDK_TECH_DESIGN.md` §1.3 三层架构）；内部 aa-relay 走相对路径直引源码、session-key core 走 `file:` 链接（二者为服务端内部消费，不走 npm 包）。外部集成方接入 session 有两条通道：**HTTP 服务接口**（agentx/aitrader 等经 aa-relay `/v1/session/*`、session-key `/api/v1/sessions`、MCP）或 **npm SDK 直用**（PocketX 等 `npm i @0xinfrax/aa-sdk` 后 import `buildEnableSessionUserOp`/`buildDisableSessionUserOp` 自行构建 UserOp，配合 relay `/v1/userops` 上链）。0.1.2 发布正是为外部 SDK 消费方补齐三段批量 disable 能力。
 
