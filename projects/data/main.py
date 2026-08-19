@@ -433,6 +433,77 @@ async def factors_graph_edges(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── RAGservicer 只读检索透传（REQ-G2，AIHunter 快速分析知识增强）──
+# B 端统一走 data-service /rag/retrieve（dx_* key）；data-service 内部持
+# ragservicer 服务 key 逐 namespace POST /api/v1/namespaces/{ns}/retrieve，
+# 返回各 namespace 的 context 片段（供 B 端自带 LLM 做知识增强）。
+# namespace 枚举（default 租户）：market（行情/宏观/新闻）/ onchain（链上/DeFi）/ default。
+# fail-silent：ragservicer 不可用 / 无结果 → 空 results + meta.warning。
+
+@app.post("/rag/retrieve")
+async def rag_retrieve(payload: dict):
+    """只读 RAG 检索透传（REQ-G2）。
+
+    请求体: {"query": str, "namespaces": ["market","onchain"], "top_k": 10}
+    响应: {ts, meta: {namespaces, top_k, source: "ragservicer"},
+           results: [{namespace, context, top_k, mode}, ...]}
+    """
+    query = (payload or {}).get("query") or ""
+    if not isinstance(query, str) or not query.strip():
+        raise HTTPException(status_code=400, detail="query is required")
+    ns = payload.get("namespaces")
+    if not isinstance(ns, list):
+        ns = None
+    try:
+        top_k = int(payload.get("top_k") or 10)
+        if top_k < 1:
+            top_k = 10
+    except (TypeError, ValueError):
+        top_k = 10
+    try:
+        from app.ml_client import fetch_rag_retrieve
+        data = await asyncio.to_thread(fetch_rag_retrieve, query.strip(), ns, top_k)
+        meta: dict = {"source": "ragservicer", "namespaces": ns, "top_k": top_k}
+        if not data:
+            meta["warning"] = "ragservicer retrieve unavailable"
+            return {"ts": int(time.time() * 1000), "meta": meta, "results": []}
+        meta["namespaces"] = data.get("namespaces")
+        return {"ts": int(time.time() * 1000), "meta": meta,
+                "results": data.get("results", [])}
+    except Exception as e:
+        logger.error(f"/rag/retrieve failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── gf_* 历史序列（REQ-G2.5，AIHunter 回测数据面，统一入口）──
+# data-service 透传 ml-service graph_history.db（按自然日归一化，asof 日频语义）。
+# 历史自 2026-08-18 起累积；历史不足时 series 为空（fail-silent）。
+
+@app.get("/factors/graph/history")
+async def factors_graph_history(
+    symbols: str = Query("", description="Comma-separated symbols; empty = all"),
+    days: int = Query(90, ge=1, le=365, description="Lookback days"),
+):
+    """gf_* 日频历史序列（回测 asof 语义）。
+
+    响应 {ts, meta: {source, days}, series: {SYM: {factor_key: [[ts_ms, val], ...]}}}。
+    fail-silent：ml-service 未配置/无历史 → 空 series + meta.warning。
+    """
+    try:
+        from app.ml_client import fetch_graph_history
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        data = await asyncio.to_thread(fetch_graph_history, sym_list or None, days)
+        meta: dict = {"source": "ml-service", "days": days}
+        if not data:
+            meta["warning"] = "graph history unavailable"
+            return {"ts": int(time.time() * 1000), "meta": meta, "series": {}}
+        return {"ts": int(time.time() * 1000), "meta": meta,
+                "series": data.get("series", {})}
+    except Exception as e:
+        logger.error(f"/factors/graph/history failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Crypto Derivatives（GX-3.5.3 资金费率数据面，db_cache 读取） ──
 
 @app.get("/factors/crypto-derivatives")

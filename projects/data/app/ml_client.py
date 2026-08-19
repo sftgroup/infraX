@@ -271,6 +271,36 @@ def fetch_graph_edges(symbols: list[str] | None = None, limit: int = 300) -> dic
         return None
 
 
+def fetch_graph_history(symbols: list[str] | None = None, days: int = 90) -> dict | None:
+    """拉取 ml-service gf_* 日频历史（/ml/graph/history，REQ-G2.5 回测数据面）。
+
+    返回 {"days", "series": {SYM: {factor_key: [[ts_ms, val], ...]}}} 或 None
+    （fail-silent：ml-service 未配置 / 无历史）。历史不足时 series 为空 dict。
+    """
+    base = (ML_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return None
+    try:
+        params: dict = {"days": days}
+        if symbols:
+            params["symbols"] = ",".join(symbols)
+        resp = requests.get(f"{base}/ml/graph/history",
+                            params=params, headers=_headers(), timeout=30)
+        if resp.status_code != 200:
+            logger.debug("ml-service /ml/graph/history → %s", resp.status_code)
+            return None
+        data = (resp.json() or {}).get("data")
+        if not isinstance(data, dict):
+            return None
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ml-service /ml/graph/history request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ml-service /ml/graph/history parse failed: %s", exc)
+        return None
+
+
 def post_sentiment(articles: list[dict]) -> dict | None:
     """POST 新闻文章到 ml-service /ml/sentiment，返回聚合情绪统计（或 None）。"""
     base = (ML_SERVICE_URL or "").strip().rstrip("/")
@@ -313,6 +343,9 @@ def _fetch_p2(kind: str) -> list[dict] | None:
 
     端点返回 data: [{symbol, point_forecast, quantiles, direction, prob_up,
     uncertainty, ...}]；列表为空或解析失败返回 None（fail-silent）。
+    兼容 2026-08-08 起的统一 dict 形态 {generated_at, n_symbols, model,
+    avg_<score>, symbols: [...]}（P2 响应由裸数组收敛为 dict+聚合，见
+    ml-service a7cf6bc；此前契约未同步导致 P2MlCollector 自 08-08 断更）。
     """
     base = (ML_SERVICE_URL or "").strip().rstrip("/")
     path = _P2_ENDPOINTS.get(kind)
@@ -324,6 +357,8 @@ def _fetch_p2(kind: str) -> list[dict] | None:
             logger.debug("ml-service %s → %s", path, resp.status_code)
             return None
         data = (resp.json() or {}).get("data")
+        if isinstance(data, dict):
+            data = data.get("symbols")
         if not isinstance(data, list) or not data:
             return None
         return data
@@ -449,4 +484,56 @@ def fetch_rag_graph_catalog() -> list | None:
         return None
     except Exception as exc:
         logger.debug("ragservicer /factors/catalog parse failed: %s", exc)
+        return None
+
+
+# ── RAGservicer 只读检索透传（REQ-G2，AIHunter 快速分析知识增强）──
+# B 端统一走 data-service /rag/retrieve（dx_* key）；data-service 内部以
+# ragservicer 服务 key 逐 namespace POST /api/v1/namespaces/{ns}/retrieve，
+# B 端无需直接持有 ragservicer key（单入口单 key 原则）。
+_RAG_RETRIEVE_ALLOW_NAMESPACES = ("market", "onchain", "default")
+
+
+def fetch_rag_retrieve(query: str, namespaces: list[str] | None = None,
+                       top_k: int = 10, mode: str = "mix") -> dict | None:
+    """只读 RAG 检索（默认 market+onchain），返回 {results: [{namespace, context, ...}]}。
+
+    fail-silent：ragservicer 未配置 / namespace 不允许 / 全部请求失败 → None。
+    """
+    base = (RAGSERVICER_BASE_URL or "").strip().rstrip("/")
+    if not base or not RAGSERVICER_SERVICE_KEY or not query:
+        return None
+    ns_list = namespaces or list(_RAG_RETRIEVE_ALLOW_NAMESPACES)
+    ns_list = [n for n in ns_list if n in _RAG_RETRIEVE_ALLOW_NAMESPACES] or list(_RAG_RETRIEVE_ALLOW_NAMESPACES)
+    try:
+        headers = {"Authorization": f"Bearer {RAGSERVICER_SERVICE_KEY}"}
+        results: list[dict] = []
+        for ns in ns_list:
+            try:
+                resp = requests.post(
+                    f"{base}/api/v1/namespaces/{ns}/retrieve",
+                    json={"query": query, "top_k": top_k, "mode": mode},
+                    headers=headers, timeout=30,
+                )
+                if resp.status_code != 200:
+                    logger.debug("ragservicer retrieve %s → %s", ns, resp.status_code)
+                    continue
+                payload = (resp.json() or {}).get("data")
+                if not isinstance(payload, dict):
+                    continue
+                results.append({
+                    "namespace": payload.get("namespace", ns),
+                    "context": payload.get("context"),
+                    "top_k": payload.get("top_k", top_k),
+                    "mode": payload.get("mode", mode),
+                })
+            except requests.RequestException as exc:
+                logger.debug("ragservicer retrieve %s request failed: %s", ns, exc)
+            except Exception as exc:
+                logger.debug("ragservicer retrieve %s parse failed: %s", ns, exc)
+        if not results:
+            return None
+        return {"namespaces": [r["namespace"] for r in results], "results": results}
+    except Exception as exc:
+        logger.debug("ragservicer retrieve failed: %s", exc)
         return None

@@ -686,6 +686,45 @@ def graph_edges_endpoint(
         return {"code": 0, "message": "ok", "data": empty}
 
 
+# REQ-G2.5：gf_* 历史序列（回测数据面）
+# 契约：GET /ml/graph/history?symbols=BTC,ETH&days=90
+#   → {"code":0,"data":{"days":90,"series":{SYM: {factor_key: [[ts_ms, val], ...]}}}}
+# 数据源 graph_history.db：每次图因子计算成功后按**自然日 0 时**归一化落一条
+# （ts=自然日 ms，幂等覆盖），2026-08-18 起累积。历史不足 → 空 series（fail-silent）。
+
+@app.get("/ml/graph/history")
+def graph_history_endpoint(
+    symbols: str = Query("", description="Comma-separated symbols; empty = all"),
+    days: int = Query(90, ge=1, le=365, description="Lookback days"),
+):
+    """gf_* 日频历史序列（回测 asof 语义：每自然日一条）。"""
+    empty = {"days": days, "series": {}}
+    try:
+        from app.factorengine.graph_history import load_graph_history
+        from app.graph_engine import _norm_symbol
+        df = load_graph_history(days=days)
+        if df is None or df.empty:
+            return {"code": 0, "message": "ok", "data": empty}
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        series: dict[str, dict] = {}
+        for row in df.itertuples(index=False):
+            sym = str(row.symbol)
+            if sym_list and sym not in sym_list and _norm_symbol(sym) not in sym_list:
+                continue
+            factor_key = str(row.factor_key)
+            value = row.value
+            ts = int(row.ts)
+            d = series.setdefault(sym, {}).setdefault(factor_key, [])
+            d.append([ts, value])
+        if not series:
+            return {"code": 0, "message": "ok", "data": empty}
+        return {"code": 0, "message": "ok",
+                "data": {"days": days, "series": series}}
+    except Exception as exc:
+        logger.warning("graph history failed: %s", exc)
+        return {"code": 0, "message": "ok", "data": empty}
+
+
 # ── 宏观特征（FRED 历史趋势 + DXY/VIX/US10Y） ─────────────
 
 @app.get("/ml/macro_features")
