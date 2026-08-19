@@ -6,6 +6,7 @@ import { pool } from '../models/database';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { paymentsApi, PaymentsError } from '../services/paymentsClient';
+import { verifyTotp } from '../services/totpService';
 
 const router = Router();
 
@@ -203,7 +204,7 @@ router.post(
   '/subscribe',
   authenticate,
   asyncHandler(async (req, res) => {
-    const { planId, rail } = req.body ?? {};
+    const { planId, rail, totpCode } = req.body ?? {};
     if (!planId) return res.status(400).json(apiResponse(null, 'Missing planId', 1001));
 
     const plan = PLANS[planId];
@@ -211,6 +212,9 @@ router.post(
 
     const userId = req.user!.id;
     const walletAddress = req.user!.walletAddress || '';
+
+    // W-15: 购买强校验（用户启用 TOTP 后必须通过）
+    await verifyTotp(userId, totpCode);
 
     // free：免费试用直通（T-6：仅 free 允许免支付激活）
     if (plan.price === 0) {

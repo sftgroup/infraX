@@ -3,6 +3,7 @@ import { asyncHandler, apiResponse } from '../utils/helpers';
 import { authenticate } from '../middleware/auth';
 import { pool } from '../models/database';
 import crypto from 'crypto';
+import { verifyTotp } from '../services/totpService';
 
 const router = Router();
 
@@ -47,11 +48,14 @@ router.get('/plans', asyncHandler(async (_req, res) => {
 
 // ─── Subscribe (wallet signature required — MQ-10 补充 D 修复) ───
 router.post('/subscribe', authenticate, asyncHandler(async (req, res) => {
-  const { planId } = req.body;
+  const { planId, totpCode } = req.body;
   if (!planId) return res.status(400).json(apiResponse(null, 'Missing planId', 1001));
   const plan = DATA_PLANS.find(p => p.id === planId);
   if (!plan) return res.status(400).json(apiResponse(null, 'Invalid plan', 1001));
   const walletAddr = req.user!.walletAddress;
+
+  // W-15: 购买强校验（用户启用 TOTP 后必须通过）
+  await verifyTotp(req.user!.id, totpCode);
 
   // Upsert user
   let userResult = await pool.query('SELECT id FROM users WHERE wallet_address = $1 LIMIT 1', [walletAddr]);
