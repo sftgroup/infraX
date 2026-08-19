@@ -322,6 +322,7 @@ router.post(
  */
 router.get(
   '/config',
+  authenticate,
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { listConfigs } = await import('../services/systemConfigService');
@@ -332,6 +333,7 @@ router.get(
 
 router.put(
   '/config/:key',
+  authenticate,
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { key } = req.params;
