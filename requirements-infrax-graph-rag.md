@@ -3,7 +3,7 @@
 - 日期：2026-08-19
 - 接收方：B 端数据服务（infraX：data-service 43.163.105.172 / ragservicer 43.156.78.59）
 - 来源：AIHunter 图谱展示界面 + 因子增强规划（复用 B 端 GF-1~GF-6 / GX-1~GX-3 已落地能力）
-- 状态：**2026-08-19 B 端 6 项全部回复并处理完毕，AIHunter 公网实测全部通过** ✅
+- 状态：**2026-08-19 B 端 6 项全部回复并处理完毕，AIHunter 公网实测全部通过** ✅ ｜ REQ-G8 双语支持待 B 端确认 ⏳
 
 ---
 
@@ -123,6 +123,7 @@ GET /factors/graph/history?symbols=&days=
 | REQ-G5 | ml 日更链路恢复（契约+torch 修复） | 高 | ✅ 已修复 |
 | REQ-G6 | graph 因子历史序列（/factors/graph/history） | 中 | ✅ 已新增 |
 | REQ-G7 | gf_* 有效期/频率确认（30min/日频） | 中 | ✅ 已确认 |
+| REQ-G8 | RAG 知识库 / 图谱实体双语支持（lang 参数或 name_en） | 中 | ⏳ 待 B 端确认 |
 
 ---
 
