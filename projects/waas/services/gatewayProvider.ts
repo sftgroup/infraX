@@ -24,6 +24,24 @@ const CHAIN_IDS: Record<string, number> = {
   oxa: 19505,
 };
 
+/** W-2/W-11: 链名 → chainId（未知链抛错） */
+export function chainToChainId(chain: string): number {
+  const id = CHAIN_IDS[chain.toLowerCase()];
+  if (!id) {
+    throw new Error(`Unsupported chain: ${chain}`);
+  }
+  return id;
+}
+
+/** W-11: chainId → 链名（sweep/提现执行时 GatewayProvider 需要链名） */
+export function chainNameFromId(chainId: string | number): string {
+  const id = String(chainId);
+  for (const [name, cid] of Object.entries(CHAIN_IDS)) {
+    if (String(cid) === id) return name;
+  }
+  throw new Error(`Unsupported chainId: ${chainId}`);
+}
+
 export class GatewayProvider extends ethers.JsonRpcProvider {
   private readonly chain: string;
   private readonly gateway: string;

@@ -27,6 +27,8 @@ interface Tenant {
   sweep_threshold: number;
   review_mode: 'manual' | 'auto';
   created_at: Date;
+  planId?: string;
+  planName?: string;
 }
 
 /**
@@ -212,7 +214,7 @@ export async function getTenantByWallet(walletAddress: string): Promise<Tenant |
     activated: true,
     createdAt: t.created_at,
     hotWalletAddress: t.hot_wallet_address
-  };
+  } as any;
 }
 
 /**
@@ -262,7 +264,7 @@ export async function activateTenant(walletAddress: string, planId: string = 'fr
     name,
     apiKey,
     planId,
-    planName: planId === 'pro' ? 'Pro' : planId === 'enterprise' ? 'Enterprise' : 'Starter',
+    planName: (planId as string) === 'pro' ? 'Pro' : (planId as string) === 'enterprise' ? 'Enterprise' : 'Starter',
     status: 'active',
     activated: true,
     createdAt: new Date().toISOString(),

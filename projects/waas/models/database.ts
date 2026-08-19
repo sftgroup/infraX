@@ -273,6 +273,65 @@ export async function initDatabase(): Promise<void> {
     await client.query(`ALTER TABLE saas_withdrawals ADD COLUMN IF NOT EXISTS fee DECIMAL(36,18) DEFAULT 0;`);
     await client.query(`ALTER TABLE saas_withdrawals ADD COLUMN IF NOT EXISTS actual_amount DECIMAL(36,18) DEFAULT 0;`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS hd_wallet_index INT;`);
+    // ── W-1 / W-3 / W-4 / W-8：transactions 扩展（幂等键 / 广播重试 / 错误信息 / 状态枚举）──
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(100);`);
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0;`);
+    await client.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS error_message TEXT;`);
+    await client.query(`ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_status_check;`);
+    await client.query(`
+      ALTER TABLE transactions ADD CONSTRAINT transactions_status_check
+      CHECK (status IN ('pending', 'confirmed', 'failed', 'blocked', 'pending_confirmation',
+                        'pending_approval', 'rejected', 'retrying', 'gas_blocked'))
+    `);
+    // W-1：充值幂等兜底（先清理重复，再建部分唯一索引；空/无 hash 行不受约束）
+    await client.query(`
+      DELETE FROM transactions a USING transactions b
+      WHERE a.wallet_id = b.wallet_id AND a.tx_hash = b.tx_hash
+        AND a.tx_hash IS NOT NULL AND a.tx_hash <> '' AND a.id > b.id
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_wallet_txhash
+      ON transactions(wallet_id, tx_hash) WHERE tx_hash IS NOT NULL AND tx_hash <> ''
+    `);
+    // W-8：客户端幂等键唯一
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_idempotency
+      ON transactions(idempotency_key) WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''
+    `);
+    // W-2：待确认充值表（确认数门槛两段式入账）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS deposit_pending (
+        id UUID PRIMARY KEY,
+        chain VARCHAR(20) NOT NULL,
+        tx_hash VARCHAR(66) NOT NULL,
+        wallet_id UUID NOT NULL REFERENCES custodial_wallets(id) ON DELETE CASCADE,
+        from_address VARCHAR(42) NOT NULL,
+        to_address VARCHAR(42) NOT NULL,
+        amount DECIMAL(36, 18) NOT NULL,
+        token_address VARCHAR(42) DEFAULT '*',
+        block_number BIGINT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(chain, tx_hash)
+      );
+    `);
+    // W-12：sweep 批量聚合审计
+    await client.query(`ALTER TABLE sweep_records ADD COLUMN IF NOT EXISTS batch_id UUID;`);
+    await client.query(`ALTER TABLE sweep_records ADD COLUMN IF NOT EXISTS error_note TEXT;`);
+    // W-11：sweep 链上执行需要链名
+    await client.query(`ALTER TABLE sweep_records ADD COLUMN IF NOT EXISTS chain VARCHAR(20);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sweep_records_batch_id ON sweep_records(batch_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sweep_records_status ON sweep_records(status);`);
+    // W-14：运行时 SystemConfig（DB 化配置，仅白名单 key 可写）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS system_config (
+        key VARCHAR(100) PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // W-15：TOTP 2FA（RFC 6238，node crypto 自实现，无额外依赖）
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(100);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false;`);
     // MQ-12: subscriptions 表自举（历史缺口：此前从未由 waas 建表，B-11-1 仅验 plans 静态数据）
     await client.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
     await client.query(`

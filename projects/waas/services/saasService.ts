@@ -4,7 +4,9 @@ import crypto from 'crypto';
 import { ethers } from 'ethers';
 import { pool } from '../models/database';
 import { logger } from '../utils/logger';
-import { GatewayProvider } from './gatewayProvider';
+import { config } from '../config';
+import { GatewayProvider, chainToChainId, chainNameFromId } from './gatewayProvider';
+import { getMasterWalletAddress } from './hdWalletService';
 // ═══════════════════════════════════════════════
 // Callback helpers
 // ═══════════════════════════════════════════════
@@ -74,7 +76,6 @@ async function sendTenantCallback(tenantId: string, withdrawalId: string, data: 
 }
 
 import { Errors } from '../utils/errors';
-import { config } from '../config';
 import { getTenant } from './tenantService';
 import { scanBlock, processDeposits } from './scannerService';
 import { deriveAddressForChain, getHDMnemonic, getPrivateKey } from './hdWalletService';
@@ -259,6 +260,11 @@ export async function listAddresses(params: {
 /**
  * Execute auto-sweep: move funds from user addresses to tenant's sweep address (L-020)
  */
+/**
+ * 归集租户活跃地址的原生余额到 sweep_address。
+ * W-11: 改为「链上真实余额」判定（不再依赖 DB 账本），并预留 gas reserve；
+ * W-12: 每次运行生成 batch_id，同批 sweep_records 可聚合审计。
+ */
 export async function sweepTenantFunds(tenantId: string): Promise<{
   swept: number;
   totalAmount: string;
@@ -269,50 +275,180 @@ export async function sweepTenantFunds(tenantId: string): Promise<{
     throw Errors.paramError('Tenant sweep not configured (missing sweep_address or sweep_threshold)');
   }
 
-  // Find all addresses with balance above threshold
-  const result = await pool.query(
-    `SELECT a.id, a.address, a.chain,
-            COALESCE(SUM(t.amount) FILTER (WHERE t.status = 'confirmed' AND t.from_address != a.address), 0) -
-            COALESCE(SUM(t.amount) FILTER (WHERE t.status = 'confirmed' AND t.from_address = a.address), 0)
-            AS net_balance
-     FROM address_pool a
-     LEFT JOIN transactions t ON t.to_address = a.address OR t.from_address = a.address
-     WHERE a.tenant_id = $1 AND a.status = 'active'
-     GROUP BY a.id
-     HAVING COALESCE(SUM(t.amount) FILTER (WHERE t.status = 'confirmed' AND t.from_address != a.address), 0) -
-            COALESCE(SUM(t.amount) FILTER (WHERE t.status = 'confirmed' AND t.from_address = a.address), 0) >= $2`,
-    [tenantId, tenant.sweep_threshold]
+  const batchId = uuidv4(); // W-12
+  const addrs = await pool.query(
+    'SELECT id, address, chain FROM address_pool WHERE tenant_id = $1 AND status = $2',
+    [tenantId, 'active']
   );
-
-  if (result.rows.length === 0) {
-    return { swept: 0, totalAmount: '0' };
-  }
 
   let totalSwept = 0;
   let totalAmount = 0;
 
-  for (const row of result.rows) {
-    const sweepId = uuidv4();
-    const netBalance = parseFloat(row.net_balance);
+  for (const row of addrs.rows) {
+    // 链上真实余额（原生币，来源权威）
+    let chainBalance = 0;
+    try {
+      const provider = new GatewayProvider(row.chain);
+      chainBalance = parseFloat(ethers.formatEther(await provider.getBalance(row.address)));
+    } catch (err: any) {
+      logger.warn('Sweep: chain balance lookup failed, skipping', { address: row.address, error: err.message });
+      continue;
+    }
+
+    if (chainBalance < Number(tenant.sweep_threshold)) {
+      continue; // dust 或低于阈值
+    }
+
+    // 原生转账预留 gas（21000 gas × 实时 gasPrice + 配置兜底）
+    let reserve = config.sweep.gasReserve;
+    try {
+      const provider = new GatewayProvider(row.chain);
+      const fee = await provider.getFeeData();
+      if (fee?.gasPrice) reserve += parseFloat(ethers.formatEther(fee.gasPrice)) * 21000;
+    } catch { /* 保留兜底 reserve */ }
+
+    const amount = chainBalance - reserve;
+    if (amount <= 0) {
+      logger.debug('Sweep: balance below gas reserve, skipping', { address: row.address, chainBalance });
+      continue;
+    }
 
     await pool.query(
-      `INSERT INTO sweep_records (id, tenant_id, from_address, to_address, token, amount, status)
-       VALUES ($1, $2, $3, $4, '*', $5, 'pending')`,
-      [sweepId, tenantId, row.address, tenant.sweep_address, netBalance]
+      `INSERT INTO sweep_records (id, tenant_id, batch_id, chain, from_address, to_address, token, amount, status)
+       VALUES ($1, $2, $3, $4, $5, $6, '*', $7, 'pending')`,
+      [uuidv4(), tenantId, batchId, row.chain, row.address, tenant.sweep_address, amount.toFixed(8)]
     );
 
     logger.info('Sweep queued', {
       tenantId,
+      batchId,
       from: row.address,
       to: tenant.sweep_address,
-      amount: netBalance,
+      amount: amount.toFixed(8),
+      chain: row.chain,
     });
 
     totalSwept++;
-    totalAmount += netBalance;
+    totalAmount += amount;
   }
 
   return { swept: totalSwept, totalAmount: totalAmount.toFixed(6) };
+}
+
+/**
+ * W-11: sweep 执行器——处理 pending sweep_records（原生）：
+ * 取 address_pool 私钥（HD 派生解密）→ 链上广播 → 确认后置 confirmed。
+ * 无签名密钥 / 链上失败 → failed + error_note。返回执行成功笔数。
+ */
+export async function processPendingSweeps(limit = 10): Promise<number> {
+  if (config.dryRun) return 0;
+
+  const pending = await pool.query(
+    `SELECT * FROM sweep_records
+     WHERE status = 'pending' AND tx_hash IS NULL AND token = '*'
+     ORDER BY created_at ASC LIMIT $1`,
+    [limit]
+  );
+  if (pending.rows.length === 0) return 0;
+
+  let executed = 0;
+  for (const rec of pending.rows) {
+    const chain = rec.chain || 'sepolia';
+    try {
+      const provider = new GatewayProvider(chain);
+
+      // 取 from 地址签名密钥（HD 派生地址优先；兜底 gas pool key）
+      const addrRow = await pool.query(
+        'SELECT encrypted_key FROM address_pool WHERE address = $1',
+        [rec.from_address]
+      );
+      let signer: ethers.Wallet;
+      if (addrRow.rows[0]?.encrypted_key) {
+        const { decryptPrivateKey } = await import('./encryptionService');
+        signer = new ethers.Wallet(decryptPrivateKey(addrRow.rows[0].encrypted_key), provider);
+      } else if (config.gasPool.privateKey) {
+        signer = new ethers.Wallet(config.gasPool.privateKey, provider);
+      } else {
+        await pool.query(
+          `UPDATE sweep_records SET status = 'failed', error_note = $1 WHERE id = $2`,
+          ['No signer key available for source address', rec.id]
+        );
+        logger.error('Sweep skipped: no signer key', { id: rec.id, from: rec.from_address });
+        continue;
+      }
+
+      const tx = await signer.sendTransaction({
+        to: rec.to_address,
+        value: ethers.parseEther(rec.amount),
+        gasLimit: 21000,
+      });
+      await tx.wait();
+      await pool.query(
+        `UPDATE sweep_records SET status = 'confirmed', tx_hash = $1, error_note = NULL, updated_at = NOW() WHERE id = $2`,
+        [tx.hash, rec.id]
+      );
+      executed++;
+      logger.info('Sweep executed', {
+        id: rec.id,
+        from: rec.from_address,
+        to: rec.to_address,
+        amount: rec.amount,
+        chain,
+        txHash: tx.hash,
+      });
+    } catch (err: any) {
+      await pool.query(
+        `UPDATE sweep_records SET status = 'failed', error_note = $1, updated_at = NOW() WHERE id = $2`,
+        [`Chain error: ${err.message || err}`, rec.id]
+      );
+      logger.error('Sweep execution failed', { id: rec.id, error: err.message });
+    }
+  }
+  return executed;
+}
+
+/**
+ * W-16: 冷热分离——热钱包地址原生余额超过阈值时，自动排期归集到冷钱包
+ * （master wallet；未配置则回落到租户 sweep_address）。返回新建待执行笔数。
+ */
+export async function ensureColdSweep(): Promise<number> {
+  if (config.dryRun) return 0;
+  const threshold = config.hotWallet.coldSweepThreshold;
+  if (threshold <= 0) return 0;
+
+  const addrs = await pool.query(
+    `SELECT a.tenant_id, a.address, a.chain, t.sweep_address
+     FROM address_pool a JOIN tenants t ON t.id = a.tenant_id
+     WHERE a.status = 'active'`
+  );
+
+  let queued = 0;
+  for (const row of addrs.rows) {
+    try {
+      const provider = new GatewayProvider(row.chain);
+      const bal = parseFloat(ethers.formatEther(await provider.getBalance(row.address)));
+      if (bal <= threshold) continue;
+
+      const cold = getMasterWalletAddress(String(chainToChainId(row.chain))) || row.sweep_address;
+      if (!cold) continue;
+
+      const fee = await provider.getFeeData();
+      const reserve = (fee?.gasPrice ? parseFloat(ethers.formatEther(fee.gasPrice)) * 21000 : 0) + config.sweep.gasReserve;
+      const amount = bal - reserve;
+      if (amount <= 0) continue;
+
+      await pool.query(
+        `INSERT INTO sweep_records (id, tenant_id, batch_id, chain, from_address, to_address, token, amount, status)
+         VALUES ($1, $2, $3, $4, $5, $6, '*', $7, 'pending')`,
+        [uuidv4(), row.tenant_id, uuidv4(), row.chain, row.address, cold, amount.toFixed(8)]
+      );
+      queued++;
+      logger.info('Cold sweep queued', { from: row.address, to: cold, amount: amount.toFixed(8), chain: row.chain });
+    } catch (err: any) {
+      logger.warn('Cold sweep check failed', { address: row.address, error: err.message });
+    }
+  }
+  return queued;
 }
 
 /**
@@ -496,7 +632,7 @@ export async function approveWithdrawal(tenantId: string, withdrawalId: string, 
 
   // Update DB with final status
   await pool.query(
-    `UPDATE saas_withdrawals SET status = $1, tx_hash = $2, updated_at = NOW() WHERE id = $1$3`,
+    `UPDATE saas_withdrawals SET status = $1, tx_hash = $2, updated_at = NOW() WHERE id = $3`,
     [finalStatus, txHash, withdrawalId]
   );
 

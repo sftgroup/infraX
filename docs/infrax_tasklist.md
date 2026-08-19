@@ -2077,30 +2077,30 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| W-1 | **充值入账原子化 + 唯一约束兜底**：`processDeposits`（scannerService.ts）余额 UPDATE / 入账 INSERT / webhook INSERT 三独立语句改单事务；`transactions` 加 `UNIQUE(wallet_id, tx_hash)` + `INSERT … ON CONFLICT DO NOTHING`（当前仅先查后插，并发扫描窗口可重复入账；arb §4.1 `Deposit.txHash unique`） | 🔲 | P0 |
-| W-2 | **确认数门槛**：扫描到即入账，`blockScanner.confirmations` 未用、`minConfirmations` 配置未接入 → 按链两段式 `pending_confirmations → confirmed`（arb §4.1 确认数≥阈值） | 🔲 | P0 |
-| W-3 | **广播重试与失败回退**：`sendTransaction` 广播失败生产环境直接 `status='failed'` → 引入重试计次（>3 次 → failed + 资金回退状态，arb §4.2） | 🔲 | P0 |
-| W-4 | **gas 赞助熔断**：恒 `gas_sponsor=true` 无熔断 → 广播前检查 gas pool 余额，低于告警阈值暂停自动广播并告警（arb §3.2 `gas_alert_bnb`） | 🔲 | P0 |
+| W-1 | **充值入账原子化 + 唯一约束兜底**：`processDeposits`（scannerService.ts）余额 UPDATE / 入账 INSERT / webhook INSERT 三独立语句改单事务；`transactions` 加 `UNIQUE(wallet_id, tx_hash)` + `INSERT … ON CONFLICT DO NOTHING`（当前仅先查后插，并发扫描窗口可重复入账；arb §4.1 `Deposit.txHash unique`） | ✅ | P0 |
+| W-2 | **确认数门槛**：扫描到即入账，`blockScanner.confirmations` 未用、`minConfirmations` 配置未接入 → 按链两段式 `pending_confirmations → confirmed`（arb §4.1 确认数≥阈值） | ✅ | P0 |
+| W-3 | **广播重试与失败回退**：`sendTransaction` 广播失败生产环境直接 `status='failed'` → 引入重试计次（>3 次 → failed + 资金回退状态，arb §4.2） | ✅ | P0 |
+| W-4 | **gas 赞助熔断**：恒 `gas_sponsor=true` 无熔断 → 广播前检查 gas pool 余额，低于告警阈值暂停自动广播并告警（arb §3.2 `gas_alert_bnb`） | ✅ | P0 |
 
 **9.9.2 P1 风控准确性**
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| W-5 | **风控限额改 USD 口径**：`checkRisk` 用 `parseFloat(amount)`（token 数量），而 `convertToUsd` 在风控之后才执行，非稳定币限额失真 → 先换算 USD 再判限额（arb 全按 USDT 面值） | 🔲 | P1 |
-| W-6 | **getUserLimits DB 覆盖补全/移除**：riskService L196-206 两处 `// Override` 空实现，返回恒默认值，前端展示与实际校验不一致 | 🔲 | P1 |
-| W-7 | **daily_limit 口径统一**：当前仅统计 `confirmed/pending` → 对齐 arb"排除 failed/canceled"、纳入 pending_confirmation/pending_approval | 🔲 | P1 |
+| W-5 | **风控限额改 USD 口径**：`checkRisk` 用 `parseFloat(amount)`（token 数量），而 `convertToUsd` 在风控之后才执行，非稳定币限额失真 → 先换算 USD 再判限额（arb 全按 USDT 面值） | ✅ | P1 |
+| W-6 | **getUserLimits DB 覆盖补全/移除**：riskService L196-206 两处 `// Override` 空实现，返回恒默认值，前端展示与实际校验不一致 | ✅ | P1 |
+| W-7 | **daily_limit 口径统一**：当前仅统计 `confirmed/pending` → 对齐 arb"排除 failed/canceled"、纳入 pending_confirmation/pending_approval | ✅ | P1 |
 
 **9.9.3 P2 健壮性/可运维**
 
 | 编号 | 任务 | 现状 | 优先级 |
 |---|---|---|---|
-| W-8 | **客户端幂等键**：`sendTransaction` 无 requestId，双击/超时重试可重复广播 → 幂等键 + `UNIQUE(idempotency_key)` | 🔲 | P2 |
-| W-9 | **分布式任务化**：index.ts `setInterval` 扫描 / eventRoutes 心跳 / webhook 重试均进程内，多实例会重复扫描/重复 sweep → Redis 锁或 BullMQ（arb §6） | 🔲 | P2 |
-| W-10 | **DRY_RUN 开关**：当前仅 `NODE_ENV=development` 分支 mock txHash → 显式 env 开关 + 模拟广播落审计表（arb §2/§5） | 🔲 | P2 |
-| W-11 | **sweep 链上对账 + 执行闭环**：`sweepTenantFunds` 基于 DB 账本 net_balance 且仅建 pending 记录，无链上广播/确认 → 改链上真实余额 + dust/gas 阈值 + 执行器（arb §4.3 sweepAll） | 🔲 | P2 |
-| W-12 | **sweep_records 补 batchId**：聚合审计归属（arb §6 自提问题同样适用） | 🔲 | P2 |
-| W-13 | **私钥分层**：WALLET_ENCRYPTION_KEY / HD seed 缺省时静默降级 dev（仅 warn）→ 生产 fail-closed；KMS/HSM + 密钥轮换（arb §3.1/§5） | 🔲 | P2 |
-| W-14 | **运行时 SystemConfig**：当前配置全 env、调参需重发 → DB 化配置白名单 + maskSecret 回显（arb §3） | 🔲 | P2 |
-| W-15 | **提现/购买 2FA**：当前仅 paymentPassword → 增加 TOTP（arb §5 强校验） | 🔲 | P2 |
-| W-16 | **冷热分离动态额度**：热钱包只留当日预估流水，超出自动归冷（arb §6） | 🔲 | P2 |
+| W-8 | **客户端幂等键**：`sendTransaction` 无 requestId，双击/超时重试可重复广播 → 幂等键 + `UNIQUE(idempotency_key)` | ✅ | P2 |
+| W-9 | **分布式任务化**：index.ts `setInterval` 扫描 / eventRoutes 心跳 / webhook 重试均进程内，多实例会重复扫描/重复 sweep → Redis 锁或 BullMQ（arb §6）；以 PG advisory lock（`pg_try_advisory_lock`，零依赖）实现 `withLock` 接入扫描/重试/归集调度 | ✅ | P2 |
+| W-10 | **DRY_RUN 开关**：当前仅 `NODE_ENV=development` 分支 mock txHash → 显式 env 开关 + 模拟广播落审计表（arb §2/§5） | ✅ | P2 |
+| W-11 | **sweep 链上对账 + 执行闭环**：`sweepTenantFunds` 基于 DB 账本 net_balance 且仅建 pending 记录，无链上广播/确认 → 改链上真实余额 + dust/gas 阈值 + 执行器（arb §4.3 sweepAll） | ✅ | P2 |
+| W-12 | **sweep_records 补 batchId**：聚合审计归属（arb §6 自提问题同样适用） | ✅ | P2 |
+| W-13 | **私钥分层**：WALLET_ENCRYPTION_KEY / HD seed 缺省时静默降级 dev（仅 warn）→ 生产 fail-closed（已完成）；KMS/HSM + 密钥轮换（arb §3.1/§5，远期增强） | ⚠️ | P2 |
+| W-14 | **运行时 SystemConfig**：当前配置全 env、调参需重发 → DB 化配置白名单 + maskSecret 回显（arb §3） | ✅ | P2 |
+| W-15 | **提现/购买 2FA**：当前仅 paymentPassword → 增加 TOTP（arb §5 强校验） | ✅ | P2 |
+| W-16 | **冷热分离动态额度**：热钱包只留当日预估流水，超出自动归冷（arb §6） | ✅ | P2 |
 

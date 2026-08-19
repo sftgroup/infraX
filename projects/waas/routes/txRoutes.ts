@@ -27,7 +27,7 @@ router.post(
   '/send',
   authenticate,
   asyncHandler(async (req, res) => {
-    const { walletId, toAddress, amount, chain, paymentPassword, tokenAddress } = req.body;
+    const { walletId, toAddress, amount, chain, paymentPassword, tokenAddress, idempotencyKey, totpCode } = req.body;
     const userId = req.user!.id;
 
     // Input validation
@@ -44,6 +44,13 @@ router.post(
     if (!isValidEthereumAddress(toAddress)) {
       return res.status(400).json(apiResponse(null, 'Invalid ethereum address format', 1006));
     }
+    // W-8: 幂等键长度校验
+    if (idempotencyKey && (typeof idempotencyKey !== 'string' || idempotencyKey.length > 100)) {
+      return res.status(400).json(apiResponse(null, 'idempotencyKey must be a string ≤ 100 chars', 1001));
+    }
+    // W-15: TOTP 2FA（已启用则必须携带有效验证码）
+    const { verifyTotp } = await import('../services/totpService');
+    await verifyTotp(userId, totpCode);
 
     const result = await txService.sendTransaction({
       userId,
@@ -53,6 +60,7 @@ router.post(
       tokenAddress: tokenAddress || '*',
       chain,
       paymentPassword,
+      idempotencyKey,
     });
 
     res.json(apiResponse(result, 'Transaction processed'));
@@ -207,12 +215,15 @@ router.post(
   authenticate,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { paymentPassword } = req.body;
+    const { paymentPassword, totpCode } = req.body;
     const userId = req.user!.id;
 
     if (!paymentPassword) {
       return res.status(400).json(apiResponse(null, 'Missing paymentPassword', 1001));
     }
+    // W-15: TOTP 2FA 强校验
+    const { verifyTotp } = await import('../services/totpService');
+    await verifyTotp(userId, totpCode);
 
     const result = await txService.confirmTransaction(id, userId, paymentPassword);
     res.json(apiResponse(result, 'Transaction confirmed'));

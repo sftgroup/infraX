@@ -315,4 +315,34 @@ router.post(
   })
 );
 
+/**
+ * W-14: 运行时 SystemConfig（DB 化配置，白名单 + 脱敏）
+ * GET /api/v2/internal/config        — 全部白名单配置（敏感值脱敏）
+ * PUT /api/v2/internal/config/:key   — 写配置（仅白名单 key）
+ */
+router.get(
+  '/config',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { listConfigs } = await import('../services/systemConfigService');
+    const items = await listConfigs();
+    res.json(apiResponse({ items }, 'SystemConfig list'));
+  })
+);
+
+router.put(
+  '/config/:key',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { key } = req.params;
+    const { value } = req.body;
+    if (value === undefined) {
+      return res.status(400).json(apiResponse(null, 'Missing field: value', 1001));
+    }
+    const { setConfig } = await import('../services/systemConfigService');
+    await setConfig(key, value);
+    res.json(apiResponse(null, 'SystemConfig updated'));
+  })
+);
+
 export default router;

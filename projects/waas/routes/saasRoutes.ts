@@ -6,6 +6,7 @@ import { pool } from '../models/database';
 import { config } from '../config';
 import * as tenantService from '../services/tenantService';
 import * as saasService from '../services/saasService';
+import { verifyTotp } from '../services/totpService';
 
 /**
  * Extract wallet address from request (header, query param, or body).
@@ -253,11 +254,14 @@ router.post(
   authenticate,
   asyncHandler(async (req, res) => {
     const tenantId = await resolveTenantFromWallet(req);
-    const { externalUserId, toAddress, token, amount } = req.body;
+    const { externalUserId, toAddress, token, amount, totpCode } = req.body;
 
     if (!externalUserId || !toAddress || !amount) {
       return res.status(400).json(apiResponse(null, 'Missing required fields: externalUserId, toAddress, amount', 1001));
     }
+
+    // W-15: 提现强校验（用户启用 TOTP 后必须通过）
+    await verifyTotp(req.user!.id, totpCode);
 
     const result = await saasService.createWithdrawal({
       tenantId: tenantId,
@@ -362,6 +366,9 @@ router.post(
     if (withdrawal.rows.length === 0) {
       return res.status(404).json(apiResponse(null, 'Withdrawal not found', 1001));
     }
+
+    // W-15: 审批强校验（运营/租户启用 TOTP 后必须通过）
+    await verifyTotp(req.user!.id, (req.body as any)?.totpCode);
 
     const result = await saasService.approveWithdrawal(
       withdrawal.rows[0].tenant_id,

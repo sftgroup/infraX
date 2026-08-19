@@ -24,6 +24,8 @@ interface SendTxParams {
   tokenAddress?: string;
   chain: string;
   paymentPassword: string;
+  /** W-8: 客户端幂等键（重复提交返回既有结果，不重复广播） */
+  idempotencyKey?: string;
 }
 
 interface CWalletSendTxResponse {
@@ -41,6 +43,14 @@ interface CWalletGasEstimateResponse {
 /**
  * Send a transaction with risk check, strategy determination, and CWallet broadcast
  * (F-019: Gas sponsored mode)
+ *
+ * W-3: 广播失败 → status='retrying' + retry_count，由 worker（retryPendingBroadcasts）重试，
+ *      超过上限转 failed（arb §4.2 重试→失败+资金回退语义；本模型资金未在本地扣除，
+ *      记 failed 即等价回退）。
+ * W-4: gas 熔断——广播前检查 gas pool 余额，不足置 gas_blocked（arb §3.2）。
+ * W-5: 风控按 USD 口径（先 convertToUsd 再 checkRisk）。
+ * W-8: idempotencyKey 幂等返回。
+ * W-10: DRY_RUN 显式开关（模拟广播，落审计记录）。
  */
 export async function sendTransaction(params: SendTxParams): Promise<{
   txId: string;
@@ -49,7 +59,7 @@ export async function sendTransaction(params: SendTxParams): Promise<{
   gasSponsored: boolean;
   strategy: string;
 }> {
-  const { userId, walletId, toAddress, amount, tokenAddress = '*', chain, paymentPassword } = params;
+  const { userId, walletId, toAddress, amount, tokenAddress = '*', chain, paymentPassword, idempotencyKey } = params;
 
   // Begin DB transaction — ensures atomicity across wallet deduction + tx record insertion
   const client = await pool.connect();
@@ -70,8 +80,31 @@ export async function sendTransaction(params: SendTxParams): Promise<{
     const { verifyPaymentPassword } = await import('./authService');
     await verifyPaymentPassword(userId, paymentPassword);
 
-    // 3. Check risk rules (BE-05)
-    const riskCheck = await checkRisk(userId, parseFloat(amount), toAddress);
+    // W-8: 幂等键——重复请求直接返回既有结果
+    if (idempotencyKey && idempotencyKey.length > 0) {
+      const existing = await client.query(
+        'SELECT id, tx_hash, status, gas_sponsored, signature_strategy FROM transactions WHERE idempotency_key = $1',
+        [idempotencyKey]
+      );
+      if (existing.rows.length > 0) {
+        const e = existing.rows[0];
+        await client.query('COMMIT');
+        logger.info('Idempotent request hit, returning existing transaction', { txId: e.id, idempotencyKey });
+        return {
+          txId: e.id,
+          txHash: e.tx_hash,
+          status: e.status,
+          gasSponsored: e.gas_sponsored,
+          strategy: e.signature_strategy || 'auto',
+        };
+      }
+    }
+
+    // 3. W-5: 先折算 USD，再按 USD 判风控（顺序修正：原实现在风控之后才换算，非稳定币限额失真）
+    const amountUsd = await convertToUsd(tokenAddress, chain, parseFloat(amount));
+
+    // 4. Check risk rules (BE-05) — USD 口径
+    const riskCheck = await checkRisk(userId, amountUsd, toAddress, tokenAddress, chain);
     if (!riskCheck.allowed) {
       // Log blocked transaction within the transaction
       const txId = generateId();
@@ -86,14 +119,10 @@ export async function sendTransaction(params: SendTxParams): Promise<{
       throw Errors.riskBlocked(riskCheck.reason || 'Risk check failed');
     }
 
-    // 4. Determine signature strategy (BE-06)
-    // Convert token amount to approximate USD for risk assessment.
-    // Stablecoins (1:1): USDC, USDT, TUSDT, DAI, BUSD are treated at face value.
-    // Non-stablecoins: uses CWallet price API or falls back to conservative estimate.
-    const amountUsd = await convertToUsd(tokenAddress, chain, parseFloat(amount));
+    // 5. Determine signature strategy (BE-06)
     const strategy = determineStrategy(amountUsd);
 
-    // 5. Estimate gas
+    // 6. Estimate gas
     let gasEstimate: CWalletGasEstimateResponse;
     try {
       const resp = await axios.post(
@@ -120,65 +149,81 @@ export async function sendTransaction(params: SendTxParams): Promise<{
       throw Errors.internal('Gas estimation failed');
     }
 
-    // 6. For auto-sign (<100 USD), proceed with broadcast
+    // 7. For auto-sign (<100 USD), proceed with broadcast
     let txHash: string | null = null;
     let txStatus = 'pending';
     let gasSponsored = true;
+    let retryCount = 0;
+    let errorMessage: string | null = null;
 
     if (strategy.action === 'auto') {
-      try {
-        const resp = await axios.post(
-          `${config.cwallet.baseUrl}/send-tx`,
-          {
-            from: wallet.address,
-            to: toAddress,
-            amount,
-            token: tokenAddress,
-            chain,
-            gas_sponsor: true,
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': config.cwallet.apiKey,
+      // W-4: gas 熔断——余额不足暂停自动广播
+      if (!(await gasPoolOk(chain))) {
+        txStatus = 'gas_blocked';
+        errorMessage = `Gas pool balance below alert threshold (${config.gasPool.alertThreshold})`;
+        logger.error('Gas pool fuse tripped — broadcast paused', { chain, walletId });
+      } else {
+        try {
+          const resp = await axios.post(
+            `${config.cwallet.baseUrl}/send-tx`,
+            {
+              from: wallet.address,
+              to: toAddress,
+              amount,
+              token: tokenAddress,
+              chain,
+              gas_sponsor: true,
             },
-            timeout: 30000,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': config.cwallet.apiKey,
+              },
+              timeout: 30000,
+            }
+          );
+          const txResult: CWalletSendTxResponse = resp.data;
+          txHash = txResult.tx_hash;
+          // eslint-disable-next-line
+          txStatus = 'confirmed';
+          gasSponsored = txResult.gas_sponsored;
+          logger.info('Transaction auto-signed and broadcasted', { txHash, amount, chain });
+        } catch (err: any) {
+          logger.error('CWallet send-tx failed', { error: err.message });
+          if (config.dryRun) {
+            // W-10: 显式 DRY_RUN — 模拟广播（落审计记录，不触碰链上）
+            const { randomBytes } = await import('crypto');
+            txHash = '0x' + randomBytes(32).toString('hex');
+            txStatus = 'confirmed';
+            logger.info('DRY_RUN mock tx_hash', { txHash });
+          } else {
+            // W-3: 进入重试队列（worker 重试；超过上限转 failed）
+            txStatus = 'retrying';
+            retryCount = 1;
+            errorMessage = err.message || 'Broadcast failed';
           }
-        );
-        const txResult: CWalletSendTxResponse = resp.data;
-        txHash = txResult.tx_hash;
-        // eslint-disable-next-line
-        txStatus = 'confirmed';
-        gasSponsored = txResult.gas_sponsored;
-        logger.info('Transaction auto-signed and broadcasted', { txHash, amount, chain });
-      } catch (err: any) {
-        logger.error('CWallet send-tx failed', { error: err.message });
-        txStatus = process.env.NODE_ENV === "development" ? "confirmed" : "failed";
-        if (process.env.NODE_ENV === "development") {
-          const { randomBytes } = await import("crypto");
-          txHash = "0x" + randomBytes(32).toString("hex");
-          logger.info("Development mock tx_hash", { txHash });
         }
       }
     } else if (strategy.action === 'confirm') {
       // Requires user confirmation (100-10,000 USD)
       txStatus = 'pending_confirmation';
-      logger.info('Transaction requires user confirmation', { strategy, amount, chain });
+      logger.info('Transaction requires user confirmation', { strategy, amountUsd, chain });
     } else if (strategy.action === 'approval') {
       // Requires multi-sig approval (>10,000 USD)
       txStatus = 'pending_approval';
-      logger.info('Transaction requires multi-sig approval', { strategy, amount, chain });
+      logger.info('Transaction requires multi-sig approval', { strategy, amountUsd, chain });
     }
 
-    // 7. Store transaction record within the same DB transaction
+    // 8. Store transaction record within the same DB transaction
     const txId = generateId();
     const strategyAction = strategy.action; // 'auto', 'confirm', 'approval'
     await client.query(
       `INSERT INTO transactions (id, wallet_id, from_address, to_address, amount, token_address,
-        gas_sponsored, tx_hash, status, risk_result, signature_strategy)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        gas_sponsored, tx_hash, status, risk_result, signature_strategy, idempotency_key, retry_count, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [txId, walletId, wallet.address, toAddress, amount, tokenAddress,
-       gasSponsored, txHash, txStatus, JSON.stringify(riskCheck), strategyAction]
+       gasSponsored, txHash, txStatus, JSON.stringify(riskCheck), strategyAction,
+       idempotencyKey || null, retryCount, errorMessage]
     );
 
     await client.query('COMMIT');
@@ -190,7 +235,7 @@ export async function sendTransaction(params: SendTxParams): Promise<{
         strategyAction === 'auto' ? 'deposit' : 'failed',
         userId,
         walletId,
-        { txId, txHash, toAddress, amount, status: txStatus, strategy: strategyAction, gasSponsored }
+        { txId, txHash, toAddress, amount, status: txStatus, strategy: strategyAction, gasSponsored, amountUsd }
       );
     } catch (err: any) { logger.warn('Notification event error (non-blocking)', { txId, error: err.message }); }
 
@@ -201,6 +246,100 @@ export async function sendTransaction(params: SendTxParams): Promise<{
   } finally {
     client.release();
   }
+}
+
+/**
+ * W-4: gas 熔断检查——gas pool 原生余额是否高于告警阈值。
+ * 未配置 GAS_POOL_ADDRESS 时不启用熔断（返回 true）。
+ */
+async function gasPoolOk(chain: string): Promise<boolean> {
+  if (config.dryRun) return true;
+  if (!config.gasPool.address) return true;
+  try {
+    const provider = new GatewayProvider(chain);
+    const balance = await provider.getBalance(config.gasPool.address);
+    const threshold = ethers.parseEther(String(config.gasPool.alertThreshold || 0));
+    return balance >= threshold;
+  } catch (err: any) {
+    // 查询失败时不阻断交易，仅告警（熔断不可用时保守放行，避免卡死用户提现）
+    logger.warn('Gas pool balance check failed, bypassing fuse', { chain, error: err.message });
+    return true;
+  }
+}
+
+/**
+ * W-3: 广播重试 worker——重试 status='retrying' 且 retry_count<3 的交易。
+ * 成功 → confirmed；失败 → retry_count+1，达上限转 failed（资金回退语义）。
+ * 返回成功处理（转 confirmed）的笔数。
+ */
+export async function retryPendingBroadcasts(): Promise<number> {
+  if (config.dryRun) return 0;
+
+  const pending = await pool.query(
+    `SELECT * FROM transactions
+     WHERE status = 'retrying' AND retry_count < 3
+     ORDER BY created_at ASC LIMIT 20`
+  );
+  if (pending.rows.length === 0) return 0;
+
+  let fixed = 0;
+  for (const tx of pending.rows) {
+    const walletRes = await pool.query(
+      'SELECT chain FROM custodial_wallets WHERE id = $1',
+      [tx.wallet_id]
+    );
+    const chain = walletRes.rows[0]?.chain || 'sepolia';
+    try {
+      const resp = await axios.post(
+        `${config.cwallet.baseUrl}/send-tx`,
+        {
+          from: tx.from_address,
+          to: tx.to_address,
+          amount: tx.amount,
+          token: tx.token_address,
+          chain,
+          gas_sponsor: true,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.cwallet.apiKey,
+          },
+          timeout: 30000,
+        }
+      );
+      const txHash: string = resp.data?.tx_hash;
+      await pool.query(
+        `UPDATE transactions SET status = 'confirmed', tx_hash = $1, retry_count = retry_count + 1,
+           error_message = NULL, updated_at = NOW() WHERE id = $2`,
+        [txHash, tx.id]
+      );
+      fixed++;
+      logger.info('Broadcast retry succeeded', { txId: tx.id, txHash });
+    } catch (err: any) {
+      const newCount = tx.retry_count + 1;
+      const message = err.message || 'Broadcast failed';
+      if (newCount >= 3) {
+        await pool.query(
+          `UPDATE transactions SET status = 'failed', retry_count = $1, error_message = $2, updated_at = NOW() WHERE id = $3`,
+          [newCount, message, tx.id]
+        );
+        logger.error('Broadcast failed after max retries (funds revert)', { txId: tx.id, error: message });
+      } else {
+        await pool.query(
+          `UPDATE transactions SET retry_count = $1, error_message = $2, updated_at = NOW() WHERE id = $3`,
+          [newCount, message, tx.id]
+        );
+        logger.warn('Broadcast retry pending', { txId: tx.id, retryCount: newCount, error: message });
+      }
+    }
+  }
+  return fixed;
+}
+
+/** 简单 sleep（广播重试退避用） */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -366,6 +505,17 @@ export async function confirmTransaction(
 
     // Broadcast via CWallet
     let txHash: string | null = null;
+    // W-4: 用户确认广播同样过 gas 熔断
+    if (!(await gasPoolOk(tx.chain))) {
+      await client.query(
+        `UPDATE transactions SET status = 'gas_blocked', error_message = $1, updated_at = NOW() WHERE id = $2`,
+        ['Gas pool balance below alert threshold', txId]
+      );
+      await client.query('COMMIT');
+      logger.error('Confirm: gas pool fuse tripped', { txId, chain: tx.chain });
+      return { txId, txHash: null, status: 'gas_blocked' };
+    }
+
     try {
       const resp = await axios.post(
         `${config.cwallet.baseUrl}/send-tx`,
@@ -388,8 +538,19 @@ export async function confirmTransaction(
       txHash = resp.data.tx_hash;
     } catch (err: any) {
       logger.error('Confirm: CWallet broadcast failed', { error: err.message });
-      await client.query('ROLLBACK');
-      throw Errors.internal('Broadcast failed, transaction not modified');
+      if (config.dryRun) {
+        const { randomBytes } = await import('crypto');
+        txHash = '0x' + randomBytes(32).toString('hex');
+      } else {
+        // W-3: 广播失败不丢单——转 retrying 交给 worker 重试
+        await client.query(
+          `UPDATE transactions SET status = 'retrying', retry_count = 1, error_message = $1, updated_at = NOW() WHERE id = $2`,
+          [err.message || 'Broadcast failed', txId]
+        );
+        await client.query('COMMIT');
+        logger.warn('Confirm: broadcast failed, moved to retry queue', { txId });
+        return { txId, txHash: null, status: 'retrying' };
+      }
     }
 
     await client.query(

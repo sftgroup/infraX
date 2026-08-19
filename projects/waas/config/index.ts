@@ -37,6 +37,8 @@ export const config = {
   gasPool: {
     privateKey: process.env.GAS_POOL_PRIVATE_KEY || '',
     address: process.env.GAS_POOL_ADDRESS || '',
+    // W-4: 广播前 gas 熔断阈值（原生单位，如 0.05 ETH/BNB）；余额低于该值暂停自动广播
+    alertThreshold: parseFloat(process.env.GAS_POOL_ALERT_THRESHOLD || '0.05'),
   },
 
   // Supported chains
@@ -48,6 +50,8 @@ export const config = {
     dailyLimitDefault: parseFloat(process.env.RISK_DAILY_LIMIT_DEFAULT || '50000'),
     newUserLimitDefault: parseFloat(process.env.RISK_NEW_USER_LIMIT_DEFAULT || '1000'),
     newUserHours: parseInt(process.env.RISK_NEW_USER_HOURS || '24', 10),
+    // W-5: 非稳定币历史流水折算 USD 的保守倍数（无法逐笔回查历史价格时的兜底）
+    usdConservativeMultiplier: parseFloat(process.env.RISK_USD_CONSERVATIVE_MULTIPLIER || '2000'),
   },
 
   // Signature strategy
@@ -85,6 +89,23 @@ export const config = {
     confirmations: parseInt(process.env.BLOCK_SCAN_CONFIRMATIONS || '1', 10),
   },
   minConfirmations: process.env.MIN_CONFIRMATIONS || '{"1":12,"11155111":3,"56":12,"8453":12}',
+
+  // W-10: 显式 DRY_RUN 开关（模拟广播，不触碰链上）
+  dryRun: process.env.DRY_RUN === 'true',
+
+  // W-11/W-16: 归集与冷热分离
+  sweep: {
+    // 定时执行器间隔（处理 pending sweep_records + 广播重试）
+    workerIntervalMs: parseInt(process.env.SWEEP_WORKER_INTERVAL_MS || '30000', 10),
+    // 链上余额 ≥ 该原生数额才建 sweep 记录
+    dustThreshold: parseFloat(process.env.SWEEP_DUST_THRESHOLD || '0.001'),
+    // 原生转账保留的 gas reserve（按 21000 gas × 实时 gasPrice 计算后叠加此值）
+    gasReserve: parseFloat(process.env.SWEEP_GAS_RESERVE || '0.0005'),
+  },
+  // W-16: 热钱包单地址余额上限（原生单位），超出自动归冷（master wallet）
+  hotWallet: {
+    coldSweepThreshold: parseFloat(process.env.HOT_WALLET_COLD_SWEEP_THRESHOLD || '5.0'),
+  },
 
   // Sepolia on-chain contracts (deployed 2026-07-01)
   contracts: {
@@ -135,6 +156,15 @@ function validateConfig(): void {
   const errors: string[] = [];
   if (!config.cwallet.apiKey || config.cwallet.apiKey === 'dev-cwallet-key') {
     errors.push('CWALLET_API_KEY is not set or using default value');
+  }
+  // W-13: 私钥/HD seed 缺失时生产必须 fail-closed（禁止静默降级 dev 钱包）
+  if (config.nodeEnv === 'production') {
+    if (!config.hdWalletSeed) {
+      errors.push('HD_WALLET_SEED is not set in production (fail-closed: refusing dev wallet)');
+    }
+    if (!config.walletEncryptionKey) {
+      errors.push('WALLET_ENCRYPTION_KEY is not set in production (fail-closed: refusing dev encryption)');
+    }
   }
   if (config.nodeEnv === 'production' && errors.length > 0) {
     throw new Error(`Unsafe production config:\n${errors.map(e => `  - ${e}`).join('\n')}`);

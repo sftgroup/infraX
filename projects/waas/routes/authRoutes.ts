@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, apiResponse } from '../utils/helpers';
 import { authenticate, signAdminToken } from '../middleware/auth';
 import * as authService from '../services/authService';
+import { pool } from '../models/database';
 
 const router = Router();
 
@@ -68,6 +69,71 @@ router.get(
     const userId = req.user!.id;
     const has = await authService.hasPaymentPassword(userId);
     res.json(apiResponse({ hasPaymentPassword: has }));
+  })
+);
+
+/**
+ * W-15: TOTP 2FA 管理端点
+ * POST /api/v2/auth/totp/setup    — 生成绑定材料（secret + otpauth URL）
+ * POST /api/v2/auth/totp/enable   — 用验证码激活
+ * POST /api/v2/auth/totp/disable  — 用验证码关闭
+ * GET  /api/v2/auth/totp/status   — 查询状态
+ */
+router.post(
+  '/totp/setup',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { setupTotp } = await import('../services/totpService');
+    const account = (req as any).user?.email || userId;
+    const result = await setupTotp(userId, account);
+    res.json(apiResponse(result, 'TOTP setup generated'));
+  })
+);
+
+router.post(
+  '/totp/enable',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { code } = req.body;
+    const userId = req.user!.id;
+    if (!code) {
+      return res.status(400).json(apiResponse(null, 'Missing TOTP code', 1001));
+    }
+    const { enableTotp } = await import('../services/totpService');
+    await enableTotp(userId, String(code));
+    res.json(apiResponse(null, 'TOTP enabled'));
+  })
+);
+
+router.post(
+  '/totp/disable',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const { code } = req.body;
+    const userId = req.user!.id;
+    if (!code) {
+      return res.status(400).json(apiResponse(null, 'Missing TOTP code', 1001));
+    }
+    const { disableTotp } = await import('../services/totpService');
+    await disableTotp(userId, String(code));
+    res.json(apiResponse(null, 'TOTP disabled'));
+  })
+);
+
+router.get(
+  '/totp/status',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const result = await pool.query(
+      'SELECT totp_secret IS NOT NULL AS configured, totp_enabled FROM users WHERE id = $1',
+      [userId]
+    );
+    res.json(apiResponse(
+      result.rows[0] ? { configured: result.rows[0].configured, enabled: result.rows[0].totp_enabled } : { configured: false, enabled: false },
+      'TOTP status'
+    ));
   })
 );
 

@@ -10,6 +10,9 @@ import { requestLogger } from './middleware/requestLogger';
 import { generalLimiter } from './middleware/rateLimiter';
 import { processPendingEvents } from './services/webhookService';
 import { scanAllChains } from './services/scannerService';
+import { withLock } from './services/lockService';
+import { retryPendingBroadcasts } from './services/txService';
+import { processPendingSweeps, ensureColdSweep } from './services/saasService';
 
 // Routes
 import authRoutes from './routes/authRoutes';
@@ -111,8 +114,9 @@ async function start(): Promise<void> {
     if (config.blockScanner.intervalMs > 0) {
     const scanInterval = setInterval(async () => {
       try {
-        const result = await scanAllChains();
-        if (result.depositsProcessed > 0) {
+        // W-9: 分布式锁防多实例重复扫描
+        const result = await withLock('block-scan', scanAllChains);
+        if (result && result.depositsProcessed > 0) {
           logger.info('Block scan cycle completed', result);
         }
       } catch (err: any) {
@@ -126,6 +130,21 @@ async function start(): Promise<void> {
     } else {
       logger.info('Block scanner disabled (BLOCK_SCAN_INTERVAL_MS=0)');
     }
+
+    // W-3/W-9: 广播重试 + W-11 sweep 执行 + W-16 冷热归集 worker（分布式锁互斥）
+    const workerInterval = setInterval(async () => {
+      try {
+        const retried = await withLock('tx-broadcast-retry', retryPendingBroadcasts);
+        const swept = await withLock('sweep-worker', () => processPendingSweeps(10));
+        const coldQueued = await withLock('cold-sweep', ensureColdSweep);
+        if ((retried ?? 0) > 0 || (swept ?? 0) > 0 || (coldQueued ?? 0) > 0) {
+          logger.info('WAAS worker cycle completed', { retried, swept, coldQueued });
+        }
+      } catch (err: any) {
+        logger.error('WAAS worker cycle error', { error: err.message });
+      }
+    }, config.sweep.workerIntervalMs);
+    workerInterval.unref();
 
   } catch (err: any) {
     logger.error('Failed to start server', { error: err.message });
