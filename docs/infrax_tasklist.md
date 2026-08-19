@@ -2183,5 +2183,5 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
   - `scripts/aa-session-replace-e2e.ts`：轮换流程改为 ① 三段批量 disable 旧 + ② ENABLE-mode enable 新 + agent B 成功 / agent A 被拒。
 - **验证**：`aa-session-replace-e2e.ts` 链上 E2E **12/12 全绿**（OxaChain，deployer=`0xF434e5254C4a4DD314F1e80087FBC54533065c8B` alto executor，块 `0x1dexx` 段）：注资/激活/deposit → enable A → 复现 AA23（重复 enable 被拒）→ ① 三段批量 disable A 上链成功+模块卸载 → ② enable B 上链成功+模块重装 → **agent B 调用成功 / agent A 调用被拒（AA24，旧 session 已彻底撤销）**。
 - **单测**：aa-sdk **122 用例全绿**（session-revoke.test.ts 13 用例适配三段 batch：disableSession@module + uninstall + invalidateNonce）；SDK typecheck + relay typecheck 通过。
-- **上线状态**：代码在本地工作区（含 E2E 脚本更新），**未提交、未部署生产**；待用户确认后 commit + 部署 43.163.105.172。
+- **上线状态**：已上线 ✅ —— commit `579d360` 推送 origin/master 并部署生产机 43.163.105.172（`git pull` fast-forward + `systemctl restart infrax-aa-relay` active，`aa-relay running on port 9131`）；`/health` 返回 `{"status":"ok","service":"aa-relay","chains":["oxachain"],"bundlers":{...}}`；replace 端点冒烟通过：缺参 → 400、完整 draft → 200（`disableDraft` 字段，未部署账户安全降级 null）、测试 session 已清理（GET 复核 0 行，无生产数据污染）。
 
