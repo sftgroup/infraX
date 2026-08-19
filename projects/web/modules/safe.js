@@ -17,14 +17,6 @@ async function safeInit() {
   }
 }
 
-function safeEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
-function safeShort(s, n) { s = s || ''; n = n || 10; return s.length > n + 6 ? s.slice(0, n) + '…' + s.slice(-4) : s; }
-function safeWei(wei) { if (wei == null) return '0'; var n = Number(wei) / 1e18; return n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : n.toFixed(6); }
-function safeTxStatus(s) {
-  var map = { pending: '🟡 pending', ready: '🟢 ready', executed: '✅ executed', failed: '❌ failed', rejected: '⛔ rejected' };
-  return map[s] || s;
-}
-
 function safeActivateIntro() {
   safeEnabled = true;
   // Persist to localStorage — survives page refresh, reconnect
@@ -55,8 +47,7 @@ async function safeLoadOwned() {
         '<div style="font-size:11px;color:var(--text-muted);word-break:break-all">' + (s.address || '') + '</div></div>' +
         '<div style="text-align:right">' +
         '<div style="font-size:12px;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' pending' : '') + '</div>' +
-        "<button class='btn btn-primary btn-sm' onclick='safeShowPropose(\"" + s.address + "\")' style='margin-top:4px'>Propose</button> " +
-        "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button></div>" +
+        "<button class='btn btn-primary btn-sm' onclick='safeShowPropose(\"" + s.address + "\")' style='margin-top:4px'>Propose</button></div>" +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -81,8 +72,7 @@ async function safeLoadParticipating() {
         '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">Threshold: ' + (s.threshold || '—') + '</div>' +
         '<div style="font-size:11px;color:var(--text-muted);word-break:break-all">' + (s.address || '') + '</div></div>' +
         '<div style="text-align:right">' +
-        '<div style="font-size:13px;font-weight:600;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' to sign' : '') + '</div>' +
-        "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button></div>" +
+        '<div style="font-size:13px;font-weight:600;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' to sign' : '') + '</div></div>' +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -127,102 +117,6 @@ function safeShowPropose(addr) {
 }
 
 function safeList() { safeLoadOwned(); }
-
-/* ── 审批闭环：交易明细弹窗 + confirm（personal_sign）/ execute ── */
-async function safeShowDetail(address) {
-  var overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.setAttribute('data-safe-addr', address);
-  overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;padding:24px;overflow:auto';
-  overlay.innerHTML =
-    '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:12px;padding:24px;width:760px;max-width:94vw;max-height:88vh;overflow:auto">' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
-        '<div style="font-size:16px;font-weight:700">🛡️ Safe 交易审批</div>' +
-        '<code class="mono" style="font-size:11px;color:var(--text-muted)">' + safeEsc(safeShort(address, 18)) + '</code>' +
-        '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="this.closest(\'.modal-overlay\').remove()">✕ 关闭</button>' +
-      '</div>' +
-      '<div id="safe-detail-body" style="font-size:12px;color:var(--text-secondary)">' +
-        '<div style="text-align:center;padding:32px;color:var(--text-muted)"><span class="spin"></span> Loading transactions…</div>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(overlay);
-  safeLoadDetail(address, overlay);
-}
-
-async function safeLoadDetail(address, overlay) {
-  var body = overlay ? overlay.querySelector('#safe-detail-body') : document.getElementById('safe-detail-body');
-  if (!body) return;
-  try {
-    var d = await afetch('/api/vault/safe/' + encodeURIComponent(address));
-    var safe = d.safe || {};
-    var txs = d.transactions || [];
-
-    var info = '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
-      '<div style="background:var(--surface-input);border-radius:8px;padding:8px 14px"><span style="font-size:10px;color:var(--text-muted)">THRESHOLD</span><div class="mono" style="font-size:15px;font-weight:700">' + (safe.threshold || '—') + '/' + ((safe.owners && safe.owners.length) || '—') + '</div></div>' +
-      '<div style="background:var(--surface-input);border-radius:8px;padding:8px 14px"><span style="font-size:10px;color:var(--text-muted)">NONCE</span><div class="mono" style="font-size:15px;font-weight:700">' + (safe.nonce || 0) + '</div></div>' +
-      '<div style="background:var(--surface-input);border-radius:8px;padding:8px 14px"><span style="font-size:10px;color:var(--text-muted)">OWNERS</span><div class="mono" style="font-size:11px;line-height:1.7">' + (safe.owners || []).map(function(o) { return safeShort(o, 10); }).join(' · ') + '</div></div>' +
-    '</div>';
-
-    if (!txs.length) {
-      body.innerHTML = info + '<div style="padding:28px;text-align:center;color:var(--text-muted)">No transactions — 用 Propose 发起第一笔</div>';
-      return;
-    }
-    var rows = txs.map(function(t) {
-      var canConfirm = t.status === 'pending';
-      var canExecute = t.status === 'ready';
-      return '<tr>' +
-        '<td class="mono" style="font-size:10px">' + safeShort(t.safe_tx_hash, 14) + '</td>' +
-        '<td class="mono" style="font-size:11px">→ ' + safeShort(t.to_address, 12) + '</td>' +
-        '<td class="mono" style="font-size:11px">' + safeWei(t.value) + ' ETH</td>' +
-        '<td class="mono" style="font-size:11px">#' + (t.nonce != null ? t.nonce : '—') + '</td>' +
-        '<td><span style="font-size:11px">' + safeTxStatus(t.status) + '</span>' +
-          (t.sig_count != null ? ' <span class="mono" style="font-size:10px;color:var(--text-muted)">' + t.sig_count + '/' + (safe.threshold || '?') + '</span>' : '') + '</td>' +
-        '<td style="white-space:nowrap">' +
-          (canConfirm ? '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:3px 8px" onclick="safeConfirmTx(\'' + address + '\',\'' + t.safe_tx_hash + '\')">✍️ 签名</button> ' : '') +
-          (canExecute ? '<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:var(--success);color:#fff;border:none" onclick="safeExecuteTx(\'' + t.safe_tx_hash + '\')">🚀 执行</button>' : '') +
-          (t.tx_hash ? '<a class="mono" style="font-size:10px;color:var(--text-muted)" href="https://sepolia.etherscan.io/tx/' + t.tx_hash + '" target="_blank">' + safeShort(t.tx_hash, 10) + '</a>' : '') +
-        '</td>' +
-      '</tr>';
-    }).join('');
-
-    body.innerHTML = info +
-      '<table class="data-table" style="width:100%"><thead><tr><th>Tx Hash</th><th>To</th><th>Value</th><th>Nonce</th><th>Status</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.7">💡 签名 = 对 safeTxHash 做 personal_sign（EIP-191）；达到 threshold 后端自动执行。若签名失败（MetaMask 拒绝），可复制 hash 用 ethers <code>signMessage</code> 手动签名后调用 API。</div>';
-  } catch (e) {
-    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">加载失败：' + safeEsc(e.message) + '</div>';
-  }
-}
-
-async function safeConfirmTx(address, safeTxHash) {
-  if (!window.ethereum) return showToast('No wallet connected', 'error');
-  var addr = user().walletAddress;
-  if (!addr) return showToast('Connect wallet first', 'error');
-  var btn = event && event.target;
-  if (btn) { btn.classList.add('btn-loading'); btn.disabled = true; }
-  try {
-    var sig = await window.ethereum.request({ method: 'personal_sign', params: [safeTxHash, addr] });
-    var r = await afetch('/api/vault/safe/confirm', { method: 'POST', body: { safeAddress: address, safeTxHash: safeTxHash, signature: sig } });
-    showToast(r.sigCount >= r.threshold ? '✅ Threshold met — ready to execute' : '✅ 已签名 (' + r.sigCount + '/' + r.threshold + ')', 'success');
-    var overlay = document.querySelector('.modal-overlay[data-safe-addr]');
-    if (overlay) safeLoadDetail(address, overlay); else safeLoadOwned();
-  } catch (e) {
-    showToast(e.message || '签名失败', 'error');
-  } finally {
-    if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; }
-  }
-}
-
-async function safeExecuteTx(safeTxHash) {
-  if (!confirm('确认在链上执行该 Safe 交易（' + safeShort(safeTxHash, 14) + '）？')) return;
-  try {
-    var r = await afetch('/api/vault/safe/execute', { method: 'POST', body: { safeTxHash: safeTxHash } });
-    showToast('🚀 已执行: ' + (r.txHash || safeShort(safeTxHash, 10)), 'success');
-    var overlay = document.querySelector('.modal-overlay[data-safe-addr]');
-    if (overlay) safeLoadDetail(overlay.getAttribute('data-safe-addr'), overlay);
-  } catch (e) {
-    showToast('执行失败：' + e.message, 'error');
-  }
-}
 
 /* ── Topbar wallet state ── */
 function updateTopbar() {

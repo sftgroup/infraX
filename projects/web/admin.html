@@ -130,20 +130,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
 .tab { padding:10px 20px; font-size:13px; font-weight:500; color:var(--text-secondary); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; }
 .tab:hover { color:var(--text-primary); }
 .tab.active { color:var(--brand-primary); border-bottom-color:var(--brand-primary); }
-
-/* Section switcher */
-.sec { display:none; }
-.sec.active { display:block; }
-.adm-table { width:100%; border-collapse:collapse; font-size:12px; }
-.adm-table th { text-align:left; padding:10px 14px; font-size:10px; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface-card); }
-.adm-table td { padding:9px 14px; border-bottom:1px solid var(--border); vertical-align:top; word-break:break-all; }
-.adm-table tr:last-child td { border-bottom:none; }
-.adm-table .mono { font-family:'SF Mono','Fira Code',monospace; font-size:11px; }
-.status-dot { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; }
-.status-dot::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--text-tertiary); }
-.status-dot.up::before, .status-dot.active::before { background:var(--success); }
-.status-dot.down::before, .status-dot.suspended::before { background:var(--error); }
-.status-dot.warn::before { background:var(--warning); }
 </style>
 <script>
 /* InfraX i18n v1.0 — shared translation library */
@@ -437,22 +423,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
   <div class="sidebar-logo"><div class="sidebar-logo-icon">⚡</div>InfraX Admin</div>
   <div class="sidebar-section">Overview</div>
   <nav class="sidebar-nav">
-    <button class="sidebar-item active" data-sec="dashboard"><span>📊</span> Dashboard</button>
-    <button class="sidebar-item" data-sec="tenants"><span>🏢</span> Tenants</button>
-    <button class="sidebar-item" data-sec="transactions"><span>💰</span> Transactions</button>
-    <button class="sidebar-item" data-sec="risk"><span>🛡️</span> Risk Center</button>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section">Growth</div>
-    <button class="sidebar-item" data-sec="revenue"><span>💵</span> Revenue</button>
-    <button class="sidebar-item" data-sec="dc-subscriptions"><span>📡</span> DC Subscriptions</button>
-    <button class="sidebar-item" data-sec="api-usage"><span>🔌</span> API Usage</button>
-    <button class="sidebar-item" data-sec="plans"><span>📦</span> Plans</button>
+    <button class="sidebar-item active"><span>📊</span> Dashboard</button>
+    <button class="sidebar-item"><span>🏢</span> Tenants</button>
+    <button class="sidebar-item"><span>💰</span> Transactions</button>
+    <button class="sidebar-item"><span>🛡️</span> Risk Center</button>
     <div class="sidebar-divider"></div>
     <div class="sidebar-section">Operations</div>
-    <button class="sidebar-item" data-sec="webhooks"><span>📋</span> Webhook Events</button>
-    <button class="sidebar-item" data-sec="sweeps"><span>📤</span> Sweep Queue</button>
-    <button class="sidebar-item" data-sec="settings"><span>⚙️</span> Settings</button>
-    <button class="sidebar-item" data-sec="audit"><span>📄</span> Audit Logs</button>
+    <button class="sidebar-item"><span>📋</span> Webhook Events</button>
+    <button class="sidebar-item"><span>📤</span> Sweep Queue</button>
+    <button class="sidebar-item"><span>⚙️</span> Settings</button>
+    <button class="sidebar-item"><span>📄</span> Audit Logs</button>
   </nav>
   <div class="sidebar-footer">
     <div style="display:flex;align-items:center;gap:6px;padding:4px 12px;"><div style="width:6px;height:6px;background:var(--success);border-radius:50%;"></div><span style="font-size:11px;color:var(--text-secondary);">Sepolia · Admin</span></div>
@@ -474,7 +454,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
   </div>
 
   <!-- KPI Row -->
-  <div class="sec active" id="sec-dashboard">
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-label">Total Tenants</div>
@@ -506,7 +485,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
       <div class="panel" style="margin-bottom:20px;">
         <div class="panel-header">
           <span class="panel-title">🏢 Tenant Accounts</span>
-          <span class="panel-action" onclick="adminGo('tenants')" style="cursor:pointer">View All →</span>
+          <span class="panel-action">View All →</span>
         </div>
         <div class="panel-body" id="tenant-tbody">
           <div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading tenant data…</div>
@@ -534,7 +513,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
       <div class="panel" style="margin-bottom:20px;">
         <div class="panel-header">
           <span class="panel-title">🛡️ Risk Alerts</span>
-          <span class="panel-action" onclick="adminGo('risk')" style="cursor:pointer">View All →</span>
+          <span class="panel-action" onclick="location.href='/admin-risk.html'">View All →</span>
         </div>
         <div class="panel-body" id="dashboard-risks">
           <div style="padding:16px;text-align:center;color:var(--text-tertiary);">Loading risk alerts…</div>
@@ -545,101 +524,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helv
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">🔄 Recent Activity</span>
-          <span class="panel-action" onclick="adminGo('audit')">View All →</span>
+          <span class="panel-action" onclick="location.href='/admin-audit.html'">View All →</span>
         </div>
         <div class="panel-body" id="dashboard-activity">
           <div style="padding:16px;text-align:center;color:var(--text-tertiary);">Loading activity…</div>
         </div>
       </div>
     </div>
-  </div>
-  </div>
-
-  <!-- ── Section: Tenants ── -->
-  <div class="sec" id="sec-tenants">
-    <div class="topbar"><div class="topbar-left"><h1>🏢 Tenants</h1><span class="role-tag">WaaS 租户管理</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">全部租户</span><span class="panel-action" onclick="adminLoadTenants()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-tenants-body"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Transactions ── -->
-  <div class="sec" id="sec-transactions">
-    <div class="topbar"><div class="topbar-left"><h1>💰 Transactions</h1><span class="role-tag">支付订单 + 交易</span></div></div>
-    <div class="panel" style="margin-bottom:20px"><div class="panel-header"><span class="panel-title">💳 Payment Orders</span><span class="panel-action" onclick="adminLoadOrders()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-orders-body"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">🔄 链上交易</span><span class="panel-action" onclick="adminLoadTransactions()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-tx-body"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Risk Center ── -->
-  <div class="sec" id="sec-risk">
-    <div class="topbar"><div class="topbar-left"><h1>🛡️ Risk Center</h1><span class="role-tag">风控规则 + 代币黑名单</span></div></div>
-    <div class="panel" style="margin-bottom:20px"><div class="panel-header"><span class="panel-title">⚖️ Risk Rules</span><span class="panel-action" onclick="adminLoadRiskRules()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-risk-rules"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">🚫 Token Blacklist</span><span class="panel-action" onclick="adminLoadBlacklist()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-blacklist"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Revenue ── -->
-  <div class="sec" id="sec-revenue">
-    <div class="topbar"><div class="topbar-left"><h1>💵 Revenue</h1><span class="role-tag">分模块收入概览</span></div></div>
-    <div class="panel" style="margin-bottom:20px"><div class="panel-header"><span class="panel-title">收入快照</span><span class="panel-action" onclick="adminLoadRevenue()">🔄 刷新</span></div>
-      <div class="panel-body" id="adm-revenue-kpis"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">订阅分布 + 近 30 天支付</span></div>
-      <div class="panel-body" id="adm-revenue-detail"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: DC Subscriptions ── -->
-  <div class="sec" id="sec-dc-subscriptions">
-    <div class="topbar"><div class="topbar-left"><h1>📡 DC Subscriptions</h1><span class="role-tag">Data Center 订阅</span></div></div>
-    <div class="panel" style="margin-bottom:20px"><div class="panel-header"><span class="panel-title">📡 DC 订阅列表</span><span class="panel-action" onclick="adminLoadDcSubs()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-dc-subs"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">📊 DC 统计</span><span class="panel-action" onclick="adminLoadDcStats()">🔄 刷新</span></div>
-      <div class="panel-body" id="adm-dc-stats"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: API Usage ── -->
-  <div class="sec" id="sec-api-usage">
-    <div class="topbar"><div class="topbar-left"><h1>🔌 API Usage</h1><span class="role-tag">近 30 天接口调用量</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">api_usage_daily</span><span class="panel-action" onclick="adminLoadApiUsage()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-api-usage"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Plans ── -->
-  <div class="sec" id="sec-plans">
-    <div class="topbar"><div class="topbar-left"><h1>📦 Plans</h1><span class="role-tag">套餐覆盖配置（waas/dc）</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">billing_plans 覆盖</span><span class="panel-action" onclick="adminLoadPlans()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-plans"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Webhook Events ── -->
-  <div class="sec" id="sec-webhooks">
-    <div class="topbar"><div class="topbar-left"><h1>📋 Webhook Events</h1><span class="role-tag">事件投递记录</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">Webhook 事件</span><span class="panel-action" onclick="adminLoadWebhooks()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-webhooks"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Sweep Queue ── -->
-  <div class="sec" id="sec-sweeps">
-    <div class="topbar"><div class="topbar-left"><h1>📤 Sweep Queue</h1><span class="role-tag">归集任务队列</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">Sweep 记录</span><span class="panel-action" onclick="adminLoadSweeps()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-sweeps"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Settings ── -->
-  <div class="sec" id="sec-settings">
-    <div class="topbar"><div class="topbar-left"><h1>⚙️ Settings</h1><span class="role-tag">服务状态 + RPC 配置</span></div></div>
-    <div class="panel" style="margin-bottom:20px"><div class="panel-header"><span class="panel-title">🖥️ Service Status</span><span class="panel-action" onclick="adminLoadStatus()">🔄 刷新</span></div>
-      <div class="panel-body" id="adm-status"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">🔗 RPC Endpoints</span><span class="panel-action" onclick="adminLoadRpc()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-rpc"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
-  </div>
-
-  <!-- ── Section: Audit Logs ── -->
-  <div class="sec" id="sec-audit">
-    <div class="topbar"><div class="topbar-left"><h1>📄 Audit Logs</h1><span class="role-tag">操作审计</span></div></div>
-    <div class="panel"><div class="panel-header"><span class="panel-title">审计日志</span><span class="panel-action" onclick="adminLoadAudit()">🔄 刷新</span></div>
-      <div class="panel-body" style="padding:0" id="adm-audit"><div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div></div></div>
   </div>
 </main>
 
@@ -704,10 +595,8 @@ async function loadAdminDashboard() {
   try {
     var summaryP = adminFetch('/api/v2/admin/dashboard');
     var tenantsP = adminFetch('/api/v2/admin/tenants');
-    var waasStatsP = adminFetch('/api/v2/admin/waas/stats');
     var summary = await summaryP;
     var tenants = await tenantsP;
-    var waasStats = await waasStatsP;
 
     // Update KPIs
     var elTenants = document.getElementById('kpi-total-tenants');
@@ -719,7 +608,7 @@ async function loadAdminDashboard() {
     if (elTenants) elTenants.textContent = (tenants.length || 0).toString();
     if (elUsers) elUsers.textContent = (summary.totalUsers || 0).toLocaleString();
     if (elVolume) elVolume.textContent = '$' + ((summary.totalRevenue || 0)).toFixed(2);
-    if (elAddr) elAddr.textContent = ((waasStats && waasStats.wallets) || summary.activeTenants || 0).toLocaleString();
+    if (elAddr) elAddr.textContent = (summary.activeTenants || 0).toLocaleString();
     if (elGas) elGas.textContent = '$—';
 
     // Update tenant table - clear old static rows and inject real data
@@ -746,7 +635,7 @@ async function loadAdminDashboard() {
             '<div>' + (t.addresses || '0') + '</div>' +
             '<div style="font-weight:600;">' + (t.withdrawals || '0') + '</div>' +
             '<div><span class="tenant-status ' + statusClass + '" style="color:' + statusColor + ';font-weight:600;font-size:10px;">● ' + t.status + '</span></div>' +
-            '<div><button onclick="adminShowTenant(\'' + t.id + '\')" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;" title="查看详情">⚙</button></div>' +
+            '<div><button onclick="window.location.href=\'/admin-tenants.html?id=' + t.id + '\'" style="padding:3px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;">⚙</button></div>' +
           '</div>';
         }).join('');
       } else {
@@ -754,425 +643,13 @@ async function loadAdminDashboard() {
       }
       panelBody.innerHTML = '<div class="tenant-table">' + headerRow + rows + '</div>';
     }
-
-    // Side panels: risks / activity / chart (fail-silent)
-    adminFillDashboard();
   } catch (err) {
     console.error('Admin dashboard load error:', err);
   }
 }
 
-// ── 通用工具 ──
-function admEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
-function admFmtTime(ts) { if (!ts) return '—'; var d = new Date(ts); return isNaN(d) ? '—' : d.toLocaleString(); }
-function admTable(el, columns, rows, emptyMsg) {
-  if (!el) return;
-  if (!rows || !rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">' + admEsc(emptyMsg || 'No data') + '</div>'; return; }
-  var head = '<tr>' + columns.map(function(c) { return '<th>' + admEsc(c.label) + '</th>'; }).join('') + '</tr>';
-  var body = rows.map(function(r) {
-    return '<tr>' + columns.map(function(c) {
-      var v = r[c.k];
-      if (c.type === 'mono') return '<td class="mono">' + admEsc(v == null ? '—' : String(v)) + '</td>';
-      if (c.type === 'time') return '<td class="mono">' + admFmtTime(v) + '</td>';
-      if (c.type === 'status') {
-        var cls = ['up','active','ok','success','paid','completed','delivered'].indexOf(String(v)) >= 0 ? 'up' : (['down','suspended','failed','error','expired','cancelled','rejected'].indexOf(String(v)) >= 0 ? 'down' : 'warn');
-        return '<td><span class="status-dot ' + cls + '">' + admEsc(v == null ? '—' : String(v)) + '</span></td>';
-      }
-      return '<td>' + admEsc(v == null ? '—' : String(v)) + '</td>';
-    }).join('') + '</tr>';
-  }).join('');
-  el.innerHTML = '<table class="adm-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
-}
-
-// ── 导航 ──
-var ADMIN_SECTION_LOADERS = {
-  'dashboard': loadAdminDashboard,
-  'tenants': adminLoadTenants,
-  'transactions': adminLoadTransactionsSection,
-  'risk': adminLoadRiskSection,
-  'revenue': adminLoadRevenue,
-  'dc-subscriptions': adminLoadDcSection,
-  'api-usage': adminLoadApiUsage,
-  'plans': adminLoadPlans,
-  'webhooks': adminLoadWebhooks,
-  'sweeps': adminLoadSweeps,
-  'settings': adminLoadSettings,
-  'audit': adminLoadAudit,
-};
-
-function adminGo(sec) {
-  document.querySelectorAll('.sidebar-item[data-sec]').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-sec') === sec); });
-  document.querySelectorAll('.sec').forEach(function(s) { s.classList.remove('active'); });
-  var el = document.getElementById('sec-' + sec);
-  if (!el) return;
-  el.classList.add('active');
-  window.scrollTo(0, 0);
-  try { if (ADMIN_SECTION_LOADERS[sec]) ADMIN_SECTION_LOADERS[sec](); } catch (e) { console.error('section load failed:', sec, e); }
-}
-
-function adminInit() {
-  document.querySelectorAll('.sidebar-item[data-sec]').forEach(function(b) {
-    b.onclick = function() { adminGo(b.getAttribute('data-sec')); };
-  });
-  adminGo('dashboard');
-}
-
-// ── Dashboard 侧栏填充 ──
-async function adminFillDashboard() {
-  var risksEl = document.getElementById('dashboard-risks');
-  var actEl = document.getElementById('dashboard-activity');
-  var chartEl = document.getElementById('dashboard-chart');
-  var results = await Promise.allSettled([
-    adminFetch('/api/v2/admin/risk-rules'),
-    adminFetch('/api/v2/admin/audit'),
-    adminFetch('/api/v2/admin/api-usage'),
-  ]);
-  // 风控
-  if (risksEl) {
-    if (results[0].status === 'fulfilled' && results[0].value && results[0].value.length) {
-      risksEl.innerHTML = results[0].value.slice(0, 4).map(function(r) {
-        var level = (r.level || r.severity || 'medium').toLowerCase();
-        var icon = level === 'high' ? '🔴' : (level === 'critical' ? '🟥' : '🟡');
-        return '<div class="alert-item"><div class="alert-icon ' + level + '">' + icon + '</div>' +
-          '<div style="flex:1;min-width:0"><div class="alert-title">' + admEsc(r.name || r.rule_name || 'risk rule') + '</div>' +
-          '<div class="alert-desc">' + admEsc(r.description || r.condition || '') + '</div>' +
-          '<div class="alert-time">' + admFmtTime(r.updated_at) + '</div></div></div>';
-      }).join('');
-    } else {
-      risksEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">No risk rules configured</div>';
-    }
-  }
-  // 活动
-  if (actEl) {
-    if (results[1].status === 'fulfilled' && results[1].value && results[1].value.length) {
-      actEl.innerHTML = results[1].value.slice(0, 5).map(function(a) {
-        var dot = a.event_type === 'deposit' ? 'deposit' : (a.event_type === 'withdraw' ? 'withdraw' : 'system');
-        return '<div class="feed-item"><div class="feed-dot ' + dot + '"></div>' +
-          '<div class="feed-info"><div class="feed-title">' + admEsc(a.action || a.event_type || 'event') + '</div>' +
-          '<div class="feed-meta">' + admEsc(a.actor || a.user || a.email || '') + ' · ' + admFmtTime(a.created_at) + '</div></div></div>';
-      }).join('');
-    } else {
-      actEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);font-size:12px">No audit entries</div>';
-    }
-  }
-  // 图表：近 14 天 API 调用量
-  if (chartEl && results[2].status === 'fulfilled' && results[2].value && results[2].value.length) {
-    var byDay = {};
-    results[2].value.forEach(function(r) { var d = String(r.date || '').slice(0, 10); if (d) byDay[d] = (byDay[d] || 0) + (r.calls || 0); });
-    var days = Object.keys(byDay).sort().slice(-14);
-    if (days.length) {
-      var max = Math.max.apply(null, days.map(function(d) { return byDay[d]; })) || 1;
-      chartEl.innerHTML = '<div class="chart-area">' + days.map(function(d) {
-        var h = Math.max(4, Math.round(byDay[d] / max * 180));
-        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0"><div style="width:100%;height:' + h + 'px;background:linear-gradient(180deg,var(--brand-primary),rgba(240,185,11,.4));border-radius:3px 3px 0 0;opacity:.85"></div><div style="font-size:8px;color:var(--text-tertiary);white-space:nowrap">' + d.slice(5) + '</div></div>';
-      }).join('') + '</div><div style="font-size:10px;color:var(--text-tertiary);margin-top:6px">API calls/day (last ' + days.length + ' days) · max ' + max.toLocaleString() + '</div>';
-    }
-  }
-}
-
-// ── Section: Tenants ──
-async function adminLoadTenants() {
-  var el = document.getElementById('adm-tenants-body');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var tenants = await adminFetch('/api/v2/admin/tenants');
-    admTable(el,
-      [{ k: 'name', label: 'Tenant' }, { k: 'id', label: 'ID', type: 'mono' }, { k: 'contact_email', label: 'Email' },
-       { k: 'addresses', label: 'Addresses' }, { k: 'withdrawals', label: 'Withdrawals' }, { k: 'status', label: 'Status', type: 'status' },
-       { k: 'created_at', label: 'Created', type: 'time' }, { k: '_act', label: '' }],
-      tenants.map(function(t) { return { name: t.name, id: t.id, contact_email: t.contact_email, addresses: t.addresses, withdrawals: t.withdrawals, status: t.status, created_at: t.created_at, _act: '⚙' }; }),
-      'No tenants yet'
-    );
-    el.querySelectorAll('td:last-child').forEach(function(td, i) {
-      td.innerHTML = '<button onclick="adminShowTenant(\'' + admEsc(tenants[i].id) + '\')" style="padding:2px 8px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;">⚙</button>';
-    });
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Tenant 详情 Modal（替代 admin-tenants.html 死链）──
-async function adminShowTenant(id) {
-  var overlay = document.createElement('div');
-  overlay.className = 'modal-overlay open';
-  overlay.style.cssText = 'display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;padding:24px;overflow:auto';
-  overlay.innerHTML = '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:12px;padding:24px;width:680px;max-width:94vw;max-height:88vh;overflow:auto">' +
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#FCD535,#F0B90B);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white">' + admEsc((id || '?').charAt(0).toUpperCase()) + '</div>' +
-    '<div style="font-size:16px;font-weight:700">Tenant 详情</div><div style="margin-left:auto"><button class="btn btn-outline btn-sm" onclick="this.closest(\'.modal-overlay\').remove()">✕ 关闭</button></div></div>' +
-    '<div id="adm-tenant-detail" style="font-size:12px;color:var(--text-tertiary)">Loading…</div></div>';
-  document.body.appendChild(overlay);
-  try {
-    var d = await adminFetch('/api/v2/admin/tenants/' + encodeURIComponent(id));
-    var t = d.tenant || {};
-    var kv = [
-      ['ID', t.id], ['Name', t.name], ['Status', t.status], ['Email', t.contact_email],
-      ['Webhook', t.webhook_url], ['Sweep Address', t.sweep_address], ['Sweep Threshold', t.sweep_threshold],
-      ['Review Mode', t.review_mode], ['Data Plan', t.data_plan_id], ['DC API Key', t.dc_api_key],
-      ['Created', admFmtTime(t.created_at)],
-    ];
-    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">' + kv.map(function(k) {
-      return '<div style="background:var(--surface-input);border-radius:8px;padding:10px 12px"><div style="font-size:10px;color:var(--text-tertiary);text-transform:uppercase;font-weight:600">' + admEsc(k[0]) + '</div><div class="mono" style="font-size:12px;color:var(--text-primary);margin-top:3px;word-break:break-all">' + admEsc(k[1] == null ? '—' : k[1]) + '</div></div>';
-    }).join('') + '</div>';
-    function miniTable(title, rows, cols, empty) {
-      return '<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">' + title + ' <span style="color:var(--text-tertiary);font-weight:400">(' + (rows ? rows.length : 0) + ')</span></div>' +
-        (rows && rows.length ? '<table class="adm-table">' + cols.map(function(c) { return '<th>' + c.label + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.map(function(r) {
-          return '<tr>' + cols.map(function(c) { return '<td class="mono">' + admEsc(r[c.k] == null ? '—' : r[c.k]) + '</td>'; }).join('') + '</tr>';
-        }).join('') + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-tertiary)">' + admEsc(empty || 'none') + '</div>') + '</div>';
-    }
-    html += miniTable('🏦 Addresses', d.addresses, [{ k: 'address', label: 'Address' }, { k: 'chain', label: 'Chain' }, { k: 'user_id', label: 'User' }, { k: 'created_at', label: 'Created' }]);
-    html += miniTable('💸 Withdrawals', d.withdrawals, [{ k: 'id', label: 'ID' }, { k: 'amount', label: 'Amount' }, { k: 'status', label: 'Status' }, { k: 'created_at', label: 'Created' }]);
-    html += miniTable('📤 Sweeps', d.sweeps, [{ k: 'id', label: 'ID' }, { k: 'tx_hash', label: 'Tx Hash' }, { k: 'status', label: 'Status' }, { k: 'created_at', label: 'Created' }]);
-    document.getElementById('adm-tenant-detail').innerHTML = html;
-  } catch (e) {
-    document.getElementById('adm-tenant-detail').innerHTML = '<div style="color:var(--error)">' + admEsc(e.message) + '</div>';
-  }
-}
-
-// ── Section: Transactions ──
-async function adminLoadTransactionsSection() {
-  await Promise.allSettled([adminLoadOrders(), adminLoadTransactions()]);
-}
-async function adminLoadOrders() {
-  var el = document.getElementById('adm-orders-body');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var d = await adminFetch('/api/v2/admin/orders?limit=100');
-    var rows = (d.data || []).map(function(o) {
-      var amt = o.amount_wei != null ? (Number(o.amount_wei) / 1e18).toFixed(6) : '—';
-      return { intent_id: o.intent_id, subscriber: o.subscriber, asset: o.asset, amount: amt, currency: o.currency, chain: o.chain, status: o.status, method: o.method, created_at: o.created_at };
-    });
-    admTable(el,
-      [{ k: 'intent_id', label: 'Intent', type: 'mono' }, { k: 'subscriber', label: 'Subscriber' }, { k: 'asset', label: 'Asset' },
-       { k: 'amount', label: 'Amount', type: 'mono' }, { k: 'currency', label: 'Currency' }, { k: 'chain', label: 'Chain' },
-       { k: 'status', label: 'Status', type: 'status' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No payment orders');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-async function adminLoadTransactions() {
-  var el = document.getElementById('adm-tx-body');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var d = await adminFetch('/api/v2/admin/transactions?limit=100');
-    var rows = (d.data || []).map(function(t) {
-      return { id: t.id, wallet_address: t.wallet_address, user_email: t.user_email, type: t.type, amount: t.amount, asset: t.asset, status: t.status, created_at: t.created_at };
-    });
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'wallet_address', label: 'Wallet', type: 'mono' }, { k: 'user_email', label: 'User' },
-       { k: 'type', label: 'Type' }, { k: 'amount', label: 'Amount', type: 'mono' }, { k: 'asset', label: 'Asset' },
-       { k: 'status', label: 'Status', type: 'status' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No transactions');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Risk ──
-async function adminLoadRiskSection() {
-  await Promise.allSettled([adminLoadRiskRules(), adminLoadBlacklist()]);
-}
-async function adminLoadRiskRules() {
-  var el = document.getElementById('adm-risk-rules');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/risk-rules');
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'rule_name', label: 'Rule' }, { k: 'name', label: 'Name' }, { k: 'condition', label: 'Condition' },
-       { k: 'description', label: 'Description' }, { k: 'enabled', label: 'Enabled', type: 'status' }, { k: 'updated_at', label: 'Updated', type: 'time' }],
-      rows, 'No risk rules');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-async function adminLoadBlacklist() {
-  var el = document.getElementById('adm-blacklist');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/token-blacklist');
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'token_address', label: 'Token', type: 'mono' }, { k: 'symbol', label: 'Symbol' },
-       { k: 'reason', label: 'Reason' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No blacklisted tokens');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Revenue ──
-async function adminLoadRevenue() {
-  var kpiEl = document.getElementById('adm-revenue-kpis');
-  var detEl = document.getElementById('adm-revenue-detail');
-  if (!kpiEl || !detEl) return;
-  kpiEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  detEl.innerHTML = '';
-  try {
-    var d = await adminFetch('/api/v2/admin/revenue');
-    kpiEl.innerHTML = '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:0">' +
-      '<div class="kpi-card"><div class="kpi-label">Active Tenants</div><div class="kpi-value">' + (d.activeTenants || 0) + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">DC Subscribers</div><div class="kpi-value">' + (d.dcSubscribers || 0) + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">Subscription Plans</div><div class="kpi-value">' + (d.subscriptions ? d.subscriptions.length : 0) + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">Payments (30d)</div><div class="kpi-value">' + (d.payments ? d.payments.length : 0) + '</div></div>' +
-    '</div>';
-    var html = '';
-    if (d.subscriptions && d.subscriptions.length) {
-      html += '<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">订阅分布</div><table class="adm-table"><thead><tr><th>Plan</th><th>Cycle</th><th>Count</th></tr></thead><tbody>' +
-        d.subscriptions.map(function(s) { return '<tr><td>' + admEsc(s.plan_name) + '</td><td>' + admEsc(s.billing_cycle) + '</td><td class="mono">' + (s.cnt || 0) + '</td></tr>'; }).join('') + '</tbody></table></div>';
-    }
-    if (d.payments && d.payments.length) {
-      html += '<div><div style="font-size:12px;font-weight:700;margin-bottom:6px">近 30 天支付状态</div><table class="adm-table"><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>' +
-        d.payments.map(function(p) { return '<tr><td><span class="status-dot ' + (p.status === 'paid' ? 'up' : (p.status === 'failed' ? 'down' : 'warn')) + '">' + admEsc(p.status) + '</span></td><td class="mono">' + (p.cnt || 0) + '</td></tr>'; }).join('') + '</tbody></table></div>';
-    }
-    detEl.innerHTML = html || '<div style="font-size:12px;color:var(--text-tertiary)">No revenue detail</div>';
-  } catch (e) { kpiEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: DC Subscriptions ──
-async function adminLoadDcSection() {
-  await Promise.allSettled([adminLoadDcSubs(), adminLoadDcStats()]);
-}
-async function adminLoadDcSubs() {
-  var el = document.getElementById('adm-dc-subs');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/dc-subscriptions');
-    admTable(el,
-      [{ k: 'name', label: 'Tenant' }, { k: 'tenant_id', label: 'Tenant ID', type: 'mono' }, { k: 'status', label: 'Status', type: 'status' },
-       { k: 'data_plan_id', label: 'Data Plan', type: 'mono' }, { k: 'dc_api_key', label: 'DC API Key', type: 'mono' }, { k: 'dc_api_key_created_at', label: 'Key Created', type: 'time' }],
-      rows, 'No DC subscriptions');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-async function adminLoadDcStats() {
-  var el = document.getElementById('adm-dc-stats');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var d = await adminFetch('/api/v2/admin/dc/stats');
-    el.innerHTML = '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">' +
-      '<div class="kpi-card"><div class="kpi-label">Total Events</div><div class="kpi-value">' + (d.totalEvents || 0).toLocaleString() + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">DC Subscriptions</div><div class="kpi-value">' + (d.totalSubs || 0) + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">Tokens</div><div class="kpi-value">' + (d.totalTokens || 0) + '</div></div>' +
-      '<div class="kpi-card"><div class="kpi-label">Checkpoints</div><div class="kpi-value">' + (d.checkpoints ? d.checkpoints.length : 0) + '</div></div>' +
-    '</div>' + (d.checkpoints && d.checkpoints.length ? '<table class="adm-table"><thead><tr><th>Chain</th><th>Block</th><th>Updated</th></tr></thead><tbody>' +
-      d.checkpoints.map(function(c) { return '<tr><td class="mono">' + admEsc(c.chain) + '</td><td class="mono">' + admEsc(c.last_block || c.block) + '</td><td class="mono">' + admFmtTime(c.updated_at) + '</td></tr>'; }).join('') + '</tbody></table>' : '');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: API Usage ──
-async function adminLoadApiUsage() {
-  var el = document.getElementById('adm-api-usage');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/api-usage');
-    admTable(el,
-      [{ k: 'date', label: 'Date', type: 'mono' }, { k: 'endpoint', label: 'Endpoint', type: 'mono' }, { k: 'calls', label: 'Calls' }],
-      rows, 'No API usage data (30d)');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Plans ──
-async function adminLoadPlans() {
-  var el = document.getElementById('adm-plans');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var groups = await adminFetch('/api/v2/admin/plans');
-    var html = groups.map(function(g) {
-      var rows = (g.overrides || []).map(function(o) {
-        return { planId: o.planId, name: o.name, price: o.price, billingCycle: o.billingCycle, enabled: o.enabled ? 'yes' : 'no', createdAt: o.createdAt, id: o.id };
-      });
-      return '<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">' + admEsc(g.service) + ' <span style="color:var(--text-tertiary);font-weight:400">(db=' + admEsc(g.db) + ')</span></div>' +
-        (rows.length ? '<table class="adm-table"><thead><tr><th>Plan ID</th><th>Name</th><th>Price</th><th>Cycle</th><th>Enabled</th><th>Created</th></tr></thead><tbody>' +
-          rows.map(function(o) { return '<tr><td class="mono">' + admEsc(o.planId) + '</td><td>' + admEsc(o.name) + '</td><td class="mono">' + o.price + '</td><td>' + admEsc(o.billingCycle) + '</td><td><span class="status-dot ' + (o.enabled === 'yes' ? 'up' : 'down') + '">' + o.enabled + '</span></td><td class="mono">' + admFmtTime(o.createdAt) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-tertiary)">No overrides (回退内置常量)</div>') + '</div>';
-    }).join('');
-    el.innerHTML = html || '<div style="padding:24px;text-align:center;color:var(--text-tertiary)">No plans configured</div>';
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Webhooks ──
-async function adminLoadWebhooks() {
-  var el = document.getElementById('adm-webhooks');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var d = await adminFetch('/api/v2/admin/webhooks?limit=100');
-    var rows = (d.data || []).map(function(w) {
-      return { id: w.id, event_type: w.event_type, payload: w.payload && typeof w.payload === 'object' ? JSON.stringify(w.payload).slice(0, 60) : (w.payload || ''), status: w.status, created_at: w.created_at };
-    });
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'event_type', label: 'Event' }, { k: 'payload', label: 'Payload' },
-       { k: 'status', label: 'Status', type: 'status' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No webhook events');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Sweeps ──
-async function adminLoadSweeps() {
-  var el = document.getElementById('adm-sweeps');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/sweeps');
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'tenant_name', label: 'Tenant' }, { k: 'amount', label: 'Amount', type: 'mono' },
-       { k: 'asset', label: 'Asset' }, { k: 'tx_hash', label: 'Tx Hash', type: 'mono' }, { k: 'status', label: 'Status', type: 'status' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No sweep records');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Settings ──
-async function adminLoadSettings() {
-  await Promise.allSettled([adminLoadStatus(), adminLoadRpc()]);
-}
-async function adminLoadStatus() {
-  var el = document.getElementById('adm-status');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/status');
-    el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">' + rows.map(function(s) {
-      return '<div style="background:var(--surface-input);border-radius:8px;padding:12px 14px"><div style="display:flex;align-items:center;gap:8px"><span class="status-dot ' + (s.status === 'up' ? 'up' : 'down') + '">' + admEsc(s.name) + '</span></div><div class="mono" style="font-size:10px;color:var(--text-tertiary);margin-top:6px">:' + (s.port || '') + '</div></div>';
-    }).join('') + '</div>';
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-async function adminLoadRpc() {
-  var el = document.getElementById('adm-rpc');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/rpc');
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'chain', label: 'Chain' }, { k: 'url', label: 'URL', type: 'mono' },
-       { k: 'priority', label: 'Priority' }, { k: 'enabled', label: 'Enabled', type: 'status' }],
-      rows, 'No RPC endpoints');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-// ── Section: Audit ──
-async function adminLoadAudit() {
-  var el = document.getElementById('adm-audit');
-  if (!el) return;
-  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-tertiary);">Loading…</div>';
-  try {
-    var rows = await adminFetch('/api/v2/admin/audit');
-    admTable(el,
-      [{ k: 'id', label: 'ID', type: 'mono' }, { k: 'action', label: 'Action' }, { k: 'actor', label: 'Actor' },
-       { k: 'details', label: 'Details' }, { k: 'created_at', label: 'Created', type: 'time' }],
-      rows, 'No audit entries');
-  } catch (e) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + admEsc(e.message) + '</div>'; }
-}
-
-function adminBootstrap() {
-  adminToken = localStorage.getItem('admin_token');
-  adminExpires = parseInt(localStorage.getItem('admin_expires') || '0');
-  if (!adminToken || Date.now() > adminExpires) {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_expires');
-    window.location.replace('/admin-login.html');
-    return;
-  }
-  adminInit();
-}
-
-document.addEventListener('DOMContentLoaded', adminBootstrap);
-if (document.readyState !== 'loading') { adminBootstrap(); }
+document.addEventListener('DOMContentLoaded', function() { adminToken = localStorage.getItem('admin_token'); adminExpires = parseInt(localStorage.getItem('admin_expires') || '0'); loadAdminDashboard(); });
+if (document.readyState !== 'loading') { adminToken = localStorage.getItem('admin_token'); adminExpires = parseInt(localStorage.getItem('admin_expires') || '0'); loadAdminDashboard(); }
 </script>
 </body>
 </html>

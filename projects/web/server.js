@@ -23,11 +23,6 @@ const DATA_HOST = process.env.DATA_HOST || 'localhost';
 const DATA_PORT = parseInt(process.env.DATA_PORT || '9112', 10);
 const AA_HOST = process.env.AA_HOST || 'localhost';
 const AA_PORT = parseInt(process.env.AA_PORT || '9131', 10);
-const ML_HOST = process.env.ML_HOST || 'localhost';
-const ML_PORT = parseInt(process.env.ML_PORT || '9120', 10);
-const ML_API_KEY = process.env.ML_API_KEY || '';
-const PAYMENTS_HOST = process.env.PAYMENTS_HOST || 'localhost';
-const PAYMENTS_PORT = parseInt(process.env.PAYMENTS_PORT || '9132', 10);
 
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
@@ -46,14 +41,6 @@ const API_ROUTES = {
   '/api/v2/subscription': { host: WAAS_HOST, port: WAAS_PORT },
   // A-9: AA/session 线（aa-relay :9131）— plans / ledger-balance / userops
   '/v1':             { host: AA_HOST,      port: AA_PORT },
-  // 图谱因子数据面（data-service :9112）— REQ-G8/G9：/factors/*、/graph/*、/rag/*
-  '/factors':        { host: DATA_HOST,    port: DATA_PORT },
-  '/graph':          { host: DATA_HOST,    port: DATA_PORT },
-  '/rag':            { host: DATA_HOST,    port: DATA_PORT },
-  // ML 模型推理面（ml-service :9120）— 注入 Authorization Bearer
-  '/ml':             { host: ML_HOST,      port: ML_PORT },
-  // 通用支付网关（infrax-payments :9132）— invites / transfers / a2a / mpp
-  '/payments':       { host: PAYMENTS_HOST, port: PAYMENTS_PORT },
 };
 
 const MIME = {
@@ -103,21 +90,11 @@ function serveFile(res, filePath) {
 
 // ─── Proxy API requests to backends ──────────────────────────────
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY || '';
-// infrax-payments 独立鉴权 key（其 PAYMENTS_API_KEY 与平台 bridge key 不同源）
-const PAYMENTS_API_KEY = process.env.PAYMENTS_API_KEY || '';
 function proxyRequest(req, res, target) {
   const headers = { ...req.headers, host: target.host + ':' + target.port };
   // 后端已接入统一鉴权契约：代理统一注入 X-Service-Key（平台 bridge key），
   // 前端无需携带 key；直接访问后端的调用方需自带 Bearer/X-API-Key/X-Service-Key
   if (SERVICE_API_KEY) headers['x-service-key'] = SERVICE_API_KEY;
-  // ml-service 仅认 Authorization: Bearer <ML_API_KEY>（app_auth），特判注入
-  if (req.url.startsWith('/ml') && ML_API_KEY && !headers.authorization) {
-    headers['authorization'] = 'Bearer ' + ML_API_KEY;
-  }
-  // payments 引擎使用独立 key（非平台 bridge key），特判覆盖注入
-  if (req.url.startsWith('/payments') && PAYMENTS_API_KEY) {
-    headers['x-service-key'] = PAYMENTS_API_KEY;
-  }
   const opts = {
     hostname: target.host,
     port: target.port,

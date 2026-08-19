@@ -138,14 +138,6 @@ label{font-size:15px;font-weight:600;color:var(--text-tertiary);display:block;ma
 .tab-btn:hover:not(.active){color:var(--text-primary)}
 .sub-panel{display:none}
 .sub-panel.active{display:block}
-/* AA / Insights 面板 tab 切换（模块内动态渲染） */
-.aa-pane{display:none}
-.aa-pane.active{display:block}
-.ins-pane{display:none}
-.ins-pane.active{display:block}
-.pm-pane{display:none}
-.pm-pane.active{display:block}
-
 /* Filters & Chips */
 .filter-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .chip{padding:4px 12px;border-radius:var(--r-full);font-size:16px;font-weight:600;border:1px solid var(--border);color:var(--text-secondary);cursor:pointer;transition:all 0.15s;line-height:1.3}
