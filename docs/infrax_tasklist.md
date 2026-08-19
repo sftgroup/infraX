@@ -2186,3 +2186,19 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **上线状态**：已上线 ✅ —— commit `579d360` 推送 origin/master 并部署生产机 43.163.105.172（`git pull` fast-forward + `systemctl restart infrax-aa-relay` active，`aa-relay running on port 9131`）；`/health` 返回 `{"status":"ok","service":"aa-relay","chains":["oxachain"],"bundlers":{...}}`；replace 端点冒烟通过：缺参 → 400、完整 draft → 200（`disableDraft` 字段，未部署账户安全降级 null）、测试 session 已清理（GET 复核 0 行，无生产数据污染）。
 - **session-key 内嵌副本对齐（2026-08-20，commit `739d53e`）**：session-key 内嵌 aa-sdk 副本（`packages/core/src/aa/`）存在与 AA-1/AA-2/AA-7 同源缺陷 → 已对齐：`encodeExecuteBatch`、`encodeValidatorInstallData`（修复 `encodeEnableSessionCall` initData 直传的 AA24 隐患）、`encodeDisableSessionBatch` 三段批量（`encodeDisableSessionCall` 保留兼容并标注遗留缺陷）；新增 `__tests__/session-align.test.ts` 6 用例。单测 core 6/6 + server 26/26 + 全包 tsc 构建通过；已部署生产 43.163.105.172（pull + core dist `npx tsc` 重建 + restart `infrax-session-key` active，`/api/v1/health` OK；MCP `infrax-session-key-mcp` active 未改动无需重启）。
 
+**代码审查修复（2026-08-20，commit `1228c41` + `a887175`，5 项全部完成）**：
+
+| # | 审查发现 | 修复 | 验证 |
+|---|---------|------|------|
+| Fix1 | `/v1/session/disable` 返回遗留 `disableCallData` 字段（单调用编码，与三段批量 draft 并存易误用） | relay 移除该字段；aa-sdk 删除 `encodeDisableSessionCall` 及 `DisableSessionCallParams`，撤销统一走 `encodeDisableSessionBatch` | session.test.ts 删对应用例；relay typecheck ✅ |
+| Fix2 | revoke/replace/submit 三端点重复"签名校验+计费+广播+结算"逻辑 | 抽取 `submitSignedOp` 公共 helper（helpers.ts），支持 `onSuccess` 回调（replace 移除旧 session） | relay typecheck ✅ |
+| Fix3 | aa-relay `index.ts` 单文件 869 行 | 拆分为 `src/index.ts`（引导）+ `routes/session.ts`（session 域 6 路由）+ `routes/relay.ts`（4 转发路由）+ `helpers.ts`（共享工具） | 生产 9131 端口路由冒烟：/v1/session、/replace、/revoke 均 401（挂载成功非 404）✅ |
+| Fix4 | session-key `packages/core/src/aa/` 内嵌 20 个 aa-sdk 手工副本，双代码库漂移（739d53e 对齐后仍有复发风险） | 删除全部 20 个副本文件；`aa/index.ts` 改为 `export * from '@0xinfrax/aa-sdk'`（file: 依赖，单一事实源）；补齐 aa-sdk 缺口（recovery.ts 接口占位、utils/eth-address.ts、RecoveryConfig、ChainId） | aa-sdk 121/121；session-key build 4 包 + core 4/4 + server 26/26；生产重建 core dist + 重启 infrax-session-key ✅ |
+| Fix5 | 'evm' 硬编码 9 处（index.ts 及 session/relay 路由） | 全部改用 `cfg.network` | 生产 `/health` 返回 `chains:["oxachain"]` ✅ |
+
+- **生产部署记录**（2026-08-20，生产机 43.163.105.172，`/home/ubuntu/infraX-1`）：
+  - 部署 commit：`e159ba6 → a887175`（fast-forward，含上述 2 个 commit）。
+  - 构建：生产机 aa-sdk `npx tsc` 重建 dist（新增 recovery/eth-address 导出）；core 建 `node_modules/@0xinfrax/aa-sdk` 符号链接 → `packages/core` `npx tsc` 重建 dist。
+  - 服务：`sudo systemctl restart infrax-session-key` + `infrax-aa-relay` → 均 `active`（MCP 未改动无需重启）。
+  - 验证：`curl 127.0.0.1:9131/health` → `{"status":"ok","service":"aa-relay","chains":["oxachain"]}`；session-key `/health` 401（缺 token 正常）；两服务日志无 `MODULE_NOT_FOUND`/aa-sdk 解析错误。
+
