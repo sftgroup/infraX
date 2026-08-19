@@ -50,6 +50,15 @@ _CATEGORY_RULES = [
 ]
 _DEFAULT_CATEGORY = "asset"
 
+# ── REQ-G8：中文实体英文名（预存映射表 + 值后缀降级）──────
+_NAME_EN_FILE = "entity_name_en.json"
+_name_en_map: dict[str, str] = {}
+_name_en_loaded = False
+# 尾部数值/百分比/金额/篇数等值后缀（剥离后回查核心词，如 机会评分48/100）
+_VALUE_SUFFIX_RE = re.compile(
+    r"(?:[+\-]?\d[\d,]*(?:\.\d+)?%?|(?:\d+/\d+)|(?:\d[\d,.]*美元)|\d+篇)$"
+)
+
 # ── edge relation 映射（8 枚举；顺序即匹配优先级，首个命中生效）──
 _RELATION_RULES = [
     (("增持", "投资", "流入", "funding", "买入"), "funding"),
@@ -146,6 +155,37 @@ def load_entities(tenant_id: str, namespace: str = "default") -> Optional[dict]:
     if data is not None:
         _entities_cache[key] = data
     return data
+
+
+def load_name_en_map() -> dict[str, str]:
+    """Lazy-load 中文实体 → 英文名预存映射表（api/entity_name_en.json）。"""
+    global _name_en_map, _name_en_loaded
+    if _name_en_loaded:
+        return _name_en_map
+    _name_en_loaded = True
+    try:
+        path = Path(__file__).resolve().parent / _NAME_EN_FILE
+        if path.exists():
+            _name_en_map = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.debug("name_en map load failed", exc_info=True)
+    return _name_en_map
+
+
+def name_en_of(node_id: str) -> Optional[str]:
+    """实体英文名（REQ-G8）：精确查表 → 剥离值后缀回查核心词（如
+    「机会评分48/100」→ Opportunity Score 48/100）→ 未命中返回 None。"""
+    m = load_name_en_map()
+    if node_id in m:
+        return m[node_id]
+    core = _VALUE_SUFFIX_RE.sub("", node_id).rstrip(" ")
+    if core and core != node_id and core in m:
+        suffix = node_id[len(core):].strip()
+        # 值后缀语言化：76.14美元 → 76.14 USD；10篇 → 10
+        suffix = re.sub(r"美元$", " USD", suffix).strip()
+        suffix = re.sub(r"^(\d+)篇$", r"\1", suffix).strip()
+        return f"{m[core]} {suffix}" if suffix else m[core]
+    return None
 
 
 def load_relations(tenant_id: str, namespace: str = "default") -> Optional[dict]:
@@ -351,6 +391,7 @@ def build_graph_payload(
         )
         nodes.append({
             "id": name,
+            "name_en": name_en_of(name),
             "category": _map_category(name, entity_type),
             "size": sizes.get(node_id, 0.0),
             "sentiment": _map_sentiment(description),
