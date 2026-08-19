@@ -194,6 +194,8 @@ export async function initDatabase(): Promise<void> {
         enabled BOOLEAN DEFAULT true,
         min_withdraw VARCHAR(32) DEFAULT '0',
         max_withdraw VARCHAR(32) DEFAULT '0',
+        tenant_id UUID,
+        min_sweep_amount VARCHAR(32) DEFAULT '0',
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);

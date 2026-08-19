@@ -562,7 +562,19 @@ export async function listSafes(userId?: string): Promise<any[]> {
   const result = userId && /^[0-9a-f]{8}-/.test(userId)
     ? await pool.query('SELECT * FROM safe_wallets WHERE user_id = $1 ORDER BY created_at DESC', [userId])
     : await pool.query('SELECT * FROM safe_wallets ORDER BY created_at DESC');
-  return result.rows;
+  // Map DB snake_case rows → API camelCase（前端依赖 address/chainId；safe_address 原样返回会导致 Propose/Txns 按钮地址为 undefined）
+  return result.rows.map((r) => ({
+    id: r.id,
+    address: r.safe_address,
+    chainId: r.chain_id,
+    owners: r.owners,
+    threshold: r.threshold,
+    name: r.name,
+    status: r.status,
+    saltNonce: r.salt_nonce,
+    pendingTxCount: 0,
+    createdAt: r.created_at,
+  }));
 }
 
 // ── Safe Transactions ──
