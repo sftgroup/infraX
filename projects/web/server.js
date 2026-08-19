@@ -103,6 +103,8 @@ function serveFile(res, filePath) {
 
 // ─── Proxy API requests to backends ──────────────────────────────
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY || '';
+// infrax-payments 独立鉴权 key（其 PAYMENTS_API_KEY 与平台 bridge key 不同源）
+const PAYMENTS_API_KEY = process.env.PAYMENTS_API_KEY || '';
 function proxyRequest(req, res, target) {
   const headers = { ...req.headers, host: target.host + ':' + target.port };
   // 后端已接入统一鉴权契约：代理统一注入 X-Service-Key（平台 bridge key），
@@ -111,6 +113,10 @@ function proxyRequest(req, res, target) {
   // ml-service 仅认 Authorization: Bearer <ML_API_KEY>（app_auth），特判注入
   if (req.url.startsWith('/ml') && ML_API_KEY && !headers.authorization) {
     headers['authorization'] = 'Bearer ' + ML_API_KEY;
+  }
+  // payments 引擎使用独立 key（非平台 bridge key），特判覆盖注入
+  if (req.url.startsWith('/payments') && PAYMENTS_API_KEY) {
+    headers['x-service-key'] = PAYMENTS_API_KEY;
   }
   const opts = {
     hostname: target.host,
