@@ -233,6 +233,42 @@ curl -H "X-API-Key: dx_xxx" \
 # 3) 用量监控：管理员可查看 request_count / last_used_at，随时限流/吊销
 ```
 
+### 5.4 图谱与 RAG 知识增强打包接入（dx_ 单 key，2026-08-19 通用）
+
+> **通用方案**：图谱数值因子、力导向图可视化、语义检索、相关性图、图谱历史——**全部打包进金融数据服务套餐**，B 端只需一把 `dx_` key，无需另持 `lr_` key（适用 arbitrage / aitrader / aihunter-saas / aiservicer 等全部量化平台）。
+>
+> 统一前缀 `https://infrax.0xainet.top/api/data/`，鉴权三选一（`Authorization: Bearer` / `X-API-Key` / `X-Service-Key`）。
+
+| 用途 | 端点 | 说明 |
+|---|---|---|
+| 图谱数值因子（多币种） | `GET /factors/current?symbols=BTC,ETH,...` | **symbols 必须显式传参**（默认仅 BTC）；每 symbol 18 项 `gf_*`，覆盖市值前 150 标的 |
+| 力导向图可视化 | `GET /factors/graph/entities?symbol=&namespace=market&limit=` | symbol 非空=该实体一跳子图；空=全图 top-N by PageRank；**namespace 默认 market**（onchain/default 可选） |
+| 语义检索知识增强 | `POST /rag/retrieve` | body `{"query","namespaces":["market","onchain"],"top_k":10}` → 各 namespace context 片段（自带 LLM 组装答案） |
+| 语义图谱 8 因子 | `GET /factors/graph?symbols=` | ragservicer 知识图谱因子（graph_entity_count 等），`meta.catalog` 附定义 |
+| 相关性图边 | `GET /factors/graph/edges?symbols=&limit=300` | GX-2 口径：60 日 \|ρ\|≥0.6 + community/pagerank（与 gf_* 同快照） |
+| 图谱因子历史（回测） | `GET /factors/graph/history?symbols=&days=` | 自然日归一化 asof 语义；历史自 2026-08-18 累积 |
+
+**调用示例**：
+
+```bash
+# 力导向图：BTC 一跳子图（ECharts 直接消费）
+curl -H "X-API-Key: dx_xxx" \
+  "https://infrax.0xainet.top/api/data/factors/graph/entities?symbol=BTC&namespace=market"
+
+# 语义检索：快速分析知识增强
+curl -H "X-API-Key: dx_xxx" -X POST \
+  "https://infrax.0xainet.top/api/data/rag/retrieve" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"BTC 近期链上资金流与市场情绪","namespaces":["market","onchain"],"top_k":10}'
+```
+
+**lr_ key 边界（重要）**：`lr_*` key 仅服务于**项目方上传/读取自有资料**场景（documents 注入/列表、自有租户空间 query/retrieve，公网前缀 `https://infrax.0xainet.top/api/rag/api/v1/`），与金融图谱数据**互不重叠**。量化平台若只用平台数据，全程持 dx_ key 即可；如另需自己的知识库，再申请 lr_ key。
+
+**注意事项**：
+- `graph/entities` 若直接访问 ragservicer（不经 data-service），`namespace` 必须显式传 `market`/`onchain`（默认 `default` 无图数据 → 503）；data-service 透传端点已默认 `market`，无此坑。
+- ml 因子（bolt/moirai/timesfm）已恢复日更，`meta.age_ms` 以模型 `generated_at` 计，过期过滤阈值建议 30min。
+- 全部端点 fail-silent：上游不可用返回空数据 + `meta.warning`，不阻塞业务。
+
 ---
 
 ## 6. 场景二：服务平台接入（LightRAG 知识库）
@@ -312,6 +348,9 @@ curl -X POST http://127.0.0.1:9113/inject \
 | 返回 `403 API key disabled` | key 被管理员禁用（数据服务） |
 | 返回 `429 Rate limit exceeded` | 超出该 key 的 RPM 限流，联系管理员调高或稍后重试 |
 | 需要更多命名空间/租户 | 联系管理员创建（ragservicer 命名空间按首次访问隐式创建） |
+| 图谱可视化 / 语义检索需要 lr_ key 吗？ | **不需要**（2026-08-19 起打包进 dx_ 套餐）：力导向图 `GET /factors/graph/entities`、语义检索 `POST /rag/retrieve` 均走 dx_ key（见 §5.4）。lr_ key 仅用于项目方自有资料上传/检索 |
+| `graph/entities` 直接访问 ragservicer 返回 503？ | 未显式传 `namespace`（默认 `default` 无图数据）。加 `&namespace=market`（或 `onchain`）；推荐走 data-service 透传端点 `GET /api/data/factors/graph/entities`（已默认 market） |
+| ragservicer 公网地址是 `/api/rag/api/v1/` 还是 `/api/v1/`？ | 正确前缀 **`/api/rag/api/v1/`**（nginx 去前缀转发）；`/api/v1/*` 是 data-service 旧契约兼容段，不是 ragservicer |
 
 ---
 
@@ -321,5 +360,7 @@ curl -X POST http://127.0.0.1:9113/inject \
 |---|---|
 | [INTEGRATION_DATA_SERVICE.md](INTEGRATION_DATA_SERVICE.md) | data 服务 REST 端点全表 + SDK 样例 + MCP 配置 |
 | [INTEGRATION_LIGHTRAG.md](INTEGRATION_LIGHTRAG.md) | ragservicer/injector 开通、写入、检索、注入 |
+| [DATA_SERVICE_CATALOG.md](DATA_SERVICE_CATALOG.md) | 行情/因子/ML/graph 数据目录（§6.5 图谱与 RAG 统一端点） |
+| [services/ml-graph-factors.md](services/ml-graph-factors.md) | 图谱因子引擎（gf_\* 18 因子 / GX-1~3） |
 | [infrax_tasklist.md](infrax_tasklist.md) | 数据栈部署与运维（内部） |
 | [API_ACCESS.md](API_ACCESS.md) | 区块链服务栈（WAAS/Vault/MPC/DC/Payment/Session Key）接入 |
