@@ -2140,3 +2140,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **存量迁移**：已部署账户不受影响（模块升级只影响新 enable），但旧账户在旧模块逻辑下无法覆盖，重新 enable 前仍需一次显式撤销（配合 AA-1 disable 上链闭环 / AA-6 复用完成迁移）。
 - **状态**：🔲 记录不排期。短期/中期由 AA-1（disable 上链闭环）+ AA-6（B2 session 复用）覆盖轮换诉求；是否走合约升级由版本规划决策，不与 AA-1/AA-6 互相阻塞。
 
+**AA-1~AA-7 生产部署记录**（2026-08-19，生产机 43.163.105.172，`/home/ubuntu/infraX-1`）：
+
+- 部署 commit：`ef8a180 → 5e91b44`（fast-forward，无冲突；含 AA-1~AA-7 全部代码；本次未改 package.json，无需 npm install）。
+- 服务：`sudo systemctl restart infrax-aa-relay` → `active`；`/health` 返回 `{"status":"ok","chains":["oxachain"]}`；日志无启动错误。
+- AA-5 验证：`GET /v1/session?account=0x02a6...`（真实 agentx-auto-renew 账户）→ 每个 session 项返回 `createdAt` + `isBound`。
+- AA-6 验证：`POST /v1/session`（测试 product `aa-deploy-verify*`，测试 owner，测后已 DELETE 清理）→ 正常创建路径返回 `isBound:false`/`needsSessionRevoke:false` + `sessionKey`；DB 确认 `session_key_private_key` 已持久化（key_len=66，复用 `getWithKey` 可取回）。
+- AA-6 已绑定→复用/409 分支需真实链上绑定状态触发，逻辑由 aa-sdk 单测（session-reuse.test.ts 18 用例）覆盖；生产未造链上绑定测试数据。
+- 无生产数据污染：测试 session 已清理。
+
