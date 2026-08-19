@@ -154,15 +154,24 @@ ssh ubuntu@43.156.25.197   # ML 机
 
 ```
 /api/v2/data    → :9102 (DC)
+/api/v2/data/market → :9101 (Collector 行情)
+/api/v2/data/my-keys → :9112 (用户级 key)
 /api/v2/market   → :9101 (Collector)   ← MQ-16 新增（2026-08-11）
 /api/v2/mpc     → :9104
 /api/v2/wallet  → :9109
 /api/v2/waas    → :9109
 /api/v2/saas    → :9109
+/api/v2/admin   → :9100
 /api/vault      → :9107
 /api/v2/vault   → :9107
-/api/v2/admin   → :9100
+/api/v2/subscription → :9109
+/v1             → :9131 (aa-relay)
+/factors /graph /rag → :9112 (data-service)
+/ml             → :9120 (ml-service)
+/payments       → :9132 (payments 引擎)  ← 前端网关面板（2026-08-20 新增）
 ```
+
+> **代理鉴权注入**（server.js）：默认注入 `X-Service-Key: $SERVICE_API_KEY`（平台 bridge key）；`/ml` 特判注入 `Authorization: Bearer $ML_API_KEY`；`/payments` 特判覆盖注入 `X-Service-Key: $PAYMENTS_API_KEY`（payments 引擎独立 key，与平台 bridge key 不同源，infrax-web drop-in `payments.conf` 配置）。
 
 ### nginx 公网入口（172，80/443，统一对外）
 
