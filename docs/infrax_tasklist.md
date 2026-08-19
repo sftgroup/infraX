@@ -2099,7 +2099,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 | W-10 | **DRY_RUN 开关**：当前仅 `NODE_ENV=development` 分支 mock txHash → 显式 env 开关 + 模拟广播落审计表（arb §2/§5） | ✅ | P2 |
 | W-11 | **sweep 链上对账 + 执行闭环**：`sweepTenantFunds` 基于 DB 账本 net_balance 且仅建 pending 记录，无链上广播/确认 → 改链上真实余额 + dust/gas 阈值 + 执行器（arb §4.3 sweepAll） | ✅ | P2 |
 | W-12 | **sweep_records 补 batchId**：聚合审计归属（arb §6 自提问题同样适用） | ✅ | P2 |
-| W-13 | **私钥分层**：WALLET_ENCRYPTION_KEY / HD seed 缺省时静默降级 dev（仅 warn）→ 生产 fail-closed（已完成）；KMS/HSM + 密钥轮换（arb §3.1/§5，远期增强） | ⚠️ | P2 |
+| W-13 | **私钥分层**：WALLET_ENCRYPTION_KEY / HD seed 缺省时静默降级 dev（仅 warn）→ 生产 fail-closed（2026-08-19 已生产启用：NODE_ENV=production + 随机 seed/密钥 + 移除 key 拒启验证通过）；KMS/HSM + 密钥轮换（arb §3.1/§5，远期增强） | ✅ | P2 |
 | W-14 | **运行时 SystemConfig**：当前配置全 env、调参需重发 → DB 化配置白名单 + maskSecret 回显（arb §3） | ✅ | P2 |
 | W-15 | **提现/购买 2FA**：当前仅 paymentPassword → 增加 TOTP（arb §5 强校验） | ✅ | P2 |
 | W-16 | **冷热分离动态额度**：热钱包只留当日预估流水，超出自动归冷（arb §6） | ✅ | P2 |

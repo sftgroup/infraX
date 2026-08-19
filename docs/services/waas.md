@@ -121,7 +121,7 @@ WAAS 定位为**类中心化交易所（CEX）的托管模型**，链上签名�
 - `POST /api/v2/saas/withdraw`、`POST /api/v2/saas/withdraw/:id/approve`
 - `POST /api/v2/subscription/subscribe`、`POST /api/v2/data/subscribe`
 
-> ⚠️ 生产访问注意（2026-08-19 复核）：waas 目前**仅内网直连** `http://127.0.0.1:9109`，生产 nginx 无 waas 公网映射（钱包 API 属资金敏感服务，未公网暴露）。旧文档中「公网经 nginx→web 代理 `/api/v2/wallet` 等」路径当前不再成立，如需公网接入需另配代理并加服务端鉴权。
+> ✅ **生产访问（2026-08-19 更新）**：waas 已开放公网 nginx 代理 `https://infrax.0xainet.top/api/v2/waas/*` → 内网 `127.0.0.1:9109/api/v2/*`（完整 API，含资金端点）。健康检查 `https://infrax.0xainet.top/api/v2/waas/health`。鉴权沿用 waas 上游强制认证（钱包签名 / admin JWT / 支付密码）。内网直连 `http://127.0.0.1:9109` 仍可用。⚠️ 资金敏感服务已公网暴露，务必保持 `ADMIN_PASS` 强口令、启用 TOTP、保护 `CWALLET_API_KEY`。
 
 ## 4. 样例代码
 
@@ -131,9 +131,8 @@ WAAS 定位为**类中心化交易所（CEX）的托管模型**，链上签名�
 # ═══ 内网直连 ═══
 BASE=http://127.0.0.1:9109
 
-# ═══ 公网经 nginx→web 代理（:9111）═══
-# BASE=https://infrax.0xainet.top
-
+# ═══ 公网经 nginx 代理（2026-08-19 起开放，注意路径含 /waas/）═══
+# BASE=https://infrax.0xainet.top/api/v2/waas
 # ── 套餐列表（公开，生产实测 200：Starter free / MPC Wallets 3 / Safe 3 等）──
 curl -s $BASE/api/v2/subscription/plans
 
@@ -164,7 +163,7 @@ import { Wallet } from 'ethers';
 const signer = new Wallet(process.env.WALLET_PRIVATE_KEY!); // EIP-191 签名者
 
 const infrax = new InfraX({
-  baseUrl: 'http://127.0.0.1:9109',      // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top
+  baseUrl: 'http://127.0.0.1:9109',      // 内网直连；公网 baseUrl 用 https://infrax.0xainet.top/api/v2/waas
   walletAddress: signer.address,          // x-wallet-address
   walletSign: (msg) => signer.signMessage(msg), // EIP-191 签名回调（x-wallet-signature）
 });
