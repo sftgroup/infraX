@@ -490,6 +490,36 @@ sudo systemctl daemon-reload && sudo systemctl restart infrax-<svc>
 bash projects/web/scripts/mq16_t5_verify.sh api
 ```
 
+## 待办事项（ToDo）
+
+### T-1 W-13 生产 fail-closed 密钥初始化（infrax-waas，未完成）
+**背景**：生产 unit 未设 `NODE_ENV`（服务按 development 运行），未配置 `HD_WALLET_SEED` / `WALLET_ENCRYPTION_KEY`，W-13 生产 fail-closed 尚未生效。
+
+**步骤**：
+1. 生成/确认加密密钥：`openssl rand -hex 32`（`WALLET_ENCRYPTION_KEY`，32 字节 hex）
+2. 确认 HD seed 来源：若生产已派生过托管地址，**必须沿用现有 seed**，更换会导致存量派生地址无法解密（先核对地址池/`address_pool` 与 HD 派生是否同源）
+3. 写 drop-in：`/etc/systemd/system/infrax-waas.service.d/prod.conf`
+```
+Environment="NODE_ENV=production"
+Environment="HD_WALLET_SEED=<seed>"
+Environment="WALLET_ENCRYPTION_KEY=<32-byte-hex>"
+```
+4. 生效并重启：`sudo systemctl daemon-reload && sudo systemctl restart infrax-waas`
+5. 验证 fail-closed：临时去掉任一 key 重启，服务应**拒绝启动**并报错
+6. 回滚：保留现有 drop-in 备份，异常时立即恢复重启
+
+### T-2 waas nginx 公网代理（infrax-waas，未完成，需评审是否开放）
+**背景**：生产 nginx 当前无 waas 映射，钱包 API 仅内网 `127.0.0.1:9109` 直连（`docs/services/waas.md` §5 已注明）。资金敏感服务默认不公网暴露。
+
+**步骤（如决定公网接入）**：
+1. `sites-enabled/infrax` 增加 location：`/api/v2/waas/` → `proxy_pass http://127.0.0.1:9109/api/v2/;`（含超时/body 限制）
+2. 加服务端鉴权（x-api-key 或钱包签名），禁止裸公网直连
+3. `sudo nginx -t && sudo systemctl reload nginx`
+4. 验证：`curl https://infrax.0xainet.top/api/v2/waas/health`
+5. 回滚：备份原 nginx 配置，异常时 `systemctl reload nginx` 恢复
+
+**风险**：钱包 API 涉及资金操作，公网暴露面越大风险越高 → 建议保持内网，业务侧（web/后端）作为唯一代理层。
+
 ## 修复备忘
 
 ### v0.8.0 生产扩容迁移（2026-08-16）
