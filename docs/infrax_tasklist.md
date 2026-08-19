@@ -2202,3 +2202,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
   - 服务：`sudo systemctl restart infrax-session-key` + `infrax-aa-relay` → 均 `active`（MCP 未改动无需重启）。
   - 验证：`curl 127.0.0.1:9131/health` → `{"status":"ok","service":"aa-relay","chains":["oxachain"]}`；session-key `/health` 401（缺 token 正常）；两服务日志无 `MODULE_NOT_FOUND`/aa-sdk 解析错误。
 
+**@0xinfrax/aa-sdk 0.1.2 发布（2026-08-20，bump 0.1.1 → 0.1.2）**：
+
+- **背景**：npm 发布版 0.1.0/0.1.1 的 dist 为旧单文件 `session.js`（无独立 session-revoke/session-module 产物），外部 npm 消费方拿不到三段批量 disable 等新能力。
+- **核对结论**：源码 barrel 早已导出所需符号 —— [src/session.ts](`projects/aa-sdk/src/session.ts`) 为聚合桥（re-export session-store/module/enable/revoke/reuse/validate），`index.ts` 再 re-export `session.js`；`buildDisableSessionUserOp` / `encodeDisableSessionBatch` / `KernelV3SessionDataBuilder` / `MODULE_TYPE_VALIDATOR` / `encodeValidatorInstallData` / `buildEnableSessionUserOp` / `isSessionModuleInstalled` / `verifyDisableSignature` 均可达。真正过期的是 **npm 发布版 dist**，非 barrel。
+- **`encodeDisableSessionCall` 不恢复**：已在上轮审查（Fix1）中删除（单调用只做 uninstallModule，链上实证不删 session 记录，旧 key 可复用 = AA23/AA24 根因）。消费方应改用三段批量 `encodeDisableSessionBatch`。
+- **动作**：`package.json` version → `0.1.2`；`npm run build`（tsc 全量）；`npm publish` 成功（`@0xinfrax/aa-sdk@0.1.2`，`stevenwang000x`）。
+- **发布产物验证**：`npm pack` 解包确认含 `session-module.js`/`session-revoke.js`（含 `.d.ts`）；运行时 import `dist/index.js` 验证 8 项新导出全部 OK（`encodeDisableSessionCall` MISSING 为预期）。
+- **消费方**：内部 aa-relay（相对路径直引源码）与 session-key core（`file:` 链接）均不受 npm 发布影响，无需变更。
+
