@@ -3,7 +3,7 @@
 - 日期：2026-08-19
 - 接收方：B 端数据服务（infraX：data-service 43.163.105.172 / ragservicer 43.156.78.59）
 - 来源：AIHunter 图谱展示界面 + 因子增强规划（复用 B 端 GF-1~GF-6 / GX-1~GX-3 已落地能力）
-- 状态：**2026-08-19 B 端 6 项全部回复并处理完毕，AIHunter 公网实测全部通过** ✅ ｜ REQ-G8 双语支持待 B 端确认 ⏳
+- 状态：**2026-08-19 B 端 6 项全部回复并处理完毕，AIHunter 公网实测全部通过** ✅ ｜ REQ-G8 双语支持、REQ-G9 edges 真实相关值 待 B 端确认 ⏳
 
 ---
 
@@ -119,6 +119,13 @@ GET /factors/graph/history?symbols=&days=
   2. 或 `/factors/graph/entities` 节点增加 `name_en` 字段（实体英文名），RAG context 中实体名提供英文。
 - **验收**: 英文界面下知识增强回复与图谱节点无中文混排。
 
+### REQ-G9【中】edges 端点返回真实相关系数 — ⏳ 待处理（2026-08-19）
+
+- **背景**: `/factors/graph/edges` 的 `corr` / `abs_corr` / `weight` 当前全部恒为 1（300 条边均为 1.0，meta 声明 `min_abs_corr: 0.6`）。前端按文档「线宽=相关强度、绿色=正相关、红色=负相关」渲染时无任何区分度（全绿全粗），hover 显示「相关系数 1.000」对用户产生误导。
+- **AIHunter 现状（临时兜底）**: 检测到无真实相关值（corr 全相等）时降级为统一中性样式，tooltip 仅显示 kind 与阈值，不再显示伪造的相关系数。
+- **期望**: edges 返回真实相关系数——`corr`（带符号，范围 [-1,1]）与 `abs_corr`（绝对值）。若无法提供符号，至少提供绝对值。
+- **验收**: 前端相关性图线宽按 |ρ| 在 [0.6, 1] 归一化、颜色按 corr 正负区分。
+
 ---
 
 ## 四、优先级汇总（全部闭合）
@@ -133,6 +140,7 @@ GET /factors/graph/history?symbols=&days=
 | REQ-G6 | graph 因子历史序列（/factors/graph/history） | 中 | ✅ 已新增 |
 | REQ-G7 | gf_* 有效期/频率确认（30min/日频） | 中 | ✅ 已确认 |
 | REQ-G8 | RAG 知识库 / 图谱实体双语支持（lang 参数或 name_en） | 中 | ⏳ 待 B 端确认 |
+| REQ-G9 | edges 端点返回真实相关系数（corr 带符号 / abs_corr） | 中 | ⏳ 待 B 端确认 |
 
 ---
 
