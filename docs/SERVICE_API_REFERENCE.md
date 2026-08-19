@@ -499,7 +499,10 @@ X-API-Key: rx_...
 | `/v1/estimate` | POST | gas 预估 |
 | `/v1/paymaster` | POST | Paymaster 代理（body `{chain, method, params}`；apikey 服务端注入，前端零密钥；未配 Paymaster URL → 503） |
 | `/v1/session` | POST/GET | 创建/查询链上 session |
-| `/v1/session/disable` | POST | 禁用 session（enable 模式 → default 模式） |
+| `/v1/session/disable` | POST | 禁用 session（本地停用 + 返回 disable draft 兼容路径） |
+| `/v1/session/revoke` | POST | 撤销 session（owner 签名广播**三段批量** disable：`disableSession@module + uninstallModule + invalidateNonce`，链上真正删除记录；2026-08-20 修订，旧 key 不再残留） |
+| `/v1/session/replace` | POST | 会话轮换**阶段 1/2**：owner 派生账户 + 生成新 session 落库 + 构建 ① disable 旧 draft，返回 `disableDraft`（含 `userOpHash`） |
+| `/v1/session/replace/submit` | POST | 会话轮换**阶段 2/2**：owner 签名校验 + op hash 一致性校验 + 广播 ① disable 旧 + 移除旧 session 记录；② enable 新 session 由调用方用 SDK `buildEnableSessionUserOp` 走 `/v1/userops` 上链 |
 | `/v1/session/validate` | POST | 校验 session 有效性 |
 | `/v1/plans` | GET | AA 套餐价目（需 key；escrow 模式含 `topup.method=escrow depositFor` 充值指引，REQ-2c） |
 | `/v1/ledger-balance` | POST | 智能账户余额（body `{account}`；escrow 模式读链上托管 + 资金总览 `funds{escrowWei, epDepositWei, nativeWei}`，REQ-2a/2b） |
