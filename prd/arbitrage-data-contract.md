@@ -170,3 +170,35 @@ GET /bars?symbol=BTC/USDT&timeframe=1D&market_type=spot|swap&start=&end=&limit=
 | ② | `/snapshots?type=calendar` | ✅ 200（FRED/Finnhub/moomoo 多源真实事件） |
 | ③ | `/snapshots?type=indices|tvl|crypto_prices|earnings|heatmap` | ✅ 200 |
 | ④ | `/bars`（spot/swap × 7 timeframe） | ✅ 200 全通 |
+
+---
+
+## 6. 图谱与知识增强打包接入（2026-08-19 新增，v1.1）
+
+> 通用方案（arbitrage / aitrader / aihunter-saas / aiservicer 一致），详见
+> `docs/INTEGRATION_PLATFORM.md §5.4`。新增端点全部沿用贵方现有 key `dx_7ee2…`（已实测 200），**无需 lr_ key**。
+
+| 用途 | 端点 | 说明 |
+|---|---|---|
+| 力导向图可视化 | `GET /factors/graph/entities?symbol=&namespace=market&limit=` | symbol 非空=一跳子图（BTC 实测 81 节点/131 边）；空=全图 top-N by PageRank |
+| 语义检索知识增强 | `POST /rag/retrieve` | body `{"query","namespaces":["market","onchain"],"top_k":10}` → 各 namespace context 片段 |
+| 语义图谱 8 因子 | `GET /factors/graph?symbols=` | 知识图谱因子 + `meta.catalog` 定义 |
+| 相关性图边 | `GET /factors/graph/edges?symbols=&limit=300` | GX-2 口径：60 日 \|ρ\|≥0.6 + community/pagerank |
+| 图谱因子历史 | `GET /factors/graph/history?symbols=&days=` | 自然日 asof 语义，回测用（自 2026-08-18 累积） |
+| 图谱数值因子多币种 | `GET /factors/current?symbols=BTC,ETH,...` | **symbols 显式传参**（默认仅 BTC），18 `gf_*`/币 |
+
+**调用示例**：
+
+```bash
+# 力导向图（ECharts 直接消费）
+curl -H "X-API-Key: dx_7ee2af1fc6612bd3bf85a65b12b6492c881d86e8d6699e45" \
+  "https://infrax.0xainet.top/api/data/factors/graph/entities?symbol=BTC"
+
+# 语义检索（快速分析知识增强）
+curl -H "X-API-Key: dx_7ee2af1fc6612bd3bf85a65b12b6492c881d86e8d6699e45" -X POST \
+  "https://infrax.0xainet.top/api/data/rag/retrieve" -H "Content-Type: application/json" \
+  -d '{"query":"BTC 近期链上资金流与市场情绪","namespaces":["market","onchain"],"top_k":10}'
+```
+
+**状态补充（2026-08-19）**：ml 因子（bolt/moirai/timesfm）已恢复日更（`age_ms≈3min`、`fresh=true`），过期过滤阈值建议 30min（按 `meta.age_ms`）。
+
