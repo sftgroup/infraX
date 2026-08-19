@@ -14,6 +14,8 @@ export * from './nonce.js';
 export * from './bundler.js';
 export * from './paymaster.js';
 export * from './session.js';
+export * from './recovery.js';
 
 export * from './utils/gas.js';
 export * from './utils/to-owner.js';
+export * from './utils/eth-address.js';

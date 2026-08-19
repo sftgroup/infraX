@@ -7,7 +7,6 @@ import {
   InMemorySessionStore,
   assertValidPolicy,
   createSessionKey,
-  encodeDisableSessionCall,
   encodeEnableSessionCall,
   listSessions,
   revokeSessionKey,
@@ -337,24 +336,6 @@ describe('encodeEnableSessionCall (ERC-7579 installModule → enableSession)', (
     expect(() =>
       encodeEnableSessionCall({ accountAddress: ACCOUNT, policy, chainConfig: makeChainConfig({ sessionModule: undefined }) }),
     ).toThrow(ConfigError);
-  });
-});
-
-describe('encodeDisableSessionCall (ERC-7579 uninstallModule → disableSession)', () => {
-  it('wraps uninstallModule with disableSession(sessionId) data', () => {
-    const sessionId = `0x${'cd'.repeat(32)}`;
-    const callData = encodeDisableSessionCall({ accountAddress: ACCOUNT, sessionId, chainConfig: makeChainConfig() });
-
-    const { inner } = decodeExecutedInner(callData);
-    const decoded = decodeFunctionData({ abi: ModuleManagerAbi, data: inner });
-    expect(decoded.functionName).toBe('uninstallModule');
-    const [moduleTypeId, module, deInitData] = decoded.args;
-    expect(moduleTypeId).toBe(1n);
-    expect(module.toLowerCase()).toBe(SESSION_MODULE.toLowerCase());
-
-    const disable = decodeFunctionData({ abi: SessionModuleDecodeAbi, data: deInitData as Hex });
-    expect(disable.functionName).toBe('disableSession');
-    expect(disable.args[0]).toBe(sessionId);
   });
 });
 

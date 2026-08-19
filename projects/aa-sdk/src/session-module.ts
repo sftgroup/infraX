@@ -279,32 +279,17 @@ export function encodeEnableSessionCall(params: EnableSessionCallParams): Hex {
   return encodeExecute(params.accountAddress, 0n, installCalldata);
 }
 
-export interface DisableSessionCallParams {
-  accountAddress: Address;
-  sessionId: string;
-  chainConfig: ChainAAConfig;
-  dataBuilder?: SessionModuleDataBuilder;
-}
-
-/** 编码卸载 session validator 的 UserOp callData（uninstallModule → disableSession） */
-export function encodeDisableSessionCall(params: DisableSessionCallParams): Hex {
-  const module = resolveSessionModule(params.chainConfig);
-  const builder = params.dataBuilder ?? KernelV3SessionDataBuilder;
-  const uninstallCalldata = encodeFunctionData({
-    abi: ERC7579ModuleManagerAbi,
-    functionName: 'uninstallModule',
-    args: [MODULE_TYPE_VALIDATOR, module, builder.disableData(params.sessionId)],
-  });
-  return encodeExecute(params.accountAddress, 0n, uninstallCalldata);
-}
-
 // ============================================================================
 // AA-1/AA-2：disable 上链闭环（批量撤销）
 // 单纯 uninstallModule 后紧接着 enable 会因 Kernel ValidationManager 的
 // validationConfig[vId].nonce 残留而 revert InvalidNonce（AA23，0x756688fe）。
-// 修复：批量 execute [uninstallModule, invalidateNonce(cur+1)] 推进账户 nonce，
-// 后续 enable 读到推进后的 currentNonce，不再触发 InvalidNonce。
-// （实证见 docs/aa-relay-session-rollover-fix-infrax.md §2.4）
+// 修复：批量 execute [disableSession, uninstallModule, invalidateNonce(cur+1)]：
+//   - disableSession 直接删除 session 记录（deployed module onUninstall 为空实现，
+//     deInitData 传 disableData 也不会删记录 → 旧 session key 仍可验证）；
+//   - invalidateNonce 推进账户 nonce，后续 enable 不再触发 AA23。
+// （实证见 docs/aa-relay-session-rollover-fix-infrax.md §2.4/§2.5）
+// ⚠️ 已移除遗留单调用 encodeDisableSessionCall（仅 uninstallModule 的旧编码，
+// 撤销不彻底 + 重 enable 会 AA23），撤销必须使用 encodeDisableSessionBatch。
 // ============================================================================
 
 /** Kernel invalidateNonce(uint32) ABI（KernelStorage，推进 currentNonce/validNonceFrom） */

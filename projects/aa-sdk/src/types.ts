@@ -129,3 +129,16 @@ export interface UserOpReceipt {
   actualGasUsed: bigint;
   logs: unknown[];
 }
+
+// ============================================================================
+// 部署 / 恢复
+// ============================================================================
+
+/** 社交恢复模块（MVP 后置，接口预留） */
+export interface RecoveryConfig {
+  moduleAddress: Address;
+  guardians: Address[];
+  threshold: number;
+}
+
+export type ChainId = number;
