@@ -42,6 +42,10 @@
 | `/api/data/factors/catalog` | GET | 因子目录 | ✅ |
 | `/api/data/factors/current` | GET | 最新因子值 | ✅ |
 | `/api/data/factors/history` | GET | 逐 bar 因子时序 | ✅ |
+| `/api/data/factors/graph` | GET | 语义图谱因子（ragservicer 知识图谱 8 因子透传） | ✅ |
+| `/api/data/factors/graph/edges` | GET | 相关性图边表（GX-2：60 日 \|ρ\|≥0.6 + community/pagerank，REQ-G1） | ✅ |
+| `/api/data/factors/graph/history` | GET | gf_\* 日频历史（自然日归一化，asof 语义，REQ-G2.5） | ✅ |
+| `/api/data/rag/retrieve` | POST | 只读 RAG 检索透传（market/onchain/default，REQ-G2） | ✅ |
 | `/api/data/snapshots` | GET | 复杂快照（27 类 provider/data_type） | ✅ |
 | `/api/data/ml/predictions` | GET | P2 模型预测（bolt/moirai/timesfm） | ✅ |
 | `/api/data/symbols` | GET | 达标符号清单 | ✅ |
@@ -62,6 +66,36 @@
 | `/api/v2/data/my-keys` | GET/POST | **用户级 key 自助管理（B-11-3）**——钱包签名鉴权（`x-wallet-address`/`x-wallet-signature`/`x-wallet-timestamp`，EIP-191 `InfraX auth: <ts>`，24h TTL） | ✅ 钱包签名 |
 | `/api/v2/data/my-keys/{id}/rotate` | POST | 轮换用户级 key | ✅ 钱包签名 |
 | `/api/v2/data/my-keys/{id}` | DELETE | 吊销用户级 key（owner 专属） | ✅ 钱包签名 |
+
+### 2.1 图谱与 RAG 端点（REQ-G1 / REQ-G2 / REQ-G2.5，2026-08-19 上线）
+
+B 端只需 **data-service dx_\* key**（无需另持 ragservicer / ml-service key）；data-service 内部持服务 key 透传，全部 fail-silent（上游不可用 → 空数据 + `meta.warning`）。
+
+**① `GET /factors/graph?symbols=BTC,ETH` — 语义图谱因子**
+
+- 透传 ragservicer 知识图谱因子（GF-3 统一入口），响应 `{ts, meta: {source:"ragservicer", updated_at, catalog?}, factors: {SYM: {factor_key: value}}}`
+- 8 个知识图谱因子：centrality / community / neighbor 聚合等（`meta.catalog` 附完整定义）
+
+**② `GET /factors/graph/edges?symbols=&limit=300` — 相关性图边表（REQ-G1）**
+
+- 数据源：ml-service GX-2 图（60 日滚动对数收益，`|ρ|≥0.6` 建边、共同交易日 ≥30）
+- 响应 `{ts, meta: {source:"ml-service", window:60, min_abs_corr:0.6, updated_at}, nodes[], edges[]}`
+- nodes 的 `community` / `pagerank` 与 `/factors/current` 的 `gf_community` / `gf_pagerank` **同口径**（同一图快照）；`symbols` 为空 = 全图（实测 128 节点 / 300 边）
+
+**③ `GET /factors/graph/history?symbols=&days=90` — gf_\* 日频历史（REQ-G2.5）**
+
+- 数据源：ml-service `graph_history.db`，按**自然日 0 时幂等**归一化落一条（asof 语义，可回测）
+- 响应 `{ts, meta: {source:"ml-service", days}, series: {SYM: {factor_key: [[ts_ms, val], ...]}}}`
+- 历史自 **2026-08-18** 起累积；`days` 支持 1–365；历史不足时该 symbol 为空（fail-silent）
+
+**④ `POST /rag/retrieve` — 只读 RAG 检索透传（REQ-G2）**
+
+- 请求体：`{"query": "BTC 近期链上资金流", "namespaces": ["market","onchain"], "top_k": 10}`
+- 响应 `{ts, meta: {source:"ragservicer", namespaces, top_k}, results: [{namespace, context, top_k, mode:"mix"}, ...]}`
+- namespace 枚举（default 租户）：`market`（行情/宏观/新闻）/ `onchain`（链上/DeFi）/ `default`
+- 只读：不注入、不写库，返回 context 片段供调用方自带 LLM 做知识增强
+
+> **ml 因子新鲜度说明（2026-08-19 修复上线）**：`/factors/current` 中 bolt / moirai / timesfm 因子的 `meta.age_ms` 以 **ml_predictions 的 `generated_at`**（模型最新生成时间）计，非采集时间。链路已恢复日更（修复 data-service P2 采集契约 + ML 机 torch 升级），公网实测 age≈11s、`fresh=true`。调用方按 `meta.age_ms` 做过期过滤的约定不变。
 
 ---
 

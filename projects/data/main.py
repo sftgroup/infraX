@@ -401,6 +401,39 @@ async def factors_graph(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── 力导向图数据透传（REQ-G2.1，AIHunter/AItrader 图谱可视化，统一入口）──
+# B 端统一走 data-service /factors/graph/entities（dx_* key）；data-service 内部以
+# ragservicer 服务 key（default 租户共享金融知识图谱）调 /api/v1/graph/entities，
+# 默认 namespace=market（金融主空间，图数据存在 data/default/market）。fail-silent。
+
+@app.get("/factors/graph/entities")
+async def factors_graph_entities(
+    symbol: str = Query("", description="Entity symbol; empty = top-N full graph"),
+    namespace: str = Query("market", description="market|onchain|default"),
+    limit: int = Query(200, ge=1, le=500, description="Max nodes"),
+):
+    """力导向图节点/边数据（ragservicer 知识图谱可视化）。
+
+    data-service 内聚 ragservicer 服务 key 透传，B 端仅需 data-service 统一
+    dx_* key（不再持有 ragservicer key）。响应 {ts, meta, nodes[], edges[]}。
+    fail-silent：ragservicer 未配置/不可用/无图数据 → 空 nodes/edges + meta.warning。
+    """
+    try:
+        from app.ml_client import fetch_rag_graph_entities
+        data = await asyncio.to_thread(
+            fetch_rag_graph_entities, symbol.strip(), namespace, limit)
+        meta: dict = {"source": "ragservicer", "namespace": namespace}
+        if not data:
+            meta["warning"] = "graph entities unavailable"
+            return {"ts": int(time.time() * 1000), "meta": meta,
+                    "nodes": [], "edges": []}
+        return {"ts": int(time.time() * 1000), "meta": meta,
+                "nodes": data.get("nodes", []), "edges": data.get("edges", [])}
+    except Exception as e:
+        logger.error(f"/factors/graph/entities failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/factors/graph/edges")
 async def factors_graph_edges(
     symbols: str = Query("", description="Comma-separated symbols; empty = full graph"),

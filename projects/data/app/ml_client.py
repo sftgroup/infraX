@@ -487,6 +487,58 @@ def fetch_rag_graph_catalog() -> list | None:
         return None
 
 
+# ── RAGservicer 力导向图透传（REQ-G2.1，AIHunter/AItrader 图谱可视化）──
+# B 端统一走 data-service /factors/graph/entities（dx_* key）；data-service 内部以
+# ragservicer 服务 key（default 租户，共享金融知识图谱）调 /api/v1/graph/entities，
+# 默认 namespace=market（金融主空间），可按需 onchain。fail-silent。
+_RAG_GRAPH_ENTITIES_CACHE: dict = {}
+_RAG_GRAPH_ENTITIES_CACHE_TTL_S = 60
+
+
+def fetch_rag_graph_entities(symbol: str = "", namespace: str = "market",
+                             limit: int = 200) -> dict | None:
+    """拉取 ragservicer 力导向图数据（/api/v1/graph/entities）。
+
+    返回 {"symbol", "namespace", "nodes": [...], "edges": [...]} 或 None（fail-silent）。
+    symbol 为空 → 全图 top-N by PageRank；非空 → 该实体一跳子图。
+    60s TTL 缓存，按 (symbol, namespace) 键控。data-service /factors/graph/entities 透传。
+    """
+    global _RAG_GRAPH_ENTITIES_CACHE  # 函数内赋值 → 需显式 global
+    base = (RAGSERVICER_BASE_URL or "").strip().rstrip("/")
+    if not base or not RAGSERVICER_SERVICE_KEY:
+        return None
+    if namespace not in _RAG_RETRIEVE_ALLOW_NAMESPACES:
+        namespace = "market"
+    cache_key = f"{symbol}|{namespace}|{limit}"
+    now = time.time()
+    if (_RAG_GRAPH_ENTITIES_CACHE.get("key") == cache_key
+            and now - _RAG_GRAPH_ENTITIES_CACHE.get("ts", 0) < _RAG_GRAPH_ENTITIES_CACHE_TTL_S):
+        return _RAG_GRAPH_ENTITIES_CACHE.get("data")
+    try:
+        resp = requests.get(
+            f"{base}/api/v1/graph/entities",
+            params={"symbol": symbol, "namespace": namespace, "limit": limit},
+            headers={"Authorization": f"Bearer {RAGSERVICER_SERVICE_KEY}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.debug("ragservicer /graph/entities %s → %s", cache_key, resp.status_code)
+            return None
+        payload = (resp.json() or {}).get("data")
+        if not isinstance(payload, dict) or not isinstance(payload.get("nodes"), list):
+            return None
+        data = {"symbol": symbol, "namespace": namespace,
+                "nodes": payload.get("nodes", []), "edges": payload.get("edges", [])}
+        _RAG_GRAPH_ENTITIES_CACHE = {"key": cache_key, "ts": now, "data": data}
+        return data
+    except requests.RequestException as exc:
+        logger.debug("ragservicer /graph/entities request failed: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("ragservicer /graph/entities parse failed: %s", exc)
+        return None
+
+
 # ── RAGservicer 只读检索透传（REQ-G2，AIHunter 快速分析知识增强）──
 # B 端统一走 data-service /rag/retrieve（dx_* key）；data-service 内部以
 # ragservicer 服务 key 逐 namespace POST /api/v1/namespaces/{ns}/retrieve，
