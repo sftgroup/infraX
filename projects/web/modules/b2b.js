@@ -116,7 +116,7 @@ function rpcDashHtml() {
       '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">⚡</div><div class="kpi-label">Plan</div><div class="kpi-val gold" id="rpc-plan-name" style="font-size:20px;font-weight:700">—</div></div>' +
       '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">📡</div><div class="kpi-label">API Calls</div><div class="kpi-val" id="rpc-usage-count" style="font-size:20px;font-weight:700">—</div></div>' +
       '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🎯</div><div class="kpi-label">Monthly Quota</div><div class="kpi-val" id="rpc-quota" style="font-size:20px;font-weight:700">—</div></div>' +
-      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🔌</div><div class="kpi-label">节点活跃</div><div class="kpi-val" id="rpc-status-kpi" style="font-size:20px;font-weight:700">—</div></div>' +
+      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🔌</div><div class="kpi-label">可用链</div><div class="kpi-val" id="rpc-status-kpi" style="font-size:20px;font-weight:700">—</div></div>' +
     '</div>' +
     '<div class="panel" style="margin-bottom:16px">' +
       '<div class="panel-header">🔑 API Key <span class="stat-chip" style="margin-left:auto">明文仅签发时展示一次</span></div>' +
@@ -289,12 +289,12 @@ function rpcLoadPlans() {
     .catch(function () {});
 }
 
-// W-8c: 节点状态内容页（GET /v1/status，池状态脱敏展示）
+// W-8e: 节点状态内容页（用户视角：只展示我们提供的 RPC 端点状态，不暴露内部池/上游明细）
 function rpcStatusHtml() {
   return '<div class="panel" style="margin-top:24px">' +
-    '<div class="panel-header">📊 节点状态 · RPC 池健康</div>' +
+    '<div class="panel-header">📊 节点状态 · 我们提供的 RPC 端点</div>' +
     '<div class="panel-body">' +
-      '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 14px">各链 RPC 池端点健康（健康检查自动降级 / 恢复），展示 provider 与 tier 分布。</p>' +
+      '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 14px">各链对外 JSON-RPC 端点实时状态（<code>X-API-Key</code> 认证访问；读 <code>rx_</code> / 广播 <code>bx_</code> 读写分离）。</p>' +
       '<div id="rpc-status-root"><div style="text-align:center;padding:24px;color:var(--text-muted)">Loading node status…</div></div>' +
     '</div></div>';
 }
@@ -310,27 +310,29 @@ function rpcLoadStatus() {
         el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text-tertiary)">暂无节点状态数据</div>';
         return;
       }
-      // W-8d: 详情页 KPI —— 节点活跃 x/y
-      var kpiActive = 0, kpiTotal = 0;
-      Object.keys(chains).forEach(function (c) { kpiActive += chains[c].active || 0; kpiTotal += chains[c].total || 0; });
-      setHtml('rpc-status-kpi', kpiActive + '/' + kpiTotal + ' 池');
-      el.innerHTML = Object.keys(chains).map(function (c) {
+      // 用户视角：只展示对外提供的端点状态，健康=池内至少 1 个 healthy 上游
+      var chainOk = 0, chainTotal = 0;
+      var rows = Object.keys(chains).map(function (c) {
         var s = chains[c];
         var eps = Array.isArray(s.endpoints) ? s.endpoints : [];
-        var rows = eps.map(function (e) {
-          var color = e.status === 'healthy' ? 'var(--success)' : (e.status === 'degraded' ? 'var(--warning)' : 'var(--error)');
-          return '<tr><td><code>' + e.key + '</code></td><td>' + (e.provider || '-') + '</td>' +
-            '<td>' + (e.tier || '-') + '</td><td style="color:' + color + '">● ' + (e.status || 'unknown') + '</td></tr>';
-        }).join('');
-        if (!rows) rows = '<tr><td colspan="4" style="color:var(--text-tertiary)">无端点</td></tr>';
-        return '<div style="margin-bottom:14px">' +
-          '<div style="font-size:13px;font-weight:600;margin-bottom:6px">' + c +
-            ' <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">chainId ' + (s.chainId ?? '-') +
-            ' · ' + (s.active ?? 0) + '/' + (s.total ?? 0) + ' active</span></div>' +
-          '<table class="dc-api-table" style="width:100%">' +
-            '<thead><tr><th>Endpoint</th><th>Provider</th><th>Tier</th><th>Status</th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table></div>';
+        var healthy = eps.filter(function (e) { return e.status === 'healthy'; }).length;
+        chainTotal++;
+        var color, text;
+        if (healthy > 0) { chainOk++; color = 'var(--success)'; text = '● 正常'; }
+        else if (eps.length > 0) { color = 'var(--error)'; text = '● 不可用'; }
+        else { color = 'var(--text-tertiary)'; text = '● 未配置'; }
+        return '<tr>' +
+          '<td style="padding:8px 12px"><b>' + c + '</b>' +
+            (s.chainId ? ' <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">chainId ' + s.chainId + '</span>' : '') + '</td>' +
+          '<td style="padding:8px 12px"><code class="dc-mono" style="font-size:12px">https://rpc-gw.0xainet.top/v1/rpc/' + c + '</code></td>' +
+          '<td style="padding:8px 12px;color:' + color + ';font-weight:600">' + text + '</td>' +
+        '</tr>';
       }).join('');
+      // W-8d: 详情页 KPI —— 可用链 x/y
+      setHtml('rpc-status-kpi', chainOk + '/' + chainTotal + ' 链');
+      el.innerHTML = '<table class="dc-api-table" style="width:100%">' +
+        '<thead><tr><th style="padding:8px 12px">Chain</th><th style="padding:8px 12px">我们的 RPC 端点</th><th style="padding:8px 12px">状态</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
     })
     .catch(function () {
       el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--error)">节点状态加载失败</div>';
