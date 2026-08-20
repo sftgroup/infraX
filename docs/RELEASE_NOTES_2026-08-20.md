@@ -165,3 +165,19 @@ sudo nginx -t && sudo systemctl reload nginx
 
 **客户侧新配置**：服务地址 `http://43.156.78.59:9721`（或经网关 `https://infrax.0xainet.top/api/rag/`），路径带 `/api/v1` 前缀，沿用 `X-API-Key` 鉴权（401 则重新签发，见 PRODUCTION_CREDENTIALS §7）。
 
+---
+
+## 8. Dashboard 数据层错误修复（2026-08-20 晚，commit `c915098`）
+
+**背景**：L-1 遗留的三个控制台错误处理。
+
+| # | 错误 | 根因 | 修复 |
+|---|---|---|---|
+| D-1 | `waasTokens` 后端 500 | tokens 表缺 `min_sweep_amount` 列：`CREATE TABLE IF NOT EXISTS` 不回填旧表，`GET /tenants/:id/tokens` 查询引用新列 → `column does not exist` | [database.ts](file:///home/steven/infraX/projects/waas/models/database.ts#L203-L208) 加幂等迁移 `ALTER TABLE tokens ADD COLUMN IF NOT EXISTS min_sweep_amount`；生产重启 `infrax-waas` 自动迁移，实测列已存在、端点 200 |
+| D-2 | `/api/v2/data/my-keys` Invalid response | 旧 nginx 转发指向 `127.0.0.1:6100`（无服务）→ 502 HTML；当前生效配置已为 `127.0.0.1:9111` → data:9112 401 JSON | 前端守卫：`myKeysLoad`/`afetch` 拒绝无效 `walletAddress`（非 0x 值）不发请求 |
+| D-3 | `/api/vault/safe/undefined` | Safe 列表项缺 address 仍渲染按钮，点击后以字面量 `"undefined"` 请求 | [safe.js](file:///home/steven/infraX/projects/web/modules/safe.js) 新增 `safeValidAddr`：`safeShowDetail` 入口守卫 + 列表渲染仅对有效地址显示 Txns 按钮 |
+
+**部署**：waas `database.ts` 迁移 + 前端 4 文件（safe/core/datacenter/index.html bump 版本号 `?v=1787187400`），生产 pull + 重启 `infrax-waas`。
+**回归验证**：浏览器全新上下文实测三个请求均不再失败（tokens 200、my-keys 未激活不触发、safe 使用真实 0x 地址），新页面 Console 零错误。
+
+
