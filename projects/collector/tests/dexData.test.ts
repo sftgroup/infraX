@@ -117,6 +117,12 @@ describe('getHotTokens（profiles + boosts 合并）', () => {
     (global as any).fetch = jest.fn(async () => ({ ok: false, status: 429 }));
     await expect(dex.getTokenProfiles()).rejects.toThrow(/429/);
   });
+
+  it('404 → 视为空结果（token 无池时降级，不抛错）', async () => {
+    (global as any).fetch = jest.fn(async () => ({ ok: false, status: 404 }));
+    const out = await dex.getTokensDetail('base', ['0xdead']);
+    expect(out).toEqual([]);
+  });
 });
 
 describe('searchTokens', () => {

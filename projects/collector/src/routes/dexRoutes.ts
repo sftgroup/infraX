@@ -78,7 +78,7 @@ router.get('/market/dex/hot-tokens', asyncHandler(async (req, res) => {
   res.json(apiResponse(out));
 }));
 
-/** 为 DexScreener profiles/boosts 补充真实池行情（search 已按链聚合时可直接映射） */
+/** 为 DexScreener profiles/boosts 补充真实池行情并按 24h 成交量排序（R1b：按链真实成交量/TVL） */
 async function enrichDsProfiles(chainEnum: string | undefined, profiles: Array<any>, n: number): Promise<any[]> {
   const results: any[] = [];
   for (const p of profiles) {
@@ -115,7 +115,10 @@ async function enrichDsProfiles(chainEnum: string | undefined, profiles: Array<a
     }
     if (results.length >= n) break;
   }
-  return results;
+  // 有池行情数据的按 24h 成交量降序（真实热门）；无行情数据的垫底（按 score）
+  return results
+    .sort((a, b) => (b.volume24h ?? -1) - (a.volume24h ?? -1) || (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, n);
 }
 
 // ================================================================

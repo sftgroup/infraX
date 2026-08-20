@@ -115,6 +115,10 @@ async function get(path: string): Promise<any> {
   if (resp.status === 429) {
     throw new Error(`DexScreener 429 rate-limited: ${path}`);
   }
+  if (resp.status === 404) {
+    // 上游无该资源（如 token 无任何 DEX 池）→ 视为空结果，调用方降级
+    return undefined;
+  }
   if (!resp.ok) {
     throw new Error(`DexScreener ${resp.status}: ${path}`);
   }
