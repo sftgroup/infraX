@@ -192,8 +192,33 @@ const mUsage = await infrax.market.usage();                 // 月度配额 / �
 // ── Chain RPC 套餐（rx_ key 鉴权）──
 const rpcKey = await infrax.chainRpc.issueRpcKey('my-agent');  // 管理操作：签发 rx_ 读 key
 const r = await infrax.chainRpc.subscriptionCheckout({ plan_id: 'rpc_pro', rail: 'x402' });
-const rUsage = await infrax.chainRpc.subscriptionUsage();
+```
 
+### 2.4A-2 DEX 策略数据示例（v0.9.0，2026-08-21）
+
+> 数据层 R1-R10（OKX OnchainOS v6 + DexScreener 双源），挂载 `/api/v2/data/market/dex/*`，**dx_ 类 key 自动获得权限**（一个 key 一个模块原则）。链枚举 `ETH/BSC/BASE/SOL`，公网 `https://infrax.0xainet.top/api/v2/data/market/dex/*`。完整端点矩阵见 `docs/API_ACCESS.md §1.6`（DEX 策略数据小节）。上游付费端点（`trades`/OKX `search`/OKX `top-liquidity`）自动降级 `{items:[], paymentRequired:true}`。
+
+```ts
+// ── 热门代币统一榜（R1+R1b）──
+const hot = await infrax.market.dexHotTokens({ source: 'okx', chain: 'ETH', ranking: 'trending', limit: 10 });
+const dsHot = await infrax.market.dexHotTokens({ source: 'dexscreener', chain: 'SOL', limit: 5 });
+
+// ── 单币画像（R2+R3+R4：行情 + 社交 + 风险 + 池 + 持有者）──
+const profile = await infrax.market.dexToken('ETH', '0x514910771af9ca656af840dff83e8264ecf986ca');
+
+// ── 单币历史序列（画像快照 5min 粒度，2026-08-21 新增）──
+const hist = await infrax.market.dexTokenHistory('ETH', '0x514910771af9ca656af840dff83e8264ecf986ca', 24);
+
+// ── 合并搜索 / 聪明钱信号 / 持有者 / 流动性 / 顶级交易者 / 交易历史 ──
+const s = await infrax.market.dexSearch('pepe', 'ETH', 10);
+const sig = await infrax.market.dexSignals('ETH', 20);
+const holders = await infrax.market.dexHolders('ETH', '0x...');
+const liq = await infrax.market.dexLiquidity('ETH', '0x...');
+const traders = await infrax.market.dexTopTraders('ETH', '0x...');
+const trades = await infrax.market.dexTrades('ETH', '0x...', 50);   // 免费 key 返回 paymentRequired: true
+```
+```ts
+const rUsage = await infrax.chainRpc.subscriptionUsage();
 // ── MPC 按量计费（T-4）──
 const mpcPlans = await infrax.mpc.plans();                  // 费率表（签名 0.0001 / 写链 0.001 ETH）
 const balance = await infrax.mpc.ledgerBalance(sessionToken); // 引擎账本余额（fees/topupHint）
