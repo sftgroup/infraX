@@ -64,8 +64,8 @@ export function createReadAuth() {
     if (isExempt(p)) return next();
     const key = extractApiKey(req);
     if (!key) return unauthorized(res);
-    // 广播 key 可读；读 key 可读（本地 bridge key：平台内部调用，豁免配额）
-    if (matchLocal(key, [config.readKey, config.broadcastKey])) {
+    // 广播 key 可读；读 key 可读；平台 bridge key 可读（web 反代注入，内部调用豁免配额）
+    if (matchLocal(key, [config.readKey, config.broadcastKey, config.bridgeKey])) {
       req.isLocal = true;
       return next();
     }

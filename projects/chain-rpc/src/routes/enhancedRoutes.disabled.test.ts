@@ -29,5 +29,6 @@ after(async () => {
 test('未配置 DC_ENHANCED_URL → 503 能力未启用', async () => {
   const r = await fetch(`${base}/v1/enhanced/events`);
   assert.equal(r.status, 503);
-  assert.equal((await r.json()).detail, 'enhanced data not configured');
+  const j: any = await r.json();
+  assert.equal(j.detail, 'enhanced data not configured');
 });

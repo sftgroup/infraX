@@ -73,7 +73,7 @@ test('无读 key → 401', async () => {
 test('读 key + events → 200，query 白名单透传且未知参数被丢弃', async () => {
   const r = await get('/v1/enhanced/events?chain=sepolia&event_type=Transfer&page_size=5&evil=1', 'test-read-key');
   assert.equal(r.status, 200);
-  const body = await r.json();
+  const body: any = await r.json();
   assert.equal(body.code, 0);
   // 上游收到 x-dc-api-key
   assert.equal(seen.apiKey, 'test-dc-key');
@@ -87,13 +87,15 @@ test('读 key + events → 200，query 白名单透传且未知参数被丢弃',
 test('读 key + event-categories → 200', async () => {
   const r = await get('/v1/enhanced/event-categories', 'test-read-key');
   assert.equal(r.status, 200);
-  assert.equal((await r.json()).code, 0);
+  const j: any = await r.json();
+  assert.equal(j.code, 0);
 });
 
 test('上游 5xx → 状态码透传（不吞）', async () => {
   const r = await get('/v1/enhanced/event-stats', 'test-read-key');
   assert.equal(r.status, 500);
-  assert.equal((await r.json()).code, 500);
+  const j: any = await r.json();
+  assert.equal(j.code, 500);
 });
 
 test('未匹配子路径 → 404', async () => {

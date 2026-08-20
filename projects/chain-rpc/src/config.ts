@@ -25,6 +25,9 @@ export const config = {
   // ── 鉴权分级 ─────────────────────────────────────────
   readKey: process.env.CHAIN_RPC_READ_KEY || '',
   broadcastKey: process.env.CHAIN_RPC_BROADCAST_KEY || '',
+  // 平台内部 bridge key（X-Service-Key，如 web 反代注入）：仅读端点信任（读豁免配额），
+  // 不进广播端点——bridge key 永远无法广播，维持读写分离边界。
+  bridgeKey: process.env.CHAIN_RPC_BRIDGE_KEY || '',
   // 外部签发 key 实时校验（data 服务 /api-keys/verify）
   verifyUrl: (process.env.DATA_SERVICE_URL || '').trim(),
   verifyKey: process.env.DATA_API_KEY || '',
