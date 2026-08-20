@@ -37,8 +37,8 @@ const API_ROUTES = {
   '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   // B-11-3 用户级 key（data 服务 :9112 钱包签名鉴权）— 必须先于 /api/v2/data（DC :9102）
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
-  // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130）— 面板服务状态用
-  '/api/v2/rpc':     { host: RPC_HOST,      port: RPC_PORT },
+  // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130 /health）— 面板服务状态用（strip 前缀）
+  '/api/v2/rpc':     { host: RPC_HOST,      port: RPC_PORT, strip: '/api/v2/rpc' },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
   '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },
@@ -125,7 +125,8 @@ function proxyRequest(req, res, target) {
   const opts = {
     hostname: target.host,
     port: target.port,
-    path: req.url,
+    // 支持 strip 前缀的代理（如 /api/v2/rpc → chain-rpc 的 /health），默认透传完整路径
+    path: target.strip && req.url.startsWith(target.strip) ? (req.url.slice(target.strip.length) || '/') : req.url,
     method: req.method,
     headers,
     timeout: 15000,
