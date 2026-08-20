@@ -192,6 +192,42 @@ export async function broadcast(cfg: ChainAAConfig, op: UserOperationV7): Promis
   throw Object.assign(new Error(`all bundlers failed (${errors.join(' | ')})`), { statusCode: 502 });
 }
 
+// P1-2: 等待 UserOp 收据（异步结算用；多 bundler 轮询 eth_getUserOperationReceipt，不重复广播）。
+// 超时返回 null（调用方按预扣额保留，不自动退差，避免双重扣减/对账歧义）。
+export async function waitForUserOpReceipt(cfg: ChainAAConfig, hash: Hex, timeoutMs = 120_000): Promise<any | null> {
+  const endpoints = [...cfg.bundlers].sort((a, b) => a.priority - b.priority);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const ep of endpoints) {
+      try {
+        const client = rpcClient(ep.url, ep.timeoutMs);
+        const r = (await client.request({ method: 'eth_getUserOperationReceipt', params: [hash] })) as any;
+        if (r) return r;
+      } catch { /* 单端点失败继续下一端点 */ }
+    }
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+  return null;
+}
+
+/** P1-2: 异步收据后结算退差（后台 fire-and-forget；仅告警不阻塞响应）。 */
+export function asyncSettle(
+  cfg: ChainAAConfig,
+  subscriber: string,
+  chargeRef: string,
+  chargeTotal: bigint,
+  hash: Hex,
+  label: string,
+): void {
+  waitForUserOpReceipt(cfg, hash)
+    .then((receipt) => {
+      if (!receipt) { console.warn(`[aa-relay] ${label} async settle timeout, keep charge ${chargeTotal}`); return; }
+      const fixed = BigInt(aaFees().userop.feeWei);
+      return settleUserOp(subscriber, chargeRef, chargeTotal, fixed + BigInt(receipt.actualGasCost));
+    })
+    .catch((bErr: any) => console.warn(`[aa-relay] ${label} async settle failed:`, bErr.message));
+}
+
 // ============================================================================
 // submitSignedOp —— 带 owner 签名 UserOp 的统一提交流程（AA-1/AA-7 重构去重）
 // 步骤：① owner 派生账户一致性（防篡改）→ ② 签名校验（ECDSA recoverAddress）
@@ -257,6 +293,8 @@ export async function submitSignedOp(params: SubmitSignedOpParams): Promise<{ us
     try {
       const res = await broadcast(cfg, userOp);
       await onSuccess?.({ ...res, receipt: null });
+      // P1-2: 异步收据后结算退差（后台，不阻塞响应）
+      if (chargeTotal > 0n) asyncSettle(cfg, subscriber, chargeRef, chargeTotal, res.userOpHash, chargeLabel);
       return { ...res, receipt: null };
     } catch (e) {
       // 广播失败 → 全额退还预扣

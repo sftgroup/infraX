@@ -63,7 +63,7 @@ export const config = {
     // Scheduler: which chains to track (comma-separated chainIndex like "1,56,8453")
     schedulerChains: (process.env.OKX_MARKET_SCHED_CHAINS || '1,56,8453').split(',').filter(Boolean),
     // Scheduler: how many top tokens to track candles for (per chain)
-    schedulerCandleTokens: parseInt(process.env.OKX_MARKET_CANDLE_TOKENS || '10', 10),
+    schedulerCandleTokens: parseInt(process.env.OKX_MARKET_CANDLE_TOKENS || '30', 10),
     // Scheduler: candle OHLCV period (5m, 15m, 1H, 4H, 1D)
     schedulerCandlePeriod: process.env.OKX_MARKET_CANDLE_PERIOD || '15m',
     schedulerCandleLimit: parseInt(process.env.OKX_MARKET_CANDLE_LIMIT || '4', 10),

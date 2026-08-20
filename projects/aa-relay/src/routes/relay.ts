@@ -9,6 +9,7 @@ import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleU
 import {
   apiResponse,
   asyncHandler,
+  asyncSettle,
   broadcast,
   getChain,
   isBundlerBusinessError,
@@ -46,7 +47,11 @@ export function relayRoutes(): Router {
     if (wait === false) {
       try {
         const { userOpHash, bundlerUrl } = await broadcast(cfg, userOp);
-        return res.json(apiResponse({ userOpHash, bundlerUrl, receipt: null }, 'UserOp broadcast'));
+        // P1-1: 异步 202 Accepted（语义等价 202 + opHash，消除长连接超时耦合）
+        res.status(202).json(apiResponse({ userOpHash, bundlerUrl, receipt: null }, 'UserOp accepted'));
+        // P1-2: 异步收据后结算退差（后台，不阻塞响应）
+        if (chargeTotal > 0n) asyncSettle(cfg, subscriber, chargeRef, chargeTotal, userOpHash, 'userop');
+        return;
       } catch (e) {
         // A-10: 广播失败 → 全额退还预扣
         if (chargeTotal > 0n) {
