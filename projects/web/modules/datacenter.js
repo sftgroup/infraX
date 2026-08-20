@@ -34,8 +34,9 @@ async function dcInit() {
     if (intro) {
       intro.innerHTML = '<div style="text-align:center;padding:60px">' +
         '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
-        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view Data Center</div>' +
-        '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a></div>';
+        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view Data & Insights</div>' +
+        '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a>' +
+        '<div style="margin-top:20px"><button class="btn btn-secondary" onclick="dcSkipToInsights()">📈 浏览 Insights（无需钱包）</button></div></div>';
     }
     return;
   }
@@ -283,6 +284,14 @@ function dcCopyKey() {
 }
 
 // ─── Tab Switch ──────────────────────────────────────────────────────
+function dcSkipToInsights() {
+  var ie = document.getElementById('dc-intro');
+  var de = document.getElementById('dc-dash');
+  if (ie) ie.style.display = 'none';
+  if (de) de.style.display = 'block';
+  dcSwitchTab('dc-insights');
+}
+
 function dcSwitchTab(sub) {
   document.querySelectorAll('#dc-dash .tab-btn').forEach(function(b) { b.classList.remove('active'); });
   document.querySelectorAll('#dc-dash .sub-panel').forEach(function(p) { p.classList.remove('active'); });
@@ -291,6 +300,10 @@ function dcSwitchTab(sub) {
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.add('active');
   if (sub === 'dc-apikey') myKeysLoad(); // B-11-3：进入 API Key 页加载用户级 keys
+  if (sub === 'dc-insights' && !window._insInitDone) { // dx_ key 数据能力合并：首次进入渲染 Insights
+    window._insInitDone = true;
+    if (typeof insightsInit === 'function') insightsInit();
+  }
 }
 
 // ─── My Keys（B-11-3 用户级 key 自助管理，钱包签名鉴权）───────────────

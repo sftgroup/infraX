@@ -40,12 +40,8 @@
       <span class="badge">RPC</span>
     </button>
     <button class="nav-item" data-page="datacenter">
-      <span>📡</span> Data Center
+      <span>📡</span> Data & Insights
       <span class="badge">API</span>
-    </button>
-    <button class="nav-item" data-page="insights">
-      <span>📈</span> Insights
-      <span class="badge">Graph</span>
     </button>
     <button class="nav-item" data-page="lightrag">
       <span>🔎</span> LightRAG
@@ -117,7 +113,7 @@
           <tbody id="dash-services-body">
             <tr class="dash-group-row"><td colspan="4">🗂️ B2B API Services</td></tr>
             <tr id="dash-row-rpc"><td>🔗 Chain RPC</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
-            <tr id="dash-row-dc"><td>📡 Data Center</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-dc"><td>📡 Data & Insights</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
             <tr id="dash-row-lightrag"><td>🔎 LightRAG</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
             <tr class="dash-group-row"><td colspan="4">🔐 Wallet Services</td></tr>
             <tr id="dash-row-mpc"><td>🔑 MPC Wallet</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
@@ -794,7 +790,7 @@ Body:
   </div>
   <div class="page" id="page-datacenter">
     <div id="dc-intro" class="waas-intro" style="display:block">
-      <div class="waas-intro-hero"><div class="waas-intro-icon">📡</div><h2>Data Center — On-Chain API</h2><p>Query standardized on-chain event data across 7 chains via simple REST API.</p></div>
+      <div class="waas-intro-hero"><div class="waas-intro-icon">📡</div><h2>Data & Insights — API</h2><p>On-chain events, market data, knowledge graph & RAG via one <code>dx_</code> API key.</p></div>
       <div class="waas-feature-row">
         <div class="waas-feature"><div class="waas-feature-icon">🌐</div><div class="waas-feature-title">5 Chains</div><div class="waas-feature-sub">ETH,BSC,Base,Sepolia,OxaChain</div></div>
         <div class="waas-feature"><div class="waas-feature-icon">🔄</div><div class="waas-feature-title">Real-time</div><div class="waas-feature-sub">10s scan,3-block confirm</div></div>
@@ -828,6 +824,7 @@ Body:
       <div style="text-align:center;margin-bottom:20px"><button class="btn btn-primary btn-lg" style="padding:14px 40px;font-size:15px" id="dc-activate-btn" onclick="dcSubscribe('data_free')">🚀 Activate Data Center</button></div>
       <div id="dc-sub-status" style="text-align:center;margin-bottom:16px;font-size:13px;min-height:20px"></div>
       <p class="waas-intro-note" style="text-align:center">Free tier: Sepolia testnet · 10K calls · 24h retention. Upgrade anytime.</p>
+      <div style="text-align:center;margin-top:8px"><button class="btn btn-secondary" style="padding:10px 28px;font-size:14px" onclick="dcSkipToInsights()">📈 直接体验 Insights（无需订阅）</button></div>
     </div>
     <div id="dc-dash" style="display:none">
       <div class="tab-row">
@@ -835,6 +832,7 @@ Body:
         <button class="tab-btn" data-sub="dc-apikey">🔑 API Key</button>
         <button class="tab-btn" data-sub="dc-docs">📖 API Docs</button>
         <button class="tab-btn" data-sub="dc-explorer">🔍 Explorer</button>
+        <button class="tab-btn" data-sub="dc-insights">📈 Insights</button>
       </div>
       <div class="sub-panel active" id="sub-dc-overview">
         <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
@@ -965,15 +963,14 @@ Body:
         </div>
         <div id="dc-explorer-pager" style="display:flex;justify-content:center;gap:8px;margin-top:12px"></div>
       </div>
+      <div class="sub-panel" id="sub-dc-insights">
+        <div id="insights-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading insights…</div></div>
+      </div>
     </div>
   </div>
 
   <div class="page" id="page-aa">
     <div id="aa-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading Smart Account…</div></div>
-  </div>
-
-  <div class="page" id="page-insights">
-    <div id="insights-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading insights…</div></div>
   </div>
 
   <div class="page" id="page-payments">
@@ -990,14 +987,14 @@ Body:
 
   </div>
 
-<script src="/modules/core.js?v=1787239500"></script>
+<script src="/modules/core.js?v=1787240100"></script>
 <script src="/modules/nc-wallet.js?v=1787239500"></script>
 <script src="/modules/mpc-wallet.js?v=1783734639"></script>
 <script src="/modules/waas.js?v=1784050055"></script>
 <script src="/modules/safe.js?v=1787187400"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
-  <script src="/modules/datacenter.js?v=1787187400"></script>
+  <script src="/modules/datacenter.js?v=1787240100"></script>
 <script src="/modules/aa.js?v=1787239500"></script>
 <script src="/modules/insights.js?v=1784990000"></script>
 <script src="/modules/payments.js?v=1784991000"></script>
