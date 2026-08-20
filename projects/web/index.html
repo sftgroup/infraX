@@ -853,18 +853,37 @@ Body:
             <div class="kpi-val" id="dc-quota" style="font-size:20px;font-weight:700">—</div>
           </div>
           <div class="kpi">
-            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🌐</div>
-            <div class="kpi-label">Active Chains</div>
-            <div class="kpi-val" id="dc-chains" style="font-size:20px;font-weight:700">—</div>
+            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🧾</div>
+            <div class="kpi-label">链上事件总量</div>
+            <div class="kpi-val" id="dc-total-events" style="font-size:20px;font-weight:700">—</div>
           </div>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <span style="margin-right:8px">🔗</span> Chain Scan Status
+            <span style="margin-right:8px">🔗</span> Chain Status
             <span class="stat-chip" id="dc-chain-count" style="margin-left:auto">0 chains</span>
           </div>
           <div class="panel-body" id="dc-chain-stats">
             <div class="empty" style="padding:32px 0"><span class="spin"></span> Subscribe to a Data Center plan to get started</div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">
+            <span style="margin-right:8px">🏷️</span> 事件分类分布
+            <span class="stat-chip" id="dc-cat-total" style="margin-left:auto">—</span>
+          </div>
+          <div class="panel-body" id="dc-cat-stats" style="padding-top:8px"></div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-header">
+            <span style="margin-right:8px">🕒</span> 最近事件
+            <span class="stat-chip" style="margin-left:auto" id="dc-recent-hint">—</span>
+          </div>
+          <div class="panel-body" style="padding:0;overflow:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Chain</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Block</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Type</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">From</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">To</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Amount</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Tx</th></tr></thead>
+              <tbody id="dc-recent-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -998,7 +1017,7 @@ Body:
 <script src="/modules/safe.js?v=1787187400"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
-  <script src="/modules/datacenter.js?v=1787240300"></script>
+  <script src="/modules/datacenter.js?v=1787240400"></script>
 <script src="/modules/aa.js?v=1787239500"></script>
 <script src="/modules/insights.js?v=1784990000"></script>
 <script src="/modules/payments.js?v=1784991000"></script>

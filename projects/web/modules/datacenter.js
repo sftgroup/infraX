@@ -200,28 +200,11 @@ async function dcLoadDashboard() {
     setHtml('dc-plan-name', dcPlan.name + (dcUsage.dcSubStatus && dcUsage.dcSubStatus !== 'active' ? '<br><span style="font-size:11px;color:var(--warning)">' + dcUsage.dcSubStatus + '</span>' : ''));
     setHtml('dc-usage-count', formatNumber(dcUsage.currentUsage || 0));
     setHtml('dc-quota', formatNumber(dcUsage.monthlyQuota || 0));
-    var planChains = { data_free: ['Sepolia'], data_pro: ['All 6 chains'], data_enterprise: ['All 6 chains + custom'] };
-    setHtml('dc-chains', (planChains[dcPlan.id] || ['—']).join(', '));
 
-    // Chain scan status — card UI
-    setHtml('dc-chain-count', DC_CHAINS.length + ' chains');
-    setHtml('dc-chain-stats',
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">' +
-      DC_CHAINS.map(function(c) {
-        return '<div class="chain-card">' +
-          '<div class="chain-card-icon"><img src="' + c.img + '" width="36" height="36" alt="' + c.name + '"></div>' +
-          '<div class="chain-card-name">' + c.name + '</div>' +
-          '<div class="chain-card-status">' +
-            '<span class="chain-dot" style="background:#0ecb81"></span> scanning' +
-          '</div>' +
-          '<div class="chain-card-stats">' +
-            '<span class="chain-stat">⛽ 12 Gwei</span>' +
-            '<span class="chain-stat">📦 #19.8M</span>' +
-          '</div>' +
-        '</div>';
-      }).join('') +
-      '</div>'
-    );
+    // Overview 真实数据（/stats /event-stats /events，替代 mock）
+    var hdrs = {};
+    if (dcUsage && dcUsage.dcApiKey) hdrs['x-dc-api-key'] = dcUsage.dcApiKey;
+    await dcLoadOverview(hdrs);
 
     var apiKey = dcUsage?.dcApiKey || '—';
     var ki = document.getElementById('dc-api-key');
@@ -230,6 +213,92 @@ async function dcLoadDashboard() {
     if (ie) ie.style.display = 'block';
     if (de) de.style.display = 'none';
   }
+}
+
+// ─── Overview 真实数据（/stats /event-stats /events，替代 mock）───
+async function dcLoadOverview(hdrs) {
+  // 链状态 + 事件总量（/stats，event_checkpoints 增量统计，O(1)）
+  try {
+    var s = await afetch('/api/v2/data/stats', { auth: 'none', headers: hdrs });
+    var chains = (s && Array.isArray(s.chains)) ? s.chains : [];
+    var total = s && typeof s.total === 'number' ? s.total : 0;
+    setHtml('dc-total-events', formatNumber(total));
+    setHtml('dc-chain-count', chains.length + ' chains');
+    if (!chains.length) {
+      setHtml('dc-chain-stats', '<div class="empty" style="padding:32px 0">暂无链上数据</div>');
+    } else {
+      setHtml('dc-chain-stats',
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">' +
+        chains.map(function(c) {
+          var meta = DC_CHAINS.find(function(x) { return x.name.toLowerCase() === String(c.chain || '').toLowerCase(); });
+          var icon = meta
+            ? '<img src="' + meta.img + '" width="36" height="36" alt="' + c.chain + '">'
+            : '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-sub,#242a36);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">' + String(c.chain || '?').slice(0, 1).toUpperCase() + '</div>';
+          return '<div class="chain-card">' +
+            '<div class="chain-card-icon">' + icon + '</div>' +
+            '<div class="chain-card-name">' + c.chain + '</div>' +
+            '<div class="chain-card-status"><span class="chain-dot" style="background:#0ecb81"></span> scanning</div>' +
+            '<div class="chain-card-stats">' +
+              '<span class="chain-stat">📦 #' + formatNumber(c.latestBlock) + '</span>' +
+              '<span class="chain-stat">🧾 ' + formatNumber(c.event_count) + '</span>' +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>');
+    }
+  } catch (_) {
+    setHtml('dc-chain-stats', '<div class="empty" style="padding:24px 0;color:var(--text-muted)">链状态加载失败</div>');
+  }
+  // 事件分类分布（/event-stats，O(1) event_category_stats）
+  try {
+    var es = await afetch('/api/v2/data/event-stats', { auth: 'none', headers: hdrs });
+    var cats = (es && Array.isArray(es.categories)) ? es.categories : [];
+    var names = {};
+    try {
+      var cc = await afetch('/api/v2/data/event-categories', { auth: 'none', headers: hdrs });
+      if (Array.isArray(cc)) cc.forEach(function(c) { if (!names[c.category_id]) names[c.category_id] = c.name; });
+    } catch (_) {}
+    var catBox = document.getElementById('dc-cat-stats');
+    var catTotal = document.getElementById('dc-cat-total');
+    if (!cats.length) {
+      if (catBox) catBox.innerHTML = '<div class="empty" style="padding:20px 0;color:var(--text-muted)">暂无分类数据</div>';
+      if (catTotal) catTotal.textContent = '';
+    } else {
+      var sum = cats.reduce(function(a, c) { return a + (c.count || 0); }, 0);
+      if (catTotal) catTotal.textContent = formatNumber(sum) + ' events';
+      if (catBox) {
+        catBox.innerHTML = cats.map(function(c) {
+          var pct = sum ? Math.round((c.count / sum) * 100) : 0;
+          var nm = names[c.category_id] || c.category_id;
+          return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+            '<span style="width:130px;font-size:12px;color:var(--text-secondary);text-align:right">' + nm + '</span>' +
+            '<div style="flex:1;height:10px;border-radius:5px;background:var(--bg-sub,#242a36);overflow:hidden"><div style="width:' + pct + '%;height:100%;background:var(--brand,#F0B90B);border-radius:5px"></div></div>' +
+            '<span style="width:110px;font-size:12px" class="dc-mono">' + formatNumber(c.count) + ' · ' + pct + '%</span>' +
+          '</div>';
+        }).join('');
+      }
+    }
+  } catch (_) {}
+  // 最近事件（/events）
+  try {
+    var ev = await afetch('/api/v2/data/events?page_size=8', { auth: 'none', headers: hdrs });
+    var rows = (ev && Array.isArray(ev.data)) ? ev.data : [];
+    var tbody = document.getElementById('dc-recent-tbody');
+    var hint = document.getElementById('dc-recent-hint');
+    if (!rows.length) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">暂无事件</td></tr>';
+      if (hint) hint.textContent = '';
+      return;
+    }
+    if (hint) hint.textContent = '最新 ' + rows.length + ' 条';
+    if (tbody) {
+      tbody.innerHTML = rows.map(function(e) {
+        var sf = (e.from_address || '').slice(0, 10) + '...';
+        var st = (e.to_address || '').slice(0, 10) + '...';
+        var sx = (e.tx_hash || '').slice(0, 8) + '...';
+        return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px"><span class="dc-chain-badge dc-chain-' + e.chain + '">' + e.chain + '</span></td><td style="padding:6px 10px" class="dc-mono">' + formatNumber(e.block_number) + '</td><td style="padding:6px 10px">' + e.event_type + '</td><td style="padding:6px 10px" class="dc-mono">' + sf + '</td><td style="padding:6px 10px" class="dc-mono">' + st + '</td><td style="padding:6px 10px">' + (e.amount || '—') + ' ' + (e.token_symbol || '') + '</td><td style="padding:6px 10px" class="dc-mono">' + sx + '</td></tr>';
+      }).join('');
+    }
+  } catch (_) {}
 }
 
 // ─── Explorer ────────────────────────────────────────────────────────
