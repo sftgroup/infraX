@@ -528,6 +528,20 @@ export class OkxMarketV6Client {
     ]);
   }
 
+  /** POST /api/v6/dex/market/price-info — 批量（scheduler 画像快照用，一次最多 30 币） */
+  async getPriceInfoBatch(items: Array<{ chainIndex: string; tokenContractAddress: string }>): Promise<any> {
+    if (!items.length) return [];
+    const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
+    const CHUNK = 30;
+    const out: any[] = [];
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const chunk = items.slice(i, i + CHUNK);
+      const data = await this.request(acct, 'POST', '/api/v6/dex/market/price-info', chunk);
+      if (Array.isArray(data)) out.push(...data);
+    }
+    return out;
+  }
+
   /** GET /api/v6/dex/market/historical-candles */
   async getHistoricalCandles(chainIndex: string, tokenAddress: string, period = '1H', limit = 100): Promise<OkxCandle[]> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');

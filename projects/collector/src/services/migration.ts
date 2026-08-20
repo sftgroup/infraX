@@ -454,6 +454,38 @@ export async function migrateEventCollectorTables(): Promise<void> {
     `);
 
     // ============================================================
+    // okx_market_token_profiles — 热门代币画像快照（价格多时间窗/流动性/持有者）
+    // scheduler snapshotTokenProfiles：toplist（volume24h/symbol/name）合并 price-info
+    // （price/marketCap/liquidity/holders/priceChange5M-24H/max-minPrice）→ 时间序列
+    // ============================================================
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS okx_market_token_profiles (
+        id BIGSERIAL PRIMARY KEY,
+        chain VARCHAR(50) NOT NULL,
+        token_address VARCHAR(200) NOT NULL,
+        token_symbol VARCHAR(100),
+        token_name VARCHAR(300),
+        price_usd NUMERIC(30,10),
+        price_change_5m NUMERIC(20,4),
+        price_change_1h NUMERIC(20,4),
+        price_change_4h NUMERIC(20,4),
+        price_change_24h NUMERIC(20,4),
+        market_cap NUMERIC(40,10),
+        volume_24h NUMERIC(40,10),
+        liquidity_usd NUMERIC(40,10),
+        circ_supply NUMERIC(40,10),
+        max_price NUMERIC(30,10),
+        min_price NUMERIC(30,10),
+        holder_count INTEGER,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_okx_profiles_chain_token_time
+        ON okx_market_token_profiles (chain, token_address, collected_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_okx_profiles_time
+        ON okx_market_token_profiles (collected_at DESC);
+    `);
+
+    // ============================================================
     // tracked_tokens — user-configured tokens to monitor
     // ============================================================
     await client.query(`
@@ -537,7 +569,7 @@ export async function migrateEventCollectorTables(): Promise<void> {
 
     await client.query('COMMIT');
     logger.info('[migration] All tables created', {
-      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'tracked_tokens', 'custom_event_sigs', 'event_categories', 'event_category_stats'],
+      tables: ['events', 'event_checkpoints', 'payment_events', 'binance_futures_prices', 'okx_token_snapshots', 'admin_okx_accounts', 'okx_market_candles', 'okx_market_index_prices', 'okx_market_hot_tokens', 'okx_market_mempump', 'okx_market_token_profiles', 'tracked_tokens', 'custom_event_sigs', 'event_categories', 'event_category_stats'],
     });
   } catch (err: any) {
     await client.query('ROLLBACK');

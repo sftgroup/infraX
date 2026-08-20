@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler, apiResponse } from '../helpers';
 import { getMarketClient } from '../services/okxMarketV6';
 import * as dex from '../services/dexScreener';
+import { pool } from '../database';
 import { logger } from '../logger';
 
 /**
@@ -207,8 +208,49 @@ router.get('/market/dex/token', asyncHandler(async (req, res) => {
 }));
 
 // ================================================================
-// 合并搜索（OKX + DexScreener）
-// GET /api/v2/data/market/dex/search?keyword=pepe&chain=ETH
+// 单币历史序列（画像快照，来自 okx_market_token_profiles）
+// GET /api/v2/data/market/dex/token/history?chain=ETH&address=0x..&hours=24
+// 时间序列：price/marketCap/liquidity/holderCount/各时间窗变化率（快照 5min 粒度）
+// ================================================================
+router.get('/market/dex/token/history', asyncHandler(async (req, res) => {
+  const { chain, address, hours } = req.query as any;
+  const chainEnum = chain ? String(chain).toUpperCase() : '';
+  const addr = address ? String(address).toLowerCase() : '';
+  const h = clampLimit(hours, 24, 24 * 7);
+  if (!chainEnum || !addr) {
+    res.status(400).json(apiResponse(null, 'chain (ETH/BSC/BASE/SOL) and address required'));
+    return;
+  }
+  try {
+    const result = await pool.query(
+      `SELECT token_symbol AS symbol, token_name AS name, price_usd, price_change_5m, price_change_1h, price_change_4h, price_change_24h, market_cap, volume_24h, liquidity_usd, circ_supply, max_price, min_price, holder_count, collected_at
+       FROM okx_market_token_profiles
+       WHERE chain = $1 AND token_address = $2 AND collected_at > NOW() - ($3 || ' hours')::interval
+       ORDER BY collected_at DESC`,
+      [OKX_CHAIN_INDEX[chainEnum] || chainEnum, addr, String(h)]
+    );
+    const items = result.rows.map((r: any) => ({
+      symbol: r.symbol, name: r.name,
+      priceUsd: r.price_usd ? parseFloat(r.price_usd) : null,
+      priceChange5m: r.price_change_5m ? parseFloat(r.price_change_5m) : null,
+      priceChange1h: r.price_change_1h ? parseFloat(r.price_change_1h) : null,
+      priceChange4h: r.price_change_4h ? parseFloat(r.price_change_4h) : null,
+      priceChange24h: r.price_change_24h ? parseFloat(r.price_change_24h) : null,
+      marketCap: r.market_cap ? parseFloat(r.market_cap) : null,
+      volume24h: r.volume_24h ? parseFloat(r.volume_24h) : null,
+      liquidityUsd: r.liquidity_usd ? parseFloat(r.liquidity_usd) : null,
+      circSupply: r.circ_supply ? parseFloat(r.circ_supply) : null,
+      maxPrice: r.max_price ? parseFloat(r.max_price) : null,
+      minPrice: r.min_price ? parseFloat(r.min_price) : null,
+      holderCount: r.holder_count,
+      collectedAt: r.collected_at,
+    }));
+    res.json(apiResponse({ chain: chainEnum, address: addr, hours: h, count: items.length, items }));
+  } catch (e: any) {
+    logger.warn(`[dex] token/history failed: ${e.message}`);
+    res.status(500).json(apiResponse(null, e.message));
+  }
+}));
 // ================================================================
 router.get('/market/dex/search', asyncHandler(async (req, res) => {
   const { keyword, chain, limit } = req.query as any;

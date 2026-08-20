@@ -72,6 +72,8 @@ export const config = {
     schedulerCandlesMs: parseInt(process.env.OKX_MARKET_CANDLE_INTERVAL_MS || '300000', 10),
     schedulerIndexMs: parseInt(process.env.OKX_MARKET_INDEX_INTERVAL_MS || '60000', 10),
     schedulerMempumpMs: parseInt(process.env.OKX_MARKET_MEMPUMP_INTERVAL_MS || '300000', 10),
+    // Token profile snapshots (price-info multi-window + holders) interval
+    schedulerProfileMs: parseInt(process.env.OKX_MARKET_PROFILE_INTERVAL_MS || '300000', 10),
   },
 
   // Reclassifier (raw_event → classified)

@@ -24,13 +24,14 @@ export class OkxMarketScheduler {
 
     await this.client.init();
 
-    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs, schedulerMempumpMs: mempumpMs } = config.okxMarket;
+    const { schedulerHotTokensMs: hotMs, schedulerCandlesMs: candlesMs, schedulerIndexMs: indexMs, schedulerMempumpMs: mempumpMs, schedulerProfileMs: profileMs } = config.okxMarket;
 
     // Initial snapshots (staggered)
     setTimeout(() => this.safeRun('hot-tokens', () => this.snapshotHotTokens()), 5_000).unref?.();
     setTimeout(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), 8_000).unref?.();
     setTimeout(() => this.safeRun('candles', () => this.snapshotCandles()), 15_000).unref?.();
     setTimeout(() => this.safeRun('mempump', () => this.snapshotMempump()), 20_000).unref?.();
+    setTimeout(() => this.safeRun('profiles', () => this.snapshotTokenProfiles()), 25_000).unref?.();
 
     // Periodic
     this.timers.push(
@@ -38,6 +39,7 @@ export class OkxMarketScheduler {
       setInterval(() => this.safeRun('index-price', () => this.snapshotIndexPrices()), indexMs),
       setInterval(() => this.safeRun('candles', () => this.snapshotCandles()), candlesMs),
       setInterval(() => this.safeRun('mempump', () => this.snapshotMempump()), mempumpMs),
+      setInterval(() => this.safeRun('profiles', () => this.snapshotTokenProfiles()), profileMs),
     );
 
     for (const t of this.timers) { if ('unref' in t) (t as any).unref?.(); }
@@ -172,6 +174,55 @@ export class OkxMarketScheduler {
       }
       await new Promise(r => setTimeout(r, 150));
     }
+  }
+
+  // ── Token Profiles (画像快照：价格多时间窗 + 流动性 + 持有者) ──
+  // 热门代币（每链 top N）→ price-info 批量（免费）→ okx_market_token_profiles 时间序列
+  private async snapshotTokenProfiles(): Promise<void> {
+    const limit = Math.min(this.candleTokens, 30);
+    const client = await pool.connect();
+    try {
+      for (const chainIndex of this.chains) {
+        try {
+          const tokens = await this.client.getHotTokens(chainIndex, limit);
+          if (!tokens || !Array.isArray(tokens)) continue;
+
+          const items = tokens
+            .filter((t: any) => t?.tokenAddress)
+            .map((t: any) => ({ chainIndex, tokenContractAddress: t.tokenAddress }))
+            .slice(0, limit);
+          if (!items.length) continue;
+
+          const rows = await this.client.getPriceInfoBatch(items);
+          if (!Array.isArray(rows)) continue;
+
+          const byAddr = new Map<string, any>();
+          for (const t of tokens) { if (t?.tokenAddress) byAddr.set(String(t.tokenAddress).toLowerCase(), t); }
+
+          const collectedAt = new Date();
+          for (const r of rows) {
+            const addr = String(r.tokenContractAddress || '').toLowerCase();
+            const meta = byAddr.get(addr);
+            const price = parseFloat(r.price || '0');
+            if (!price) continue;
+            await client.query(
+              `INSERT INTO okx_market_token_profiles
+                 (chain, token_address, token_symbol, token_name, price_usd, price_change_5m, price_change_1h, price_change_4h, price_change_24h, market_cap, volume_24h, liquidity_usd, circ_supply, max_price, min_price, holder_count, collected_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+              [chainIndex, addr, meta?.symbol || '', meta?.name || '',
+               price, parseFloat(r.priceChange5M || '0'), parseFloat(r.priceChange1H || '0'),
+               parseFloat(r.priceChange4H || '0'), parseFloat(r.priceChange24H || '0'),
+               parseFloat(r.marketCap || '0'), meta?.volume24h || 0,
+               parseFloat(r.liquidity || '0'), parseFloat(r.circSupply || '0'),
+               parseFloat(r.maxPrice || '0'), parseFloat(r.minPrice || '0'),
+               parseInt(r.holders || '0', 10) || null, collectedAt]
+            );
+          }
+        } catch (err: any) {
+          logger.warn(`[okx-sched] profiles failed (${chainIndex})`, { error: err.message });
+        }
+      }
+    } finally { client.release(); }
   }
 
   // ── Tracked Tokens (user-configured) ───────────────────────────
