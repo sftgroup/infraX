@@ -93,7 +93,7 @@ function rpcEventsHtml() {
     '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:4px">链上事件 · DC 解析增强</div>' +
     '<p style="font-size:12.5px;color:var(--text-muted);margin:4px 0 14px">已解码业务事件（转账 / 授权 / DEX 兑换…），RPC 原始日志之上的解析增值层。同一读 key 计费。</p>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
-      '<select id="rpc-ev-chain" style="padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px">' +
+      '<select id="rpc-ev-chain" class="select" style="width:180px">' +
         RPC_CHAINS.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('') +
       '</select>' +
       '<input id="rpc-ev-addr" placeholder="地址 / 合约（可选）" style="flex:1;min-width:200px;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px">' +

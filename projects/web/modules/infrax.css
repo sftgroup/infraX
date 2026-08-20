@@ -55,6 +55,8 @@ a{color:var(--text-link);text-decoration:none}
 a:hover{color:var(--brand-hover)}
 button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
 input,select,textarea{border:none;outline:none;font:inherit;color:inherit}
+/* 原生下拉选项面板跟随深色主题，避免白底浅字看不清 */
+select option{background:var(--surface-input);color:var(--text-primary)}
 input::placeholder,select::placeholder{color:var(--text-tertiary)}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
