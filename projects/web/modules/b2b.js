@@ -75,10 +75,12 @@ function rpcInit() {
           ['认证', 'X-API-Key: rx_xxxx（读）/ bx_xxxx（广播）'],
         ]) +
       '</div>' +
-      // W-8: tab 结构 —— 订阅首页 / 链上事件（DC 解析增强为内容页，不占首页）
+      // W-8c: 内容页 tab —— 订阅 / 链上事件 / 节点状态 / API Docs
       '<div class="tab-row" style="margin-top:24px">' +
         '<button class="tab-btn active" data-sub="rpc-sub">🔑 订阅</button>' +
-        '<button class="tab-btn" data-sub="rpc-events">🔎 链上事件 · DC 解析增强</button>' +
+        '<button class="tab-btn" data-sub="rpc-events">🔎 链上事件</button>' +
+        '<button class="tab-btn" data-sub="rpc-status">📊 节点状态</button>' +
+        '<button class="tab-btn" data-sub="rpc-docs">📖 API Docs</button>' +
       '</div>' +
       '<div class="sub-panel active" id="sub-rpc-sub" style="text-align:left">' +
         '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin:24px 0 12px">选择套餐 · 自助订阅</div>' +
@@ -109,11 +111,14 @@ function rpcInit() {
             '</tbody></table></div>' +
         '</div>' +
       '</div>' +
+      '<div class="sub-panel" id="sub-rpc-status" style="text-align:left">' + rpcStatusHtml() + '</div>' +
+      '<div class="sub-panel" id="sub-rpc-docs" style="text-align:left">' + rpcDocsHtml() + '</div>' +
     '</div>';
   b2bHealthBar('rpc', 'b2b-rpc-health');
   rpcLoadStats();
   rpcLoadPlans();
   rpcLoadMySub();
+  rpcLoadStatus();
 }
 
 // W-8: 拉取真实套餐目录（价格/配额随后端更新）
@@ -139,6 +144,92 @@ function rpcLoadPlans() {
       }).join('');
     })
     .catch(function () {});
+}
+
+// W-8c: 节点状态内容页（GET /v1/status，池状态脱敏展示）
+function rpcStatusHtml() {
+  return '<div class="panel" style="margin-top:24px">' +
+    '<div class="panel-header">📊 节点状态 · RPC 池健康</div>' +
+    '<div class="panel-body">' +
+      '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 14px">各链 RPC 池端点健康（健康检查自动降级 / 恢复），展示 provider 与 tier 分布。</p>' +
+      '<div id="rpc-status-root"><div style="text-align:center;padding:24px;color:var(--text-muted)">Loading node status…</div></div>' +
+    '</div></div>';
+}
+
+function rpcLoadStatus() {
+  var el = document.getElementById('rpc-status-root');
+  if (!el) return;
+  fetch('/api/v2/rpc/v1/status')
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var chains = j && j.data && j.data.chains ? j.data.chains : null;
+      if (!chains || !Object.keys(chains).length) {
+        el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text-tertiary)">暂无节点状态数据</div>';
+        return;
+      }
+      el.innerHTML = Object.keys(chains).map(function (c) {
+        var s = chains[c];
+        var eps = Array.isArray(s.endpoints) ? s.endpoints : [];
+        var rows = eps.map(function (e) {
+          var color = e.status === 'healthy' ? 'var(--success)' : (e.status === 'degraded' ? 'var(--warning)' : 'var(--error)');
+          return '<tr><td><code>' + e.key + '</code></td><td>' + (e.provider || '-') + '</td>' +
+            '<td>' + (e.tier || '-') + '</td><td style="color:' + color + '">● ' + (e.status || 'unknown') + '</td></tr>';
+        }).join('');
+        if (!rows) rows = '<tr><td colspan="4" style="color:var(--text-tertiary)">无端点</td></tr>';
+        return '<div style="margin-bottom:14px">' +
+          '<div style="font-size:13px;font-weight:600;margin-bottom:6px">' + c +
+            ' <span style="color:var(--text-tertiary);font-weight:400;font-size:12px">chainId ' + (s.chainId ?? '-') +
+            ' · ' + (s.active ?? 0) + '/' + (s.total ?? 0) + ' active</span></div>' +
+          '<table class="dc-api-table" style="width:100%">' +
+            '<thead><tr><th>Endpoint</th><th>Provider</th><th>Tier</th><th>Status</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+      }).join('');
+    })
+    .catch(function () {
+      el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--error)">节点状态加载失败</div>';
+    });
+}
+
+// W-8c: API Docs 内容页（接入文档：认证 / 端点 / 示例 / 广播 / 配额限制）
+function rpcDocsHtml() {
+  return '<div style="margin-top:24px">' +
+    '<div class="panel"><div class="panel-header">🔐 Authentication</div><div class="panel-body">' +
+      '<p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">所有 JSON-RPC 请求通过 <code>X-API-Key</code> 头认证。读接口用 <code>rx_</code> key，广播接口用 <code>bx_</code> key —— 读写分离，读 key 永远无法触达广播端点。</p>' +
+      '<div class="dc-code-block"><pre>curl -H "X-API-Key: rx_YOUR_KEY" \\\n  https://rpc-gw.0xainet.top/v1/rpc/sepolia \\\n  -d \'{"method":"eth_blockNumber","params":[]}\'</pre></div>' +
+    '</div></div>' +
+    '<div class="panel" style="margin-top:16px"><div class="panel-header">📡 Endpoints</div><div class="panel-body">' +
+      '<table class="dc-api-table">' +
+        '<tr><th>用途</th><th>路径</th></tr>' +
+        '<tr><td>读（信封格式）</td><td><code>POST /v1/rpc/:chain</code></td></tr>' +
+        '<tr><td>读（标准 JSON-RPC，viem/ethers 直连）</td><td><code>POST /v1/rpc/:chain</code> + 头 <code>X-Json-Rpc: raw</code></td></tr>' +
+        '<tr><td>广播</td><td><code>POST /v1/broadcast/:chain</code></td></tr>' +
+        '<tr><td>池状态</td><td><code>GET /v1/status</code></td></tr>' +
+        '<tr><td>订阅 / 签发 key</td><td><code>POST /v1/subscription/wallet-issue-key</code>（钱包签名）</td></tr>' +
+      '</table>' +
+      '<p style="font-size:12.5px;color:var(--text-muted);margin:10px 0 0">支持链：sepolia / ethereum / bsc / base / oxa / polygon / arbitrum / optimism / xlayer / solana</p>' +
+    '</div></div>' +
+    '<div class="panel" style="margin-top:16px"><div class="panel-header">💻 Quick Start</div><div class="panel-body">' +
+      '<p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">标准 JSON-RPC（<code>X-Json-Rpc: raw</code>）示例：</p>' +
+      '<div class="dc-code-block"><pre>curl -X POST https://rpc-gw.0xainet.top/v1/rpc/sepolia \\\n  -H "X-API-Key: rx_YOUR_KEY" -H "X-Json-Rpc: raw" -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B","latest"]}\'</pre></div>' +
+      '<p style="font-size:13px;color:var(--text-secondary);margin:16px 0 8px">ethers v6：</p>' +
+      '<div class="dc-code-block"><pre>import { JsonRpcProvider } from "ethers";\nconst p = new JsonRpcProvider(\n  "https://rpc-gw.0xainet.top/v1/rpc/sepolia",\n  undefined,\n  { headers: { "X-API-Key": "rx_YOUR_KEY" } },\n);\nconsole.log(await p.getBlockNumber());</pre></div>' +
+      '<p style="font-size:13px;color:var(--text-secondary);margin:16px 0 8px">viem：</p>' +
+      '<div class="dc-code-block"><pre>import { createPublicClient, http } from "viem";\nimport { sepolia } from "viem/chains";\nconst c = createPublicClient({\n  chain: sepolia,\n  transport: http("https://rpc-gw.0xainet.top/v1/rpc/sepolia", {\n    fetchOptions: { headers: { "X-API-Key": "rx_YOUR_KEY" } },\n  }),\n});\nconsole.log(await c.getBlockNumber());</pre></div>' +
+    '</div></div>' +
+    '<div class="panel" style="margin-top:16px"><div class="panel-header">🚀 Broadcast</div><div class="panel-body">' +
+      '<p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">使用 <code>bx_</code> key，信封格式支持 <code>wait</code> 确认轮询：</p>' +
+      '<div class="dc-code-block"><pre>curl -X POST https://rpc-gw.0xainet.top/v1/broadcast/base \\\n  -H "X-API-Key: bx_YOUR_KEY" -H "Content-Type: application/json" \\\n  -d \'{"rawTransaction":"0x02f8...","wait":true,"timeoutMs":30000}\'</pre></div>' +
+    '</div></div>' +
+    '<div class="panel" style="margin-top:16px"><div class="panel-header">📊 套餐与限制</div><div class="panel-body">' +
+      '<table class="dc-api-table">' +
+        '<tr><th>套餐</th><th>价格</th><th>Calls/月</th><th>带宽</th><th>并发</th></tr>' +
+        '<tr><td>RPC Free</td><td>$0</td><td>10,000</td><td>5GB</td><td>10</td></tr>' +
+        '<tr><td>RPC Pro</td><td>$79</td><td>100,000</td><td>50GB</td><td>50</td></tr>' +
+        '<tr><td>RPC Enterprise</td><td>$299</td><td>1,000,000</td><td>500GB</td><td>200</td></tr>' +
+      '</table>' +
+      '<p style="font-size:12.5px;color:var(--text-muted);margin:10px 0 0">按自然月结算；超配额返回 <code>503</code> + 升级提示。错误码：401 无效 key / 403 方法不在读白名单 / 400 参数错误 / 502 上游 RPC 错误。</p>' +
+    '</div></div>' +
+  '</div>';
 }
 
 // W-8: 钱包维度"我的订阅"（keys 掩码 + 套餐 + 当月用量）
