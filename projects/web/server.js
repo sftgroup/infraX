@@ -39,6 +39,8 @@ const API_ROUTES = {
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
   // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130 /health）— 面板服务状态用（strip 前缀）
   '/api/v2/rpc':     { host: RPC_HOST,      port: RPC_PORT, strip: '/api/v2/rpc' },
+  // Chain RPC 增强层（DC 链上事件解析增值）：/api/v2/enhanced/events → :9130/v1/enhanced/events
+  '/api/v2/enhanced': { host: RPC_HOST,     port: RPC_PORT, strip: '/api/v2/enhanced', prefix: '/v1/enhanced' },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
   '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },
@@ -128,8 +130,11 @@ function proxyRequest(req, res, target) {
   const opts = {
     hostname: target.host,
     port: target.port,
-    // 支持 strip 前缀的代理（如 /api/v2/rpc → chain-rpc 的 /health），默认透传完整路径
-    path: target.strip && req.url.startsWith(target.strip) ? (req.url.slice(target.strip.length) || '/') : req.url,
+    // 支持 strip 前缀的代理（如 /api/v2/rpc → chain-rpc 的 /health）；可选 prefix 追加（如 /api/v2/enhanced → /v1/enhanced）
+    path: (() => {
+      const stripped = target.strip && req.url.startsWith(target.strip) ? (req.url.slice(target.strip.length) || '/') : req.url;
+      return target.prefix ? target.prefix + (stripped.startsWith('/') ? stripped : '/' + stripped) : stripped;
+    })(),
     method: req.method,
     headers,
     timeout: 15000,

@@ -33,6 +33,8 @@ function b2bAccess(rows) {
 }
 
 // ─── Chain RPC ──────────────────────────────────────────────────────
+const RPC_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa', 'polygon', 'arbitrum', 'optimism', 'xlayer', 'solana'];
+
 function rpcInit() {
   var root = document.getElementById('rpc-root');
   if (!root || root.dataset.loaded) return;
@@ -56,8 +58,87 @@ function rpcInit() {
         ]) +
         '<div class="waas-intro-note">状态为面板健康检查结果；套餐与用量请通过管理端或 API 订阅接口查询。</div>' +
       '</div>' +
+      '<div class="enhanced-card" style="margin-top:24px;text-align:left;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:18px 22px">' +
+        '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:4px">链上事件 · DC 解析增强</div>' +
+        '<p style="font-size:12.5px;color:var(--text-muted);margin:4px 0 14px">已解码业务事件（转账 / 授权 / DEX 兑换…），RPC 原始日志之上的解析增值层。同一读 key 计费。</p>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">' +
+          '<select id="rpc-ev-chain" style="padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px">' +
+            RPC_CHAINS.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('') +
+          '</select>' +
+          '<input id="rpc-ev-addr" placeholder="地址 / 合约（可选）" style="flex:1;min-width:200px;padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:13px">' +
+          '<button class="btn btn-sm" onclick="rpcLoadEvents()">查询</button>' +
+        '</div>' +
+        '<div id="rpc-ev-cats" style="margin-bottom:14px"></div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+          '<thead><tr style="color:var(--text-tertiary);text-align:left">' +
+            '<th style="padding:6px 10px">Chain</th><th style="padding:6px 10px">Block</th><th style="padding:6px 10px">Type</th>' +
+            '<th style="padding:6px 10px">From</th><th style="padding:6px 10px">To</th><th style="padding:6px 10px">Amount</th><th style="padding:6px 10px">Tx</th>' +
+          '</tr></thead><tbody id="rpc-ev-tbody">' +
+          '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">输入条件后查询</td></tr>' +
+          '</tbody></table></div>' +
+      '</div>' +
     '</div>';
   b2bHealthBar('rpc', 'b2b-rpc-health');
+  rpcLoadStats();
+}
+
+// 分类分布（event-stats，聚合表 O(1) 不扫事件表）
+function rpcLoadStats() {
+  fetch('/api/v2/enhanced/event-stats')
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var el = document.getElementById('rpc-ev-cats');
+      if (!el || !j || !j.data || !j.data.categories) return;
+      var rows = (j.data.categories || []).slice(0, 5);
+      var max = rows.length ? Math.max.apply(null, rows.map(function (c) { return c.count; })) : 1;
+      el.innerHTML = '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tertiary);margin-bottom:8px">事件分类分布（全链）</div>' +
+        rows.map(function (c) {
+          var pct = Math.round((c.count / max) * 100);
+          return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12px">' +
+            '<span style="min-width:130px;color:var(--text-secondary)">' + c.chain + ' · ' + c.category_id + '</span>' +
+            '<div style="flex:1;height:8px;background:var(--surface);border-radius:4px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--gold,#F0B90B),#d98e04)"></div></div>' +
+            '<span class="dc-mono" style="min-width:80px;text-align:right">' + formatNumber(c.count) + '</span>' +
+          '</div>';
+        }).join('');
+    })
+    .catch(function () {});
+}
+
+// 事件查询（GET /api/v2/enhanced/events → chain-rpc :9130 代理 DC :9102）
+function rpcLoadEvents() {
+  var chain = document.getElementById('rpc-ev-chain').value;
+  var addr = (document.getElementById('rpc-ev-addr').value || '').trim();
+  var params = new URLSearchParams();
+  params.set('chain', chain);
+  if (addr) params.set('address', addr);
+  params.set('page_size', '10');
+  var tbody = document.getElementById('rpc-ev-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">Loading…</td></tr>';
+  fetch('/api/v2/enhanced/events?' + params.toString())
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      var rows = (j && j.data && Array.isArray(j.data.data)) ? j.data.data : [];
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">无事件</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(function (e) {
+        var sf = (e.from_address || '—').slice(0, 10) + '...';
+        var st = (e.to_address || '—').slice(0, 10) + '...';
+        var sx = (e.tx_hash || '').slice(0, 8) + '...';
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="padding:6px 10px"><span class="dc-chain-badge dc-chain-' + e.chain + '">' + e.chain + '</span></td>' +
+          '<td style="padding:6px 10px" class="dc-mono">' + formatNumber(e.block_number) + '</td>' +
+          '<td style="padding:6px 10px">' + e.event_type + '</td>' +
+          '<td style="padding:6px 10px" class="dc-mono">' + sf + '</td>' +
+          '<td style="padding:6px 10px" class="dc-mono">' + st + '</td>' +
+          '<td style="padding:6px 10px">' + (e.amount || '—') + ' ' + (e.token_symbol || '') + '</td>' +
+          '<td style="padding:6px 10px" class="dc-mono">' + sx + '</td></tr>';
+      }).join('');
+    })
+    .catch(function () {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--binance-red,#F6465D)">查询失败</td></tr>';
+    });
 }
 
 // ─── LightRAG ───────────────────────────────────────────────────────
