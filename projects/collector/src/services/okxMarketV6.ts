@@ -42,6 +42,13 @@ export interface OkxTokenInfo {
   dexName: string;
   poolAddress: string;
   change24h: number;
+  // ── 社交/趋势透传（R1/R3 双榜字段；上游 toplist 提供时透传，否则缺省）──
+  trendingScore?: number;   // 趋势评分（排行榜 rank 依据）
+  xMentions?: number;       // X（推特）24h 提及次数
+  socialScore?: number;     // 社媒综合评分
+  netInflow?: number;       // 24h 净流入 USD
+  tokenScore?: number;      // OKX 综合 token 评分
+  createdAt?: number;       // 代币创建时间（ms，R10）
 }
 
 export interface OkxCandle {
@@ -256,6 +263,10 @@ export class OkxMarketV6Client {
 
   /** Map a v6 token/toplist row onto the shared OkxTokenInfo shape */
   private mapTokenRow(row: any): OkxTokenInfo {
+    const f = (v: any): number | undefined => {
+      if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return undefined;
+      return Number(v);
+    };
     return {
       chain: String(row.chainIndex || ''),
       tokenAddress: row.tokenContractAddress || row.tokenAddress || '',
@@ -271,6 +282,13 @@ export class OkxMarketV6Client {
       dexName: row.dexName || '',
       poolAddress: row.poolAddress || '',
       change24h: parseFloat(row.change || row.priceChange24h || row.priceChange24H) || 0,
+      // R1/R3 双榜透传：上游 toplist 返回对应字段时原样透传（缺省 undefined）
+      trendingScore: f(row.trendingScore ?? row.tokenScore ?? row.socialScore),
+      xMentions: f(row.xMentions ?? row.tokenMentions ?? row.mentions),
+      socialScore: f(row.socialScore),
+      netInflow: f(row.netInflow ?? row.netInflowUsd),
+      tokenScore: f(row.tokenScore),
+      createdAt: f(row.createTime ?? row.createdAt ?? row.createTimestamp),
     };
   }
 
@@ -418,6 +436,18 @@ export class OkxMarketV6Client {
     }
     const data = await this.request(acct, 'GET', `/api/v6/dex/market/token/toplist?${q.toString()}`);
     return Array.isArray(data) ? data.map((r: any) => this.mapTokenRow(r)) : [];
+  }
+
+  /**
+   * R1 双榜（trending / x_mentions）——toplist 语义映射：
+   *   trending    → sortBy=15 tokenScore（OKX 综合趋势评分，榜单 rank 依据）
+   *   x_mentions  → sortBy=11 mentions（X 24h 提及次数，社交热度榜）
+   * 透传字段由 mapTokenRow 保留（trendingScore/xMentions/socialScore…）。
+   */
+  async getHotTokensRanked(chainIndex: string, ranking: 'trending' | 'x_mentions', limit = 50): Promise<Array<OkxTokenInfo & { rankType: string }>> {
+    const sortBy = ranking === 'x_mentions' ? '11' : '15';
+    const items = await this.getHotTokens(chainIndex, limit, { sortBy, timeFrame: '4' });
+    return items.map((it) => ({ ...it, rankType: ranking }));
   }
 
   /** GET /api/v6/dex/market/token/top-liquidity — top liquidity pools */

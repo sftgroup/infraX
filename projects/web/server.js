@@ -35,6 +35,8 @@ const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
   // collector 行情数据面（/api/v2/data/market/*）必须位于 /api/v2/data 之前，否则被 DC 前缀吞掉
   '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
+  // DEX 策略数据（R1-R10，AIHunter 消费面）：/api/dex/* → collector /api/v2/data/market/dex/*
+  '/api/dex': { host: COLLECTOR_HOST, port: COLLECTOR_PORT, strip: '/api/dex', prefix: '/api/v2/data/market/dex' },
   // B-11-3 用户级 key（data 服务 :9112 钱包签名鉴权）— 必须先于 /api/v2/data（DC :9102）
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
   // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130 /health）— 面板服务状态用（strip 前缀）

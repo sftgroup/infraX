@@ -29,6 +29,7 @@ import relayRoutes from './routes/relayRoutes';
 import priceRoutes from './routes/priceRoutes';
 import marketRoutes from './routes/marketRoutes';
 import marketRpcRoutes, { marketRpcAuth } from './routes/marketRpcRoutes';
+import dexRoutes from './routes/dexRoutes';
 import marketSubscriptionRoutes from './routes/marketSubscriptionRoutes';
 import trackedTokenRoutes from './routes/trackedTokenRoutes';
 import customEventRoutes from './routes/customEventRoutes';
@@ -120,6 +121,8 @@ app.use('/api/v2/data', apiKeyAuth, dataRoutes);
 app.use('/api/v2/data', apiKeyAuth, priceRoutes);
 // Market 行情端点：API key auth + MQ-16 T-2 按量计费（超配额 503）
 app.use('/api/v2/data', apiKeyAuth, marketQuotaEnforce, marketRoutes);
+// DEX 策略数据端点（R1-R10）：与 /market/* 同鉴权同配额（dx_ key）
+app.use('/api/v2/data', apiKeyAuth, marketQuotaEnforce, dexRoutes);
 // MQ-16 T-2: Market 订阅端点（plans 公开；checkout/payment-check/verify/usage 各路由内 key 鉴权；payment-callback HMAC 验签）
 app.use('/api/v2/market', marketSubscriptionRoutes);
 // A-12: 行情数据 RPC（rx_ 读 key 鉴权，与 chain-rpc /v1/rpc/:chain 并列；A-13 同源同缓存复用 getMarketClient）
