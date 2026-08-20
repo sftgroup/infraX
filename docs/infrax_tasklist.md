@@ -2267,3 +2267,43 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **遗留**：① R-I1 验收标准 ≥95%，剩余缺失实体（「50篇文章」「方向分布」等）需批量 LLM 翻译回填 `name_en` 映射表；② R-I2 需 news collector 按 lang 分 bucket 稳定供给（当前 NewsAPI 仅英文站数据）；③ I6 market 枚举规范化（非阻塞，前端已兜底）。
 
+### 9.12 RAGSERVICER 迁移后租户分片模型（R-TN，源：AIServicer B 端客户反馈，2026-08-20）
+
+**背景**：客户（AIServicer，B 端多租户平台）迁移到新机 `43.156.78.59:9721` 后实测 `X-Tenant-ID` 未生效（查询响应 tenant 恒为 "admin"），且租户/Key 管理端点 403。
+
+**根因定位**（代码 + 生产实测）：
+
+- 生产机 `ADMIN_API_KEY` 是**模板占位符** `YOUR_ADMIN_KEY`（.env len=14，systemd/进程环境无覆盖）——客户使用的 key 恰好等于占位符，命中 [auth.py](file:///home/steven/infraX/projects/ragservicer/api/auth.py) admin 分支直接返回 "admin"（该分支不读 X-Tenant-ID）。审计日志佐证：客户测试时段（14:14-14:16）20+ 条请求 tenant 全部 admin。
+- 管理端点 `require_admin` 只认 `Authorization: Bearer <ADMIN_API_KEY>`（不认 X-API-Key），且 admin key 是占位符 → 403 Admin access required。
+- **服务端 X-Tenant-ID 本身正常**（实测带 header 即生效）；但存在安全缺陷：X-Tenant-ID 覆盖不做授权校验，**任意有效 key 可越权访问任意租户**。
+
+**方案**（用户裁定：完整方案 = 配置 admin key + X-Tenant-ID 权限边界）：
+
+1. **tenant_scope 授权模型**（[manager.py](file:///home/steven/infraX/projects/ragservicer/tenants/manager.py#L218-L255)）：
+   - `api_keys.tenant_scope` 幂等迁移（PRAGMA 检查兼容 SQLite <3.35）：`''` 仅绑定租户 / `'*'` 任意**已存在**租户 / `'t1,t2'` 允许列表。
+   - `is_tenant_allowed()`：目标租户必须存在（租户由 Admin API 创建，不隐式自动创建）+ 在 key 授权范围。
+2. **auth 授权边界**（[auth.py](file:///home/steven/infraX/projects/ragservicer/api/auth.py#L20-L25)）：`TenantForbiddenError` → `require_tenant`/`require_service` 返回 `403 TENANT_FORBIDDEN`；`register_tenant_on_g` 越权记录为 `unauthorized` 审计。
+3. **管理端点**（[admin.py](file:///home/steven/infraX/projects/ragservicer/api/routes/admin.py#L179-L190)）：新增 `POST /api/v1/keys/{key_id}/scope`（Admin Key）。
+4. **文档**：[API.md](file:///home/steven/infraX/projects/ragservicer/docs/API.md) 1.4.1 租户模型与鉴权表 + 7.4 scope 端点。
+
+**本地验证**：py_compile 通过；`is_tenant_allowed` 12/12（绑定租户放行/无 scope 拒绝/'*' 已存在 OK/不存在拒绝/列表匹配/空 target 放行）；extract_tenant+require_tenant 集成 6/6（key 归属 / 绑定 key 越权 403 / 共享 key 分片 200 / 不存在租户 403 / 非法 key 401 / 无 key 401）。
+
+**生产部署（新机 43.156.78.59，commit `dec66bc`）**：
+
+- scp 同步 `auth.py`/`code_refactor.py`/`admin.py`/`manager.py`/`API.md`（文件拷贝部署无 git）。
+- `ADMIN_API_KEY` 占位符替换为真实值 `rag_admin_<hex48>`（.env 先备份），`systemctl restart infrax-ragservicer` active，health 200。
+- aiservicer prod key（`key_5cf5dd333e35`）设置 `scope='*'`（客户共享 key）；创建客户租户 `mmt1lc9qj8zm0`。
+
+**生产回归验证**：
+
+| 场景 | 结果 |
+|---|---|
+| admin `GET /api/v1/tenants`（Bearer admin key） | 200 ✅ |
+| `POST /tenants` 创建 + `POST /keys/{id}/scope` 设置 | 201/200 ✅ |
+| 共享 key + `X-Tenant-ID: mmt1lc9qj8zm0` query | **200 tenant=mmt1lc9qj8zm0** ✅ |
+| 共享 key + `X-Tenant-ID: nope-tenant`（不存在） | **403 TENANT_FORBIDDEN** ✅ |
+| 共享 key 无 X-Tenant-ID | 200 tenant=aiservicer（key 归属）✅ |
+| 绑定 key + `X-Tenant-ID: aitrader`（越权） | **403 TENANT_FORBIDDEN** ✅ |
+
+**遗留/待办**：① admin key 明文需安全交付客户（平台侧租户/Key 自助管理，`Authorization: Bearer` 方式）；② 客户正式共享 key 需确认：使用现有 aiservicer prod key（`lr_9ccd9547c...`）或新签发一把 `scope='*'` 共享 key 交付；③ 客户每新 Bot 上线需调 `POST /api/v1/tenants` 预创建租户（不会隐式自动创建）。
+
