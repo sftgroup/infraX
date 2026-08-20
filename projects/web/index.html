@@ -27,11 +27,34 @@
     <div class="sidebar-logo-text">InfraX</div>
   </div>
 
-  <div class="nav-section">Wallets</div>
-  <nav class="sidebar-nav">
+  <nav class="sidebar-nav" style="flex:0 0 auto">
     <button class="nav-item active" data-page="noncustodial">
       <span>🏠</span> Dashboard
     </button>
+  </nav>
+
+  <div class="nav-section">B2B API</div>
+  <nav class="sidebar-nav">
+    <button class="nav-item" data-page="rpc">
+      <span>🔗</span> Chain RPC
+      <span class="badge">RPC</span>
+    </button>
+    <button class="nav-item" data-page="datacenter">
+      <span>📡</span> Data Center
+      <span class="badge">API</span>
+    </button>
+    <button class="nav-item" data-page="insights">
+      <span>📈</span> Insights
+      <span class="badge">Graph</span>
+    </button>
+    <button class="nav-item" data-page="lightrag">
+      <span>🔎</span> LightRAG
+      <span class="badge">RAG</span>
+    </button>
+  </nav>
+
+  <div class="nav-section">Wallets</div>
+  <nav class="sidebar-nav">
     <button class="nav-item" data-page="mpc">
       <span>🔐</span> MPC Wallet
     </button>
@@ -43,17 +66,9 @@
       <span>🛡️</span> Safe Vault
       <span class="badge">Multi-Sig</span>
     </button>
-    <button class="nav-item" data-page="datacenter">
-      <span>📡</span> Data Center
-      <span class="badge">API</span>
-    </button>
     <button class="nav-item" data-page="aa">
       <span>🤖</span> AA Sessions
       <span class="badge">ERC-4337</span>
-    </button>
-    <button class="nav-item" data-page="insights">
-      <span>📈</span> Insights
-      <span class="badge">Graph</span>
     </button>
     <button class="nav-item" data-page="payments">
       <span>💳</span> Payments
@@ -965,9 +980,17 @@ Body:
     <div id="payments-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading payments…</div></div>
   </div>
 
+  <div class="page" id="page-rpc">
+    <div id="rpc-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading Chain RPC…</div></div>
   </div>
 
-<script src="/modules/core.js?v=1787187400"></script>
+  <div class="page" id="page-lightrag">
+    <div id="lightrag-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading LightRAG…</div></div>
+  </div>
+
+  </div>
+
+<script src="/modules/core.js?v=1787239000"></script>
 <script src="/modules/nc-wallet.js?v=1787238000"></script>
 <script src="/modules/mpc-wallet.js?v=1783734639"></script>
 <script src="/modules/waas.js?v=1784050055"></script>
@@ -978,6 +1001,7 @@ Body:
 <script src="/modules/aa.js?v=1784990000"></script>
 <script src="/modules/insights.js?v=1784990000"></script>
 <script src="/modules/payments.js?v=1784991000"></script>
+<script src="/modules/b2b.js?v=1787239000"></script>
 
 
 <script>
