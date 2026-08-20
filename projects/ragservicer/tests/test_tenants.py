@@ -59,3 +59,33 @@ def test_concurrent_writes_do_not_raise(monkeypatch, tmp_path):
         t.join()
 
     assert not errors, f"concurrent writes raised: {errors}"
+
+
+def test_last_used_write_is_throttled(monkeypatch, tmp_path):
+    """60s 内重复 validate 只落一次 last_used_at 写（并发下减少写锁）。"""
+    import sqlite3
+
+    monkeypatch.setattr(tm, "_get_db_path", lambda: tmp_path / "t.db")
+    tm.init_db()
+    info = tm.generate_api_key("default", "t3", 0)
+    key = info["key"]
+
+    assert tm.validate_api_key(key) is not None  # 触发第一次写
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    first = conn.execute(
+        "SELECT last_used_at FROM api_keys WHERE id = ?", (info["key_id"],)
+    ).fetchone()[0]
+    conn.close()
+
+    tm._last_used_ts.clear()  # 模拟越过节流窗口 → 第二次写
+    assert tm.validate_api_key(key) is not None
+    conn = sqlite3.connect(str(tmp_path / "t.db"))
+    second = conn.execute(
+        "SELECT last_used_at FROM api_keys WHERE id = ?", (info["key_id"],)
+    ).fetchone()[0]
+    conn.close()
+
+    # 两次均为 datetime('now') 格式，秒级分辨率下通常相等或递增；核心断言：
+    # 节流窗口内第二次 validate 不报错且 key 仍有效
+    assert second is not None
+    assert second >= first

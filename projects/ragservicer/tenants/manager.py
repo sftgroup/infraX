@@ -6,6 +6,8 @@ import hashlib
 import logging
 import secrets
 import sqlite3
+import threading
+import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -28,6 +30,29 @@ def _get_conn() -> sqlite3.Connection:
     # 10s 内等待锁而非直接失败。
     conn.execute("PRAGMA busy_timeout=10000")
     return conn
+
+
+# last_used_at 写入节流（2026-08-21 并发写锁修复）：
+# 鉴权热路径在 WAL + busy_timeout 下仍可能因并发突发排空超时 → 500。
+# 每把 key 至多 60s 落一次库，且失败仅记 debug（鉴权读不受写锁影响）。
+_used_lock = threading.Lock()
+_last_used_ts: dict[str, float] = {}
+
+
+def _touch_last_used(conn: sqlite3.Connection, key_id: str) -> None:
+    now = time.time()
+    with _used_lock:
+        if now - _last_used_ts.get(key_id, 0.0) < 60.0:
+            return
+        _last_used_ts[key_id] = now
+    try:
+        conn.execute(
+            "UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?",
+            (key_id,),
+        )
+        conn.commit()
+    except sqlite3.Error as exc:
+        logger.debug("last_used_at update skipped: %s", exc)
 
 
 def init_db():
@@ -185,11 +210,7 @@ def validate_api_key(plain_key: str) -> dict | None:
     """, (key_hash,)).fetchone()
 
     if row:
-        conn.execute(
-            "UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?",
-            (row["id"],)
-        )
-        conn.commit()
+        _touch_last_used(conn, row["id"])
 
     conn.close()
 
