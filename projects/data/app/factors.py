@@ -385,7 +385,8 @@ def get_current_factors(
     return result
 
 
-def get_snapshots(data_type: Optional[str] = None, provider: Optional[str] = None) -> dict:
+def get_snapshots(data_type: Optional[str] = None, provider: Optional[str] = None,
+                  lang: Optional[str] = None) -> dict:
     """Return latest complex snapshot data (heatmap, calendar, indices, etc.).
 
     If data_type is specified, returns only that type's latest raw_json.
@@ -393,8 +394,13 @@ def get_snapshots(data_type: Optional[str] = None, provider: Optional[str] = Non
     If provider is specified, returns latest row per (data_type, symbol) for
     that provider as {data_type: {symbol: payload}}（GX-3.4/3.5：moomoo_f10
     等按标的落库的 provider，ml-service 图谱引擎读取用；可叠加 type 过滤）。
+    If lang is specified (R-I2), filters news items to that language
+    (falls back to English when the requested language has no data).
     """
     db = get_db()
+
+    # R-I2: news 类型按 lang 过滤（raw_json.items[].lang）
+    _NEWS_TYPES = {"news", "news_moomoo"}
 
     # GX-3.4/3.5: provider 模式 —— 按 (data_type, symbol) 取每组最新（不叠加
     # 单键信封解包，保持 {data_type: {symbol: payload}} 稳定契约）
@@ -491,6 +497,22 @@ def get_snapshots(data_type: Optional[str] = None, provider: Optional[str] = Non
             continue
         if not data:
             continue
+
+        # R-I2: news 按请求语言过滤 items；请求语言无数据时降级为英文（如实标注 lang）。
+        # moomoo 源条目无 lang 字段（默认中文站），按英文兜底处理。
+        if lang and fid in _NEWS_TYPES:
+            items = data.get("items")
+            if isinstance(items, list):
+                lang_lower = str(lang).strip().lower()
+                _lang_of = lambda it: str(it.get("lang") or "").strip().lower()
+                if lang_lower == "en":
+                    filtered = [it for it in items if _lang_of(it) in ("en", "")]
+                else:
+                    filtered = [it for it in items if _lang_of(it) == lang_lower]
+                    if not filtered:
+                        filtered = [it for it in items if _lang_of(it) in ("en", "")]
+                data["items"] = filtered
+                data["lang"] = lang_lower if (filtered and filtered[0].get("lang")) else "en"
 
         # Unwrap single-key envelopes
         if len(data) == 1:

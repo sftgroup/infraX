@@ -51,7 +51,7 @@ _CATEGORY_RULES = [
 ]
 _DEFAULT_CATEGORY = "asset"
 
-# ── REQ-G8：中文实体英文名（预存映射表 + 值后缀降级）──────
+# ── REQ-G8 / R-I1：中文实体英文名（预存映射表 + 值后缀降级 + 纯英文兜底）──────
 _NAME_EN_FILE = "entity_name_en.json"
 _name_en_map: dict[str, str] = {}
 _name_en_loaded = False
@@ -59,6 +59,8 @@ _name_en_loaded = False
 _VALUE_SUFFIX_RE = re.compile(
     r"(?:[+\-]?\d[\d,]*(?:\.\d+)?%?|(?:\d+/\d+)|(?:\d[\d,.]*美元)|\d+篇)$"
 )
+# R-I1：实体名含 CJK 才需要翻译；纯 ASCII/数字（BTC、SPY、OKX DEX）直接兜底为自身
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 # ── edge relation 映射（8 枚举；顺序即匹配优先级，首个命中生效）──
 _RELATION_RULES = [
@@ -216,8 +218,9 @@ def load_name_en_map() -> dict[str, str]:
 
 
 def name_en_of(node_id: str) -> Optional[str]:
-    """实体英文名（REQ-G8）：精确查表 → 剥离值后缀回查核心词（如
-    「机会评分48/100」→ Opportunity Score 48/100）→ 未命中返回 None。"""
+    """实体英文名（REQ-G8 / R-I1）：精确查表 → 剥离值后缀回查核心词（如
+    「机会评分48/100」→ Opportunity Score 48/100）→ 纯 ASCII/数字实体
+    兜底为自身（BTC/SPY 等无翻译需求）→ 未命中返回 None。"""
     m = load_name_en_map()
     if node_id in m:
         return m[node_id]
@@ -228,6 +231,8 @@ def name_en_of(node_id: str) -> Optional[str]:
         suffix = re.sub(r"美元$", " USD", suffix).strip()
         suffix = re.sub(r"^(\d+)篇$", r"\1", suffix).strip()
         return f"{m[core]} {suffix}" if suffix else m[core]
+    if not _CJK_RE.search(node_id):
+        return node_id
     return None
 
 

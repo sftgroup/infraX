@@ -751,6 +751,7 @@ async def policy_broker_market():
 async def snapshots(
     type: Optional[str] = Query(None, description="Data type: heatmap/calendar/crypto_prices/indices/tvl/volatility/us_indicators/earnings/onchain"),
     provider: Optional[str] = Query(None, description="Provider filter (GX-3.4/3.5): moomoo_f10 等按标的落库的 provider，返回 {data_type: {symbol: payload}}"),
+    lang: Optional[str] = Query(None, description="R-I2: news 语言过滤（zh/en，仅对 type=news/news_moomoo 生效）；请求语言数据不足时降级返回英文"),
 ):
     """Return latest complex snapshot data.
 
@@ -769,7 +770,7 @@ async def snapshots(
     """
     try:
         from app.factors import get_snapshots
-        result = get_snapshots(type, provider=provider)
+        result = get_snapshots(type, provider=provider, lang=lang)
         return {"ts": result.pop("_ts", 0), "snapshots": result}
     except Exception as e:
         logger.error(f"/snapshots failed: {e}")

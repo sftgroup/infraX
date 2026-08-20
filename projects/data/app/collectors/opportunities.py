@@ -500,23 +500,28 @@ def analyze_opportunities_crypto(opportunities: list, crypto_data: list) -> None
         price = safe_float(coin.get("price", 0))
 
         signal = strength = reason = None
+        params: Dict[str, Any] = {}
         impact = "neutral"
 
         if change > 15:
             signal, strength = "overbought", "strong"
             reason = f"24h涨幅{change:.1f}%，7日涨幅{change_7d:.1f}%，短期超买风险"
+            params = {"change_24h": round(change, 2), "change_7d": round(change_7d, 2)}
             impact = "bearish"
         elif change > 5:
             signal, strength = "bullish_momentum", "medium"
             reason = f"24h涨幅{change:.1f}%，上涨动能强劲"
+            params = {"change_24h": round(change, 2)}
             impact = "bullish"
         elif change < -15:
             signal, strength = "oversold", "strong"
             reason = f"24h跌幅{abs(change):.1f}%，可能超卖反弹"
+            params = {"change_24h": round(change, 2)}
             impact = "bullish"
         elif change < -5:
             signal, strength = "bearish_momentum", "medium"
             reason = f"24h跌幅{abs(change):.1f}%，下跌趋势明显"
+            params = {"change_24h": round(change, 2)}
             impact = "bearish"
 
         if signal:
@@ -524,6 +529,7 @@ def analyze_opportunities_crypto(opportunities: list, crypto_data: list) -> None
                 "symbol": symbol, "name": name, "price": price,
                 "change_24h": change, "change_7d": change_7d,
                 "signal": signal, "strength": strength, "reason": reason,
+                "reason_key": signal, "params": params,
                 "impact": impact, "market": "Crypto", "timestamp": int(time.time()),
             })
 
@@ -535,26 +541,32 @@ def analyze_opportunities_stocks(opportunities: list, stock_data: list) -> None:
         symbol, name, price = stock.get("symbol", ""), stock.get("name", ""), safe_float(stock.get("price", 0))
 
         signal = strength = reason = None
+        params: Dict[str, Any] = {}
         impact = "neutral"
 
         if change > 5:
             signal, strength = "overbought", "strong"
             reason = f"日涨幅{change:.1f}%，短期涨幅较大，注意回调风险"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
         elif change > 2:
             signal, strength = "bullish_momentum", "medium"
             reason = f"日涨幅{change:.1f}%，上涨动能强劲"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -5:
             signal, strength = "oversold", "strong"
             reason = f"日跌幅{abs(change):.1f}%，可能超卖反弹"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -2:
             signal, strength = "bearish_momentum", "medium"
             reason = f"日跌幅{abs(change):.1f}%，下跌趋势明显"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
 
         if signal:
             opportunities.append({
                 "symbol": symbol, "name": name, "price": price,
                 "change_24h": change, "signal": signal, "strength": strength,
-                "reason": reason, "impact": impact, "market": "USStock",
+                "reason": reason, "reason_key": signal, "params": params,
+                "impact": impact, "market": "USStock",
                 "timestamp": int(time.time()),
             })
 
@@ -577,35 +589,44 @@ def analyze_opportunities_local_stocks(opportunities: list, stock_data: list, ma
         abs_change = abs(change)
 
         signal = strength = reason = None
+        params: Dict[str, Any] = {}
         impact = "neutral"
 
         if change > strong_th:
             signal, strength = "overbought", "strong"
             reason = f"{market_cn}日涨幅{change:.1f}%，短期涨幅较大，注意回调风险"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
         elif change > medium_th:
             signal, strength = "bullish_momentum", "medium"
             reason = f"{market_cn}日涨幅{change:.1f}%，上涨动能较强"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change > mild_th:
             signal, strength = "bullish_momentum", "weak"
             reason = f"{market_cn}日涨幅{change:.1f}%，温和上涨"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -strong_th:
             signal, strength = "oversold", "strong"
             reason = f"{market_cn}日跌幅{abs_change:.1f}%，可能超卖反弹"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -medium_th:
             signal, strength = "bearish_momentum", "medium"
             reason = f"{market_cn}日跌幅{abs_change:.1f}%，下跌趋势明显"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
         elif change < -mild_th:
             signal, strength = "bearish_momentum", "weak"
             reason = f"{market_cn}日跌幅{abs_change:.1f}%，温和下跌"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
         elif abs_change <= mild_th:
             signal, strength = "consolidation", "weak"
             reason = f"{market_cn}{name}窄幅震荡({change:+.1f}%)，等待方向选择"; impact = "neutral"
+            params = {"change_24h": round(change, 2), "name": name}
 
         if signal:
             opportunities.append({
                 "symbol": symbol, "name": name, "price": price,
                 "change_24h": change, "signal": signal, "strength": strength,
-                "reason": reason, "impact": impact, "market": m,
+                "reason": reason, "reason_key": signal, "params": params,
+                "impact": impact, "market": m,
                 "timestamp": int(time.time()),
             })
 
@@ -619,26 +640,32 @@ def analyze_opportunities_forex(opportunities: list, forex_data: list) -> None:
         price = safe_float(pair.get("price", 0))
 
         signal = strength = reason = None
+        params: Dict[str, Any] = {}
         impact = "neutral"
 
         if change > 1.5:
             signal, strength = "overbought", "strong"
             reason = f"日涨幅{change:.2f}%，汇率波动剧烈，注意回调"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
         elif change > 0.5:
             signal, strength = "bullish_momentum", "medium"
             reason = f"日涨幅{change:.2f}%，上涨动能较强"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -1.5:
             signal, strength = "oversold", "strong"
             reason = f"日跌幅{abs(change):.2f}%，汇率波动剧烈，可能反弹"; impact = "bullish"
+            params = {"change_24h": round(change, 2)}
         elif change < -0.5:
             signal, strength = "bearish_momentum", "medium"
             reason = f"日跌幅{abs(change):.2f}%，下跌趋势明显"; impact = "bearish"
+            params = {"change_24h": round(change, 2)}
 
         if signal:
             opportunities.append({
                 "symbol": symbol, "name": name, "price": price,
                 "change_24h": change, "signal": signal, "strength": strength,
-                "reason": reason, "impact": impact, "market": "Forex",
+                "reason": reason, "reason_key": signal, "params": params,
+                "impact": impact, "market": "Forex",
                 "timestamp": int(time.time()),
             })
 

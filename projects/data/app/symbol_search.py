@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from typing import Any, Optional
@@ -31,6 +32,9 @@ from app.data.market_symbols_seed import (
 )
 
 logger = logging.getLogger(__name__)
+
+# R-I3: 名称含 CJK（cn/hk AkShare 中文名）时作为 name_zh 返回
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 # 对标单体 4 小时缓存（可用 SYMBOL_SEARCH_CACHE_TTL 覆盖）
 _CACHE_TTL_SEC = int(os.getenv("SYMBOL_SEARCH_CACHE_TTL", "14400"))
@@ -145,7 +149,7 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
         for m in markets:
             if kw and kw not in m["symbol"].lower():
                 continue
-            results.append(m)
+            results.append(dict(m))
             if len(results) >= limit:
                 break
         return results
@@ -164,14 +168,18 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
         if key in seen:
             continue
         seen.add(key)
-        results.append({
+        name = m.get("name", "")
+        row = {
             "symbol": key,
             "market": market,
             "market_type": "spot",
             "exchange": "",
             "active": True,
-            "name": m.get("name", ""),
-        })
+            "name": name,
+        }
+        if _CJK_RE.search(name):
+            row["name_zh"] = name  # R-I3: 仅含中文名的标的输出 name_zh
+        results.append(row)
         if len(results) >= limit:
             return results
 
@@ -180,14 +188,17 @@ def search_symbols(keyword: str, market: str = "crypto", limit: int = 20) -> lis
             continue
         if kw and kw not in sym.lower() and kw not in name.lower():
             continue
-        results.append({
+        row = {
             "symbol": sym,
             "market": market,
             "market_type": "spot",
             "exchange": "",
             "active": True,
             "name": name,
-        })
+        }
+        if _CJK_RE.search(name):
+            row["name_zh"] = name  # R-I3: 仅含中文名的标的输出 name_zh
+        results.append(row)
         if len(results) >= limit:
             break
     return results
