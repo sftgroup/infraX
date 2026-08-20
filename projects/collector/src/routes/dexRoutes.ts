@@ -331,8 +331,14 @@ router.get('/market/dex/top-traders', asyncHandler(async (req, res) => {
     res.status(400).json(apiResponse(null, 'chain (ETH/BSC/BASE/SOL) and address required'));
     return;
   }
-  const data = await m().getTopTraders(idx, String(address));
-  res.json(apiResponse({ chain: chainEnum, items: data }));
+  try {
+    const data = await m().getTopTraders(idx, String(address));
+    res.json(apiResponse({ chain: chainEnum, items: data }));
+  } catch (e: any) {
+    // OKX Premium 付费端点：402/上游异常 → 结构化降级而非 500
+    logger.warn(`[dex] top-traders failed: ${e.message}`);
+    res.json(apiResponse({ chain: chainEnum, items: [], paymentRequired: e.status === 402, error: e.message }));
+  }
 }));
 
 router.get('/market/dex/trades', asyncHandler(async (req, res) => {
@@ -343,8 +349,13 @@ router.get('/market/dex/trades', asyncHandler(async (req, res) => {
     res.status(400).json(apiResponse(null, 'chain (ETH/BSC/BASE/SOL) and address required'));
     return;
   }
-  const data = await m().getTrades(idx, String(address), clampLimit(limit, 50, 100));
-  res.json(apiResponse({ chain: chainEnum, items: data }));
+  try {
+    const data = await m().getTrades(idx, String(address), clampLimit(limit, 50, 100));
+    res.json(apiResponse({ chain: chainEnum, items: data }));
+  } catch (e: any) {
+    logger.warn(`[dex] trades failed: ${e.message}`);
+    res.json(apiResponse({ chain: chainEnum, items: [], paymentRequired: e.status === 402, error: e.message }));
+  }
 }));
 
 export default router;
