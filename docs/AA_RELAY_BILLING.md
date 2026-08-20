@@ -40,6 +40,10 @@
 >
 > 对账事件（`InfraXEscrow`）：`Charged(user, amount, ref)` / `Refunded(user, amount, ref)`；退差/追扣 ref 带后缀 `:refund` / `:extra`，退款 ref = `{chargeRef}:refund`。
 
+**结算/退款失败重试（P2-1，2026-08-21）**：settle/refund 失败自动重试 **3 次指数退避**（800ms/1.6s/3.2s）；402（余额不足追扣）为业务性错误不重试。多次失败仍告警（对账以链上 `Charged`/`Refunded` 事件为准，可兜底补偿）。
+
+**限额（P2-3，2026-08-21）**：链上默认 `perTx=1 OXA / perDay=10 OXA`（按计费账户维度，合约 `DEFAULT_PER_TX_LIMIT`/`DEFAULT_PER_DAY_LIMIT`）。自动续订单次预扣约 0.0025 OXA，默认限额单账户每日可支撑约 4000 次续订；用户级可用合约 `setChargeLimit(account, perTx, perDay)` 定制，owner 可 `setChargeDefaultLimit` 调全局默认。`GET /v1/plans` 响应 `limits` 字段透出。
+
 ## 4. 资金总览（REQ-2b）
 
 `POST /v1/ledger-balance`（body `{account}`，escrow 模式）返回：
@@ -112,7 +116,7 @@ AgentX 生产实测（2026-08-18/19）：
 
 | 端点 | 鉴权 | 说明 |
 |---|---|---|
-| `GET /v1/plans` | `AA_RELAY_API_KEY`（实测需 key，2026-08-19） | 价目/模式/充值指引（`aaPlansInfo`） |
+| `GET /v1/plans` | `AA_RELAY_API_KEY`（实测需 key，2026-08-19） | 价目/模式/充值指引 + `limits`（perTx/perDay OXA，P2-3） |
 | `POST /v1/ledger-balance` | `AA_RELAY_API_KEY` | 余额 + 资金总览（REQ-2b） |
-| `POST /v1/userops` | `AA_RELAY_API_KEY` | UserOp 广播（同步/异步） |
-| `GET /v1/userops/:hash` | `AA_RELAY_API_KEY` | 收据/状态轮询 |
+| `POST /v1/userops` | `AA_RELAY_API_KEY` | UserOp 广播（同步默认 / `wait:false` 异步 **202 + opHash**） |
+| `GET /v1/userops/:hash` | `AA_RELAY_API_KEY` | 状态机轮询：`{status: pending\|confirmed\|reverted, receipt}`（P2-2） |
