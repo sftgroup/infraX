@@ -459,7 +459,7 @@ export class OkxMarketV6Client {
   /** GET /api/v6/dex/market/token/top-liquidity — top liquidity pools */
   async getTopLiquidity(chainIndex: string, tokenAddress: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/token/top-liquidity?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}`;
+    const path = `/api/v6/dex/market/token/top-liquidity?chainIndex=${chainIndex}&tokenContractAddress=${tokenAddress}`;
     return this.request(acct, 'GET', path);
   }
 
@@ -516,7 +516,7 @@ export class OkxMarketV6Client {
   /** GET /api/v6/dex/market/token/top-trader */
   async getTopTraders(chainIndex: string, tokenAddress: string): Promise<any> {
     const acct = this.nextAccount(); if (!acct) throw new Error('No OKX account');
-    const path = `/api/v6/dex/market/token/top-trader?chainIndex=${chainIndex}&tokenAddress=${tokenAddress}`;
+    const path = `/api/v6/dex/market/token/top-trader?chainIndex=${chainIndex}&tokenContractAddress=${tokenAddress}`;
     return this.request(acct, 'GET', path);
   }
 
