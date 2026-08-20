@@ -8,7 +8,12 @@ import { MARKET_PLANS, monthStart } from '../marketPlans';
 
 export async function marketQuotaEnforce(req: Request, res: Response, next: NextFunction): Promise<void> {
   const keyId = (req as any).apiKey?.id as number | undefined;
-  if (!keyId) { res.status(401).json({ code: 401, message: 'Invalid API key' }); return; }
+  // 外部签发 key（dx_ 等，data 服务实时校验通过）：无本地套餐配额，RPM 已由 data 侧限流，直接放行
+  if (!keyId) {
+    if ((req as any).apiKey?.external) { next(); return; }
+    res.status(401).json({ code: 401, message: 'Invalid API key' });
+    return;
+  }
   const planId = (req as any).apiKey?.marketPlanId || 'market_free';
   const plan = MARKET_PLANS.find((p) => p.id === planId) || MARKET_PLANS[0];
   const quota = plan.features.apiCallsPerMonth;
