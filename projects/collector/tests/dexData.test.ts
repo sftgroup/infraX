@@ -60,15 +60,19 @@ describe('mapPair', () => {
 });
 
 describe('getTokensDetail 聚合', () => {
-  it('多池按 token 聚合（流动性求和/最早池创建时间/前 5 池）', async () => {
+  it('search-by-address 按链过滤聚合（流动性求和/最早池创建时间/前 5 池）', async () => {
     (global as any).fetch = jest.fn(async (url: string) => {
-      expect(url).toContain('/latest/dex/tokens/base/0xabc');
+      expect(url).toContain('/latest/dex/search?q=0xabc');
       return {
         ok: true, status: 200,
-        json: async () => [
-          { pairs: [mockPair({ pairAddress: '0x...01', baseToken: { symbol: 'USDC', name: 'USD Coin', address: '0xABC' }, liquidity: { usd: '100' }, pairCreatedAt: 1710000000000 })] },
-          { pairs: [mockPair({ pairAddress: '0x...02', baseToken: { symbol: 'USDC', name: 'USD Coin', address: '0xABC' }, liquidity: { usd: '200' }, pairCreatedAt: 1700000000000 })] },
-        ],
+        json: async () => ({
+          pairs: [
+            mockPair({ chainId: 'base', pairAddress: '0x...01', baseToken: { symbol: 'USDC', name: 'USD Coin', address: '0xABC' }, liquidity: { usd: '100' }, pairCreatedAt: 1710000000000 }),
+            mockPair({ chainId: 'base', pairAddress: '0x...02', baseToken: { symbol: 'USDC', name: 'USD Coin', address: '0xABC' }, liquidity: { usd: '200' }, pairCreatedAt: 1700000000000 }),
+            // 其他链的池应被过滤
+            mockPair({ chainId: 'pulsechain', pairAddress: '0x...03', baseToken: { symbol: 'USDC', name: 'USD Coin', address: '0xABC' }, liquidity: { usd: '9999' } }),
+          ],
+        }),
       };
     });
     const out = await dex.getTokensDetail('base', ['0xABC']);

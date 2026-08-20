@@ -231,56 +231,62 @@ export async function searchTokens(q: string): Promise<DexPair[]> {
 }
 
 /**
- * /latest/dex/tokens/{chain}/{addresses} — 批量 token 详情（多池聚合）
- * @param addresses 逗号分隔合约地址（≤30 个/请求，超出分批）
+ * 单币详情（多池聚合）。
+ * 上游 `/latest/dex/tokens/{chain}/{addresses}` 已废弃（2026-08 实测 404）→ 改用
+ * `/latest/dex/search?q={address}` 按链过滤聚合（search 返回全链该地址的全池）。
+ * @param addresses 合约地址列表（逐个 search，聚合目标链全池；单币画像场景通常 1 个）
  */
 export async function getTokensDetail(chainRaw: string, addresses: string[]): Promise<DexTokenDetail[]> {
-  const key = `tokens:${chainRaw}:${addresses.map((a) => normAddr(chainRaw, a)).join(',')}`;
-  const cached = cacheGet(key, CACHE_TTL.tokens);
-  if (cached !== undefined) return cached;
-
-  const CHUNK = 30;
   const results: DexTokenDetail[] = [];
-  for (let i = 0; i < addresses.length; i += CHUNK) {
-    const chunk = addresses.slice(i, i + CHUNK);
-    const data = await get(`/latest/dex/tokens/${chainRaw}/${chunk.map((a) => normAddr(chainRaw, a)).join(',')}`);
-    const pairs: DexPair[] = Array.isArray(data) ? data.flatMap((d: any) => (Array.isArray(d?.pairs) ? d.pairs.map(mapPair).filter((p: DexPair | null): p is DexPair => p !== null) : [])) : [];
-    // 按 tokenAddress 聚合（mapPair 已统一 EVM 小写 / SOL base58）
-    const byToken = new Map<string, DexPair[]>();
-    for (const p of pairs) {
-      const addr = p.tokenAddress;
-      if (!byToken.has(addr)) byToken.set(addr, []);
-      byToken.get(addr)!.push(p);
+  for (const rawAddr of addresses) {
+    const addr = normAddr(chainRaw, rawAddr);
+    const key = `tokens:${chainRaw}:${addr}`;
+    const cached = cacheGet(key, CACHE_TTL.tokens);
+    if (cached !== undefined) {
+      results.push(...cached);
+      continue;
     }
-    for (const [addr, tokenPairs] of byToken) {
-      const sorted = [...tokenPairs].sort((a, b) => (b.liquidity || 0) - (a.liquidity || 0));
-      const liq = tokenPairs.reduce((s, p) => s + (p.liquidity || 0), 0);
-      const vol = tokenPairs.reduce((s, p) => s + (p.volume24h || 0), 0);
-      const created = tokenPairs
-        .map((p) => p.createdAt)
-        .filter((t): t is number => t !== null)
-        .sort((a, b) => a - b);
-      const top = sorted[0];
-      results.push({
-        chain: CHAIN_TO_ENUM[chainRaw] || chainRaw.toUpperCase(),
-        symbol: top?.symbol || '',
-        name: top?.name || '',
-        tokenAddress: addr,
-        pairs: sorted.slice(0, 5),
-        liquidity: liq > 0 ? liq : null,
-        volume24h: vol > 0 ? vol : null,
-        priceUsd: top?.priceUsd ?? null,
-        priceChange24h: top?.priceChange24h ?? null,
-        marketCap: null,
-        fdv: null,
-        txns24h: top?.txns24h ?? null,
-        poolCount: tokenPairs.length,
-        poolCreatedAt: created.length > 0 ? created[0] : null,
-      });
-    }
+    const data = await get(`/latest/dex/search?q=${encodeURIComponent(addr)}`);
+    const pairs: DexPair[] = Array.isArray(data?.pairs)
+      ? data.pairs
+          .filter((p: any) => String(p?.chainId) === chainRaw)
+          .map(mapPair)
+          .filter((p: DexPair | null): p is DexPair => p !== null)
+      : [];
+    const agg = aggregatePairs(chainRaw, addr, pairs);
+    if (agg) cacheSet(key, [agg]);
+    if (agg) results.push(agg);
   }
-  cacheSet(key, results);
   return results;
+}
+
+/** 同链多池 → 单币聚合（流动性/24h 量求和、最早池创建时间、前 5 池） */
+function aggregatePairs(chainRaw: string, tokenAddress: string, tokenPairs: DexPair[]): DexTokenDetail | null {
+  if (tokenPairs.length === 0) return null;
+  const sorted = [...tokenPairs].sort((a, b) => (b.liquidity || 0) - (a.liquidity || 0));
+  const liq = tokenPairs.reduce((s, p) => s + (p.liquidity || 0), 0);
+  const vol = tokenPairs.reduce((s, p) => s + (p.volume24h || 0), 0);
+  const created = tokenPairs
+    .map((p) => p.createdAt)
+    .filter((t): t is number => t !== null)
+    .sort((a, b) => a - b);
+  const top = sorted[0];
+  return {
+    chain: CHAIN_TO_ENUM[chainRaw] || chainRaw.toUpperCase(),
+    symbol: top?.symbol || '',
+    name: top?.name || '',
+    tokenAddress,
+    pairs: sorted.slice(0, 5),
+    liquidity: liq > 0 ? liq : null,
+    volume24h: vol > 0 ? vol : null,
+    priceUsd: top?.priceUsd ?? null,
+    priceChange24h: top?.priceChange24h ?? null,
+    marketCap: null,
+    fdv: null,
+    txns24h: top?.txns24h ?? null,
+    poolCount: tokenPairs.length,
+    poolCreatedAt: created.length > 0 ? created[0] : null,
+  };
 }
 
 /** /latest/dex/pairs/{chain}/{pairAddr} — 单池详情 */

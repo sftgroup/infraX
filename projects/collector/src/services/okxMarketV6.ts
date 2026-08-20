@@ -42,6 +42,7 @@ export interface OkxTokenInfo {
   dexName: string;
   poolAddress: string;
   change24h: number;
+  txs?: number;                 // 24h 交易笔数（toplist 提供；x_mentions 榜排序依据）
   // ── 社交/趋势透传（R1/R3 双榜字段；上游 toplist 提供时透传，否则缺省）──
   trendingScore?: number;   // 趋势评分（排行榜 rank 依据）
   xMentions?: number;       // X（推特）24h 提及次数
@@ -282,6 +283,7 @@ export class OkxMarketV6Client {
       dexName: row.dexName || '',
       poolAddress: row.poolAddress || '',
       change24h: parseFloat(row.change || row.priceChange24h || row.priceChange24H) || 0,
+      txs: parseInt(row.txs, 10) || undefined,
       // R1/R3 双榜透传：上游 toplist 返回对应字段时原样透传（缺省 undefined）
       trendingScore: f(row.trendingScore ?? row.tokenScore ?? row.socialScore),
       xMentions: f(row.xMentions ?? row.tokenMentions ?? row.mentions),
@@ -439,14 +441,18 @@ export class OkxMarketV6Client {
   }
 
   /**
-   * R1 双榜（trending / x_mentions）——toplist 语义映射：
-   *   trending    → sortBy=15 tokenScore（OKX 综合趋势评分，榜单 rank 依据）
-   *   x_mentions  → sortBy=11 mentions（X 24h 提及次数，社交热度榜）
-   * 透传字段由 mapTokenRow 保留（trendingScore/xMentions/socialScore…）。
+   * R1 双榜（trending / x_mentions）。
+   * 上游限制（2026-08 生产实测）：toplist 仅接受 sortBy ∈ {2 change, 5 volume, 6 mcap}
+   * （11/15 均返回 400），且返回字段不含 mentions/tokenScore → 双榜用真实链上热度双维度：
+   *   trending    → sortBy=5 volume（24h 成交额，OKX 默认热度榜）
+   *   x_mentions  → 同源拉取后按 txs（24h 交易笔数）降序（参与热度代理）
+   * 透传字段（trendingScore/xMentions…）上游提供时原样透传，否则缺省。
    */
   async getHotTokensRanked(chainIndex: string, ranking: 'trending' | 'x_mentions', limit = 50): Promise<Array<OkxTokenInfo & { rankType: string }>> {
-    const sortBy = ranking === 'x_mentions' ? '11' : '15';
-    const items = await this.getHotTokens(chainIndex, limit, { sortBy, timeFrame: '4' });
+    const items = await this.getHotTokens(chainIndex, limit, { sortBy: '5', timeFrame: '4' });
+    if (ranking === 'x_mentions') {
+      items.sort((a, b) => (b.txs ?? 0) - (a.txs ?? 0));
+    }
     return items.map((it) => ({ ...it, rankType: ranking }));
   }
 
