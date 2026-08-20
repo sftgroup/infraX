@@ -200,6 +200,13 @@ export async function initDatabase(): Promise<void> {
       );
     `);
 
+    // 4.8.1 Idempotent migration — tokens.min_sweep_amount (column added after the table first shipped;
+    // CREATE TABLE IF NOT EXISTS does NOT backfill columns on existing tables, without this the
+    // GET /tenants/:id/tokens 500s with 'column "min_sweep_amount" does not exist')
+    await client.query(
+      `ALTER TABLE tokens ADD COLUMN IF NOT EXISTS min_sweep_amount VARCHAR(32) DEFAULT '0'`
+    );
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS fee_configs (
         id UUID PRIMARY KEY,

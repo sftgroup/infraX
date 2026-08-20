@@ -18,6 +18,7 @@ async function safeInit() {
 }
 
 function safeEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+function safeValidAddr(a) { return typeof a === 'string' && /^0x[a-fA-F0-9]{40}$/.test(a); }
 function safeShort(s, n) { s = s || ''; n = n || 10; return s.length > n + 6 ? s.slice(0, n) + '…' + s.slice(-4) : s; }
 function safeWei(wei) { if (wei == null) return '0'; var n = Number(wei) / 1e18; return n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : n.toFixed(6); }
 function safeTxStatus(s) {
@@ -56,7 +57,7 @@ async function safeLoadOwned() {
         '<div style="text-align:right">' +
         '<div style="font-size:12px;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' pending' : '') + '</div>' +
         "<button class='btn btn-primary btn-sm' onclick='safeShowPropose(\"" + s.address + "\")' style='margin-top:4px'>Propose</button> " +
-        "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button></div>" +
+        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button>" : '') + '</div>' +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -82,7 +83,7 @@ async function safeLoadParticipating() {
         '<div style="font-size:11px;color:var(--text-muted);word-break:break-all">' + (s.address || '') + '</div></div>' +
         '<div style="text-align:right">' +
         '<div style="font-size:13px;font-weight:600;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' to sign' : '') + '</div>' +
-        "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button></div>" +
+        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button>" : '') + '</div>' +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -130,6 +131,7 @@ function safeList() { safeLoadOwned(); }
 
 /* ── 审批闭环：交易明细弹窗 + confirm（personal_sign）/ execute ── */
 async function safeShowDetail(address) {
+  if (!safeValidAddr(address)) return showToast('Invalid Safe address', 'error');
   var overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.setAttribute('data-safe-addr', address);

@@ -341,7 +341,8 @@ function myKeysRender(resp) {
   }).join('');
 }
 async function myKeysLoad() {
-  if (!user().walletAddress) return;
+  var wa = user().walletAddress;
+  if (!wa || wa === 'undefined' || !/^0x[a-fA-F0-9]+$/i.test(wa)) return;
   try {
     const resp = await afetch('/api/v2/data/my-keys', { auth: 'wallet' });
     myKeysRender(resp || { keys: [] });

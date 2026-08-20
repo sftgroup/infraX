@@ -59,7 +59,7 @@ async function afetch(url, opts) {
   if (!opts) opts = {};
   if (!opts.headers) opts.headers = {};
   var a = user().walletAddress;
-  if (a) {
+  if (a && a !== 'undefined' && /^0x[a-fA-F0-9]+$/i.test(a)) {
     opts.headers['x-wallet-address'] = a;
     if (opts.auth !== 'none') {
       try {
