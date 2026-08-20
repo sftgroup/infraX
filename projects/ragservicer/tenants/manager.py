@@ -23,6 +23,10 @@ def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_get_db_path()))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # 每个请求都会写（validate_api_key 更新 last_used_at / audit_logs 落库），
+    # 无 busy_timeout 时并发写会立即抛 "database is locked" → 500（冒烟测试实测触发）。
+    # 10s 内等待锁而非直接失败。
+    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 
