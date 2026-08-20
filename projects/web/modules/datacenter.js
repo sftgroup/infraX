@@ -370,7 +370,7 @@ async function dcLoadMarket() {
       html += '<div class="panel"><div class="panel-header">📊 ' + esc(symbol) + ' · ' + esc(tf) + ' K线（近 ' + bars.length + ' 根）</div>' +
         '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">时间</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">开盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最高</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最低</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">收盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">成交量</th></tr></thead><tbody>' +
         bars.map(function(b) {
-          var ts = b.timestamp || 0;
+          var ts = b.ts || b.timestamp || 0;
           var time = ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—';
           return '<tr style="border-bottom:1px solid var(--border)"><td class="dc-mono">' + time + '</td><td style="padding:6px 10px">' + formatNumber(b.open) + '</td><td style="padding:6px 10px">' + formatNumber(b.high) + '</td><td style="padding:6px 10px">' + formatNumber(b.low) + '</td><td style="padding:6px 10px">' + formatNumber(b.close) + '</td><td style="padding:6px 10px">' + formatNumber(b.volume) + '</td></tr>';
         }).join('') + '</tbody></table></div></div>';
