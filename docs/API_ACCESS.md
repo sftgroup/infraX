@@ -436,6 +436,39 @@ curl -H "x-api-key: YOUR_KEY" \
   "https://infrax.0xainet.top/api/v2/data/market/mempump/list?chainIndex=501&protocol=120596&sortBy=volume24h"
 ```
 
+#### DEX 策略数据（`/api/v2/data/market/dex/*`，2026-08-21 上线，dx_ key 权限）
+
+> 数据层（R1-R10，见 `docs/requirements-infrax-dex-data.md`）：OKX OnchainOS v6 + DexScreener 双源聚合，链枚举 `ETH/BSC/BASE/SOL`，信封 `{code, message, data}`。
+> 上游限制：OKX `token/toplist` 仅支持 sortBy∈{2,5,6}（trending=volume、x_mentions=按 txs 排序）；`trades`/`top-liquidity`/OKX `search` 为 x402 付费端点 → 自动降级 `{items:[], paymentRequired:true}`。
+
+```
+GET  /api/v2/data/market/dex/hot-tokens      ?source=all|okx|dexscreener&chain=ETH&ranking=trending|x_mentions&limit=
+GET  /api/v2/data/market/dex/token           ?chain=ETH&address=
+GET  /api/v2/data/market/dex/token/history   ?chain=ETH&address=&hours=24   # 画像快照历史序列（5min 粒度，新增 2026-08-21）
+GET  /api/v2/data/market/dex/search          ?keyword=&chain=&limit=
+GET  /api/v2/data/market/dex/signal          ?chain=&limit=
+GET  /api/v2/data/market/dex/holders         ?chain=&address=&limit=
+GET  /api/v2/data/market/dex/liquidity       ?chain=&address=
+GET  /api/v2/data/market/dex/top-traders     ?chain=&address=
+GET  /api/v2/data/market/dex/trades          ?chain=&address=&limit=
+```
+
+```bash
+# 热门代币（OKX volume 榜）
+curl -H "x-api-key: YOUR_KEY" \
+  "https://infrax.0xainet.top/api/dex/hot-tokens?source=okx&chain=ETH&ranking=trending&limit=10"
+
+# 单币画像（行情+社交+风险+池+持有者）
+curl -H "x-api-key: YOUR_KEY" \
+  "https://infrax.0xainet.top/api/dex/token?chain=ETH&address=0x4485dc2bb0eb690b91ad9ae5b7285789b168764d"
+
+# 单币历史序列（价格/市值/持有者多时间窗，5min 粒度）
+curl -H "x-api-key: YOUR_KEY" \
+  "https://infrax.0xainet.top/api/dex/token/history?chain=ETH&address=0x4485dc2bb0eb690b91ad9ae5b7285789b168764d&hours=24"
+```
+
+> 网关路径：`https://infrax.0xainet.top/api/dex/*`（web/server.js 代理 → collector `/api/v2/data/market/dex/*`）。
+
 ### 1.7 行情 RPC（`POST /v1/market-rpc`，A-12，Collector `:9101`）
 
 > 2026-08-15 交付：与 chain-rpc `/v1/rpc/:chain` 并列的**网关层行情入口**，12 组方法 + 多 token 批量 + 信封 `{code, message, data}`。

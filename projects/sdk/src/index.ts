@@ -763,6 +763,65 @@ export class MarketAPI {
 
   /** 订阅用量（月度配额 / 实际用量 / 日聚合） */
   async usage() { return this.http.get<MarketUsageResult>('/api/v2/market/usage'); }
+
+  // ── DEX 策略数据（/api/v2/data/market/dex/*，2026-08-21 上线；数据层 R1-R10）──
+
+  /** 热门代币统一榜（R1+R1b）— OKX 热度榜（trending=volume / x_mentions=txs）+ DexScreener 新币榜 */
+  async dexHotTokens(params: { source?: 'all' | 'okx' | 'dexscreener'; chain?: string; ranking?: 'trending' | 'x_mentions'; limit?: number } = {}) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) { if (v !== undefined && v !== '') q.set(k, String(v)); }
+    return this.http.get<any>('/api/v2/data/market/dex/hot-tokens?' + q.toString());
+  }
+
+  /** 单币画像（R2+R3+R4）— 行情 + 社交热度 + 风险 + 池明细 + 持有者 */
+  async dexToken(chain: string, tokenAddress: string) {
+    return this.http.get<any>(`/api/v2/data/market/dex/token?chain=${chain}&address=${encodeURIComponent(tokenAddress)}`);
+  }
+
+  /** 单币历史序列（画像快照 5min 粒度：价格/多时间窗/市值/持有者/ATH/ATL，2026-08-21 新增） */
+  async dexTokenHistory(chain: string, tokenAddress: string, hours = 24) {
+    return this.http.get<any>(`/api/v2/data/market/dex/token/history?chain=${chain}&address=${encodeURIComponent(tokenAddress)}&hours=${hours}`);
+  }
+
+  /** 合并搜索（OKX + DexScreener；OKX 搜索为付费端点时自动降级为空） */
+  async dexSearch(keyword: string, chain?: string, limit?: number) {
+    const q = new URLSearchParams({ keyword });
+    if (chain) q.set('chain', chain);
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<any>('/api/v2/data/market/dex/search?' + q.toString());
+  }
+
+  /** 巨鲸/聪明钱信号（R5） */
+  async dexSignals(chain?: string, limit?: number) {
+    const q = new URLSearchParams();
+    if (chain) q.set('chain', chain);
+    if (limit) q.set('limit', String(limit));
+    return this.http.get<any>('/api/v2/data/market/dex/signal?' + q.toString());
+  }
+
+  /** 持有者结构（R6） */
+  async dexHolders(chain: string, tokenAddress: string, limit?: number) {
+    let path = `/api/v2/data/market/dex/holders?chain=${chain}&address=${encodeURIComponent(tokenAddress)}`;
+    if (limit) path += `&limit=${limit}`;
+    return this.http.get<any>(path);
+  }
+
+  /** 流动性池/深度（R7）— OKX top-liquidity 付费时降级为 DexScreener 池 */
+  async dexLiquidity(chain: string, tokenAddress: string) {
+    return this.http.get<any>(`/api/v2/data/market/dex/liquidity?chain=${chain}&address=${encodeURIComponent(tokenAddress)}`);
+  }
+
+  /** 顶级交易者（R8） */
+  async dexTopTraders(chain: string, tokenAddress: string) {
+    return this.http.get<any>(`/api/v2/data/market/dex/top-traders?chain=${chain}&address=${encodeURIComponent(tokenAddress)}`);
+  }
+
+  /** 交易历史（R8）— OKX Premium 付费端点，免费 key 返回 {items:[], paymentRequired:true} */
+  async dexTrades(chain: string, tokenAddress: string, limit?: number) {
+    let path = `/api/v2/data/market/dex/trades?chain=${chain}&address=${encodeURIComponent(tokenAddress)}`;
+    if (limit) path += `&limit=${limit}`;
+    return this.http.get<any>(path);
+  }
 }
 
 // ═══════════════ MarketRpc — 行情数据 RPC（A-12/13：/v1/market-rpc，与 REST MarketAPI 同源同缓存） ═══════════════

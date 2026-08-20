@@ -139,6 +139,112 @@ export interface HealthResponse {
   checkpoints: any[];
 }
 
+/* ──────────────── DEX 策略数据（/api/v2/data/market/dex/*，dx_ key）──────────── */
+
+/** 热门代币（R1/R1b 统一榜） */
+export interface DexHotToken {
+  chain: string;
+  symbol: string;
+  name: string;
+  tokenAddress: string;
+  priceUsd: number | null;
+  priceChange24h: number | null;
+  volume24h: number | null;
+  liquidity: number | null;
+  marketCap: number | null;
+  txns24h: number | null;
+  poolCount?: number;
+  rankType?: string;
+  trendingScore?: number | null;
+  xMentions?: number | null;
+  socialScore?: number | null;
+}
+
+export interface DexHotTokensResponse {
+  okx: DexHotToken[];
+  dexscreener: DexHotToken[];
+}
+
+/** 单币画像（R2+R3+R4 聚合） */
+export interface DexTokenProfile {
+  chain: string;
+  tokenAddress: string;
+  symbol: string;
+  name: string;
+  quote: {
+    priceUsd: number | null;
+    volume24h: number | null;
+    liquidity: number | null;
+    marketCap: number | null;
+    fdv: number | null;
+    supply: number | null;
+    change1h: number | null;
+    change4h: number | null;
+    change24h: number | null;
+  };
+  social: { xMentions?: number | null; trendingScore?: number | null; socialScore?: number | null } | null;
+  risk: { riskLevel?: string | null; isHoneypot?: boolean | null } | null;
+  pools: any[];
+  poolCount: number | null;
+  poolCreatedAt: number | null;
+  holderCount: number | null;
+  cluster: any | null;
+}
+
+/** 单币历史序列（画像快照，5min 粒度） */
+export interface DexHistoryItem {
+  symbol: string;
+  name: string;
+  priceUsd: number | null;
+  priceChange5m: number | null;
+  priceChange1h: number | null;
+  priceChange4h: number | null;
+  priceChange24h: number | null;
+  marketCap: number | null;
+  volume24h: number | null;
+  liquidityUsd: number | null;
+  circSupply: number | null;
+  maxPrice: number | null;
+  minPrice: number | null;
+  holderCount: number | null;
+  collectedAt: string;
+}
+
+export interface DexHistoryResponse {
+  chain: string;
+  address: string;
+  hours: number;
+  count: number;
+  items: DexHistoryItem[];
+}
+
+/** 合并搜索（OKX + DexScreener） */
+export interface DexSearchItem {
+  chain: string;
+  symbol: string;
+  name: string;
+  tokenAddress: string;
+  priceUsd: number | null;
+  liquidity: number | null;
+  volume24h: number | null;
+  poolCount?: number;
+}
+
+export interface DexSearchResponse {
+  keyword: string;
+  okx: DexSearchItem[];
+  dexscreener: DexSearchItem[];
+}
+
+/** P1 透传端点统一信封（402 付费端点降级为 paymentRequired: true） */
+export interface DexEnvelopeItem {
+  chain?: string;
+  tokenAddress?: string;
+  items: any[];
+  paymentRequired?: boolean;
+  error?: string;
+}
+
 interface ApiResponse<T> {
   code: number;
   message: string;
@@ -239,7 +345,7 @@ export class InfraX {
      * 查询链上事件 — 支持多维度过滤 + 游标分页
      */
     query: (params: EventQuery = {}): Promise<EventsResponse> =>
-      this.request<EventsResponse>('GET', '/api/v2/data/events', undefined, params as Record<string, string>),
+      this.request<EventsResponse>('GET', '/api/v2/data/events', undefined, params as unknown as Record<string, string>),
 
     /**
      * 批量查询 — 多地址 x 多链一次请求
@@ -275,7 +381,7 @@ export class InfraX {
       symbol?: string;
       limit?: number;
     } = {}): Promise<TokenData[]> =>
-      this.request<TokenData[]>('GET', '/api/v2/data/market/tokens', undefined, params as Record<string, string>),
+      this.request<TokenData[]>('GET', '/api/v2/data/market/tokens', undefined, params as unknown as Record<string, string>),
 
     /**
      * 获取 Token 历史价格 (OKX ChainOS 数据)
@@ -286,7 +392,60 @@ export class InfraX {
       hours?: number;
       limit?: number;
     }): Promise<TokenData[]> =>
-      this.request<TokenData[]>('GET', '/api/v2/data/market/token-history', undefined, params as Record<string, string>),
+      this.request<TokenData[]>('GET', '/api/v2/data/market/token-history', undefined, params as unknown as Record<string, string>),
+
+    // ─────────────── DEX 策略数据（R1-R10，dx_ key）───────────────
+
+    dex: {
+      /**
+       * 热门代币统一榜（R1+R1b）— OKX 热度榜（trending=volume / x_mentions=txs）+ DexScreener 新币榜
+       */
+      hotTokens: (params: {
+        source?: 'all' | 'okx' | 'dexscreener';
+        chain?: 'ETH' | 'BSC' | 'BASE' | 'SOL';
+        ranking?: 'trending' | 'x_mentions';
+        limit?: number;
+      } = {}): Promise<DexHotTokensResponse> =>
+        this.request<DexHotTokensResponse>('GET', '/api/v2/data/market/dex/hot-tokens', undefined, params as unknown as Record<string, string>),
+
+      /**
+       * 单币画像（R2+R3+R4）— 行情 + 社交热度 + 风险 + 池明细 + 持有者
+       */
+      token: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string }): Promise<DexTokenProfile> =>
+        this.request<DexTokenProfile>('GET', '/api/v2/data/market/dex/token', undefined, params as unknown as Record<string, string>),
+
+      /**
+       * 单币历史序列（画像快照 5min 粒度：价格/多时间窗变化率/市值/持有者/ATH/ATL）
+       */
+      tokenHistory: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string; hours?: number }): Promise<DexHistoryResponse> =>
+        this.request<DexHistoryResponse>('GET', '/api/v2/data/market/dex/token/history', undefined, params as unknown as Record<string, string>),
+
+      /**
+       * 合并搜索（OKX + DexScreener；OKX 搜索为付费端点时自动降级为空）
+       */
+      search: (params: { keyword: string; chain?: 'ETH' | 'BSC' | 'BASE' | 'SOL'; limit?: number }): Promise<DexSearchResponse> =>
+        this.request<DexSearchResponse>('GET', '/api/v2/data/market/dex/search', undefined, params as unknown as Record<string, string>),
+
+      /** 巨鲸/聪明钱信号（R5） */
+      signal: (params: { chain?: 'ETH' | 'BSC' | 'BASE' | 'SOL'; limit?: number } = {}): Promise<DexEnvelopeItem> =>
+        this.request<DexEnvelopeItem>('GET', '/api/v2/data/market/dex/signal', undefined, params as unknown as Record<string, string>),
+
+      /** 持有者结构（R6） */
+      holders: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string; limit?: number }): Promise<DexEnvelopeItem> =>
+        this.request<DexEnvelopeItem>('GET', '/api/v2/data/market/dex/holders', undefined, params as unknown as Record<string, string>),
+
+      /** 流动性池/深度（R7）— OKX top-liquidity 付费时降级为 DexScreener 池 */
+      liquidity: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string }): Promise<DexEnvelopeItem> =>
+        this.request<DexEnvelopeItem>('GET', '/api/v2/data/market/dex/liquidity', undefined, params as unknown as Record<string, string>),
+
+      /** 顶级交易者（R8） */
+      topTraders: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string }): Promise<DexEnvelopeItem> =>
+        this.request<DexEnvelopeItem>('GET', '/api/v2/data/market/dex/top-traders', undefined, params as unknown as Record<string, string>),
+
+      /** 交易历史（R8）— OKX Premium 付费端点，免费 key 返回 paymentRequired:true */
+      trades: (params: { chain: 'ETH' | 'BSC' | 'BASE' | 'SOL'; address: string; limit?: number }): Promise<DexEnvelopeItem> =>
+        this.request<DexEnvelopeItem>('GET', '/api/v2/data/market/dex/trades', undefined, params as unknown as Record<string, string>),
+    },
   };
 
   // ─────────────── Relayer (交易广播) ───────────────

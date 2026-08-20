@@ -403,6 +403,8 @@ cancel ───────────────────────▶ 
 | `/api/v2/market/payment-callback` | POST | 支付回调 webhook（HMAC 验签） |
 
 > **行情数据面（39 端点）**挂载 `/api/v2/data/market/*`（`X-API-Key` 鉴权 + 配额 503），完整端点矩阵见 `docs/API_ACCESS.md §1.6`；2026-08-12 补录端点：`supported-chains`、`index-price-history`、`signal-chains`、`leaderboard-chains`、`cluster-list`、`cluster-top-holders`、`mempump/apedwallets`、`tracked-tokens`、`custom-sigs`。
+>
+> **DEX 策略数据面（9 端点，2026-08-21 上线）**挂载 `/api/v2/data/market/dex/*`（同一 `X-API-Key` 鉴权 + 配额），`/market/dex/token/history` 为画像快照历史序列（5min 粒度）。数据源 OKX OnchainOS v6 + DexScreener，链枚举 `ETH/BSC/BASE/SOL`，上游付费端点自动降级。端点矩阵与示例见 `docs/API_ACCESS.md §1.6`（DEX 策略数据小节），公网代理 `/api/dex/*` → collector。
 
 > **公网代理**：web :9111 已补 `'/api/v2/market' → collector :9101` 路由（2026-08-11，生产实测 `/api/v2/market/plans` 200）。
 
