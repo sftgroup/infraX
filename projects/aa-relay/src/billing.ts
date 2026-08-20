@@ -4,17 +4,14 @@
 // wait 模式收据后按 actualGasCost 结算退差（多退少补）；广播失败全额退还。
 // subscriber = 智能账户（op.sender）。未配置引擎 → 免费放行（开发环境向后兼容）。
 // 余额不足 → 402 + 充值提示；引擎故障 → 503。
-import { parseEther, formatEther, createPublicClient, createWalletClient, http, parseAbi } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+// 链上 escrow 双轨（OE-6）客户端见 ./escrow-client.ts（本文件仅保留计费编排与 ledger fallback）。
+import { parseEther, formatEther } from 'viem';
 import type { UserOperationV7 } from '../../aa-sdk/src/index.js';
+import { AABillingError } from './errors.js';
+import { AA_ESCROW, escrowConfigured, escrowBalance, escrowCharge, escrowClient, escrowRefund, entryPointAbi, entryPointAddress } from './escrow-client.js';
 
-export class AABillingError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
+export { AABillingError } from './errors.js';
+export { escrowConfigured, AA_ESCROW } from './escrow-client.js';
 
 const AA_PAYMENTS = {
   baseUrl: (process.env.AA_PAYMENTS_URL || '').replace(/\/+$/, ''),
@@ -22,127 +19,17 @@ const AA_PAYMENTS = {
   platformAddress: (process.env.AA_PLATFORM_ADDRESS || '').toLowerCase(),
 };
 
-// ================================================================
-// OE-6: Escrow 链上双轨计费（ESCROW_MODE=true 时启用，ledger 保留 fallback）
-// 配置（systemd drop-in 注入，不入 git）：
-//   ESCROW_MODE=true
-//   ESCROW_RPC_URL=https://rpc.l1.oxachain.io     （或 rpc-oxa.0xainet.top）
-//   ESCROW_ADDRESS=0x…                            （InfraXEscrow 代理地址）
-//   ESCROW_RELAYER_KEY=0x…                        （授权 relayer 私钥，charge/refund 签名）
-//   ESCROW_CHAIN_ID=19505
-// 计费语义与 ledger 一致：广播前 charge（固定费 + 预估 gas）→ 收据后 refund/extra 退差；
-// 资金状态以链上 Escrow 为准（ledger 降级为索引/对账层，见 OE-8）。
-// ================================================================
-const escrowAbi = parseAbi([
-  'function balanceOf(address user) external view returns (uint256)',
-  'function charge(address user, uint256 amount, string calldata ref) external returns (uint256 newBal)',
-  'function refund(address user, uint256 amount, string calldata ref) external returns (uint256 newBal)',
-  'function relayerEnabled(address relayer) external view returns (bool)',
-]);
-
-// EP v0.7 deposit（REQ-2b 资金总览）：子账户 UserOp gas 由 EP.deposit 支付，与 escrow 余额独立。
-const entryPointAbi = parseAbi([
-  'function getDepositInfo(address account) external view returns (uint112 deposit, bool staked, uint112 stake, uint32 unstakeDelaySec, uint48 withdrawTime)',
-]);
-
-function entryPointAddress(): `0x${string}` | '' {
-  return (process.env.ESCROW_ENTRYPOINT || process.env.AA_OXACHAIN_ENTRYPOINT_V07 || '').toLowerCase() as `0x${string}` | '';
-}
-
-const AA_ESCROW = {
-  enabled: process.env.ESCROW_MODE === 'true',
-  rpcUrl: process.env.ESCROW_RPC_URL || '',
-  address: (process.env.ESCROW_ADDRESS || '').toLowerCase() as `0x${string}` | '',
-  relayerKey: process.env.ESCROW_RELAYER_KEY || '',
-  chainId: Number(process.env.ESCROW_CHAIN_ID || 19505),
-};
-
-function escrowConfigured(): boolean {
-  return Boolean(AA_ESCROW.enabled && AA_ESCROW.rpcUrl && AA_ESCROW.address && AA_ESCROW.relayerKey);
-}
-
-export { escrowConfigured };
-
-function escrowChain() {
-  const chainId = AA_ESCROW.chainId;
-  return {
-    id: chainId,
-    name: chainId === 19505 ? 'OxaChain' : 'OxaChain-test',
-    nativeCurrency: { name: 'OXA', symbol: 'OXA', decimals: 18 },
-    rpcUrls: { default: { http: [AA_ESCROW.rpcUrl] } },
-  } as const;
-}
-
-function escrowClient() {
-  const account = privateKeyToAccount(AA_ESCROW.relayerKey as `0x${string}`);
-  const wallet = createWalletClient({ chain: escrowChain(), account, transport: http(AA_ESCROW.rpcUrl) });
-  const publicClient = createPublicClient({ chain: escrowChain(), transport: http(AA_ESCROW.rpcUrl) });
-  return { wallet, publicClient, account };
-}
-
-/** Escrow 用户余额（wei）；未配置 → null。 */
-export async function escrowBalance(subscriber: string): Promise<bigint | null> {
-  if (!escrowConfigured()) return null;
-  try {
-    const { publicClient } = escrowClient();
-    return await publicClient.readContract({
-      address: AA_ESCROW.address as `0x${string}`,
-      abi: escrowAbi,
-      functionName: 'balanceOf',
-      args: [subscriber.toLowerCase() as `0x${string}`],
-    }) as bigint;
-  } catch (err: any) {
-    throw new AABillingError(`escrow balance query failed: ${err?.shortMessage || err?.message}`, 503);
-  }
-}
-
-/** Escrow 链上原子预扣（storage 记账）。 */
-export async function escrowCharge(user: string, amountWei: bigint, ref: string): Promise<bigint> {
-  if (!escrowConfigured()) throw new AABillingError('escrow not configured', 503);
-  try {
-    const { wallet, publicClient } = escrowClient();
-    const txHash = await wallet.writeContract({
-      address: AA_ESCROW.address as `0x${string}`,
-      abi: escrowAbi,
-      functionName: 'charge',
-      args: [user.toLowerCase() as `0x${string}`, amountWei, ref],
-    });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-    if (receipt.status !== 'success') throw new AABillingError(`escrow charge tx failed: ${txHash}`, 503);
-    return await escrowBalance(user) as bigint;
-  } catch (err: any) {
-    if (err instanceof AABillingError) throw err;
-    // 合约 revert（余额不足/超限）→ 402 语义；RPC/网络故障 → 503
-    const reason = err?.shortMessage || err?.message || '';
-    if (/insufficient balance|exceeds per-/.test(reason)) {
-      throw new AABillingError(`[402] 链上托管余额不足或超限额（${reason}）。充值路径：向托管合约 ${AA_ESCROW.address} 转账。`, 402);
-    }
-    throw new AABillingError(`escrow charge failed: ${reason}`, 503);
-  }
-}
-
-/** Escrow 链上原子退差（storage 记账，回补余额 + 回退当日累计）。 */
-export async function escrowRefund(user: string, amountWei: bigint, ref: string): Promise<bigint> {
-  if (!escrowConfigured()) throw new AABillingError('escrow not configured', 503);
-  try {
-    const { wallet, publicClient } = escrowClient();
-    const txHash = await wallet.writeContract({
-      address: AA_ESCROW.address as `0x${string}`,
-      abi: escrowAbi,
-      functionName: 'refund',
-      args: [user.toLowerCase() as `0x${string}`, amountWei, ref],
-    });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-    if (receipt.status !== 'success') throw new AABillingError(`escrow refund tx failed: ${txHash}`, 503);
-    return await escrowBalance(user) as bigint;
-  } catch (err: any) {
-    if (err instanceof AABillingError) throw err;
-    throw new AABillingError(`escrow refund failed: ${err?.shortMessage || err?.message}`, 503);
-  }
-}
-
 export function aaChargeConfigured(): boolean {
   return Boolean(AA_PAYMENTS.baseUrl && AA_PAYMENTS.apiKey && AA_PAYMENTS.platformAddress);
+}
+
+/**
+ * 计费是否启用（ledger 或 escrow 任一配置即可）。
+ * ⚠️ 所有调用方（relay/helpers/submit）必须用本判定门控预扣，勿单独用 aaChargeConfigured()，
+ * 否则 ESCROW_MODE=true 且未配 AA_PAYMENTS_URL 时计费会被静默跳过（2026-08-21 审查 #1 修复）。
+ */
+export function billingConfigured(): boolean {
+  return aaChargeConfigured() || escrowConfigured();
 }
 
 function ensureConfig(): void {
@@ -225,7 +112,7 @@ export interface ChargeResult { skipped: boolean; charged: boolean; amountWei: s
 
 /** 预扣：固定费 + 预估 gas。未配置（ledger+escrow 均无）→ 免费放行；余额不足 → 402；故障 → 503。 */
 export async function chargeUserOp(subscriber: string, reference: string, amountWei: bigint): Promise<ChargeResult> {
-  if (!aaChargeConfigured() && !escrowConfigured()) return { skipped: true, charged: false, amountWei: '0' };
+  if (!billingConfigured()) return { skipped: true, charged: false, amountWei: '0' };
   if (amountWei <= 0n) return { skipped: true, charged: false, amountWei: '0' };
 
   // OE-6: escrow 双轨——链上原子预扣（余额/限额不足 → 402，合约校验更严格）
@@ -282,7 +169,7 @@ export async function settleUserOp(
   chargedWei: bigint,
   actualWei: bigint,
 ): Promise<{ skipped: boolean; refundWei: string; extraWei: string }> {
-  if (!aaChargeConfigured() && !escrowConfigured()) return { skipped: true, refundWei: '0', extraWei: '0' };
+  if (!billingConfigured()) return { skipped: true, refundWei: '0', extraWei: '0' };
   if (chargedWei <= 0n || actualWei < 0n) return { skipped: true, refundWei: '0', extraWei: '0' };
 
   // OE-6: escrow 双轨——链上原子退差/追扣
@@ -417,18 +304,18 @@ export function aaPlansInfo(): Record<string, unknown> {
     billing: escrowMode
       ? 'Escrow 链上托管计费：广播前链上原子 charge（固定费 + 预估 gas），收据后按 actualGasCost 退差/追扣（合约 storage 记账，余额链上可查）'
       : 'UserOp 次数费 + paymaster gas 代付（广播前预扣固定费+预估 gas，收据后按 actualGasCost 多退少补）',
-    configured: aaChargeConfigured(),
+    configured: billingConfigured(),
     escrow: escrowMode ? { address: AA_ESCROW.address, chainId: AA_ESCROW.chainId } : undefined,
     limits: escrowMode
       ? {
-          perTxOxa: '1',
-          perDayOxa: '10',
-          note: '链上默认限额（InfraXEscrow DEFAULT_PER_TX_LIMIT=1 / DEFAULT_PER_DAY_LIMIT=10 OXA，按计费账户维度）；用户级可用合约 setChargeLimit(account, perTx, perDay) 定制，owner 可 setChargeDefaultLimit 调全局默认。自动续订单次预扣约 0.0025 OXA，默认限额下单账户每日可支撑约 4000 次续订。',
+          perTxOxa: AA_ESCROW.perTxLimitOxa,
+          perDayOxa: AA_ESCROW.perDayLimitOxa,
+          note: `链上默认限额（InfraXEscrow DEFAULT_PER_TX_LIMIT=${AA_ESCROW.perTxLimitOxa} / DEFAULT_PER_DAY_LIMIT=${AA_ESCROW.perDayLimitOxa} OXA，按计费账户维度；可 env ESCROW_PER_TX_LIMIT_OXA/ESCROW_PER_DAY_LIMIT_OXA 对齐链上）；用户级可用合约 setChargeLimit(account, perTx, perDay) 定制，owner 可 setChargeDefaultLimit 调全局默认。自动续订单次预扣约 0.0025 OXA，默认限额下单账户每日可支撑约 4000 次续订。`,
         }
       : undefined,
     platformAddress: AA_PAYMENTS.platformAddress || '(未配置)',
     fees,
-    topup: (aaChargeConfigured() || escrowMode)
+    topup: billingConfigured()
       ? escrowMode
         ? { method: 'escrow depositFor', steps: [`主钱包 EOA 单笔 tx 调 depositFor(<智能账户地址>) 代充值（或账户自身 session key 调 deposit() 自付，需白名单含 escrow.deposit）`, `托管合约 ${AA_ESCROW.address}`, '链上 balanceOf 即时生效（REQ-2c：计费主体为智能账户，deposit() 记 msg.sender 到不了子账户名下）'] }
         : { method: 'x402 deposit', steps: [`向平台钱包 ${AA_PAYMENTS.platformAddress} 转入原生资产`, `调用引擎 POST ${AA_PAYMENTS.baseUrl}/payments/verify {txHash} 入账`, '余额自动计入智能账户对应的 ledger 账户'] }

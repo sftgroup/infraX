@@ -71,3 +71,23 @@
 
 - AgentX 前端按 REQ-1 落地（SDK 0.1.3 `buildDepositForUserOp` / `InfraXEscrowAbi` + 续订资金预检告警）；202 异步结算端到端待 AgentX 集成验证。
 - 测试用 dx_ key（label `dex-verify-20260821`）待清理。
+
+---
+
+## 5. 代码审查修复（四维度：硬编码 / 解耦模块化 / 大文件拆分 / 过度设计冗余）
+
+> 审查范围：近期改动模块（aa-sdk escrow / aa-relay 计费 / collector 鉴权与调度），双验证子代理交叉复核 0 误报。
+> 关联提交：`fb2ae07` → 本组提交（8 项全部修复，验证全绿后推送）。
+
+| # | 严重度 | 问题 | 修复 |
+|---|---|---|---|
+| 1 | **Critical** | 计费门控不一致：relay/helpers 用单判定 `aaChargeConfigured()`，billing/index 用双判定 → **escrow-only 部署免费放行** | 统一为 `billingConfigured() = aaChargeConfigured() \|\| escrowConfigured()`，全部 4 处调用点对齐 |
+| 2 | **Major** | collector 外部 key（`dx_` 等）**绕过限流** + `EXTERNAL_KEY_RE` 前缀硬编码 | 前缀改为 `DX_EXTERNAL_KEY_PREFIXES` 配置（默认 dx_,mx_,ar_,cr_,wa_,px_,vx_,mp_）；外部 key 通过校验后走同套滑动窗口限流（`DX_EXTERNAL_KEY_RATE_LIMIT` 默认 100/min），超限 429 |
+| 3 | Major | UserOp 计费编排（预扣→广播→settle/refund）在 relay/session/submit 多处重复 | 抽取 `runOpWithBilling` 统一编排（`wait` 语义内聚），三处调用点收敛 |
+| 4 | Minor | escrow 限额 `1/10` 硬编码（与合约 `DEFAULT_PER_TX_LIMIT`/`DEFAULT_PER_DAY_LIMIT` 分离，有漂移风险） | `ESCROW_PER_TX_LIMIT_OXA` / `ESCROW_PER_DAY_LIMIT_OXA` env 配置化（默认 1/10），`/v1/plans` limits 透出 |
+| 5 | Minor | okxMarketScheduler L95/L182 `Math.min(candleTokens, 30)` 魔数 | `OKX_MARKET_BATCH_LIMIT` 配置（默认 30）→ `config.okxMarket.schedulerBatchLimit` |
+| 6 | Minor | `helpers.ts` 343 行职责混杂（鉴权/bundler RPC/计费/工具） | 拆分为 `auth.ts`（入站鉴权）/ `rpc.ts`（bundler RPC + 错误分类 + 多端点容灾）/ `submit.ts`（计费编排 + 签名提交流程）/ `helpers.ts`（仅响应工具） |
+| 7 | Minor | escrow.ts `EscrowGasParams` 与 userop.ts `BuildUserOpParams['gas']` 类型重复；四个 `buildDeposit*UserOp` 结构雷同 | `EscrowGasParams` 复用 `BuildUserOpParams['gas']`；四个构建器收敛为内部 `buildDepositUserOp(params, call)` |
+| 8 | Minor | billing.ts 混入 escrow 链上交互 + 链名 19505 魔法数两处重复 | escrow 交互抽 `escrow-client.ts`；`DEFAULT_ESCROW_CHAIN_ID=19505` 常量；`AABillingError` 独立 `errors.ts`（破 billing↔escrow 循环依赖） |
+
+**验证**：aa-sdk typecheck + **134 单测全绿** + build；aa-relay typecheck 通过；collector build 通过；无 IDE 诊断告警。

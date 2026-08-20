@@ -17,6 +17,7 @@ export class OkxMarketScheduler {
 
   private get chains(): string[] { return config.okxMarket.schedulerChains; }
   private get candleTokens(): number { return config.okxMarket.schedulerCandleTokens; }
+  private get batchLimit(): number { return config.okxMarket.schedulerBatchLimit; }
 
   async start(): Promise<void> {
     if (this.running) return;
@@ -92,7 +93,7 @@ export class OkxMarketScheduler {
   // POST /index/current-price requires tokenContractAddress per token,
   // so we resolve token addresses from the per-chain toplist first.
   private async snapshotIndexPrices(): Promise<void> {
-    const maxTokens = Math.min(this.candleTokens, 30);
+    const maxTokens = Math.min(this.candleTokens, this.batchLimit);
     const collectedAt = new Date();
     const client = await pool.connect();
     try {
@@ -179,7 +180,7 @@ export class OkxMarketScheduler {
   // ── Token Profiles (画像快照：价格多时间窗 + 流动性 + 持有者) ──
   // 热门代币（每链 top N）→ price-info 批量（免费）→ okx_market_token_profiles 时间序列
   private async snapshotTokenProfiles(): Promise<void> {
-    const limit = Math.min(this.candleTokens, 30);
+    const limit = Math.min(this.candleTokens, this.batchLimit);
     const client = await pool.connect();
     try {
       for (const chainIndex of this.chains) {

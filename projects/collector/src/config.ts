@@ -67,6 +67,8 @@ export const config = {
     // Scheduler: candle OHLCV period (5m, 15m, 1H, 4H, 1D)
     schedulerCandlePeriod: process.env.OKX_MARKET_CANDLE_PERIOD || '15m',
     schedulerCandleLimit: parseInt(process.env.OKX_MARKET_CANDLE_LIMIT || '4', 10),
+    // Scheduler: index/profiles 批量调用单批上限（防上游接口压力；默认对齐 candleTokens 30）
+    schedulerBatchLimit: parseInt(process.env.OKX_MARKET_BATCH_LIMIT || '30', 10),
     // Scheduler intervals
     schedulerHotTokensMs: parseInt(process.env.OKX_MARKET_HOT_INTERVAL_MS || '60000', 10),
     schedulerCandlesMs: parseInt(process.env.OKX_MARKET_CANDLE_INTERVAL_MS || '300000', 10),
@@ -74,6 +76,17 @@ export const config = {
     schedulerMempumpMs: parseInt(process.env.OKX_MARKET_MEMPUMP_INTERVAL_MS || '300000', 10),
     // Token profile snapshots (price-info multi-window + holders) interval
     schedulerProfileMs: parseInt(process.env.OKX_MARKET_PROFILE_INTERVAL_MS || '300000', 10),
+  },
+
+  // DX data 服务外部 key（dx_/mx_/ar_ 等前缀家族）实时校验（E-1c 模式）
+  dx: {
+    apiKeyVerifyUrl: (process.env.DX_API_KEY_VERIFY_URL || '').replace(/\/+$/, ''),
+    apiKeyVerifyKey: process.env.DX_API_KEY_VERIFY_KEY || '',
+    // 外部签发 key 前缀家族（逗号分隔；data 服务 api_keys 表签发）
+    externalKeyPrefixes: (process.env.DX_EXTERNAL_KEY_PREFIXES || 'dx_,mx_,ar_,cr_,wa_,px_,vx_,mp_')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    // 外部 key 每分钟限流（与本地表 key 同套滑动窗口）
+    externalRateLimit: parseInt(process.env.DX_EXTERNAL_KEY_RATE_LIMIT || '100', 10),
   },
 
   // Reclassifier (raw_event → classified)

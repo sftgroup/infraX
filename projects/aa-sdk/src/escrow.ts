@@ -1,6 +1,6 @@
 import { encodeFunctionData, type Address, type Hex } from 'viem';
 import type { UserOperationV7 } from './types.js';
-import { buildUserOp } from './userop.js';
+import { buildUserOp, type BuildUserOpParams } from './userop.js';
 
 // ============================================================================
 // InfraXEscrow 充值构建（REQ-1 / REQ-5，docs/AA_RELAY_BILLING.md §5）
@@ -106,13 +106,30 @@ export function encodeDepositForERC20Batch(token: Address, users: Address[], amo
 // UserOp 构建（智能账户执行路径，Kernel v3 execute / executeBatch）
 // ----------------------------------------------------------------------------
 
-/** 与 buildUserOp 一致的 gas/factory 可选段 */
-export type EscrowGasParams = Partial<
-  Pick<
-    UserOperationV7,
-    'callGasLimit' | 'verificationGasLimit' | 'preVerificationGas' | 'maxFeePerGas' | 'maxPriorityFeePerGas'
-  >
->;
+/** gas 可选段复用 buildUserOp 的类型定义（防两处定义漂移） */
+export type EscrowGasParams = BuildUserOpParams['gas'];
+
+/** 四个 UserOp 构建器共用的 Kernel execute 调用参数 */
+interface DepositCall {
+  target: Address;
+  value: bigint;
+  data: Hex;
+}
+
+/** 收敛构建：sender/nonce/factory/gas 公共段 → buildUserOp，call 由各充值函数注入 */
+function buildDepositUserOp(
+  params: Pick<BuildDepositForUserOpParams, 'sender' | 'nonce' | 'factory' | 'factoryData' | 'gas'>,
+  call: DepositCall,
+): UserOperationV7 {
+  return buildUserOp({
+    sender: params.sender,
+    nonce: params.nonce,
+    call,
+    factory: params.factory,
+    factoryData: params.factoryData,
+    gas: params.gas,
+  });
+}
 
 export interface BuildDepositForUserOpParams {
   sender: Address;
@@ -180,14 +197,7 @@ export interface BuildDepositForERC20BatchUserOpParams {
  * （Kernel 带 value 调 escrow，msg.sender = 智能账户、user 入账）
  */
 export function buildDepositForUserOp(params: BuildDepositForUserOpParams): UserOperationV7 {
-  return buildUserOp({
-    sender: params.sender,
-    nonce: params.nonce,
-    call: { target: params.escrow, value: params.amount, data: encodeDepositFor(params.user) },
-    factory: params.factory,
-    factoryData: params.factoryData,
-    gas: params.gas,
-  });
+  return buildDepositUserOp(params, { target: params.escrow, value: params.amount, data: encodeDepositFor(params.user) });
 }
 
 /**
@@ -202,17 +212,10 @@ export function buildDepositForBatchUserOp(params: BuildDepositForBatchUserOpPar
     );
   }
   const total = params.amounts.reduce((a, b) => a + b, 0n);
-  return buildUserOp({
-    sender: params.sender,
-    nonce: params.nonce,
-    call: {
-      target: params.escrow,
-      value: total,
-      data: encodeDepositForBatch(params.users, params.amounts),
-    },
-    factory: params.factory,
-    factoryData: params.factoryData,
-    gas: params.gas,
+  return buildDepositUserOp(params, {
+    target: params.escrow,
+    value: total,
+    data: encodeDepositForBatch(params.users, params.amounts),
   });
 }
 
@@ -222,17 +225,10 @@ export function buildDepositForBatchUserOp(params: BuildDepositForBatchUserOpPar
  * ⚠️ 前置条件：sender 需先 approve token 给 escrow（transferFrom 拉款）。
  */
 export function buildDepositForERC20UserOp(params: BuildDepositForERC20UserOpParams): UserOperationV7 {
-  return buildUserOp({
-    sender: params.sender,
-    nonce: params.nonce,
-    call: {
-      target: params.escrow,
-      value: 0n,
-      data: encodeDepositForERC20(params.token, params.amount, params.user),
-    },
-    factory: params.factory,
-    factoryData: params.factoryData,
-    gas: params.gas,
+  return buildDepositUserOp(params, {
+    target: params.escrow,
+    value: 0n,
+    data: encodeDepositForERC20(params.token, params.amount, params.user),
   });
 }
 
@@ -247,16 +243,9 @@ export function buildDepositForERC20BatchUserOp(params: BuildDepositForERC20Batc
       `[aa-sdk] depositForERC20Batch: users(${params.users.length})/amounts(${params.amounts.length}) length mismatch`,
     );
   }
-  return buildUserOp({
-    sender: params.sender,
-    nonce: params.nonce,
-    call: {
-      target: params.escrow,
-      value: 0n,
-      data: encodeDepositForERC20Batch(params.token, params.users, params.amounts),
-    },
-    factory: params.factory,
-    factoryData: params.factoryData,
-    gas: params.gas,
+  return buildDepositUserOp(params, {
+    target: params.escrow,
+    value: 0n,
+    data: encodeDepositForERC20Batch(params.token, params.users, params.amounts),
   });
 }

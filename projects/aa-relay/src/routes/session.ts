@@ -32,7 +32,8 @@ import {
   type UserOperationV7,
 } from '../../../aa-sdk/src/index.js';
 import type { ProductSessionStore } from '../session-store.js';
-import { apiResponse, asyncHandler, getChain, submitSignedOp } from '../helpers.js';
+import { apiResponse, asyncHandler, getChain } from '../helpers.js';
+import { submitSignedOp } from '../submit.js';
 
 export function sessionRoutes(store: ProductSessionStore): Router {
   const sessionStore = store;

@@ -1,30 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
 import { pool } from '../database';
 import crypto from 'crypto';
+import { config } from '../config';
 
 // E-1c 同款：外部签发 key（dx_/mx_/ar_ 等，存于 data 服务 SQLite）实时校验。
-//   DX_API_KEY_VERIFY_URL            data 服务 URL（如 http://127.0.0.1:9112）
-//   DX_API_KEY_VERIFY_KEY            调 data 的鉴权 key（DATA_API_KEY，Bearer）
+//   config.dx.apiKeyVerifyUrl/Key      data 服务 URL + 调 data 的鉴权 key（DATA_API_KEY，Bearer）
+//   config.dx.externalKeyPrefixes     外部 key 前缀家族（DX_EXTERNAL_KEY_PREFIXES 可配置）
 // 未配置 → 仅本地表 key（pkx_）。
-const DX_KEY_VERIFY = {
-  url: (process.env.DX_API_KEY_VERIFY_URL || '').replace(/\/+$/, ''),
-  key: process.env.DX_API_KEY_VERIFY_KEY || '',
-};
 
 // 外部签发 key 前缀家族（非 collector 本地 api_keys 表签发）
-const EXTERNAL_KEY_RE = /^(dx_|mx_|ar_|cr_|wa_|px_|vx_|mp_)/;
+const EXTERNAL_KEY_RE = new RegExp(
+  `^(${config.dx.externalKeyPrefixes.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+);
 
 /** 外部 key 实时校验：POST {url}/api-keys/verify（fail-closed，5s 超时）。 */
 async function verifyExternalKey(key: string): Promise<boolean> {
-  if (!DX_KEY_VERIFY.url || !DX_KEY_VERIFY.key) return false;
+  if (!config.dx.apiKeyVerifyUrl || !config.dx.apiKeyVerifyKey) return false;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 5000);
-    const r = await fetch(`${DX_KEY_VERIFY.url}/api-keys/verify`, {
+    const r = await fetch(`${config.dx.apiKeyVerifyUrl}/api-keys/verify`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${DX_KEY_VERIFY.key}`,
+        authorization: `Bearer ${config.dx.apiKeyVerifyKey}`,
       },
       body: JSON.stringify({ api_key: key, scope: 'data' }),
       signal: ctrl.signal,
@@ -42,10 +41,10 @@ async function verifyExternalKey(key: string): Promise<boolean> {
  */
 const rateWindows = new Map<string, { windowStart: number; count: number }>();
 
-function checkRateLimit(keyId: number, rateLimit: number): boolean {
+function checkRateLimit(key: string | number, rateLimit: number): boolean {
   const now = Date.now();
   const windowMs = 60_000; // 1-minute sliding window
-  const k = String(keyId);
+  const k = typeof key === 'number' ? String(key) : `ext:${key}`;
   const entry = rateWindows.get(k);
 
   if (!entry || now - entry.windowStart > windowMs) {
@@ -86,12 +85,18 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
         // 本地表无此 key：外部签发 key（dx_ 等）→ data 服务实时校验（E-1c 模式）
         if (EXTERNAL_KEY_RE.test(key)) {
           verifyExternalKey(key).then(ok => {
-            if (ok) {
-              (req as any).apiKey = { external: true, label: key.slice(0, 12), marketPlanId: 'market_free' };
-              next();
-            } else {
+            if (!ok) {
               res.status(401).json({ code: -1, message: 'Invalid API Key' });
+              return;
             }
+            // 外部 key 与本地表 key 同套滑动窗口限流（DX_EXTERNAL_KEY_RATE_LIMIT，默认 100/min）
+            const limit = config.dx.externalRateLimit;
+            if (!checkRateLimit(key, limit)) {
+              res.status(429).json({ code: -1, message: 'Rate limit exceeded' });
+              return;
+            }
+            (req as any).apiKey = { external: true, label: key.slice(0, 12), rateLimit: limit, marketPlanId: 'market_free' };
+            next();
           }).catch(() => res.status(401).json({ code: -1, message: 'Invalid API Key' }));
           return;
         }

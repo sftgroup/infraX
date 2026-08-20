@@ -11,8 +11,9 @@ import { Pool } from 'pg';
 import { createKernelAccount, ExternalWalletSigner, getChainConfig, getEnabledChains } from '../../aa-sdk/src/index.js';
 import type { Address } from 'viem';
 import { PostgresSessionStore } from './session-store.js';
-import { aaChargeConfigured, escrowConfigured, aaLedgerBalance, aaPlansInfo, AABillingError } from './billing.js';
-import { apiResponse, asyncHandler, authMw, getChain } from './helpers.js';
+import { aaLedgerBalance, aaPlansInfo, AABillingError, billingConfigured } from './billing.js';
+import { apiResponse, asyncHandler, getChain } from './helpers.js';
+import { authMw } from './auth.js';
 import { relayRoutes } from './routes/relay.js';
 import { sessionRoutes } from './routes/session.js';
 
@@ -82,7 +83,7 @@ app.get('/v1/plans', (_req: any, res: any) => {
 app.post('/v1/ledger-balance', asyncHandler(async (req: any, res: any) => {
   const { account } = req.body || {};
   if (!account) return res.status(400).json(apiResponse(null, 'account required (smart account address)', 1001));
-  if (!aaChargeConfigured() && !escrowConfigured()) {
+  if (!billingConfigured()) {
     return res.status(503).json(apiResponse(null, 'AA session billing is not configured (AA_PAYMENTS_URL/AA_PAYMENTS_API_KEY/AA_PLATFORM_ADDRESS or ESCROW_*)', 1007));
   }
   try {
