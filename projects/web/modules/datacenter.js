@@ -304,6 +304,83 @@ function dcSwitchTab(sub) {
     window._insInitDone = true;
     if (typeof insightsInit === 'function') insightsInit();
   }
+  if (sub === 'dc-market' && !window._dcMarketInitDone) { // 金融行情（/ticker /bars）：首次进入渲染
+    window._dcMarketInitDone = true;
+    dcRenderMarket();
+  }
+}
+
+// ─── Market Data（金融行情：/ticker 实时报价 + /bars K线，data :9112 直通）──
+function dcRenderMarket() {
+  var root = document.getElementById('dc-market-root');
+  if (!root) return;
+  var inputStyle = 'width:170px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
+  var selStyle = 'font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
+  root.innerHTML =
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<input id="dc-m-symbol" placeholder="Symbol · 如 BTC/USDT" value="BTC/USDT" style="' + inputStyle + '">' +
+      '<select id="dc-m-market" style="' + selStyle + 'width:120px">' +
+        '<option value="crypto" selected>crypto</option><option value="usstock">usstock</option><option value="forex">forex</option><option value="futures">futures</option><option value="cnstock">cnstock</option><option value="hkstock">hkstock</option>' +
+      '</select>' +
+      '<select id="dc-m-type" style="' + selStyle + 'width:96px">' +
+        '<option value="">auto</option><option value="spot">spot</option><option value="swap">swap</option>' +
+      '</select>' +
+      '<select id="dc-m-tf" style="' + selStyle + 'width:84px">' +
+        '<option value="1h">1h</option><option value="4h">4h</option><option value="1d" selected>1d</option>' +
+      '</select>' +
+      '<button class="btn btn-sm btn-primary" onclick="dcLoadMarket()">🔄 查询</button>' +
+      '<span style="font-size:11px;color:var(--text-muted)">金融行情 · /ticker /bars（data :9112）</span>' +
+    '</div></div>' +
+    '<div id="dc-market-result"></div>';
+  dcLoadMarket();
+}
+
+async function dcLoadMarket() {
+  var box = document.getElementById('dc-market-result');
+  if (!box) return;
+  box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted)">加载中…</div>';
+  var symbol = (document.getElementById('dc-m-symbol').value || 'BTC/USDT').trim();
+  var market = document.getElementById('dc-m-market').value;
+  var mtype = document.getElementById('dc-m-type').value;
+  var tf = document.getElementById('dc-m-tf').value;
+  var mtypeQ = mtype ? '&market_type=' + encodeURIComponent(mtype) : '';
+  try {
+    var tResp = await afetch('/ticker?symbol=' + encodeURIComponent(symbol) + '&market=' + encodeURIComponent(market) + mtypeQ, { auth: 'none' });
+    var bResp = await afetch('/bars?symbol=' + encodeURIComponent(symbol) + '&timeframe=' + encodeURIComponent(tf) + mtypeQ + '&limit=15', { auth: 'none' });
+    var t = tResp && typeof tResp.price === 'number' ? tResp : null;
+    var bars = (bResp && Array.isArray(bResp.bars)) ? bResp.bars : [];
+    var html = '';
+    if (t) {
+      var up = (t.changePercent || 0) >= 0;
+      var color = up ? '#0ecb81' : '#F6465D';
+      var arrow = up ? '▲' : '▼';
+      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-header">💹 ' + esc(symbol) + ' · 实时报价' +
+        '<span style="margin-left:auto;font-weight:700;color:' + color + '">' + arrow + ' ' + formatNumber(t.changePercent) + '%</span></div>' +
+        '<div class="panel-body"><div class="kpi-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">' +
+        '<div class="kpi"><div class="kpi-label">Price</div><div class="kpi-val" style="color:' + color + '">' + formatNumber(t.price) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Change</div><div class="kpi-val">' + formatNumber(t.change) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">High</div><div class="kpi-val">' + formatNumber(t.high) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Low</div><div class="kpi-val">' + formatNumber(t.low) + '</div></div>' +
+        '<div class="kpi"><div class="kpi-label">Open</div><div class="kpi-val">' + formatNumber(t.open) + '</div></div>' +
+        '</div></div></div>';
+    } else {
+      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + '（' + esc(market) + '）无实时报价 — crypto 用 BTC/USDT，其余市场用对应代码</div></div>';
+    }
+    if (bars.length) {
+      html += '<div class="panel"><div class="panel-header">📊 ' + esc(symbol) + ' · ' + esc(tf) + ' K线（近 ' + bars.length + ' 根）</div>' +
+        '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">时间</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">开盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最高</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最低</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">收盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">成交量</th></tr></thead><tbody>' +
+        bars.map(function(b) {
+          var ts = b.timestamp || 0;
+          var time = ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—';
+          return '<tr style="border-bottom:1px solid var(--border)"><td class="dc-mono">' + time + '</td><td style="padding:6px 10px">' + formatNumber(b.open) + '</td><td style="padding:6px 10px">' + formatNumber(b.high) + '</td><td style="padding:6px 10px">' + formatNumber(b.low) + '</td><td style="padding:6px 10px">' + formatNumber(b.close) + '</td><td style="padding:6px 10px">' + formatNumber(b.volume) + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+    } else {
+      html += '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + ' · ' + esc(tf) + ' 无 K 线数据</div></div>';
+    }
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">加载失败：' + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+  }
 }
 
 // ─── My Keys（B-11-3 用户级 key 自助管理，钱包签名鉴权）───────────────

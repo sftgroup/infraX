@@ -54,6 +54,9 @@ const API_ROUTES = {
   '/factors':        { host: DATA_HOST,    port: DATA_PORT },
   '/graph':          { host: DATA_HOST,    port: DATA_PORT },
   '/rag':            { host: DATA_HOST,    port: DATA_PORT },
+  // 金融行情数据面（data-service :9112）— /bars（K线）、/ticker（实时行情）
+  '/bars':           { host: DATA_HOST,    port: DATA_PORT },
+  '/ticker':         { host: DATA_HOST,    port: DATA_PORT },
   // ML 模型推理面（ml-service :9120）— 注入 Authorization Bearer
   '/ml':             { host: ML_HOST,      port: ML_PORT },
   // 通用支付网关（infrax-payments :9132）— invites / transfers / a2a / mpp
