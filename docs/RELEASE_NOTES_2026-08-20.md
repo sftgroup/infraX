@@ -149,3 +149,19 @@ sudo nginx -t && sudo systemctl reload nginx
 | L-1 | 未登录首次加载 3 条守卫报错 | `waasTokens 500` / `my-keys Invalid response` / `/api/vault/safe/undefined`，仅在未登录初始化时出现，登录态下不复现；建议对未登录态下发请求加守卫或静默 |
 | L-2 | `infrax-web` 端口约定 | web 服务生产实际监听 9111（非 server.js 默认 6100），由 nginx/systemd 对齐；建议在服务注释与 env 文档中显式标注 |
 | L-3 | 远程提交审查 | 建议对非本人提交（如 `c9c9bbb`）在合并前执行 diff 审查，防止基于过期分支的删除混入 |
+
+---
+
+## 7. RAGSERVICER 故障反馈处置（2026-08-20 晚）
+
+**客户反馈**：AIServicer 平台调用 RAGSERVICER（Doc Service）文档上传/检索持续失败，`43.163.105.172:9721` Connection refused。
+
+**根因**：ragservicer 已于 2026-08-16 随存储扩容迁移至新机（见 [INFRAX_MIGRATION_SCALE_OUT.md](./INFRAX_MIGRATION_SCALE_OUT.md)），172 上 `infrax-ragservicer`/`infrax-knowledge-injector` 均已停用（inactive dead）。客户仍使用旧地址属预期失效，非服务故障。
+
+**处置**：
+1. 确认新机 `43.156.78.59:9721` 服务运行正常（`/api/v1/*` 带 key 实测 200）；knowledge-injector 在新机内网 `10.3.8.6:9113`，不对外暴露。
+2. **修复 nginx `/api/rag/` 网关转发缺陷**：`proxy_pass http://10.3.8.6:9721/` → `http://10.3.8.6:9721/api/v1/`（原配置转发后丢失 `/api/v1` 蓝本前缀导致 404），备份 `infrax.bak.<ts>`，`nginx -t` 通过 + reload。
+3. 实测公网网关 `https://infrax.0xainet.top/api/rag/namespaces/{ns}/documents`（GET 200 code 0）与 `/query`（POST 200 code 0）；无 key → 401（鉴权生效）。
+
+**客户侧新配置**：服务地址 `http://43.156.78.59:9721`（或经网关 `https://infrax.0xainet.top/api/rag/`），路径带 `/api/v1` 前缀，沿用 `X-API-Key` 鉴权（401 则重新签发，见 PRODUCTION_CREDENTIALS §7）。
+
