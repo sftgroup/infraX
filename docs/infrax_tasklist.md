@@ -2342,6 +2342,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - 新增 `GET /api/v2/data/market/dex/token/history?chain&address&hours` → 画像时间序列（价格历史，5min 粒度）
 - 与既有 60s 价格快照（`okx_market_hot_tokens`/`okx_market_index_prices`）+ 5min K 线（`okx_market_candles`）共同构成完整历史价格层
 - **公网 nginx 规则（2026-08-21 修复）**：`location /api/v2/data/market/dex/ → web :9111`（位于 `/api/v2/data/ → dc :9102` 之前，nginx 最长前缀优先），否则 SDK 直连路径 `/api/v2/data/market/dex/*` 被 nginx 吞到 DC 返回 404；SDK 方法（`infrax.market.dex*`）与 `/api/dex/*` 两条公网路径均已端到端验证通过（collector 测试 8/8 + SDK 实测 OKX 100 币榜/SOL 新币榜/search/token 画像）
+- **dx_ key 鉴权接入（2026-08-21 修复，commit `d016fe1`）**：collector `/api/v2/data` 的 apiKeyAuth 原本只查本地 postgres `api_keys` 表（仅 pkx_），外部 dx_ key 一律 401。修复：本地表未命中且前缀为外部家族（dx_/mx_/ar_/cr_/wa_/px_/vx_/mp_）时，实时调 data `/api-keys/verify`（`DX_API_KEY_VERIFY_URL`/`DX_API_KEY_VERIFY_KEY`=DATA_API_KEY，E-1c 同款 fail-closed 5s）；`marketQuotaEnforce` 对 external key 放行（RPM 由 data 侧限流）。生产已验证：新签 dx_ key 访问 DEX 端点内网 :9101 与公网网关均 200（存量 dx_ key 无需重签，实时校验即用）
 
 **首批交付（P0：R1-R4，含 R1b）**：热门榜单（OKX 热度 + DexScreener 原生榜）+ 单币行情 + 社交热度 + 安全风险——直接支撑当前用户可选交易对面板与 DEX 策略风控。
 
