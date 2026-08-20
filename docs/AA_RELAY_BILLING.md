@@ -34,6 +34,12 @@
 
 实际扣费 = 固定费 + `actualGasCost`（收据），即 **UserOp 次数费 + paymaster gas 代付按实际结算**。
 
+> **同步 vs 异步结算差异（对账关键）**：
+> - **同步（`wait=true`，默认）**：阻塞至收据 → 按 `固定费 + actualGasCost` 多退少补（refund/extra）。
+> - **异步（`wait=false`）**：广播成功立即返回 opHash，**按预估 gas 全额结算、无收据后退差**（成功路径不产生 `Refunded` 事件）；仅广播失败才全额退款。对账时异步路径以 `Charged(amount=预扣额)` 为准。
+>
+> 对账事件（`InfraXEscrow`）：`Charged(user, amount, ref)` / `Refunded(user, amount, ref)`；退差/追扣 ref 带后缀 `:refund` / `:extra`，退款 ref = `{chargeRef}:refund`。
+
 ## 4. 资金总览（REQ-2b）
 
 `POST /v1/ledger-balance`（body `{account}`，escrow 模式）返回：
@@ -99,8 +105,10 @@ AgentX 生产实测（2026-08-18/19）：
 
 **客户端超时建议 ≥ 150s**（AgentX 网关已采用 150s）；如长连接不可接受，用异步模式：
 
-- 同步：`POST /v1/userops` 阻塞至收据（默认）。
-- 异步（建议长耗时场景）：`POST /v1/userops` 立即返回 opHash（202）→ `GET /v1/userops/:hash` 轮询状态/收据，消除长连接超时耦合。
+- 同步：`POST /v1/userops`（默认）阻塞至收据，收据后按 actualGasCost 多退少补。
+- 异步：`POST /v1/userops` body 传 `wait:false` → **立即返回 opHash（HTTP 200，receipt:null）** → `GET /v1/userops/:hash` 轮询收据，消除长连接超时耦合。⚠️ 异步路径成功不退差（按预估 gas 全额结算，见 §3）。
+
+> 注：异步模式返回 **200 + `{userOpHash, receipt:null}`**（语义等价于 202 Accepted + opHash；如需严格 202 状态码可调整）。
 
 ## 7. 端点速查
 
