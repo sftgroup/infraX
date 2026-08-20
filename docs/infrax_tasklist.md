@@ -2307,3 +2307,36 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **遗留/待办**：① admin key 明文需安全交付客户（平台侧租户/Key 自助管理，`Authorization: Bearer` 方式）；② 客户正式共享 key 需确认：使用现有 aiservicer prod key（`lr_9ccd9547c...`）或新签发一把 `scope='*'` 共享 key 交付；③ 客户每新 Bot 上线需调 `POST /api/v1/tenants` 预创建租户（不会隐式自动创建）。
 
+### 9.13 DEX 策略数据需求（源：`docs/requirements-infrax-dex-data.md`，AIHunter SaaS 产品方提交，2026-08-21）
+
+**背景**：AIHunter 定位 DEX-only（hyperliquid 唯一实盘通道），现有 infrax 数据为 CEX 视角，不覆盖链上微观结构（流动性/滑点/社交热度/资金流/风险）。交付经 gateway 透传 `/api/dex/*` 供前端与 python-backend 消费。
+
+**架构裁定（评审结论）**：数据层与交易层解耦——**数据层**（热门榜/池子/流动性）用 **DexScreener**（免费免 key、单源聚合 4 链全部主流 DEX，实测 GeckoTerminal 429 / Uniswap 409 / PancakeSwap 502 / Raydium 500 均不可用）；**交易层**（quote/swap/approve/broadcast）保留 **OKX OnchainOS aggregator**（生产已验证 [dex-dispatcher.ts](../backend/services/dex-dispatcher.ts)）。落地流程：DexScreener 找币/看池 → OKX aggregator 下单执行 → hyperliquid 永续对冲。
+
+**字段约定**：金额一律 USD（缺失用 null 不用 0）；`24h` 为滚动 24h；链枚举 `ETH/BSC/BASE/SOL`（DexScreener 原始值 eth/bsc/base/solana 需映射）；地址 EVM 小写 hex / SOL base58；驼峰命名透传。
+
+| # | 需求 | 优先级 | 候选数据源 | 状态 |
+|---|---|---|---|---|
+| R1 | 热门代币列表（Trending + X 提及双排行，补齐 11 字段） | **P0** | OKX OnchainOS `token/hot-tokens`（ranking-type=4/5） | 待办 |
+| R1b | 主流 DEX 原生热门榜（按链真实成交量/TVL，DexScreener 单源聚合） | **P0** | DexScreener `/latest/dex/search` + `token-profiles` + `token-boosts` | 待办 |
+| R2 | 单币行情与基本面（价格/量/市值/流动性/多时间窗涨跌/ath/atl/holders） | **P0** | OKX `price-info` / DexScreener `token/{chain}/{addr}` | 待办 |
+| R3 | 社交热度（逐币 X 提及 + 环比变化 + trendingScore） | **P0** | OKX hot-tokens / LunarCrush（备选） | 待办 |
+| R4 | 安全与风险评分（riskLevel/蜜罐/rug%/新地址占比/owner/dev/锁仓） | **P0** | OKX security / `advanced-info` / `cluster-overview` | 待办 |
+| R5 | 巨鲸动向/聪明钱（smart money 净流入/大额转账/KOL 持仓） | P1 | OKX Signal API（用户重点） | 待办 |
+| R6 | 持有者结构（Top100/top10 占比/HHI/聚类） | P1 | OKX `holders` / `cluster-overview` | 待办 |
+| R7 | 流动性池/深度（Top5 池/深度/TVL） | P1 | OKX `liquidity` / DexScreener pairs | 待办 |
+| R8 | 顶级交易者/交易历史（pnl/胜率/近期交易） | P1 | OKX `top-trader` / `trades` | 待办 |
+| R9 | hyperliquid 永续（funding/OI/深度） | P1 | hyperliquid `/info`（python-backend 已直连，**infrax 不实现**，仅透传语义） | 跳过 |
+| R10 | 池龄/新币生命周期（首个池创建/上线天数） | P2 | DexScreener `createdAt` / OKX advanced-info | 待办 |
+
+**首批交付（P0：R1-R4，含 R1b）**：热门榜单（OKX 热度 + DexScreener 原生榜）+ 单币行情 + 社交热度 + 安全风险——直接支撑当前用户可选交易对面板与 DEX 策略风控。
+
+**实施排期**：
+- T-1（P0）：DexScreener 数据接入（search/pairs/token-profiles/token-boosts），热门代币统一端点（`source: okx | dexscreener` 双来源），单币行情 + 社交热度 + 风险画像聚合
+- T-2（P0）：OKX hot-tokens 双榜扩展（补 xMentions/trendingScore 全字段），与 DexScreener 榜合并
+- T-3（P1）：OKX Signal API（巨鲸/聪明钱）+ holders + liquidity + top-trader
+- T-4（P2）：池龄/新币生命周期 + MEV 风险（EigenPhi 专项源）
+- 交付形态：gateway `/api/dex/*`（新端点 or 扩展 `_complex`），由 infrax 评估决策
+
+**验收依赖**：① DexScreener 免费层配额（60 req/min 需评估高频榜单缓存策略）；② OKX OnchainOS 各端点实测可用性（price-info/holders/trades/top-trader/security/signal 需逐一验证）；③ 交付后前端交易对面板切换双榜单来源联调。
+
