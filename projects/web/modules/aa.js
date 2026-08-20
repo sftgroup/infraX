@@ -159,7 +159,7 @@ async function aaLoadAll() {
   var owner = user().walletAddress;
   var pane = document.getElementById('aa-pane-overview');
   if (!owner) {
-    if (pane) pane.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:44px;margin-bottom:12px">🤖</div><div style="font-size:15px;color:var(--warning)">Connect wallet to manage AA sessions</div><a href="/connect.html" style="color:var(--gold);font-size:13px">→ Go to Connect</a></div>';
+    if (pane) pane.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:44px;margin-bottom:12px">🤖</div><div style="font-size:15px;color:var(--warning)">Connect wallet to manage Smart Account sessions</div><a href="/connect.html" style="color:var(--gold);font-size:13px">→ Go to Connect</a></div>';
     return;
   }
 

@@ -116,10 +116,10 @@ async function ncDash() {
       var aaP = await afetch("/v1/plans", { auth: "none" });
       var aaBal = null;
       try { aaBal = await afetch("/v1/ledger-balance", { method: "POST", auth: "none", body: { account: walletAddr } }); } catch (e) {}
-      usageRows.push(['⚡ AA Sessions', (aaP && aaP.mode) || '—',
+      usageRows.push(['⚡ Smart Account', (aaP && aaP.mode) || '—',
         aaBal && aaBal.balance ? aaBal.balance + ' ETH' : '—',
         (aaP && aaP.configured) ? '次数 + gas 代付' : '免费']);
-    } catch (e) { usageRows.push(['⚡ AA Sessions', '—', '—', '不可用']); }
+    } catch (e) { usageRows.push(['⚡ Smart Account', '—', '—', '不可用']); }
 
     var rowsHtml = usageRows.map(function (r) {
       return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>';

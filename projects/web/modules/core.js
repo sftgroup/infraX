@@ -15,7 +15,7 @@ var API = "";
   var waasSelectedPlan = 'free';
   var safeEnabled = false;
 
-  var PAGE_TITLES = { noncustodial:'Non-Custodial Wallet', mpc:'MPC Wallet', waas:'WaaS · B2B Wallet Service', datacenter:'Data Center · On-Chain API', safe:'Multi-Sig Vault', aa:'AA · Session Manager', insights:'Insights · Graph & Factors', payments:'Payments · Gateway', rpc:'Chain RPC · JSON-RPC Gateway', lightrag:'LightRAG · Knowledge Graph RAG' };
+  var PAGE_TITLES = { noncustodial:'Non-Custodial Wallet', mpc:'MPC Wallet', waas:'WaaS · B2B Wallet Service', datacenter:'Data Center · On-Chain API', safe:'Multi-Sig Vault', aa:'Smart Account · Session Keys', insights:'Insights · Graph & Factors', payments:'Payments · Gateway', rpc:'Chain RPC · JSON-RPC Gateway', lightrag:'LightRAG · Knowledge Graph RAG' };
 
   // ── Re-declare all functions below (code preserved from original, wrapped) ──
 // ═══════════════════════════════════════════════════════
