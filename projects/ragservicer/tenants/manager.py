@@ -72,6 +72,13 @@ def init_db():
         INSERT OR IGNORE INTO tenants (id, name, description)
         VALUES ('default', 'Default', 'Default tenant for existing integrations');
     """)
+    # R-TN: tenant_scope（幂等迁移，旧表不回填；兼容 SQLite < 3.35 的 PRAGMA 检查）
+    #  NULL/''        → 仅 key 绑定租户（默认）
+    #  '*'            → 共享 key：可经 X-Tenant-ID 访问任意已存在租户
+    #  't1,t2,...'    → 共享 key：仅允许列出的已存在租户
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(api_keys)")}
+    if "tenant_scope" not in cols:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN tenant_scope TEXT")
     conn.commit()
     conn.close()
 
@@ -208,3 +215,44 @@ def revoke_api_key(key_id: str):
     conn.execute("UPDATE api_keys SET active = 0 WHERE id = ?", (key_id,))
     conn.commit()
     conn.close()
+
+
+# ── R-TN: X-Tenant-ID 授权边界（共享 key 多租户）─────────────
+
+def set_key_scope(key_id: str, scope: str | None) -> None:
+    """设置 key 的租户访问范围（admin API 调用）。
+
+    scope 语义（与 init_db 迁移注释一致）：
+      None/'' → 仅 key 绑定租户（默认，X-Tenant-ID 无效）
+      '*'     → 可经 X-Tenant-ID 访问任意已存在租户
+      't1,t2' → 仅允许列出的已存在租户
+    """
+    conn = _get_conn()
+    conn.execute("UPDATE api_keys SET tenant_scope = ? WHERE id = ?", (scope or "", key_id))
+    conn.commit()
+    conn.close()
+
+
+def is_tenant_allowed(key_id: str, bound_tenant: str, target: str) -> bool:
+    """校验 key 是否被授权访问 ``target`` 租户（X-Tenant-ID 场景）。
+
+    - target 为空或等于 key 绑定租户 → 放行（默认行为）
+    - tenant_scope='*' → target 必须已存在（租户由服务端创建，不自动隐式创建）
+    - tenant_scope='t1,t2' → target 在列表且已存在
+    - tenant_scope 为空 → 仅绑定租户，其他 target 拒绝
+    """
+    if not target or target == bound_tenant:
+        return True
+    conn = _get_conn()
+    row = conn.execute("SELECT tenant_scope FROM api_keys WHERE id = ?", (key_id,)).fetchone()
+    conn.close()
+    scope = (row["tenant_scope"] or "").strip() if row else ""
+    if not scope:
+        return False
+    # 目标租户必须已存在（防止任意 key 隐式创建数据空间）
+    if not get_tenant(target):
+        return False
+    if scope == "*":
+        return True
+    allowed = {t.strip() for t in scope.split(",") if t.strip()}
+    return target in allowed

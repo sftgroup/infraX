@@ -23,13 +23,32 @@
 
 ### 1.1 认证方式
 
-所有 API（除健康检查）需要认证，支持三种方式：
+所有 API（除健康检查）需要认证，支持三种方式（app_auth 统一契约，优先级 Bearer > X-API-Key > X-Service-Key）：
 
 | 方式 | Header | 示例 |
 |------|--------|------|
-| Bearer Token | `Authorization: Bearer lr_xxxx` | 推荐（API Key） |
+| Bearer Token | `Authorization: Bearer lr_xxxx` | 推荐（API Key / Admin Key） |
 | API Key Header | `X-API-Key: lr_xxxx` | 兼容旧版 |
-| Tenant Header | `X-Tenant-ID: my-project` | 简单模式（不推荐） |
+| Service Key Header | `X-Service-Key: lr_xxxx` | AItrader 服务间调用 |
+| Tenant Header | `X-Tenant-ID: my-bot` | 服务账号多租户分片（见 1.5） |
+
+### 1.4.1 租户模型与鉴权（R-TN）
+
+租户由 **API Key 的归属**决定，并支持 `X-Tenant-ID` 头按租户分片（服务账号模式）：
+
+| Key 类型 | X-Tenant-ID 行为 | 说明 |
+|----------|------------------|------|
+| **租户 Key**（默认） | 忽略（恒为 key 绑定租户） | 每租户独立 key，天然隔离 |
+| **共享 Key**（`tenant_scope='*'`） | 生效 | 可经 X-Tenant-ID 访问**任意已存在**租户 |
+| **共享 Key**（`tenant_scope='t1,t2'`） | 生效 | 仅允许列表内的已存在租户 |
+| Admin Key | 忽略（恒为 `admin`） | 平台侧管理端点专用 |
+| Bridge Key（`RAGSERVICER_API_KEY`） | 生效（缺省 `default`） | 内部服务间透传 |
+
+要点：
+
+- 业务端点（文档/检索/图谱）用租户 Key 或共享 Key；`X-Tenant-ID` 指定的租户**必须已存在**（租户由 Admin API 创建，不会隐式自动创建），否则返回 `403 TENANT_FORBIDDEN`。
+- 管理端点（租户 CRUD、Key 签发/revoke/scope）仅接受 `Authorization: Bearer <ADMIN_API_KEY>`（不接受 X-API-Key），否则 `403 Admin access required`。
+- 共享 Key 授权范围通过 `POST /api/v1/keys/{key_id}/scope` 设置（`scope`：`''` 仅绑定租户 / `'*'` 任意已存在租户 / `'t1,t2'` 允许列表）。
 
 ### 1.2 通用请求头
 
@@ -574,6 +593,41 @@ POST /api/v1/keys/{key_id}/revoke
 ```
 
 > 立即生效，使用该 Key 的后续请求返回 401。
+
+---
+
+### 7.4 设置 Key 租户访问范围（共享 Key / R-TN）
+
+共享 Key 通过 `X-Tenant-ID` 头按租户分片，授权范围在此设置：
+
+```http
+POST /api/v1/keys/{key_id}/scope
+Authorization: Bearer <ADMIN_API_KEY>
+```
+
+**请求体**:
+```json
+{
+  "scope": "*"
+}
+```
+
+| `scope` 值 | 含义 |
+|------------|------|
+| `""`（空） | 仅 key 绑定租户（默认，X-Tenant-ID 无效） |
+| `"*"` | 可经 X-Tenant-ID 访问任意**已存在**租户 |
+| `"t1,t2"` | 仅允许列表内的已存在租户 |
+
+**响应** `200`:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": { "key_id": "key_a1b2c3d4", "scope": "*" }
+}
+```
+
+> 目标租户必须已通过 `POST /api/v1/tenants` 创建；`X-Tenant-ID` 指向未授权/不存在的租户时业务端点返回 `403 TENANT_FORBIDDEN`。
 
 ---
 

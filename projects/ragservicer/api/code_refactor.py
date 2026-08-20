@@ -378,8 +378,12 @@ def register_tenant_on_g():
             register_tenant_on_g()
     """
     # Extract tenant (priority: X-Tenant-ID > Bearer token > X-API-Key)
-    from api.auth import extract_tenant as _extract
-    g.tenant_id = _extract() or _ANON_FALLBACK
+    from api.auth import extract_tenant as _extract, TenantForbiddenError
+    try:
+        g.tenant_id = _extract() or _ANON_FALLBACK
+    except TenantForbiddenError:
+        # R-TN: X-Tenant-ID 越权尝试记录为 unauthorized（业务路由会返回 403）
+        g.tenant_id = "unauthorized"
 
     # Extract namespace from URL if present
     if request.view_args:

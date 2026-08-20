@@ -17,6 +17,14 @@ import app_auth
 logger = logging.getLogger("ragservicer.auth")
 
 
+class TenantForbiddenError(Exception):
+    """X-Tenant-ID 指定的租户不在 key 的授权范围内（403）。"""
+
+    def __init__(self, tenant_id: str):
+        super().__init__(f"API key not authorized for tenant '{tenant_id}'")
+        self.tenant_id = tenant_id
+
+
 def extract_tenant():
     """
     Extract tenant_id from request.  All paths require valid credentials.
@@ -26,6 +34,10 @@ def extract_tenant():
       2. Bearer token matching Admin key → tenant "admin"
       3. Bearer token or X-API-Key / X-Service-Key validated against DB → bound tenant
       4. Any valid key + X-Tenant-ID header → uses header tenant (service accounts)
+    
+    R-TN: X-Tenant-ID 场景强制授权边界 —— key 必须被授权访问目标租户
+    （tenant_scope='*' 或显式列表且租户已存在），否则抛 TenantForbiddenError（403）。
+    admin / bridge / monitor key 维持原有语义。
     
     Returns None if authentication fails.
     """
@@ -54,9 +66,11 @@ def extract_tenant():
     if not info:
         return None
 
-    # If X-Tenant-ID header is present, use it (cross-tenant service account)
+    # R-TN: X-Tenant-ID 必须通过授权校验（租户已存在 + key 授权范围）
     tenant_header = request.headers.get("X-Tenant-ID", "")
     if tenant_header:
+        if not tm.is_tenant_allowed(info["key_id"], info["tenant_id"], tenant_header):
+            raise TenantForbiddenError(tenant_header)
         return tenant_header
 
     return info["tenant_id"]
@@ -66,7 +80,10 @@ def require_tenant(f):
     """Decorator: require valid tenant authentication."""
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        tenant = extract_tenant()
+        try:
+            tenant = extract_tenant()
+        except TenantForbiddenError as exc:
+            return build_error(str(exc), 403, code="TENANT_FORBIDDEN")
         if not tenant:
             return build_error("Missing or invalid API key", 401)
         kwargs["_tenant"] = tenant
@@ -93,7 +110,10 @@ def require_service(f):
             return build_error("Factor service endpoint not enabled", 403)
         if key not in whitelist:
             return build_error("Service-level key required for factor endpoints", 403)
-        tenant = extract_tenant()
+        try:
+            tenant = extract_tenant()
+        except TenantForbiddenError as exc:
+            return build_error(str(exc), 403, code="TENANT_FORBIDDEN")
         if not tenant:
             return build_error("Missing or invalid API key", 401)
         kwargs["_tenant"] = tenant

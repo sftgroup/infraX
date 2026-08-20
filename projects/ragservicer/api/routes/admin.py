@@ -176,6 +176,19 @@ def register(api: Blueprint):
         tm.revoke_api_key(key_id)
         return build_success()
 
+    # R-TN: key 租户访问范围（共享 key / 多租户授权）
+    #  scope: '' | '*' | 't1,t2,...'
+    @api.route("/keys/<key_id>/scope", methods=["POST"])
+    @require_admin
+    @handle_errors(logger, "Set key scope failed", fallback_status=500)
+    def api_set_key_scope(key_id):
+        data = parse_json()
+        scope = data.get("scope", "")
+        if not isinstance(scope, str):
+            return build_error("scope must be a string", 400)
+        tm.set_key_scope(key_id, scope)
+        return build_success({"key_id": key_id, "scope": scope})
+
     # ── Runtime Config (LLM / Embedding) ────────────────
 
     @api.route("/admin/config", methods=["GET"])
