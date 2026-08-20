@@ -2336,6 +2336,12 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - OKX `top-trader`/`top-liquidity` 参数名为 `tokenContractAddress`（原 tokenAddress 报 400 missing）
 - DexScreener `token-profiles/boosts` 仅覆盖新币/推广（ETH 主流链榜为空）→ 主流链以 OKX 榜为主，DexScreener 榜兜底新币链（SOL/BASE 实测有数据）
 
+**热门代币画像自动快照（2026-08-21 追加，commit 29aa586）**：
+- 新增 `okx_market_token_profiles` 表 + scheduler `snapshotTokenProfiles`（默认 5min/链 top 10，`OKX_MARKET_PROFILE_INTERVAL_MS` 可配）：
+  top list（volume24h）合并 price-info 批量（免费）→ 落库多时间窗（5M/1H/4H/24H 变化率）+ price/marketCap/liquidity/circSupply/maxPrice(ATH)/minPrice(ATL)/holderCount
+- 新增 `GET /api/v2/data/market/dex/token/history?chain&address&hours` → 画像时间序列（价格历史，5min 粒度）
+- 与既有 60s 价格快照（`okx_market_hot_tokens`/`okx_market_index_prices`）+ 5min K 线（`okx_market_candles`）共同构成完整历史价格层
+
 **首批交付（P0：R1-R4，含 R1b）**：热门榜单（OKX 热度 + DexScreener 原生榜）+ 单币行情 + 社交热度 + 安全风险——直接支撑当前用户可选交易对面板与 DEX 策略风控。
 
 **实施排期**：
