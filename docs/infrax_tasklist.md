@@ -2317,26 +2317,33 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 | # | 需求 | 优先级 | 候选数据源 | 状态 |
 |---|---|---|---|---|
-| R1 | 热门代币列表（Trending + X 提及双排行，补齐 11 字段） | **P0** | OKX OnchainOS `token/hot-tokens`（ranking-type=4/5） | 待办 |
-| R1b | 主流 DEX 原生热门榜（按链真实成交量/TVL，DexScreener 单源聚合） | **P0** | DexScreener `/latest/dex/search` + `token-profiles` + `token-boosts` | 待办 |
-| R2 | 单币行情与基本面（价格/量/市值/流动性/多时间窗涨跌/ath/atl/holders） | **P0** | OKX `price-info` / DexScreener `token/{chain}/{addr}` | 待办 |
-| R3 | 社交热度（逐币 X 提及 + 环比变化 + trendingScore） | **P0** | OKX hot-tokens / LunarCrush（备选） | 待办 |
-| R4 | 安全与风险评分（riskLevel/蜜罐/rug%/新地址占比/owner/dev/锁仓） | **P0** | OKX security / `advanced-info` / `cluster-overview` | 待办 |
-| R5 | 巨鲸动向/聪明钱（smart money 净流入/大额转账/KOL 持仓） | P1 | OKX Signal API（用户重点） | 待办 |
-| R6 | 持有者结构（Top100/top10 占比/HHI/聚类） | P1 | OKX `holders` / `cluster-overview` | 待办 |
-| R7 | 流动性池/深度（Top5 池/深度/TVL） | P1 | OKX `liquidity` / DexScreener pairs | 待办 |
-| R8 | 顶级交易者/交易历史（pnl/胜率/近期交易） | P1 | OKX `top-trader` / `trades` | 待办 |
+| R1 | 热门代币列表（Trending + X 提及双排行，补齐 11 字段） | **P0** | OKX OnchainOS `token/hot-tokens`（ranking-type=4/5） | ✅ 已完成 |
+| R1b | 主流 DEX 原生热门榜（按链真实成交量/TVL，DexScreener 单源聚合） | **P0** | DexScreener `/latest/dex/search` + `token-profiles` + `token-boosts` | ✅ 已完成 |
+| R2 | 单币行情与基本面（价格/量/市值/流动性/多时间窗涨跌/ath/atl/holders） | **P0** | OKX `price-info` / DexScreener `token/{chain}/{addr}` | ✅ 已完成 |
+| R3 | 社交热度（逐币 X 提及 + 环比变化 + trendingScore） | **P0** | OKX hot-tokens / LunarCrush（备选） | 🟡 部分（上游免费层无该字段，透传 null） |
+| R4 | 安全与风险评分（riskLevel/蜜罐/rug%/新地址占比/owner/dev/锁仓） | **P0** | OKX security / `advanced-info` / `cluster-overview` | ✅ 已完成（字段透传，上游缺省 null） |
+| R5 | 巨鲸动向/聪明钱（smart money 净流入/大额转账/KOL 持仓） | P1 | OKX Signal API（用户重点） | ✅ 已完成 |
+| R6 | 持有者结构（Top100/top10 占比/HHI/聚类） | P1 | OKX `holders` / `cluster-overview` | ✅ 已完成 |
+| R7 | 流动性池/深度（Top5 池/深度/TVL） | P1 | OKX `liquidity` / DexScreener pairs | ✅ 已完成（OKX top-liquidity 402 付费 → DexScreener 池降级） |
+| R8 | 顶级交易者/交易历史（pnl/胜率/近期交易） | P1 | OKX `top-trader` / `trades` | ✅ 已完成（top-trader 免费；trades 402 付费 → paymentRequired 降级） |
 | R9 | hyperliquid 永续（funding/OI/深度） | P1 | hyperliquid `/info`（python-backend 已直连，**infrax 不实现**，仅透传语义） | 跳过 |
-| R10 | 池龄/新币生命周期（首个池创建/上线天数） | P2 | DexScreener `createdAt` / OKX advanced-info | 待办 |
+| R10 | 池龄/新币生命周期（首个池创建/上线天数） | P2 | DexScreener `createdAt` / OKX advanced-info | ✅ 已完成（poolCreatedAt 最早池龄透传） |
+
+**生产实测契约修正（2026-08-21 部署验证，commit 366c6b1/8a1a4eb/4d5bfda）**：
+- OKX `token/toplist` **生产仅支持 sortBy∈{2 change,5 volume,6 mcap}**（11 mentions/15 tokenScore 均 400），且返回字段**不含 mentions/tokenScore** → R1 双榜降级：trending=sortBy5 volume、x_mentions=同源按 txs 交易笔数客户端排序（`getHotTokensRanked`）
+- OKX `token/search` 与 `trades`、`top-liquidity` 为 **x402 付费端点**（402 Payment Required）→ 路由层降级：`{items:[], paymentRequired:true}`（search 用 DexScreener 兜底）
+- DexScreener `/latest/dex/tokens/{chain}/{addr}` 端点已废弃（404）→ `getTokensDetail` 改用 `/latest/dex/search?q={address}` 按链过滤聚合
+- OKX `top-trader`/`top-liquidity` 参数名为 `tokenContractAddress`（原 tokenAddress 报 400 missing）
+- DexScreener `token-profiles/boosts` 仅覆盖新币/推广（ETH 主流链榜为空）→ 主流链以 OKX 榜为主，DexScreener 榜兜底新币链（SOL/BASE 实测有数据）
 
 **首批交付（P0：R1-R4，含 R1b）**：热门榜单（OKX 热度 + DexScreener 原生榜）+ 单币行情 + 社交热度 + 安全风险——直接支撑当前用户可选交易对面板与 DEX 策略风控。
 
 **实施排期**：
-- T-1（P0）：DexScreener 数据接入（search/pairs/token-profiles/token-boosts），热门代币统一端点（`source: okx | dexscreener` 双来源），单币行情 + 社交热度 + 风险画像聚合
-- T-2（P0）：OKX hot-tokens 双榜扩展（补 xMentions/trendingScore 全字段），与 DexScreener 榜合并
-- T-3（P1）：OKX Signal API（巨鲸/聪明钱）+ holders + liquidity + top-trader
-- T-4（P2）：池龄/新币生命周期 + MEV 风险（EigenPhi 专项源）
-- 交付形态：gateway `/api/dex/*`（新端点 or 扩展 `_complex`），由 infrax 评估决策
+- T-1（P0）：DexScreener 数据接入（search/pairs/token-profiles/token-boosts），热门代币统一端点（`source: okx | dexscreener` 双来源），单币行情 + 社交热度 + 风险画像聚合 ✅ 已完成
+- T-2（P0）：OKX hot-tokens 双榜扩展（补 xMentions/trendingScore 全字段），与 DexScreener 榜合并 ✅ 已完成（按生产契约降级，见上方"契约修正"）
+- T-3（P1）：OKX Signal API（巨鲸/聪明钱）+ holders + liquidity + top-trader ✅ 已完成（trades/top-liquidity 为付费端点已降级）
+- T-4（P2）：池龄/新币生命周期 + MEV 风险（EigenPhi 专项源）🟡 池龄已完成（poolCreatedAt），MEV 专项源待排期
+- 交付形态：gateway `/api/dex/*`（web/server.js 已配置代理 `{host: COLLECTOR_HOST, port: COLLECTOR_PORT, strip: '/api/dex', prefix: '/api/v2/data/market/dex'}`）✅ 已部署
 
 **验收依赖**：① DexScreener 免费层配额（60 req/min 需评估高频榜单缓存策略）；② OKX OnchainOS 各端点实测可用性（price-info/holders/trades/top-trader/security/signal 需逐一验证）；③ 交付后前端交易对面板切换双榜单来源联调。
 
