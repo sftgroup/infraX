@@ -46,6 +46,21 @@ systemd：`sudo cp infrax-data.service /etc/systemd/system/ && sudo systemctl da
 | GET | `/snapshots` | 复杂快照（heatmap/calendar/indices/tvl 等） |
 | GET | `/stats` | DB 统计 |
 
+## 鉴权与 Key 体系
+
+统一鉴权契约（`app_auth.py`）：**Bearer > X-API-Key > X-Service-Key** 任一匹配即可，未携带返回 401。
+
+| 调用方 | 鉴权方式 | 说明 |
+|---|---|---|
+| 主控台 Insights 页（/factors /graph /rag /ml） | **平台 bridge key**（web server.js 自动注入 `X-Service-Key`） | 前端不携带任何 key，网页直接可用 |
+| B 端外部 API 调用（同上端点） | **`dx_` key** | 经 `GET/POST /api/v2/data/my-keys` 签发，与 bridge key 等价、可访问全部业务端点 |
+| DC 订阅/链上数据（:9102） | **钱包签名** `x-wallet-address` | 订阅计划 + 配额扣减，与 :9112 数据面独立鉴权 |
+
+要点：
+
+- Insights 与 DC 共用同一 data 能力，但鉴权面不同：**数据面 :9112 走 `dx_` key**（图谱/因子/RAG/ML），**订阅面 :9102 走钱包签名**。
+- B 端统一口径：自己调用 insights 数据端点（不经网页）用 `dx_` key 即可，与 DC 订阅同 key 体系；网页内由平台自动代鉴权。
+
 ## 数据采集
 
 启动时自动拉起采集器：
