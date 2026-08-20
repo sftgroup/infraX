@@ -10,6 +10,7 @@ export * from './signers/index.js';
 export * from './smart-account.js';
 export * from './activate.js';
 export * from './userop.js';
+export * from './escrow.js';
 export * from './nonce.js';
 export * from './bundler.js';
 export * from './paymaster.js';

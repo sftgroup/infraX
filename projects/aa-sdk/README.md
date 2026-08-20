@@ -2,7 +2,7 @@
 
 InfraX 共享 ERC-4337 智能账户 SDK（白标自 PocketX `@pocketx/aa-sdk`）——Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key。
 
-- **npm**: `@0xinfrax/aa-sdk@0.1.2`（2026-08-20 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`0.1.2` 发布三段批量 disable 等 session 新导出；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
+- **npm**: `@0xinfrax/aa-sdk@0.1.3`（2026-08-21 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`0.1.2` 发布三段批量 disable 等 session 新导出；`0.1.3` 新增 `src/escrow.ts` InfraXEscrow 充值构建 helper——depositFor 等编码 + UserOp（REQ-1/REQ-5，AgentX 自动续订资金）；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
 - **文档**: `docs/AA_SDK_TECH_DESIGN.md`（技术方案）、`docs/PAYMASTER_PROVISION_REQUEST.md` §八（PocketX 对接与公网入口）
 - **关联包**: `@0xinfrax/session-key-core`（`Aa` 命名空间导出同源能力，v0.2.1 已发布）——两通道并存，按需选用
 
@@ -67,6 +67,7 @@ const data  = await pm.getPaymasterData(op, { chain: 'oxachain', entryPoint, cha
 - 配置：`getChainConfig` / `getEnabledChains` / `getAllChainConfigs` / `parseBundlers` / `parsePaymaster` / `entryPointAbi`（EntryPoint v0.7 `getNonce(address,uint192)`）
 - 账户：`createKernelAccount` / `createAAClient` / `activateSmartAccount`
 - 交易：`buildUserOp` / `signUserOp` / `estimateUserOpGas` / `userOpToRpc` / `PackedUserOperationV7`
+- 充值（0.1.3，InfraXEscrow，REQ-1/REQ-5）：`InfraXEscrowAbi` / `encodeDepositFor` / `encodeDepositForBatch` / `encodeDepositForERC20` / `encodeDepositForERC20Batch` / `buildDepositForUserOp` / `buildDepositForBatchUserOp` / `buildDepositForERC20UserOp` / `buildDepositForERC20BatchUserOp`
 - 客户端：`BundlerClient` / `PaymasterClient`
 - 签名器：`MpcSigner`（email/token 双模式）/ `PrivateKeySigner` / `ExternalWalletSigner` / `SessionKeySigner`
 - Session（enable）：`encodeEnableSessionCall` / `buildEnableSessionUserOp` / `signEnableUserOp` / `buildSessionUserOp` / `validateSessionCall` / `SessionPolicy` / `SessionPermission`

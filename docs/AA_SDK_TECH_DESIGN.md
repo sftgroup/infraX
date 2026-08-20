@@ -170,6 +170,7 @@ packages/aa-sdk/
 │   │   └── session-key.ts      # Session Key 签名（对接 InfraX）
 │   ├── smart-account.ts        # Kernel v3 创建/部署/地址预计算
 │   ├── userop.ts               # UserOp 构建/编码/签名（v0.7）
+│   ├── escrow.ts               # InfraXEscrow 充值构建（REQ-1/REQ-5：depositFor 等编码 + UserOp）
 │   ├── bundler.ts              # Bundler 客户端（多端点 + 容灾）
 │   ├── paymaster.ts            # Verifying Paymaster 对接
 │   ├── session.ts              # Session Key 权限管理（创建/撤销/查询）
@@ -180,6 +181,7 @@ packages/aa-sdk/
 │       └── eth-address.ts      # 地址校验/checksum 工具
 ├── __tests__/
 │   ├── userop.test.ts          # UserOp 编解码/哈希单测
+│   ├── escrow.test.ts          # InfraXEscrow 充值编码/UserOp 构建单测
 │   ├── bundler.test.ts         # 多端点容灾逻辑
 │   └── session.test.ts         # 权限策略校验
 ├── package.json

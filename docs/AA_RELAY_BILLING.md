@@ -72,6 +72,16 @@
 - 兜底：账户自身用 session key 调 `deposit()` 自付（需会话白名单含 `escrow.deposit()`，REQ-4 fallback）。
 - ⚠️ `deposit()` 只记 `msg.sender`：用户 EOA 调 `deposit()` 到不了子账户名下；402 提示已按计费主体区分文案（REQ-2c）。
 
+**SDK 构建 helper（2026-08-21，`@0xinfrax/aa-sdk@0.1.3` 新增 `src/escrow.ts`）**：
+
+| 场景 | 用法 |
+|---|---|
+| EOA 直连代充值（REQ-1 主钱包路径） | `InfraXEscrowAbi` + viem `writeContract({address, abi, functionName:'depositFor', args:[user], value})`；批量 `depositForBatch` |
+| 智能账户自付（session key 兜底） | `buildDepositForUserOp({sender, nonce, escrow, amount, user})` → execute(escrow, amount, depositFor(user)) |
+| 多账户 native 批量（REQ-5） | `buildDepositForBatchUserOp({sender, nonce, escrow, users, amounts})` → execute(escrow, Σamounts, depositForBatch)（users/amounts 不等长抛错） |
+| ERC20 充值 | `buildDepositForERC20UserOp` / `buildDepositForERC20BatchUserOp`（需 sender 先 approve escrow） |
+| 多 execution 编排 | `encodeDepositFor*` 返回 calldata，可自行组合 `encodeExecuteBatch`（如 native + ERC20 一单） |
+
 ## 5.5 批量充值与费用估算（REQ-5）
 
 多子账户/多期续订场景：
