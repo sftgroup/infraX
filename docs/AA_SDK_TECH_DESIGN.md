@@ -1,8 +1,10 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
-> **版本**: v1.9 | **日期**: 2026-08-16 | **作者**: stevenwang 团队（架构师）
+> **版本**: v1.10 | **日期**: 2026-08-21 | **作者**: stevenwang 团队（架构师）
 > **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
+>
+> **v1.10（2026-08-21）**：**SDK v0.1.3——InfraXEscrow 充值构建 helper（AgentX 自动续订 REQ-1/REQ-5）**——新增 `src/escrow.ts`：`InfraXEscrowAbi`（deposit/depositFor/depositForBatch/depositForERC20/depositForERC20Batch，对齐 `projects/escrow/contracts/interfaces/IInfraXEscrow.sol`）+ 编码 helper（`encodeDepositFor*`）+ UserOp 构建（`buildDepositForUserOp`/`buildDepositForBatchUserOp`/`buildDepositForERC20UserOp`/`buildDepositForERC20BatchUserOp`，组合 Kernel v3 execute/executeBatch；users/amounts 不等长抛错防链上 revert）。两条路径：EOA 直连 `InfraXEscrowAbi`+viem `writeContract`（REQ-1 主钱包代充值）；智能账户自付 `buildDepositFor*UserOp`（session key 兜底，REQ-4）。barrel 已导出，13 单测（134 全绿）。计费语义见 `docs/AA_RELAY_BILLING.md` §5。`@0xinfrax/aa-sdk@0.1.3`。
 >
 > **v1.9（2026-08-16）**：**SDK v0.1.1——自定义 headers 支持（PocketX 联调反馈 ⑤）**——`PaymasterClient` 构造第三参数 `headers`（或 `PaymasterConfig.headers`，config 优先）、`BundlerClient` 构造第二参数 `headers`（或 `BundlerConfig[].headers`，端点级优先），relay 模式注入 `X-API-Key` 过 aa-relay 鉴权（此前 rpc() 硬编码 headers 导致 wallet 端直用 relay 时 401）；`parseBundlers` 透传 `headers` 字段，`parsePaymaster` 支持 JSON `{"url","headers"}`；单测 +2（bundler 构造/端点级 headers 注入、paymaster config/构造 headers 合并）。`@0xinfrax/aa-sdk@0.1.1`。
 >

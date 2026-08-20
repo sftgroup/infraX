@@ -1,7 +1,7 @@
 # @0xinfrax/aa-sdk 快速接入指南（Quickstart）
 
 > 适用：**外部集成方（PocketX 等）经 npm SDK 直用构建 ERC-4337 UserOp**。如需走 HTTP 服务接口（agentx/aitrader 等），见 `docs/SERVICE_API_REFERENCE.md` §7.7。
-> 版本：`@0xinfrax/aa-sdk@0.1.2`（2026-08-20）。详细技术方案见 `docs/AA_SDK_TECH_DESIGN.md`。
+> 版本：`@0xinfrax/aa-sdk@0.1.3`（2026-08-21；0.1.3 新增 InfraXEscrow 充值构建 helper，见 §6）。详细技术方案见 `docs/AA_SDK_TECH_DESIGN.md`。
 
 ---
 
@@ -253,7 +253,49 @@ sequenceDiagram
 
 ---
 
-## 6. 常见错误与规避
+## 6. InfraXEscrow 充值（REQ-1/REQ-5，0.1.3+）
+
+计费主体是智能账户（`op.sender`）时，aa-relay 服务费预扣来源是子账户的 `InfraXEscrow._balances[account]`。两条充值路径：
+
+### 6.1 EOA 主钱包代充值（推荐，主钱包 EOA 单笔 tx）
+
+```ts
+import { InfraXEscrowAbi } from '@0xinfrax/aa-sdk';
+
+// 一次 depositFor(子账户) 即完成 relay 服务费充值（_balances[user] += value）
+await walletClient.writeContract({
+  address: ESCROW,                        // InfraXEscrow 合约地址（各链登记）
+  abi: InfraXEscrowAbi,
+  functionName: 'depositFor',
+  args: [subAccount.address],             // 计费主体智能账户
+  value: parseEther('0.05'),              // 充值额（OXA）
+});
+// 批量：depositForBatch(users, amounts)，value = Σamounts
+```
+
+### 6.2 智能账户自付（session key 兜底，REQ-4 fallback）
+
+```ts
+import { buildDepositForUserOp, buildDepositForBatchUserOp, signUserOp } from '@0xinfrax/aa-sdk';
+
+const op = buildDepositForUserOp({
+  sender: account.address,                // 智能账户（执行者）
+  nonce: await client.readContract({ address: cfg.entryPoint, abi: entryPointAbi, functionName: 'getNonce', args: [account.address, 0n] }),
+  escrow: ESCROW,
+  amount: parseEther('0.05'),
+  user: account.address,                  // 入账对象 = 计费主体
+});
+const signed = await signUserOp(op, cfg.entryPoint, cfg.chainId, sessionOrOwnerSigner);
+await new BundlerClient(cfg).sendUserOperation(signed, account.address);
+
+// 多账户批量：buildDepositForBatchUserOp({ ..., users, amounts }) → value=Σamounts
+```
+
+> ⚠️ `deposit()` 只记 `msg.sender`：EOA 调 `deposit()` 到不了子账户名下，须用 `depositFor`。ERC20 充值用 `buildDepositForERC20UserOp` / `depositForERC20`（需 sender 先 approve escrow）。完整计费语义见 `docs/AA_RELAY_BILLING.md` §5。
+
+---
+
+## 7. 常见错误与规避
 
 | 错误 | 根因 | 规避 |
 |---|---|---|
@@ -265,9 +307,10 @@ sequenceDiagram
 
 ---
 
-## 7. 参考
+## 8. 参考
 
 - `docs/AA_SDK_TECH_DESIGN.md` — 技术方案（§7 Session 设计、§8 链配置）
 - `docs/SERVICE_API_REFERENCE.md` §7.7 — relay HTTP 接口（阶段 1/2 端点）
+- `docs/AA_RELAY_BILLING.md` — AA 计费与资金语义（预扣构成/退差/同步异步/限额）
 - `projects/aa-sdk/README.md` — 包内说明与导出清单
 - 链上 E2E 参考：`projects/aa-relay/scripts/aa-session-replace-e2e.ts`（12/12 全绿）

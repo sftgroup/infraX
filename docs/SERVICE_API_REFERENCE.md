@@ -501,8 +501,8 @@ X-API-Key: rx_...
 | 端点 | 方法 | 功能 |
 |---|---|---|
 | `/health` | GET | 健康（豁免） |
-| `/v1/userops` | POST | 提交 UserOp 到 Bundler（eth_sendUserOperation） |
-| `/v1/userops/:hash` | GET | 查询 UserOp 状态 |
+| `/v1/userops` | POST | 提交 UserOp 到 Bundler（eth_sendUserOperation）；`wait` 参数控制同步/异步结算（2026-08-21 起：`wait:false` → **202 Accepted** + 后台异步结算，见下） |
+| `/v1/userops/:hash` | GET | 查询 UserOp 状态（状态机 `status: pending/confirmed/reverted` + `receipt`，2026-08-21 P2-2） |
 | `/v1/estimate` | POST | gas 预估 |
 | `/v1/paymaster` | POST | Paymaster 代理（body `{chain, method, params}`；apikey 服务端注入，前端零密钥；未配 Paymaster URL → 503） |
 | `/v1/session` | POST/GET | 创建/查询链上 session |
@@ -511,10 +511,16 @@ X-API-Key: rx_...
 | `/v1/session/replace` | POST | 会话轮换**阶段 1/2**：owner 派生账户 + 生成新 session 落库 + 构建 ① disable 旧 draft，返回 `disableDraft`（含 `userOpHash`） |
 | `/v1/session/replace/submit` | POST | 会话轮换**阶段 2/2**：owner 签名校验 + op hash 一致性校验 + 广播 ① disable 旧 + 移除旧 session 记录；② enable 新 session 由调用方用 SDK `buildEnableSessionUserOp` 走 `/v1/userops` 上链 |
 | `/v1/session/validate` | POST | 校验 session 有效性 |
-| `/v1/plans` | GET | AA 套餐价目（需 key；escrow 模式含 `topup.method=escrow depositFor` 充值指引，REQ-2c） |
+| `/v1/plans` | GET | AA 套餐价目（需 key；escrow 模式含 `topup.method=escrow depositFor` 充值指引，REQ-2c；2026-08-21 P2-3 起响应含 `limits`（perTx=1 / perDay=10 OXA，合约默认，用户级 `setChargeLimit` 可定制）） |
 | `/v1/ledger-balance` | POST | 智能账户余额（body `{account}`；escrow 模式读链上托管 + 资金总览 `funds{escrowWei, epDepositWei, nativeWei}`，REQ-2a/2b） |
 
-> **计费语义**（A-10 / OE-6）：预扣=固定费（`AA_USEROP_FEE_WEI` 默认 0.0001 OXA）+ 预估 gas；收据后按 actualGasCost 退差（refund/extra，广播失败全额退）。充值：主钱包 EOA 调 `InfraXEscrow.depositFor(子账户)` 单笔 tx 代充（REQ-1）。完整文档见 [AA_RELAY_BILLING.md](AA_RELAY_BILLING.md)。
+> **计费语义**（A-10 / OE-6）：预扣=固定费（`AA_USEROP_FEE_WEI` 默认 0.0001 OXA）+ 预估 gas；收据后按 actualGasCost 退差（refund/extra，广播失败全额退）。充值：主钱包 EOA 调 `InfraXEscrow.depositFor(子账户)` 单笔 tx 代充（REQ-1）。
+>
+> **同步 vs 异步结算（2026-08-21 P1）**：`wait:true`（默认）阻塞至收据，返回 200 + `receipt`（按固定费+actualGasCost 多退少补）；`wait:false` 广播成功立即返回 **202 Accepted + `userOpHash`（`receipt:null`）**，后台 `asyncSettle` 轮询收据后按同一口径结算退差，对账以链上 `Charged`/`Refunded` 事件为准。广播失败全额退款；120s 无收据保留预扣仅告警。
+>
+> **结算/退款失败重试（2026-08-21 P2-1）**：settle/refund 自动重试 3 次指数退避（800ms/1.6s/3.2s），402（余额不足追扣）业务错误不重试；多次失败告警（链上事件兜底补偿）。
+>
+> **限额（2026-08-21 P2-3）**：链上默认 perTx=1 / perDay=10 OXA（按计费账户维度，合约 `DEFAULT_PER_TX_LIMIT`/`DEFAULT_PER_DAY_LIMIT`）；自动续订单次预扣 ~0.0025 OXA，默认限额日支撑 ~4000 次续订；用户级 `setChargeLimit(account, perTx, perDay)` 定制。完整文档见 [AA_RELAY_BILLING.md](AA_RELAY_BILLING.md)。
 
 **调用样例**（2026-08-12 补）：
 
@@ -529,7 +535,7 @@ curl -X POST http://127.0.0.1:9131/v1/userops \
 
 ### 7.7.1 外部接入：两条通道（HTTP 服务接口 / npm SDK 直用）
 
-**aa-sdk（`@0xinfrax/aa-sdk`）是对外公开发布的 npm 包**（`--access public`，当前 0.1.2）。PocketX 及所有产品"只基于 SDK 构建"（`docs/AA_SDK_TECH_DESIGN.md` §1.3 三层架构）。外部集成方接入 session 能力有两条通道，可组合使用：
+**aa-sdk（`@0xinfrax/aa-sdk`）是对外公开发布的 npm 包**（`--access public`，当前 0.1.3）。PocketX 及所有产品"只基于 SDK 构建"（`docs/AA_SDK_TECH_DESIGN.md` §1.3 三层架构）。外部集成方接入 session 能力有两条通道，可组合使用：
 
 | 通道 | 适用方 | 接入方式 |
 |---|---|---|
@@ -562,7 +568,8 @@ await fetch('https://rpc-gw.0xainet.top/aa-relay/v1/userops', {
 });
 ```
 
-**SDK 新增导出（0.1.2，三段批量 disable）**：`buildDisableSessionUserOp`（disable draft：`disableSession@module + uninstallModule + invalidateNonce`）、`encodeDisableSessionBatch`、`encodeValidatorInstallData`、`KernelV3SessionDataBuilder`、`MODULE_TYPE_VALIDATOR`、`buildEnableSessionUserOp`、`signEnableUserOp`、`verifyDisableSignature`。安装与 env 说明见 `projects/aa-sdk/README.md`。
+**SDK 新增导出（0.1.2，三段批量 disable）**：`buildDisableSessionUserOp`（disable draft：`disableSession@module + uninstallModule + invalidateNonce`）、`encodeDisableSessionBatch`、`encodeValidatorInstallData`、`KernelV3SessionDataBuilder`、`MODULE_TYPE_VALIDATOR`、`buildEnableSessionUserOp`、`signEnableUserOp`、`verifyDisableSignature`。
+**SDK 新增导出（0.1.3，InfraXEscrow 充值，REQ-1/REQ-5）**：`InfraXEscrowAbi` / `encodeDepositFor` / `encodeDepositForBatch` / `encodeDepositForERC20` / `encodeDepositForERC20Batch`（EOA 直连代充用 viem `writeContract`）；`buildDepositForUserOp` / `buildDepositForBatchUserOp` / `buildDepositForERC20UserOp` / `buildDepositForERC20BatchUserOp`（智能账户自付，组合 Kernel v3 execute/executeBatch）。安装与 env 说明见 `projects/aa-sdk/README.md`。
 
 ---
 

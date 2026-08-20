@@ -235,7 +235,7 @@ SDK：`infra-data-client`（Python，**0.3.0**：`get_ml_factory`/`get_current_f
 | `onchain` | `btc_difficulty` / `btc_transfers` / `btc_hashrate` / `whale_balances` | BTC 挖矿难度 / 巨鲸转账 / 全网算力 / 巨鲸余额 | 实时 |
 | `collector_onchain` | `onchain_checkpoints` | 链上检查点聚合 | 实时 |
 | `global_market` | `commodities` / `forex_pairs` / `market_overview` | 商品 / 外汇对 / 多市场概览 | 30min |
-| `okx_chainos` | `okx_hot_tokens` | **OKX ChainOS 热门代币榜**（ETH/BSC/Base 每链 10，字段 price/volume24h/marketCap/liquidity/holders/change24h） | **1h**（配额约束，见 §1） |
+| `okx_chainos` | `okx_hot_tokens` | **OKX ChainOS 热门代币榜**（ETH/BSC/Base 每链 30（`OKX_MARKET_CANDLE_TOKENS`，2026-08-21 由 10 提至 30），字段 price/volume24h/marketCap/liquidity/holders/change24h） | **1h**（配额约束，见 §1） |
 | `okx_chainos` | `okx_index_prices` / `okx_candles` | 链指数 / K 线（DQ-7） | ⏸ 已关闭（market 配额降频） |
 | `ml` | `tree_predictions` / `consensus` | LightGBM 方向预测 / 多模型共识 | 日更 |
 | `opportunities` | `opportunities` | 交易机会信号 | 实时 |

@@ -34,7 +34,7 @@
 | Data / ML | `@0xinfrax/data-sdk` | data + ml（含 ml_factory） | ✅ 0.1.1（2026-08-19 发布） |
 | MPC | `@0xinfrax/mpc-sdk` | 16 方法（钱包/会话/链上） | ✅ 0.3.0 |
 | Session Key | `@0xinfrax/session-key-{core,client,evm,server}` | 引擎 + `Aa`（aa-sdk） | ✅ 0.2.0/0.1.x |
-| AA（ERC-4337） | `@0xinfrax/aa-sdk` | 独立 ERC-4337 智能账户 SDK（Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；含 aa-relay 公网入口对接） | ✅ 0.1.0（2026-08-16 发布） |
+| AA（ERC-4337） | `@0xinfrax/aa-sdk` | 独立 ERC-4337 智能账户 SDK（Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key + **InfraXEscrow 充值**（0.1.3，REQ-1/REQ-5）；含 aa-relay 公网入口对接） | ✅ 0.1.3（2026-08-21 发布） |
 | LightRAG | `lightrag-client`（Python） | insert/query/delete/retrieve | ✅ 2.0.0 |
 | Data 因子 | `infra-data-client`（Python） | bars/ticker/factors/snapshots/ml_predictions/**ml_factory** | ✅ 0.3.0（2026-08-19 发布） |
 
