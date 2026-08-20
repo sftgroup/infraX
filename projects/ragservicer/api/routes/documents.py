@@ -58,6 +58,7 @@ def register(api: Blueprint):
                 "task_id": task_id,
                 "status": "queued",
                 "doc_id": doc_id,
+                "deduplicated": None,  # 去重结果在执行完成后写入任务 result（GET /tasks/{id}）
             }, status=202)
 
         result = eng_insert(_tenant, namespace, text, doc_id)
@@ -85,6 +86,7 @@ def register(api: Blueprint):
                 "task_id": task_id,
                 "status": "queued",
                 "count": len(documents),
+                "deduplicated": None,  # 每篇处置在执行完成后写入任务 result（indexed / duplicate / error）
             }, status=202)
 
         result = insert_documents_batch(_tenant, namespace, documents)

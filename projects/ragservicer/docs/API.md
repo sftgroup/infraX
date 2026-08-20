@@ -148,15 +148,45 @@ POST /api/v1/namespaces/{namespace}/documents
 | `doc_id` | string | 否 | `"document.txt"` | 唯一文档标识，建议用文件名 |
 | `metadata` | object | 否 | `{}` | 自定义元数据（暂未实现） |
 
-**响应** `200`:
+**响应** `201`（同步插入；`async:false` 或 `?sync=1`）:
 ```json
 {
-  "success": true,
-  "doc_id": "intro.md",
-  "tenant": "my-project",
-  "namespace": "docs"
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "doc_id": "intro.md",
+    "tenant": "my-project",
+    "namespace": "docs",
+    "deduplicated": false,
+    "status": "indexed"
+  }
 }
 ```
+
+**响应** `202`（默认异步写队列）:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "task_id": "task_42",
+    "status": "queued",
+    "doc_id": "intro.md",
+    "deduplicated": null
+  }
+}
+```
+
+> **去重透出（P1，2026-08-21）**：LightRAG 内部去重（内容哈希/文件名/文件名冲突）命中时
+> 文档不会入索引。同步响应与任务结果（`GET .../tasks/{task_id}` 的 `result`）携带
+> `deduplicated` 真实处置：
+>
+> | 字段 | 类型 | 说明 |
+> |------|------|------|
+> | `deduplicated` | bool/null | `true` = 被去重未入索引；`false` = 已正常处置；异步 202 阶段为 `null`（待执行） |
+> | `status` | string | `"indexed"` / `"duplicate"` / `"error"` / `"indexing"` |
+> | `dedup_reason` | string | 仅去重时：`file_name_dup` / `content_hash_dup` / `filename_conflict` / `unknown` |
+> | `matched_doc_id` | string/null | 仅去重时：命中的已存在文档 doc_id（filename_conflict 为 null） |
 
 **错误**:
 - `400`: `text` 为空
@@ -184,15 +214,41 @@ POST /api/v1/namespaces/{namespace}/documents/batch
 
 > 单批次最多 50 篇。
 
-**响应** `200`:
+**响应** `201`（同步）:
 ```json
 {
-  "success": true,
-  "count": 2,
-  "tenant": "my-project",
-  "namespace": "docs"
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "count": 2,
+    "tenant": "my-project",
+    "namespace": "docs",
+    "results": [
+      { "deduplicated": false, "status": "indexed" },
+      { "deduplicated": true, "dedup_reason": "content_hash_dup", "matched_doc_id": "file1.md", "status": "duplicate" }
+    ]
+  }
 }
 ```
+
+**响应** `202`（默认异步写队列）:
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "task_id": "task_43",
+    "status": "queued",
+    "count": 2,
+    "deduplicated": null
+  }
+}
+```
+
+> **批量逐篇执行（P1，2026-08-21）**：批量改为逐篇走单文档插入路径（修复生产环境
+> batch 异步任务不执行、文档永久 indexing 的问题）。任务完成后
+> `GET .../tasks/{task_id}` 的 `result` 携带 `results` 数组 = 每篇文档的最终处置
+> （`indexed` / `duplicate` / `error`），而非仅 success。
 
 ---
 
@@ -214,29 +270,50 @@ GET /api/v1/namespaces/{namespace}/documents
 **响应** `200`:
 ```json
 {
-  "namespace": "docs",
-  "documents": [
-    {
-      "doc_id": "intro.md",
-      "size_bytes": 12500,
-      "chunk_count": 8,
-      "created_at": "2026-07-30T08:30:00Z",
-      "status": "indexed"
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "limit": 20
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "namespace": "docs",
+    "tenant": "my-project",
+    "documents": [
+      {
+        "doc_id": "intro.md",
+        "tenant": "my-project",
+        "namespace": "docs",
+        "size_bytes": 12500,
+        "chunk_count": 8,
+        "created_at": "2026-07-30T08:30:00Z",
+        "status": "indexed"
+      },
+      {
+        "doc_id": "dup-a1b2c3",
+        "tenant": "my-project",
+        "namespace": "docs",
+        "size_bytes": 12500,
+        "chunk_count": 0,
+        "created_at": "2026-07-30T09:00:00Z",
+        "status": "duplicate",
+        "dedup_reason": "content_hash_dup",
+        "matched_doc_id": "intro.md"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "limit": 20
+  }
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `doc_id` | string | 文档标识 |
+| `doc_id` | string | 文档标识（被去重时为 `dup-<md5>` 记录） |
+| `tenant` / `namespace` | string | 文档所属租户与命名空间（列表按 URL + 认证 key 隔离，用于调用方对账） |
 | `size_bytes` | int | 原始文本大小 |
-| `chunk_count` | int | 分块数量 |
+| `chunk_count` | int | 分块数量（被去重恒为 `0`） |
 | `created_at` | string | ISO 8601 时间 |
-| `status` | string | `"indexed"` / `"indexing"` / `"error"` |
+| `status` | string | `"indexed"` / `"indexing"` / `"error"` / `"duplicate"`（不再恒显 indexing） |
+| `dedup_reason` | string | 仅 `duplicate`：`file_name_dup` / `content_hash_dup` / `filename_conflict` / `unknown` |
+| `matched_doc_id` | string | 仅 `duplicate`：命中的已存在文档 doc_id |
 
 ---
 

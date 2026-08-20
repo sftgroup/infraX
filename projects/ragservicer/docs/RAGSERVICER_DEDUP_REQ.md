@@ -4,6 +4,7 @@
 > 提交日期：2026-08-21
 > 目标仓库：sftgroup/infraX（`projects/ragservicer/` 模块）
 > 优先级：P1（影响所有依赖上传结果判断的集成方）
+> 实施状态：**已实施**（2026-08-21，详见 §8 实施记录）
 
 ---
 
@@ -71,3 +72,21 @@ LightRAG 流水线内置三通道去重（`pipeline.py`，约 L1290-1380）：
 
 - 平台：AIServicer（aiservicer.0xainet.top）
 - 如需联调验证用例或访问凭证，请通过 InfraX 对接渠道联系我方。
+
+---
+
+## 8. 实施记录（2026-08-21）
+
+> 对应期望改进 1–4，代码引用 `projects/ragservicer/`。
+
+| # | 期望改进 | 实施 |
+|---|---|---|
+| 1 | 去重决策透出 | `api/engine.py`：`_insert_one` 在 insert 后比对 FAILED 桶增量（`_disposition_from_failed`），识别 `dup-*` 记录并透出 `deduplicated` / `dedup_reason`（`file_name_dup` / `content_hash_dup` / `filename_conflict`）/ `matched_doc_id`；列表接口（`list_documents`）对 `dup-*` 记录标记 `status: "duplicate"` + `chunks: 0`，不再恒显 indexing；响应字段文档见 `docs/API.md` §4.1–4.3 |
+| 2 | 任务结果携带逐篇处置 | `tasks.py` 任务 `result` 字段透出 disposition；batch 任务的 `result.results[]` 为每篇最终处置（indexed / duplicate / error） |
+| 3 | batch 同步反馈 / 修复异步不执行 | `_insert_batch_coro` 由"合并单次插入"改为**逐篇走单文档路径**（复用经生产验证的 `_insert_one`），`?sync=1` 或 `async:false` 直接返回 `results[]`；同步函数 `insert_documents_batch` 同口径 |
+| 4 | 列表按租户/namespace 过滤 | 列表本就按 `(tenant, namespace)` 实例隔离；补 `tenant` / `namespace` 字段到每篇文档 JSON 供调用方对账 |
+
+**关键修复**：`ainsert` 显式传 `file_paths=[doc_id]`（原默认 `"unknown_source"`，filename 去重与 dup 记录无法按 doc_id 对账）。
+
+**验证**：`pytest tests/test_dedup.py` 10/10 通过；`compileall` 全量编译通过。
+**SDK**：python `insert`/`insert_batch` 默认改为同步（`async:false`），调用方可直接读取 `deduplicated` 处置；docstring 同步更新。

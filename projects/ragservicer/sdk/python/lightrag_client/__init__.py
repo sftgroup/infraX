@@ -78,19 +78,28 @@ class LightRAGClient:
     # ── Documents ─────────────────────────────────────
 
     def insert(self, namespace: str, text: str, doc_id: str) -> dict:
-        """Insert a single document. Returns {doc_id, tenant, namespace}."""
+        """Insert a single document (sync; blocks until pipeline completes).
+
+        Returns {doc_id, tenant, namespace, deduplicated, status}.
+        When deduplicated is True (content was dropped by LightRAG dedup),
+        the result also carries dedup_reason and matched_doc_id.
+        """
         return self._post(
             f"/api/v1/namespaces/{namespace}/documents",
-            {"text": text, "doc_id": doc_id},
+            {"text": text, "doc_id": doc_id, "async": False},
         )
 
     def insert_batch(
         self, namespace: str, documents: list[dict]
     ) -> dict:
-        """Insert multiple documents. Each item: {text, doc_id}."""
+        """Insert multiple documents (sync; per-doc execution).
+
+        Each item: {text, doc_id}. Returns {count, results: [...]} where
+        results contains per-doc disposition (indexed / duplicate / error).
+        """
         return self._post(
             f"/api/v1/namespaces/{namespace}/documents/batch",
-            {"documents": documents},
+            {"documents": documents, "async": False},
         )
 
     def delete(self, namespace: str, doc_id: str) -> dict:
@@ -103,7 +112,12 @@ class LightRAGClient:
         self, namespace: str, page: int = 1, limit: int = 20
     ) -> dict:
         """List documents in a namespace (paginated).
-        Returns {namespace, documents, total, page, limit}."""
+
+        Returns {namespace, tenant, documents, total, page, limit}. Each
+        document carries its real status (indexed / indexing / error /
+        duplicate) — deduplicated entries also expose dedup_reason and
+        matched_doc_id.
+        """
         return self._request(
             "GET",
             f"/api/v1/namespaces/{namespace}/documents?page={page}&limit={limit}",

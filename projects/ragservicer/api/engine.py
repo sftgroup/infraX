@@ -109,6 +109,77 @@ def get_rag(tenant_id: str, namespace: str = "default"):
 # 写操作 coroutine 工厂：实际执行逻辑唯一实现，供同步（MCP/legacy）与
 # 异步（REST 写队列）两条路径复用。所有 LightRAG 调用仍在全局循环执行。
 
+# ── 去重决策透出（RAGSERVICER_DEDUP_REQ，P1） ──────────────
+# LightRAG 流水线内部三通道去重（filename / content_hash / filename_conflict）
+# 命中后仅生成 `dup-<md5>` FAILED 记录，内容不入索引；本模块在 insert 后
+# 比对 FAILED 桶增量，把"被丢弃"透出给调用方（响应体 + 任务结果 + 列表状态）。
+
+# LightRAG 内部 duplicate_kind → API 稳定语义（供调用方对账）
+_DEDUP_REASON_MAP = {
+    "filename": "file_name_dup",
+    "content_hash": "content_hash_dup",
+    "filename_conflict": "filename_conflict",
+}
+
+
+def _disposition_from_failed(after_failed: dict, before_ids: set) -> dict | None:
+    """纯函数：比对 insert 前后 FAILED 桶增量，返回去重处置（无增量 → None）。
+
+    - 新增 `dup-*` 记录 = 本次插入被去重（未入索引）；
+    - 真失败文档以自身 doc_id 出现在 FAILED 桶，不会误判。
+    """
+    new = {k: v for k, v in after_failed.items() if k not in before_ids}
+    for dup_id, st in new.items():
+        if not str(dup_id).startswith("dup-"):
+            continue
+        meta = getattr(st, "metadata", None) or {}
+        return {
+            "deduplicated": True,
+            "dedup_reason": _DEDUP_REASON_MAP.get(str(meta.get("duplicate_kind", "")), "unknown"),
+            "matched_doc_id": meta.get("original_doc_id") or None,
+            "status": "duplicate",
+        }
+    return None
+
+
+async def _get_docs_by_ids(rag, doc_id: str) -> dict:
+    """跨版本取文档状态：优先 aget_docs_by_ids（v1.5+），回退 get_docs_by_ids。"""
+    fn = getattr(rag, "aget_docs_by_ids", None) or getattr(rag, "get_docs_by_ids", None)
+    if fn is None:
+        return {}
+    res = fn([doc_id])
+    if asyncio.iscoroutine(res):
+        return await res
+    return res
+
+
+async def _insert_one(rag, text: str, doc_id: str) -> dict:
+    """单文档 upsert + 去重检测（batch 与单篇共用的唯一实现）。
+
+    ⚠️ 必须显式传 file_paths=[doc_id]：不传时 LightRAG 把 file_path 存为
+    "unknown_source"，filename 去重与 dup 记录将无法按 doc_id 对账。
+    """
+    from lightrag.base import DocStatus
+
+    before_ids = set((await rag.get_docs_by_status(DocStatus.FAILED)).keys())
+    try:
+        await rag.adelete_by_doc_id(doc_id)
+    except Exception:
+        logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
+    await rag.ainsert(text, ids=doc_id, file_paths=[doc_id])
+
+    after = await rag.get_docs_by_status(DocStatus.FAILED)
+    disposition = _disposition_from_failed(after, before_ids)
+    if disposition is not None:
+        return disposition
+
+    # 未被去重：以文档自身状态为准（processed → indexed / failed → error / 其他 → indexing）
+    by_id = await _get_docs_by_ids(rag, doc_id)
+    st = by_id.get(doc_id)
+    status = _map_doc_status(str(getattr(st, "status", ""))) if st is not None else "indexing"
+    return {"deduplicated": False, "status": status}
+
+
 def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
     """任务工厂：worker 线程先预初始化实例（loop 外），再返回注入 coroutine。
 
@@ -120,26 +191,22 @@ def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
 
         async def _do():
             rag = get_rag(tenant_id, namespace)
-            try:
-                await rag.adelete_by_doc_id(doc_id)
-            except Exception:
-                logger.debug(f"Doc {doc_id} not found for pre-delete, safe to insert")
-            await rag.ainsert(text, ids=doc_id)
+            return await _insert_one(rag, text, doc_id)
         return _do()
     return _factory
 
 
 def _insert_batch_coro(tenant_id: str, namespace: str, documents: list[dict]):
-    texts = [d["text"] for d in documents]
-    ids = [d.get("doc_id", f"doc_{i}") for i, d in enumerate(documents)]
-
+    """批量任务工厂：逐篇走单文档路径（修复 batch 异步不执行 + 提供逐篇处置）。"""
     def _factory():
         get_rag(tenant_id, namespace)
 
         async def _do():
             rag = get_rag(tenant_id, namespace)
-            combined = "\n\n---\n\n".join(texts)
-            await rag.ainsert(combined, ids="|".join(ids))
+            results = []
+            for i, doc in enumerate(documents):
+                results.append(await _insert_one(rag, doc["text"], doc.get("doc_id", f"doc_{i}")))
+            return {"results": results, "count": len(results)}
         return _do()
     return _factory
 
@@ -156,15 +223,23 @@ def _delete_coro(tenant_id: str, namespace: str, doc_id: str):
 
 
 def insert_document(tenant_id: str, namespace: str, text: str, doc_id: str) -> dict:
-    """同步插入（MCP / legacy 使用，请求线程会阻塞到完成）。"""
-    _run_async(_insert_coro(tenant_id, namespace, text, doc_id)())
-    return {"doc_id": doc_id, "tenant": tenant_id, "namespace": namespace}
+    """同步插入（MCP / legacy 使用，请求线程会阻塞到完成）。
+
+    返回含去重处置：deduplicated / dedup_reason / matched_doc_id / status。
+    """
+    disposition = _run_async(_insert_coro(tenant_id, namespace, text, doc_id)())
+    return {"doc_id": doc_id, "tenant": tenant_id, "namespace": namespace, **disposition}
 
 
 def insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]) -> dict:
-    """同步批量插入（MCP / legacy 使用）。"""
-    _run_async(_insert_batch_coro(tenant_id, namespace, documents)())
-    return {"count": len(documents), "tenant": tenant_id, "namespace": namespace}
+    """同步批量插入（MCP / legacy 使用）。逐篇执行，返回每篇处置明细。"""
+    result = _run_async(_insert_batch_coro(tenant_id, namespace, documents)())
+    return {
+        "count": result["count"],
+        "tenant": tenant_id,
+        "namespace": namespace,
+        "results": result["results"],
+    }
 
 
 def delete_document(tenant_id: str, namespace: str, doc_id: str) -> dict:
@@ -299,16 +374,26 @@ def list_documents(tenant_id: str, namespace: str, page: int = 1, limit: int = 2
 
     documents = []
     for doc_id, st in paged:
-        documents.append({
+        # 去重记录透出（RAGSERVICER_DEDUP_REQ：status 不再恒显 indexing）
+        meta = getattr(st, "metadata", None) or {}
+        is_dup = str(doc_id).startswith("dup-") or meta.get("is_duplicate") is True
+        entry = {
             "doc_id": doc_id,
+            "tenant": tenant_id,
+            "namespace": namespace,
             "size_bytes": getattr(st, "content_length", 0),
             "chunk_count": getattr(st, "chunks_count", 0) or 0,
             "created_at": getattr(st, "created_at", ""),
-            "status": _map_doc_status(str(getattr(st, "status", ""))),
-        })
+            "status": "duplicate" if is_dup else _map_doc_status(str(getattr(st, "status", ""))),
+        }
+        if is_dup:
+            entry["dedup_reason"] = _DEDUP_REASON_MAP.get(str(meta.get("duplicate_kind", "")), "unknown")
+            entry["matched_doc_id"] = meta.get("original_doc_id") or None
+        documents.append(entry)
 
     return {
         "namespace": namespace,
+        "tenant": tenant_id,
         "documents": documents,
         "total": total,
         "page": page,
