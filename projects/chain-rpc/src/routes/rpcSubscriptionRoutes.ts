@@ -13,6 +13,7 @@ import {
   verifyWebhookSignature, monthStart,
 } from '../services/rpcSubscription';
 import { timingSafeEqualStr } from '../utils/timingSafe';
+import { walletAuth } from '../middleware/walletAuth';
 
 const router = Router();
 
@@ -64,6 +65,97 @@ router.post('/issue-key', asyncHandler(async (req, res) => {
     message: 'ok',
     data: { keyId: row.id, kind: kKind, rpcKey: raw, planId: row.rpc_plan_id, status: 'active', note: 'rpcKey shown once — store it securely' },
   });
+}));
+
+// POST /v1/subscription/wallet-issue-key — 钱包自助签发 rx_ 读 key（钱包签名鉴权，对齐 DC my-keys）
+// 幂等：每钱包最多一个 active rx_ key；重复签发仅返回掩码（明文不落库，仅签发时展示一次）。
+router.post('/wallet-issue-key', walletAuth, asyncHandler(async (req, res) => {
+  const wallet: string = req.walletAddress;
+  const { label } = req.body ?? {};
+  const existing = await rpcPool.query(
+    `SELECT id, key_prefix, key_tail, rpc_plan_id, rpc_sub_status
+     FROM rpc_keys WHERE wallet_address = $1 AND enabled = true
+     ORDER BY id DESC LIMIT 1`,
+    [wallet]
+  );
+  if (existing.rows.length > 0) {
+    const k = existing.rows[0];
+    return res.json({
+      code: 0,
+      message: 'ok',
+      data: {
+        alreadyExists: true,
+        keyId: k.id,
+        maskedKey: `${k.key_prefix}…${k.key_tail}`,
+        planId: k.rpc_plan_id,
+        status: k.rpc_sub_status,
+        note: 'key 明文不落库 — 请使用之前保存的 key，或联系管理员重签。',
+      },
+    });
+  }
+  const raw = generateRpcKey('read');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  const r = await rpcPool.query(
+    `INSERT INTO rpc_keys (label, key_hash, key_prefix, key_tail, rpc_plan_id, rpc_sub_status, wallet_address)
+     VALUES ($1, $2, $3, $4, '${RPC_FREE_PLAN_ID}', 'active', $5)
+     RETURNING id, rpc_plan_id`,
+    [label || 'wallet rx key', hash, raw.slice(0, 8), raw.slice(-4), wallet]
+  );
+  const row = r.rows[0];
+  logger.info('[chain-rpc] wallet rpc key issued', { keyId: row.id, wallet });
+  res.status(201).json({
+    code: 0,
+    message: 'ok',
+    data: {
+      alreadyExists: false,
+      keyId: row.id,
+      rpcKey: raw,
+      maskedKey: `${raw.slice(0, 8)}…${raw.slice(-4)}`,
+      planId: row.rpc_plan_id,
+      status: 'active',
+      note: 'rpcKey shown once — store it securely',
+    },
+  });
+}));
+
+// GET /v1/subscription/wallet-me — 钱包维度查询本人 keys + 套餐 + 当月用量（掩码，不暴露明文）
+router.get('/wallet-me', walletAuth, asyncHandler(async (req, res) => {
+  const wallet: string = req.walletAddress;
+  const [keysResult, usageResult] = await Promise.all([
+    rpcPool.query(
+      `SELECT id, label, key_prefix, key_tail, rpc_plan_id, rpc_sub_status, rpc_payment_method,
+              enabled, created_at
+       FROM rpc_keys WHERE wallet_address = $1 ORDER BY id DESC`,
+      [wallet]
+    ),
+    rpcPool.query(
+      `SELECT k.id, COUNT(u.id)::int AS total
+       FROM rpc_keys k
+       LEFT JOIN rpc_usage u ON u.key_id = k.id AND u.timestamp >= $2
+       WHERE k.wallet_address = $1
+       GROUP BY k.id`,
+      [wallet, monthStart()]
+    ),
+  ]);
+  const usageMap: Record<number, number> = {};
+  for (const u of usageResult.rows) usageMap[u.id] = u.total;
+  const keys = keysResult.rows.map((k: any) => {
+    const plan = RPC_PLANS.find((p) => p.id === k.rpc_plan_id) || RPC_PLANS[0];
+    return {
+      keyId: k.id,
+      label: k.label,
+      maskedKey: `${k.key_prefix}…${k.key_tail}`,
+      planId: plan.id,
+      planName: plan.name,
+      monthlyQuota: plan.features.callsPerMonth,
+      currentUsage: usageMap[k.id] || 0,
+      status: k.rpc_sub_status,
+      paymentMethod: k.rpc_payment_method || null,
+      enabled: k.enabled,
+      createdAt: k.created_at,
+    };
+  });
+  res.json({ code: 0, message: 'ok', data: { wallet, keys, plans: RPC_PLANS } });
 }));
 
 // POST /v1/subscription/checkout — 发起订阅支付（rx_ key 鉴权）

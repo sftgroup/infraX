@@ -35,12 +35,30 @@ function b2bAccess(rows) {
 // ─── Chain RPC ──────────────────────────────────────────────────────
 const RPC_CHAINS = ['sepolia', 'ethereum', 'bsc', 'base', 'oxa', 'polygon', 'arbitrum', 'optimism', 'xlayer', 'solana'];
 
+// W-8: 套餐静态默认（/v1/subscription/plans 拉取真实目录后刷新）
+const RPC_DEFAULT_PLANS = [
+  { id: 'rpc_free', name: 'Free', price: 0, badge: 'Free', emoji: '🆓', features: ['10,000 calls/mo', '5GB bandwidth', '10 concurrent'] },
+  { id: 'rpc_pro', name: 'Pro', price: 79, badge: 'Popular', emoji: '⚡', features: ['100,000 calls/mo', '50GB bandwidth', '50 concurrent'] },
+  { id: 'rpc_enterprise', name: 'Enterprise', price: 299, badge: 'Enterprise', emoji: '🏭', features: ['1,000,000 calls/mo', '500GB bandwidth', '200 concurrent'] },
+];
+
+function rpcPlanCard(p) {
+  var featured = p.id === 'rpc_free' ? ' style="border-color:var(--brand)"' : (p.id === 'rpc_pro' ? ' class="waas-plan-pro"' : '');
+  return '<div class="waas-plan"' + featured + ' data-plan="' + p.id + '" onclick="rpcSubscribe(\'' + p.id + '\')">' +
+    '<div class="waas-plan-badge">' + p.badge + '</div>' +
+    '<div class="waas-plan-name">' + p.emoji + ' RPC ' + p.name + '</div>' +
+    '<div class="waas-plan-price">$' + p.price + '</div><div class="waas-plan-period">/mo</div>' +
+    '<div class="waas-plan-features">' + p.features.join('<br>') + '</div>' +
+    '<button class="btn btn-primary" style="margin-top:12px;width:100%">' + (p.price === 0 ? 'Get Started' : 'Subscribe') + '</button>' +
+    '</div>';
+}
+
 function rpcInit() {
   var root = document.getElementById('rpc-root');
   if (!root || root.dataset.loaded) return;
   root.dataset.loaded = '1';
   root.innerHTML =
-    '<div class="waas-intro" style="max-width:760px;margin:0 auto">' +
+    '<div class="waas-intro" style="max-width:820px;margin:0 auto">' +
       '<div class="waas-intro-hero">' +
         '<div class="waas-intro-icon">🔗</div>' +
         '<h2>Chain RPC — 多链 JSON-RPC 网关</h2>' +
@@ -56,7 +74,15 @@ function rpcInit() {
           ['内网入口', 'http://&lt;host&gt;:9130'],
           ['认证', 'X-API-Key: rx_xxxx（读）/ bx_xxxx（广播）'],
         ]) +
-        '<div class="waas-intro-note">状态为面板健康检查结果；套餐与用量请通过管理端或 API 订阅接口查询。</div>' +
+        // W-8: 套餐订阅 + 自助签发 key（解决"进入后看不到选择套餐"）
+        '<div style="margin-top:28px;text-align:left">' +
+          '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:12px">选择套餐 · 自助订阅</div>' +
+          '<div class="waas-plan-row" id="rpc-plan-row">' +
+            RPC_DEFAULT_PLANS.map(rpcPlanCard).join('') +
+          '</div>' +
+          '<div id="rpc-sub-status" style="text-align:center;margin-bottom:16px;font-size:13px;min-height:20px"></div>' +
+          '<div id="rpc-my-sub"></div>' +
+        '</div>' +
       '</div>' +
       '<div class="enhanced-card" style="margin-top:24px;text-align:left;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:18px 22px">' +
         '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:4px">链上事件 · DC 解析增强</div>' +
@@ -80,6 +106,220 @@ function rpcInit() {
     '</div>';
   b2bHealthBar('rpc', 'b2b-rpc-health');
   rpcLoadStats();
+  rpcLoadPlans();
+  rpcLoadMySub();
+}
+
+// W-8: 拉取真实套餐目录（价格/配额随后端更新）
+function rpcLoadPlans() {
+  fetch('/api/v2/rpc/v1/subscription/plans')
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.data || !Array.isArray(j.data)) return;
+      var row = document.getElementById('rpc-plan-row');
+      if (!row) return;
+      row.innerHTML = j.data.map(function (p) {
+        var f = [
+          formatNumber(p.features.callsPerMonth) + ' calls/mo',
+          p.features.bandwidth + ' bandwidth',
+          p.features.concurrent + ' concurrent',
+        ];
+        var card = {
+          id: p.id, badge: p.id === 'rpc_pro' ? 'Popular' : (p.name.split(' ')[1] || p.id.split('_')[1]),
+          emoji: p.id === 'rpc_free' ? '🆓' : (p.id === 'rpc_pro' ? '⚡' : '🏭'),
+          name: p.name.split(' ').slice(1).join(' ') || p.name, price: p.price, features: f,
+        };
+        return rpcPlanCard(card);
+      }).join('');
+    })
+    .catch(function () {});
+}
+
+// W-8: 钱包维度"我的订阅"（keys 掩码 + 套餐 + 当月用量）
+function rpcWallet() { try { return user().walletAddress || ''; } catch (e) { return ''; } }
+
+function rpcMySubHtml(noWallet) {
+  if (noWallet) {
+    return '<div style="text-align:center;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">' +
+      '<div style="font-size:34px;margin-bottom:10px">🔌</div>' +
+      '<div style="font-size:15px;color:var(--gold-light);margin-bottom:6px">Connect wallet to subscribe &amp; get your rx_ key</div>' +
+      '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a></div>';
+  }
+  return '<div style="text-align:center;padding:14px;color:var(--text-muted);font-size:13px">Loading your subscription…</div>';
+}
+
+function rpcLoadMySub() {
+  var el = document.getElementById('rpc-my-sub');
+  if (!el) return;
+  var wallet = rpcWallet();
+  if (!wallet) { el.innerHTML = rpcMySubHtml(true); return; }
+  el.innerHTML = rpcMySubHtml(false);
+  afetch('/api/v2/rpc/v1/subscription/wallet-me', { auth: 'wallet' })
+    .then(function (d) {
+      var keys = (d && Array.isArray(d.keys)) ? d.keys : [];
+      if (!keys.length) {
+        el.innerHTML = '<div style="text-align:center;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">' +
+          '<div style="font-size:30px;margin-bottom:10px">🔑</div>' +
+          '<div style="font-size:15px;color:var(--gold-light);margin-bottom:4px">还没有 rx_ 读 key</div>' +
+          '<div style="font-size:12.5px;color:var(--text-tertiary);margin-bottom:14px">点击上方套餐卡片，免费套餐即刻签发可用</div>' +
+          '<button class="btn btn-primary" onclick="rpcIssueKey(\'rpc_free\')">🔑 签发免费 rx_ key</button></div>';
+        return;
+      }
+      el.innerHTML = '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;text-align:left">' +
+        '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:12px">我的订阅（' + keys.length + '）</div>' +
+        keys.map(function (k) {
+          var pct = k.monthlyQuota ? Math.min(100, Math.round((k.currentUsage / k.monthlyQuota) * 100)) : 0;
+          var st = k.status === 'active'
+            ? '<span class="status success">● active</span>'
+            : '<span style="color:var(--warning)">● ' + (k.status || 'pending') + '</span>';
+          return '<div style="display:flex;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">' +
+            '<code class="dc-mono" style="color:var(--gold-light)">' + k.maskedKey + '</code>' +
+            '<span style="font-size:13px">' + k.planName + '</span>' + st +
+            '<span style="font-size:12px;color:var(--text-tertiary)">' + formatNumber(k.currentUsage) + ' / ' + formatNumber(k.monthlyQuota) + '</span>' +
+            '<div style="flex:1;min-width:120px;height:8px;background:var(--surface);border-radius:4px;overflow:hidden">' +
+              '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--gold,#F0B90B),#d98e04)"></div></div>' +
+          '</div>';
+        }).join('') +
+        '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:10px">key 明文仅签发时展示一次（服务端只存哈希）。升级付费套餐需使用已保存的明文 key。</div>' +
+      '</div>';
+    })
+    .catch(function (e) {
+      el.innerHTML = '<div style="text-align:center;padding:14px;color:var(--error);font-size:13px">加载失败：' + (e.message || '请重新连接钱包') + '</div>';
+    });
+}
+
+// W-8: 确保钱包有 rx_ key（无则签发），返回 { key(明文|空), maskedKey, existing }
+function rpcEnsureKey() {
+  var saved = '';
+  try { saved = localStorage.getItem('px_rpc_key') || ''; } catch (e) {}
+  if (saved) return Promise.resolve({ key: saved, maskedKey: saved.slice(0, 8) + '…' + saved.slice(-4), existing: true });
+  return afetch('/api/v2/rpc/v1/subscription/wallet-issue-key', { method: 'POST', auth: 'wallet', body: {} })
+    .then(function (d) {
+      if (d && d.rpcKey) {
+        try { localStorage.setItem('px_rpc_key', d.rpcKey); } catch (e) {}
+        return { key: d.rpcKey, maskedKey: d.maskedKey, existing: false };
+      }
+      if (d && d.alreadyExists) {
+        // 已有 key 但明文丢失（未在本浏览器签发）
+        throw new Error('你已有 rx_ key（' + d.maskedKey + '），但明文仅签发时展示一次，无法在浏览器恢复。请使用当时保存的 key。');
+      }
+      throw new Error('签发失败，请重试');
+    });
+}
+
+// W-8: 签发 key 并展示（点击套餐卡片走 rpcSubscribe）
+function rpcIssueKey(planId) {
+  if (!rpcWallet()) { showToast('Connect wallet first', 'error'); return; }
+  var st = document.getElementById('rpc-sub-status');
+  if (st) st.innerHTML = '<span style="color:var(--text-muted)">⏳ 正在签发…</span>';
+  rpcEnsureKey()
+    .then(function (r) {
+      if (st) st.innerHTML = '<span style="color:var(--success)">✅ rx_ key 已就绪：<code class="dc-mono" style="color:var(--gold-light)">' + r.key + '</code></span>';
+      showToast('rx_ key issued — store it securely', 'success');
+      rpcLoadMySub();
+    })
+    .catch(function (e) {
+      if (st) st.innerHTML = '<span style="color:var(--error)">❌ ' + (e.message || '签发失败') + '</span>';
+    });
+}
+
+// W-8: 订阅入口——免费直接激活；付费先确保 key 再 checkout
+function rpcSubscribe(planId) {
+  if (!rpcWallet()) { showToast('Connect wallet first', 'error'); return; }
+  var st = document.getElementById('rpc-sub-status');
+  function setStatus(html, ok) {
+    if (st) st.innerHTML = '<span style="color:' + (ok ? 'var(--success)' : 'var(--error)') + '">' + html + '</span>';
+  }
+  rpcEnsureKey()
+    .then(function (r) {
+      if (planId === 'rpc_free') {
+        setStatus('✅ Free 套餐已激活，rx_ key：<code class="dc-mono">' + r.key + '</code>', true);
+        showToast('RPC Free plan activated!', 'success');
+        rpcLoadMySub();
+        return;
+      }
+      return rpcCheckout(planId, r.key, setStatus);
+    })
+    .catch(function (e) { setStatus('❌ ' + (e.message || '订阅失败'), false); });
+}
+
+// W-8: 付费套餐发起支付（rx_ key 鉴权），对齐 DC 订阅支付流程
+function rpcCheckout(planId, key, setStatus) {
+  return afetch('/api/v2/rpc/v1/subscription/checkout', {
+    method: 'POST', auth: 'wallet',
+    headers: { 'x-rpc-key': key },
+    body: { plan_id: planId },
+  }).then(function (d) {
+    if (d.rpcSubStatus === 'active') {
+      if (setStatus) setStatus('✅ 套餐已激活', true);
+      showToast('RPC plan activated!', 'success');
+      rpcLoadMySub();
+      return;
+    }
+    var pay = d.payment;
+    if (!pay) { if (setStatus) setStatus('❌ 订阅失败，请重试', false); return; }
+    if (pay.rail === 'chain') {
+      var isNative = !pay.payToken || pay.payToken === '0x0000000000000000000000000000000000000000';
+      var amount = pay.price !== undefined ? (Number(pay.price) / 1e18).toFixed(4) + ' ' + (isNative ? 'ETH' : pay.payToken) : '';
+      if (setStatus) setStatus('⏳ 请在钱包完成链上订阅（chainId ' + pay.chainId + '）<br>' +
+        'SubscriptionManager: <code>' + pay.subscriptionManager + '</code><br>金额: <b>' + amount + '</b> / month<br>' +
+        '<small>支付确认后自动生效，请保持页面打开</small>', true);
+      showToast('等待链上支付确认…', 'info');
+      rpcPollSub(key, setStatus);
+    } else if (pay.rail === 'fiat') {
+      if (setStatus) setStatus('⏳ 跳转支付页…', true);
+      window.location.href = pay.sessionUrl;
+    } else if (pay.rail === 'x402') {
+      var amountEth = pay.priceWei ? (Number(pay.priceWei) / 1e18).toFixed(4) : '';
+      if (setStatus) setStatus('⏳ 请向 <code>' + pay.payTo + '</code> 转账 ' + amountEth + ' ETH（' + pay.network + '）<br><small>转账完成后提交 txHash</small>', true);
+      rpcSubmitX402(key);
+    } else {
+      if (setStatus) setStatus('❌ 不支持的支付方式：' + pay.rail, false);
+    }
+  }).catch(function (e) {
+    if (setStatus) setStatus('❌ ' + (e.message || '支付发起失败'), false);
+  });
+}
+
+// W-8: chain rail 支付状态轮询
+var rpcPollTimer = null;
+function rpcPollSub(key, setStatus) {
+  var started = Date.now();
+  if (rpcPollTimer) { clearInterval(rpcPollTimer); rpcPollTimer = null; }
+  rpcPollTimer = setInterval(function () {
+    afetch('/api/v2/rpc/v1/subscription/payment-check', {
+      method: 'POST', auth: 'wallet', headers: { 'x-rpc-key': key }, body: {},
+    }).then(function (d) {
+      if (d.status === 'active') {
+        clearInterval(rpcPollTimer); rpcPollTimer = null;
+        if (setStatus) setStatus('✅ 支付确认，套餐已激活', true);
+        showToast('RPC plan activated!', 'success');
+        rpcLoadMySub();
+      }
+    }).catch(function () {});
+    if (Date.now() - started > 5 * 60 * 1000) {
+      clearInterval(rpcPollTimer); rpcPollTimer = null;
+      if (setStatus) setStatus('⏰ 等待支付超时，请确认已支付后重试', false);
+    }
+  }, 4000);
+}
+
+// W-8: x402 rail — 提示输入 txHash 并 verify 激活
+function rpcSubmitX402(key) {
+  var txHash = window.prompt('请输入链上转账的交易哈希（txHash）:');
+  if (!txHash) return;
+  afetch('/api/v2/rpc/v1/subscription/verify', {
+    method: 'POST', auth: 'wallet', headers: { 'x-rpc-key': key }, body: { txHash: txHash },
+  }).then(function (d) {
+    if (d.verified && d.activated) {
+      showToast('支付已确认，套餐已激活!', 'success');
+      rpcLoadMySub();
+    } else if (d.verified) {
+      showToast('支付已确认，但未找到待处理订阅', 'error');
+    } else {
+      showToast('支付未确认', 'error');
+    }
+  }).catch(function (e) { showToast(e.message || '支付确认失败', 'error'); });
 }
 
 // 分类分布（event-stats，聚合表 O(1) 不扫事件表）

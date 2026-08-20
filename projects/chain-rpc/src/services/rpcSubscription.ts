@@ -53,12 +53,16 @@ export async function initRpcTables(): Promise<void> {
       rpc_payment_method VARCHAR(20),
       rpc_payment_ref VARCHAR(200),
       rpc_sub_updated_at TIMESTAMPTZ,
+      wallet_address TEXT,                 -- 钱包自助签发绑定（钱包维度查 my keys）
       enabled BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_rpc_keys_hash ON rpc_keys(key_hash);
+    ALTER TABLE rpc_keys ADD COLUMN IF NOT EXISTS wallet_address TEXT;
   `);
+  // W-8: 钱包维度查询（自助订阅 my keys），历史表自举兼容
+  await rpcPool.query(`CREATE INDEX IF NOT EXISTS idx_rpc_keys_wallet ON rpc_keys(wallet_address)`);
   // MQ-16 T-3: 请求级用量明细 + 日聚合（对齐 dc api_usage 结构）
   await rpcPool.query(`
     CREATE TABLE IF NOT EXISTS rpc_usage (
