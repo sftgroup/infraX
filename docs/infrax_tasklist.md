@@ -2341,6 +2341,7 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
   top list（volume24h）合并 price-info 批量（免费）→ 落库多时间窗（5M/1H/4H/24H 变化率）+ price/marketCap/liquidity/circSupply/maxPrice(ATH)/minPrice(ATL)/holderCount
 - 新增 `GET /api/v2/data/market/dex/token/history?chain&address&hours` → 画像时间序列（价格历史，5min 粒度）
 - 与既有 60s 价格快照（`okx_market_hot_tokens`/`okx_market_index_prices`）+ 5min K 线（`okx_market_candles`）共同构成完整历史价格层
+- **公网 nginx 规则（2026-08-21 修复）**：`location /api/v2/data/market/dex/ → web :9111`（位于 `/api/v2/data/ → dc :9102` 之前，nginx 最长前缀优先），否则 SDK 直连路径 `/api/v2/data/market/dex/*` 被 nginx 吞到 DC 返回 404；SDK 方法（`infrax.market.dex*`）与 `/api/dex/*` 两条公网路径均已端到端验证通过（collector 测试 8/8 + SDK 实测 OKX 100 币榜/SOL 新币榜/search/token 画像）
 
 **首批交付（P0：R1-R4，含 R1b）**：热门榜单（OKX 热度 + DexScreener 原生榜）+ 单币行情 + 社交热度 + 安全风险——直接支撑当前用户可选交易对面板与 DEX 策略风控。
 
