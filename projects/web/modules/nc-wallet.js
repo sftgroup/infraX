@@ -5,7 +5,7 @@ async function ncDash() {
   if (addrEl) addrEl.textContent = walletAddr ? fmtAddrLong(walletAddr) : "—";
 
   if (!walletAddr) {
-    document.getElementById("dash-active-count").textContent = "0/4";
+    document.getElementById("dash-active-count").textContent = "0/6";
     document.getElementById("dash-dc-plan").textContent = "—";
     document.getElementById("dash-waas-plan").textContent = "—";
     document.getElementById("dash-services-body").innerHTML =
@@ -65,18 +65,23 @@ async function ncDash() {
       setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
     }
 
-    // B2B API Services — 独立服务健康状态（非订阅型，无需激活）
+    // B2B API Services — 独立服务健康状态（非订阅型，无需激活）；健康即计入 Active Services
+    var healthActive = 0;
     (async function () {
       // Chain RPC :9130（/api/v2/rpc → chain-rpc 反代）
       try {
         var rpcResp = await fetch("/api/v2/rpc/health");
         setDashHealthRow("rpc", rpcResp.ok, "rx_ key", "rpc-gw.0xainet.top · JSON-RPC");
+        if (rpcResp.ok) healthActive++;
       } catch (e) { setDashHealthRow("rpc", false, "—", "Unreachable"); }
       // LightRAG :9721（/api/rag → ragservicer）
       try {
         var ragResp = await fetch("/api/rag/health");
         setDashHealthRow("lightrag", ragResp.ok, "lr_ key", "/api/rag · 知识图谱 RAG");
+        if (ragResp.ok) healthActive++;
       } catch (e) { setDashHealthRow("lightrag", false, "—", "Unreachable"); }
+      var kpiEl = document.getElementById("dash-active-count");
+      if (kpiEl) kpiEl.textContent = (activeCount + healthActive) + "/6";
     })();
 
     // A-9: 统一租户用量视图——聚合各产品线真实配额/余额（计费仍 per-product 分离，仅展示聚合）
@@ -128,8 +133,8 @@ async function ncDash() {
       '<table class="data-table"><thead><tr><th>Service</th><th>Plan</th><th>Used / Balance</th><th>Quota / Billing</th></tr></thead><tbody>' +
       rowsHtml + '</tbody></table>';
 
-    // KPI cards
-    document.getElementById("dash-active-count").textContent = activeCount + "/4";
+    // KPI cards（Active Services 最终计数由上面的健康检查异步块刷新到 /6）
+    document.getElementById("dash-active-count").textContent = activeCount + "/6";
     document.getElementById("dash-dc-plan").textContent = dcPlanName;
     document.getElementById("dash-waas-plan").textContent = waasPlan;
 

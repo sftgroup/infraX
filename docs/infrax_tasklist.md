@@ -2356,3 +2356,21 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 
 **验收依赖**：① DexScreener 免费层配额（60 req/min 需评估高频榜单缓存策略）；② OKX OnchainOS 各端点实测可用性（price-info/holders/trades/top-trader/security/signal 需逐一验证）；③ 交付后前端交易对面板切换双榜单来源联调。
 
+### 9.14 web 门户前端界面优化（2026-08-21）
+
+**背景**：主控台（`projects/web`，HTML+JS 多页门户）页面走查，修复数据陈旧与计数不一致问题。
+
+| # | 问题 | 修复 | 文件 |
+|---|---|---|---|
+| W-1 | Dashboard「Active Services」KPI 分母硬编码 `/4`，但服务表现已 6 行（rpc/dc/lightrag/mpc/waas/safe）且 rpc/lightrag 健康态未计入 | 分母改 `/6`；rpc/lightrag 健康检查通过后计入 `healthActive` 并刷新 KPI（未连接钱包态同步 `0/6`） | [nc-wallet.js](projects/web/modules/nc-wallet.js) |
+| W-2 | landing.html 统计陈旧：12 服务 / 5 条链 / 4 MCP | 更新为 14+ 服务 / 10 条链（chain-rpc `CHAIN_RPC_CHAINS` 支持 10 链）/ 7 MCP 路由（DEPLOYMENT.md `/mcp/*` 7 个子路由） | [landing.html](projects/web/landing.html) |
+| W-3 | landing.html Core Products 缺 Chain RPC / LightRAG / Smart Account 三款已上线产品 | 新增 3 张产品卡（含端口与入口）；Collector 卡「29 RPC endpoints / 5 chains」→「40+ / 10」 | [landing.html](projects/web/landing.html) |
+| W-4 | landing.html MCP 区仅 4 张卡（Wallet/Vault/DC/MPC），缺 Chain RPC / Market / Session Key | 补齐 3 张新 MCP 卡，标题改「Seven MCP routes」 | [landing.html](projects/web/landing.html) |
+| W-5 | landing.html 架构图「5 Chains / 29 RPC Endpoints」陈旧 | →「10 Chains / 40+ RPC Endpoints」（rpc-pool.json 实测 44 端点） | [landing.html](projects/web/landing.html) |
+| W-6 | topbar 链标签静态「Sepolia」，未接入 `activeChain` 动态态 | topbar 链标签改为可点击下拉（10 链：Sepolia/Ethereum/BSC/Base/OxaChain/Polygon/Arbitrum/Optimism/XLayer/Solana），`setActiveChain()` 更新 `activeChain` + localStorage(`px_chain`) 持久化 + 刷新标签；页面加载时恢复；切换后非托管页自动重载余额 | [core.js](projects/web/modules/core.js) · [index.html](projects/web/index.html) · [infrax.css](projects/web/modules/infrax.css) |
+| W-7 | 切换后的链未接入 WaaS / Safe 页面，下拉仍各自独立（且 `waas-token-chain` option value 是链名、`waasAddToken` 用 `parseInt` 恒得 NaN → 所有链被误当 Sepolia） | ① core.js 新增 `CHAIN_IDS` 映射（10 链 chainId）+ `syncChainSelectors()`：`setActiveChain()` 与页面加载时统一同步 4 个链下拉（`waas-token-chain` 用 chainId 值，`waas-addr/sweep/wd-chain` 与 `safe-chain` 用链名值）② `waas-token-chain` option value 改为 chainId 数字修复 parseInt bug ③ 4 个 WaaS 链下拉扩展为 10 链；Safe 创建表单新增 `safe-chain` 下拉（4 链，对齐 vault 后端 CHAIN_CONFIG）④ safe.js `safeCreate()` 读下拉链名→chainId、`safeExplorerBase()` 区块浏览器链接按 `safe.chainId`/`activeChain` 动态化 ⑤ waas.js `generateHotWallet` 用 `CHAIN_IDS[activeChain]`、热钱包提示文本动态化、tokens 列表链名反查显示 | [core.js](projects/web/modules/core.js) · [index.html](projects/web/index.html) · [waas.js](projects/web/modules/waas.js) · [safe.js](projects/web/modules/safe.js) |
+
+**验证**：`node --check` 通过；本地 :6100 起服后浏览器实测 landing.html（统计 14+/10/7、9 张产品卡、7 张 MCP 卡）与 index.html（无 JS 报错、侧边栏 11 项导航）均正常；topbar 链切换全流程（默认 Sepolia → 展开 10 链下拉 → 选中 BSC 标签更新/下拉关闭/toast/持久化 → 重新打开 BSC ✓）实测通过、console 零报错。W-7：WaaS 4 个链下拉（Tokens/Addresses/Sweep/Withdrawals，10 选项）+ Safe 链下拉（4 选项）存在且初始值=activeChain；`px_chain=bsc` 持久化恢复后 topbar 与全部下拉同步为 BSC（token 下拉 = 56）；UI 切 Arbitrum → 4 个 WaaS 下拉同步（token=42161），safe-chain 因无该链选项保持原值（符合 vault 4 链限制）；UI 切 Base → 含 safe-chain 全部同步（token=8453）；console 零报错。
+
+**遗留**：交易对面板双榜单（OKX + DexScreener）来源联调待 AIHunter 前端接入（见 9.13 验收依赖③）。
+

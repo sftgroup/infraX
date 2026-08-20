@@ -99,10 +99,10 @@
 <!-- Stats -->
 <div class="container">
   <div class="stats">
-    <div class="stat"><div class="stat-num">12</div><div class="stat-label">Services Running</div></div>
-    <div class="stat"><div class="stat-num">5</div><div class="stat-label">Blockchain Networks</div></div>
+    <div class="stat"><div class="stat-num">14+</div><div class="stat-label">Services Running</div></div>
+    <div class="stat"><div class="stat-num">10</div><div class="stat-label">Blockchain Networks</div></div>
     <div class="stat"><div class="stat-num">2.1M+</div><div class="stat-label">On-chain Events</div></div>
-    <div class="stat"><div class="stat-num">4</div><div class="stat-label">MCP Servers</div></div>
+    <div class="stat"><div class="stat-num">7</div><div class="stat-label">MCP Routes</div></div>
   </div>
 </div>
 
@@ -152,9 +152,30 @@
     <div class="card">
       <span class="card-icon">🔍</span>
       <h3>Collector</h3>
-      <p>High-performance on-chain data ingestion engine. Scans 29 RPC endpoints across 5 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
+      <p>High-performance on-chain data ingestion engine. Scans 40+ RPC endpoints across 10 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
       <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
       <div class="port">Port :9101 · 2.1M events indexed</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔗</span>
+      <h3>Chain RPC — JSON-RPC Gateway</h3>
+      <p>Multi-chain JSON-RPC gateway for B-side integrations. 10 networks with read (<code>rx_</code>) / broadcast (<code>bx_</code>) key separation, ethers / viem drop-in access.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :9130 · rpc-gw.0xainet.top</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔎</span>
+      <h3>LightRAG — Knowledge Graph RAG</h3>
+      <p>Multi-tenant document knowledge base: upload → graph index → semantic retrieval. Tenant + namespace isolation with <code>X-Tenant-ID</code> sharding, REST + MCP dual protocol.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :9721 · Multi-tenant RAG</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🤖</span>
+      <h3>Smart Account — ERC-4337 Sessions</h3>
+      <p>Account Abstraction with on-chain session keys. Fine-grained agent permissions, revocation, and rollover via batch UserOps — the SDK layer for AI agents.</p>
+      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
+      <div class="port">Port :9131 · aa-relay + aa-sdk</div>
     </div>
   </div>
 </div>
@@ -163,7 +184,7 @@
 <div class="section container">
   <div class="section-header">
     <h2>🤖 MCP — AI Agent Protocol</h2>
-    <p>Four MCP servers let AI agents interact with blockchain directly</p>
+    <p>Seven MCP routes let AI agents interact with blockchain directly</p>
   </div>
   <div class="grid grid-4">
     <div class="card">
@@ -193,6 +214,27 @@
       <p>Distributed key signing via MCP. Register key shards, coordinate signing sessions across parties.</p>
       <span class="tag tag-mcp">MCP</span>
       <div class="port">:9105 · Threshold signing</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🔗</span>
+      <h3>Chain RPC MCP</h3>
+      <p>Multi-chain JSON-RPC for agents — balance, block, contract reads and more across 10 networks.</p>
+      <span class="tag tag-mcp">MCP</span>
+      <div class="port">:9130 · 10 networks</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">📊</span>
+      <h3>Market MCP</h3>
+      <p>Financial market data for agents — ticker, K-lines, and DEX strategy data (hot tokens / risk / holders).</p>
+      <span class="tag tag-mcp">MCP</span>
+      <div class="port">:9101 · Market + DEX data</div>
+    </div>
+    <div class="card">
+      <span class="card-icon">🗝️</span>
+      <h3>Session Key MCP</h3>
+      <p>ERC-4337 session management for agents — create, revoke, and rollover on-chain session keys.</p>
+      <span class="tag tag-mcp">MCP</span>
+      <div class="port">:3011 · AA sessions</div>
     </div>
   </div>
 </div>
@@ -283,8 +325,8 @@
         <div class="arch-label">Data</div>
         <div class="arch-boxes">
           <div class="arch-box">🐘 PostgreSQL 16</div>
-          <div class="arch-box">⛓ 5 Chains</div>
-          <div class="arch-box">🔗 29 RPC Endpoints</div>
+          <div class="arch-box">⛓ 10 Chains</div>
+          <div class="arch-box">🔗 40+ RPC Endpoints</div>
           <div class="arch-box">💰 OKX ChainOS</div>
         </div>
       </div>

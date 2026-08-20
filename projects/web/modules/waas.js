@@ -434,7 +434,7 @@ async function waasTokens() {
       var addr = (t.contract_address || '').slice(0, 8) + '...' + (t.contract_address || '').slice(-6);
       return '<div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;margin-bottom:8px">' +
         '<div><div style="font-weight:600">' + sym + ' <span style="font-size:10px;color:var(--warning)">' + (
-          t.chain_id === 1 ? 'ETH' : t.chain_id === 56 ? 'BSC' : t.chain_id === 8453 ? 'BASE' : 'SEPOLIA'
+          (function() { var cid = String(t.chain_id); for (var k in CHAIN_IDS) if (String(CHAIN_IDS[k]) === cid) return (CHAIN_NAMES[k] || k).toUpperCase(); return cid; })()
         ) + '</span></div>' +
         '<div style="font-size:11px;color:var(--text-muted);font-family:monospace">' + (t.contract_address || '') + '</div></div>' +
         '<div style="text-align:right"><div style="font-size:11px;color:var(--text-muted)">Min Sweep</div><div style="font-size:13px;font-weight:600;color:var(--gold-light)">' + (t.min_sweep_amount || '0') + ' ' + sym + '</div></div></div>';
@@ -501,7 +501,7 @@ window.generateHotWallet = async function() {
   if (!waasActiveTenantId) { showToast('Activate WaaS first', 'error'); return; }
   try {
     showToast('Generating Hot Wallet...', 'info');
-    var d = await waasFetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/hot-wallet', { method: 'POST', body: { chainId: 11155111 } });
+    var d = await waasFetch('/api/v2/saas/tenants/' + waasActiveTenantId + '/hot-wallet', { method: 'POST', body: { chainId: CHAIN_IDS[activeChain] || 11155111 } });
     if (d && d.address) waasTenantData.hotWalletAddress = d.address;
     showToast('Hot Wallet created: ' + d.address.slice(0,10) + '...', 'success');
     // Refresh withdrawals panel to show new hot wallet
@@ -562,7 +562,7 @@ async function waasHotWalletLoad() {
       '<div class="waas-hw-cards">' + rows + '</div>' +
       '<button class="btn btn-sm waas-hw-regen" onclick="window.generateHotWallet()">🪙 Regenerate</button>';
   } else {
-    el.innerHTML = '<button class="btn btn-sm" style="background:var(--success);color:#fff" onclick="window.generateHotWallet()">🪙 Create Hot Wallet</button><span class="waas-hotwallet-hint">Sepolia Testnet</span>';
+    el.innerHTML = '<button class="btn btn-sm" style="background:var(--success);color:#fff" onclick="window.generateHotWallet()">🪙 Create Hot Wallet</button><span class="waas-hotwallet-hint">' + (CHAIN_NAMES[activeChain] || activeChain) + '</span>';
   }
 }
 

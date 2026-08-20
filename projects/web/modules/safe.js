@@ -96,12 +96,22 @@ function safeCreate() {
   var owners = ownersStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
   var threshold = parseInt(document.getElementById('safe-threshold').value) || 2;
   if (threshold > owners.length) return showToast('Threshold must be <= owner count', 'error');
+  // 链选择：safe-chain（链名）→ chainId；默认 activeChain
+  var chainSel = document.getElementById('safe-chain');
+  var chainName = chainSel && chainSel.value ? chainSel.value : activeChain;
+  var chainId = CHAIN_IDS[chainName] || 11155111;
   var btn = document.getElementById('safe-create-btn');
   btn.classList.add('btn-loading');
-  afetch('/api/vault/safe/create', { method: 'POST', body: { chainId: 11155111, owners: owners, threshold: threshold, name: name } })
+  afetch('/api/vault/safe/create', { method: 'POST', body: { chainId: chainId, owners: owners, threshold: threshold, name: name } })
     .then(function(d) { showToast('Safe deployed: ' + (d.address || '').slice(0, 12) + '...', 'success'); safeLoadOwned(); })
     .catch(function(e) { showToast(e.message, 'error'); })
     .finally(function() { btn.classList.remove('btn-loading'); });
+}
+
+// 链名 → 区块浏览器前缀（vault 支持 sepolia/ethereum/bsc/base）
+function safeExplorerBase(chainId) {
+  var map = { '11155111':'https://sepolia.etherscan.io', '1':'https://etherscan.io', '56':'https://bscscan.com', '8453':'https://basescan.org' };
+  return map[String(chainId)] || 'https://sepolia.etherscan.io';
 }
 
 function safePropose() {
@@ -169,6 +179,7 @@ async function safeLoadDetail(address, overlay) {
       body.innerHTML = info + '<div style="padding:28px;text-align:center;color:var(--text-muted)">No transactions — 用 Propose 发起第一笔</div>';
       return;
     }
+    var explorerBase = safeExplorerBase(safe.chainId || CHAIN_IDS[activeChain]);
     var rows = txs.map(function(t) {
       var canConfirm = t.status === 'pending';
       var canExecute = t.status === 'ready';
@@ -182,7 +193,7 @@ async function safeLoadDetail(address, overlay) {
         '<td style="white-space:nowrap">' +
           (canConfirm ? '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:3px 8px" onclick="safeConfirmTx(\'' + address + '\',\'' + t.safe_tx_hash + '\')">✍️ 签名</button> ' : '') +
           (canExecute ? '<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:var(--success);color:#fff;border:none" onclick="safeExecuteTx(\'' + t.safe_tx_hash + '\')">🚀 执行</button>' : '') +
-          (t.tx_hash ? '<a class="mono" style="font-size:10px;color:var(--text-muted)" href="https://sepolia.etherscan.io/tx/' + t.tx_hash + '" target="_blank">' + safeShort(t.tx_hash, 10) + '</a>' : '') +
+          (t.tx_hash ? '<a class="mono" style="font-size:10px;color:var(--text-muted)" href="' + explorerBase + '/tx/' + t.tx_hash + '" target="_blank">' + safeShort(t.tx_hash, 10) + '</a>' : '') +
         '</td>' +
       '</tr>';
     }).join('');

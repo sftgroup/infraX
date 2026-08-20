@@ -6,6 +6,11 @@ var API = "";
   var _sig = '', _ts = '', _addr = '';
   var _me = null;
   var activeChain = 'sepolia';
+  var CHAIN_NAMES = { sepolia:'Sepolia', ethereum:'Ethereum', bsc:'BSC', base:'Base', oxa:'OxaChain', polygon:'Polygon', arbitrum:'Arbitrum', optimism:'Optimism', xlayer:'XLayer', solana:'Solana' };
+  var CHAIN_COLORS = { sepolia:'#6366f1', ethereum:'#627eea', bsc:'#f0b90b', base:'#0052ff', oxa:'#8b5cf6', polygon:'#8247e5', arbitrum:'#28a0f0', optimism:'#ff0420', xlayer:'#0f0f0f', solana:'#9945ff' };
+  var CHAIN_IDS = { sepolia:11155111, ethereum:1, bsc:56, base:8453, oxa:19505, polygon:137, arbitrum:42161, optimism:10, xlayer:196, solana:101 };
+  // 持久化恢复 activeChain（localStorage）
+  try { var _savedChain = localStorage.getItem('px_chain'); if (_savedChain && CHAIN_NAMES[_savedChain]) activeChain = _savedChain; } catch (_) {}
   var histPage = 1, histFilter = 'all';
   var waasActiveTenantId = '';
   var ncCustomTokens = [];
@@ -174,6 +179,73 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 // activeChain (IIFE scoped)
 // histPage/histFilter (IIFE scoped)
 // waasActiveTenantId (IIFE scoped)
+
+// ── Chain switcher ──
+function chainDisplayName(c) { return CHAIN_NAMES[c] || c; }
+
+function updateTopbarChain() {
+  var el = document.getElementById('topbar-chain-label');
+  if (el) el.textContent = chainDisplayName(activeChain);
+}
+
+function setActiveChain(c) {
+  if (!CHAIN_NAMES[c]) return showToast('Unsupported chain: ' + c, 'error');
+  activeChain = c;
+  try { localStorage.setItem('px_chain', c); } catch (_) {}
+  updateTopbarChain();
+  closeChainPicker();
+  syncChainSelectors();
+  // 当前页面有链依赖的 loader 时，重新加载以反映新链（如非托管余额）
+  if (typeof ncDash === 'function' && document.getElementById('page-noncustodial') && document.getElementById('page-noncustodial').classList.contains('active')) {
+    try { ncDash(); } catch (e) { console.error(e); }
+  }
+  showToast('Active chain: ' + chainDisplayName(c), 'success');
+}
+
+// 将 activeChain 同步到各页面链下拉（waas-token-chain 用 chainId 值，其余用链名值）
+function syncChainSelectors() {
+  var chainId = CHAIN_IDS[activeChain];
+  var byName = ['waas-addr-chain', 'waas-sweep-chain', 'waas-wd-chain', 'safe-chain'];
+  byName.forEach(function (id) {
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    if (sel.querySelector('option[value="' + activeChain + '"]')) sel.value = activeChain;
+  });
+  var tok = document.getElementById('waas-token-chain');
+  if (tok && chainId && tok.querySelector('option[value="' + chainId + '"]')) tok.value = String(chainId);
+}
+
+function toggleChainPicker() {
+  var picker = document.getElementById('chain-picker');
+  if (!picker) return;
+  if (picker.classList.contains('open')) { closeChainPicker(); return; }
+  var order = Object.keys(CHAIN_NAMES);
+  picker.innerHTML = order.map(function (c) {
+    return '<div class="chain-picker-item' + (c === activeChain ? ' active' : '') + '" onclick="event.stopPropagation();setActiveChain(\'' + c + '\')">' +
+      '<span class="chain-picker-dot" style="background:' + (CHAIN_COLORS[c] || '#888') + '"></span>' +
+      chainDisplayName(c) +
+      (c === activeChain ? '<span class="chain-picker-check">✓</span>' : '') +
+    '</div>';
+  }).join('');
+  picker.classList.add('open');
+  var chainEl = document.getElementById('topbar-chain');
+  if (chainEl) chainEl.classList.add('open');
+}
+
+function closeChainPicker() {
+  var picker = document.getElementById('chain-picker');
+  if (picker) picker.classList.remove('open');
+  var chainEl = document.getElementById('topbar-chain');
+  if (chainEl) chainEl.classList.remove('open');
+}
+
+// 点击其他区域关闭链选择器
+document.addEventListener('click', function (e) {
+  var picker = document.getElementById('chain-picker');
+  if (!picker) return;
+  var chainEl = document.getElementById('topbar-chain');
+  if (picker.classList.contains('open') && (!chainEl || !chainEl.contains(e.target))) closeChainPicker();
+});
 // ── Navigation ──
 // PAGE_TITLES (IIFE scoped)
 
@@ -203,10 +275,12 @@ function initActivePage() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 100); });
+  document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); updateTopbarChain(); syncChainSelectors(); setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 100); });
 } else {
   setupNav();
   setTimeout(initActivePage, 50);
+  updateTopbarChain();
+  syncChainSelectors();
   setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 150);
 }
 

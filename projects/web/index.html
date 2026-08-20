@@ -81,7 +81,12 @@
   <div class="topbar">
     <div class="topbar-left">
       <div class="topbar-title" id="page-title">Non-Custodial Wallet</div>
-      <div class="topbar-chain"><span class="topbar-chain-dot"></span>Sepolia</div>
+      <div class="topbar-chain" id="topbar-chain" onclick="toggleChainPicker()" title="Switch active chain">
+        <span class="topbar-chain-dot"></span>
+        <span id="topbar-chain-label">Sepolia</span>
+        <span class="topbar-chain-caret">▾</span>
+        <div class="chain-picker" id="chain-picker"></div>
+      </div>
     </div>
     <div class="topbar-right">
       <div class="topbar-wallet">
@@ -429,7 +434,7 @@
             <div class="form-row" style="grid-template-columns:2fr 1fr 1fr 80px;align-items:end;margin-bottom:8px">
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Contract Address</label><input class="input" id="waas-token-addr" placeholder="0x..."></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Symbol</label><input class="input" id="waas-token-symbol" placeholder="USDT"></div>
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-token-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-token-chain"><option value="11155111">Sepolia</option><option value="1">Ethereum</option><option value="56">BSC</option><option value="8453">Base</option><option value="19505">OxaChain</option><option value="137">Polygon</option><option value="42161">Arbitrum</option><option value="10">Optimism</option><option value="196">XLayer</option><option value="101">Solana</option></select></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Decimals</label><input class="input" id="waas-token-decimal" value="18" type="number"></div>
             </div>
             <button class="btn btn-primary" onclick="waasAddToken()">+ Add Token</button>
@@ -477,7 +482,7 @@
           <div class="panel-body">
             <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 80px auto;align-items:end">
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">External User ID</label><input class="input" id="waas-addr-userid" placeholder="user-001"></div>
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-addr-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-addr-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option><option value="oxa">OxaChain</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="optimism">Optimism</option><option value="xlayer">XLayer</option><option value="solana">Solana</option></select></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Label (optional)</label><input class="input" id="waas-addr-label" placeholder="main-wallet"></div>
               <button class="btn btn-primary" onclick="waasAddressCreate()" style="padding:10px 16px;white-space:nowrap">Allocate</button>
             </div>
@@ -495,7 +500,7 @@
             </div>
             <div class="form-row" style="grid-template-columns:2fr 1fr auto auto;align-items:end;border-top:1px solid var(--border);padding-top:12px">
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Target Address</label><input class="input" id="waas-sweep-addr" placeholder="0x..." style="margin-bottom:0"></div>
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-sweep-chain" style="margin-bottom:0"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-sweep-chain" style="margin-bottom:0"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option><option value="oxa">OxaChain</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="optimism">Optimism</option><option value="xlayer">XLayer</option><option value="solana">Solana</option></select></div>
               <button class="btn btn-primary" onclick="waasSaveSweepSingle()" style="white-space:nowrap;height:38px">Save</button>
               <button class="btn btn-outline" onclick="waasAddSweepTarget()" style="white-space:nowrap;height:38px">+ Add More</button>
             </div>
@@ -514,7 +519,7 @@
           <div class="panel-header">Withdrawal Rules</div>
           <div class="panel-body">
             <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr 2fr auto auto;align-items:end">
-              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-wd-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Token</label><select class="input" id="waas-wd-token"><option value="">— Add tokens in Tokens tab —</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Auto-Exec Below</label><input class="input" id="waas-auto-threshold" value="0.1" type="text" inputmode="decimal" step="0.01"></div>
+              <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Chain</label><select class="input" id="waas-wd-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option><option value="oxa">OxaChain</option><option value="polygon">Polygon</option><option value="arbitrum">Arbitrum</option><option value="optimism">Optimism</option><option value="xlayer">XLayer</option><option value="solana">Solana</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Token</label><select class="input" id="waas-wd-token"><option value="">— Add tokens in Tokens tab —</option></select></div><div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Auto-Exec Below</label><input class="input" id="waas-auto-threshold" value="0.1" type="text" inputmode="decimal" step="0.01"></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Require Review Above</label><input class="input" id="waas-manual-threshold" value="1.0" type="text" inputmode="decimal" step="0.01"></div>
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Callback URL</label><input class="input" id="waas-wd-webhook" placeholder="https://your.app/callback" style="margin-bottom:0"></div>
               <button class="btn btn-primary" onclick="waasSaveWithdrawRules()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">Save</button><button class="btn btn-outline" onclick="waasAddWithdrawRule()" style="padding:10px 16px;white-space:nowrap;height:38px;align-self:end">+ Add</button>
@@ -765,6 +770,7 @@ Body:
             <div class="form-row">
               <div class="form-group"><label>Wallet Name</label><input class="input" id="safe-name" placeholder="My Vault"></div>
               <div class="form-group"><label>Threshold (M-of-N)</label><input class="input" id="safe-threshold" value="2" type="number" min="1"></div>
+              <div class="form-group"><label>Chain</label><select class="input" id="safe-chain"><option value="sepolia">Sepolia</option><option value="ethereum">Ethereum</option><option value="bsc">BSC</option><option value="base">Base</option></select></div>
             </div>
             <label>Owner Addresses (comma-separated)</label>
             <input class="input mb-sm" id="safe-owners" placeholder="0xAlice...,0xBob...,0xCarol...">
@@ -1024,11 +1030,11 @@ Body:
 
   </div>
 
-<script src="/modules/core.js?v=1787240100"></script>
-<script src="/modules/nc-wallet.js?v=1787239500"></script>
+<script src="/modules/core.js?v=1787270500"></script>
+<script src="/modules/nc-wallet.js?v=1787249200"></script>
 <script src="/modules/mpc-wallet.js?v=1783734639"></script>
-<script src="/modules/waas.js?v=1784050055"></script>
-<script src="/modules/safe.js?v=1787187400"></script>
+<script src="/modules/waas.js?v=1787270500"></script>
+<script src="/modules/safe.js?v=1787270500"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
   <script src="/modules/datacenter.js?v=1787240500"></script>
