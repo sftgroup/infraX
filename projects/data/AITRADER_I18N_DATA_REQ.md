@@ -119,6 +119,17 @@
    `reason` 保留为默认语言（zh-CN）原文保证兼容；新增 `reason_key` + `params` 供前端按 locale 渲染多语言文案
 2. 前端已建立 `aiAssetAnalysis.opportunities.reason.{market}.{signal}` 的 i18n key 映射（[ai-asset-analysis/index.vue](file:///home/steven/AItrader/frontend-full/src/views/ai-asset-analysis/index.vue#L249) `getReasonText` 优先用 i18n key，缺失时 fallback `opp.reason`）——只要 B 端提供 `reason_key` 或标准 `signal`，前端即可全量多语言，不再 fallback 中文
 
+---
+
+## 4. 实施状态与验收反馈（2026-08-20）
+
+| 需求 | 实施状态 | 验收反馈 |
+|---|---|---|
+| R-I1 图谱 `name_en` | B 端已实现（ragservicer `name_en_of` 纯 ASCII/数字实体兜底为自身） | AItrader 前端已兜底 `name_en \|\| name \|\| id`；**中文实体仍无 name_en**，建议按原方案用 ticker/LLM 翻译补齐非 ASCII 实体 |
+| R-I2 news 按语言返回 | B 端已实现 `/snapshots?type=news&lang=`（news/news_moomoo 过滤，不足降级英文并标注 lang） | **实测 news 与 news_moomoo 均为英文**（75 条同源 "QUICK SPARK" 类，`lang=en`）；`lang=zh` 请求全部降级英文。**缺中文新闻数据源**，请补充（NewsAPI `language=zh` bucket 或 moomoo 中文站），AItrader 侧链路（lang 过滤/降级/EN-ZH 徽标）已全部就绪 |
+| R-I3 symbol `name_zh` | B 端已实现（/symbols/search 输出 name_zh） | AItrader 已接入：seed 搜索按名称语言标注 `name_zh`/`name_en`，前端 3 处搜索（portfolio/QuickTradePanel/trading-assistant）按界面语言显示；生产实测 `600519→name_zh=贵州茅台`、`AAPL→name_en=Apple Inc.` ✅ |
+| R-I4 opportunities `reason` 结构化 | B 端已实现（`reason_key` 仅 signal + `params.change_24h/change_7d`） | AItrader 已兼容双格式：本侧 `reason_key='crypto.overbought'`（含市场前缀），B 端 `reason_key='overbought'`，前端 `getReasonText` 均可正确渲染；生产实测机会雷达 reason 中/英文模板正确 ✅ |
+
 **B 端配合项**：data-service `collectors/opportunities.py` 同构代码输出增加 `reason_key`/`params` 字段（如 B 端 `/snapshots?type=opportunities` 被外部使用）。
 
 ---
