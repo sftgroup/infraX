@@ -2232,3 +2232,38 @@ macro US 24 项 + CPI 历史含 predict_value ✅、search news TSLA/AAPL ✅、
 - **发布产物验证**：`npm pack` 解包确认含 `session-module.js`/`session-revoke.js`（含 `.d.ts`）；运行时 import `dist/index.js` 验证 8 项新导出全部 OK（`encodeDisableSessionCall` MISSING 为预期）。
 - **消费方**：**aa-sdk 是对外公开发布的 npm 包**（`--access public`），PocketX 及所有产品"只基于 SDK 构建"（`docs/AA_SDK_TECH_DESIGN.md` §1.3 三层架构）；内部 aa-relay 走相对路径直引源码、session-key core 走 `file:` 链接（二者为服务端内部消费，不走 npm 包）。外部集成方接入 session 有两条通道：**HTTP 服务接口**（agentx/aitrader 等经 aa-relay `/v1/session/*`、session-key `/api/v1/sessions`、MCP）或 **npm SDK 直用**（PocketX 等 `npm i @0xinfrax/aa-sdk` 后 import `buildEnableSessionUserOp`/`buildDisableSessionUserOp` 自行构建 UserOp，配合 relay `/v1/userops` 上链）。0.1.2 发布正是为外部 SDK 消费方补齐三段批量 disable 能力。
 
+### 9.11 AItrader 多语言数据层修复（源：`projects/data/AITRADER_I18N_DATA_REQ.md`，2026-08-20，用户裁定"全部含 P3"）
+
+**背景**：AItrader 全站国际化已完成（vue-i18n 10 语言），残留问题集中在数据层——B 端返回字段值为单一语言，前端无法自行翻译。按 GitHub 需求 R-I1~R-I4 逐项修复。
+
+| 编号 | 需求 | 现状 | 优先级 |
+|---|---|---|---|
+| R-I1 | **图谱实体补 name_en（双语渲染）**：`name_en_of()` 纯 ASCII/数字实体（BTC/SPY/OKX DEX）兜底返回自身（此前 48.6% 覆盖率 → 现 90.6%）；中文实体继续走 439 条映射表 + 值后缀回查，未命中 null | ✅ | P1 |
+| R-I2 | **news 接口 lang 参数过滤**：`/snapshots?type=news&lang=` 按 `items[].lang` 过滤；请求语言无数据降级英文并如实标注 `lang` 字段；moomoo 无 lang 条目按英文兜底；`main.py` 透传 `lang` | ✅ | P1 |
+| R-I3 | **symbol 元数据补 name_zh**：`/symbols/search` 含中文名的标的（cn/hk AkShare 种子）输出 `name_zh`，英文名标的缺失（前端 fallback）；crypto 不输出空字段保持契约兼容 | ✅ | P3 |
+| R-I4 | **opportunities reason 结构化**：四个 analyzer（crypto/stocks/local_stocks/forex）输出 `reason_key`（= signal，前端 i18n key `reason.{market}.{signal}`）+ `params`（change_24h/change_7d/name），`reason` 保留中文兼容 | ✅ | P1 |
+
+**代码（commit `b5aa4f2`）**：
+
+- `projects/ragservicer/api/graph_engine.py`：新增 `_CJK_RE`，`name_en_of()` 无 CJK 兜底返回自身。
+- `projects/data/app/factors.py`：`get_snapshots()` 增加 `lang` 参数 + `_NEWS_TYPES = {"news", "news_moomoo"}` 过滤（含英文降级）。
+- `projects/data/main.py`：`/snapshots` 增加 `lang` Query 透传。
+- `projects/data/app/symbol_search.py`：新增 `_CJK_RE`；crypto/在线/种子分支条件输出 `name_zh`。
+- `projects/data/app/collectors/opportunities.py`：四个 analyzer 输出 `reason_key` + `params`。
+
+**本地验证**：py_compile 全通过；symbol_search 测试 9/9；opportunities 19 场景（reason_key==signal、params 非空、consolidation 含 name）；R-I1 name_en_of 单测（纯 ASCII 兜底/map 命中/含 CJK 未命中 None）；R-I2 lang 过滤 monkeypatch 单测（zh 保留 zh、en 保留 en+无 lang、zh 无数据降级 en、无 lang 不过滤）。
+
+**生产部署（2026-08-20）**：
+
+- **主生产机 43.163.105.172**：`git pull`（c915098 → b5aa4f2，fast-forward）→ `systemctl restart infrax-data` active，`/health` `{code:0, message:ok}`。
+- **ragservicer 新机 43.156.78.59**（文件拷贝部署无 git）：scp 同步 `graph_engine.py`（MD5 对齐确认 `_CJK_RE` 落盘）→ `systemctl restart infrax-ragservicer` active。
+
+**生产回归验证**：
+
+- R-I2：`lang=en` → 74 条全英文；`lang=zh` → 降级英文 74 条（当前 news 数据仅英文，`lang` 字段如实标注 en）。
+- R-I3：cnstock `keyword=贵州` → `600519 贵州茅台 name_zh=贵州茅台`；usstock `keyword=apple` → AAPL 等 `name_zh` 缺失（fallback）。
+- R-I4：`/snapshots?type=opportunities` 50 条全部带 `reason_key` + `params`（如 `bullish_momentum {change_24h: 9.48}`、`overbought {change_24h: 17.64, change_7d: 0.0}`）。
+- R-I1：`/factors/graph/entities?namespace=market&limit=500` → **name_en 非空率 90.6%**（453/500，此前 48.6%；剩余缺失为纯中文事件/描述实体，需存量翻译回填脚本+LLM 补齐，见遗留）。
+
+**遗留**：① R-I1 验收标准 ≥95%，剩余缺失实体（「50篇文章」「方向分布」等）需批量 LLM 翻译回填 `name_en` 映射表；② R-I2 需 news collector 按 lang 分 bucket 稳定供给（当前 NewsAPI 仅英文站数据）；③ I6 market 枚举规范化（非阻塞，前端已兜底）。
+
