@@ -5,7 +5,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { BundlerClient } from '../../../aa-sdk/src/index.js';
-import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleUserOp } from '../billing.js';
+import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, retrySettle, settleUserOp } from '../billing.js';
 import {
   apiResponse,
   asyncHandler,
@@ -53,9 +53,9 @@ export function relayRoutes(): Router {
         if (chargeTotal > 0n) asyncSettle(cfg, subscriber, chargeRef, chargeTotal, userOpHash, 'userop');
         return;
       } catch (e) {
-        // A-10: 广播失败 → 全额退还预扣
+        // A-10: 广播失败 → 全额退还预扣（P2-1 失败重试）
         if (chargeTotal > 0n) {
-          try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+          try { await retrySettle(() => settleUserOp(subscriber, chargeRef, chargeTotal, 0n), 'userop refund'); }
           catch (bErr: any) { console.warn('[aa-relay] userop refund failed:', bErr.message); }
         }
         throw e;
@@ -68,11 +68,15 @@ export function relayRoutes(): Router {
         waitTimeoutMs: 120_000,
         onBroadcast: (hash: any) => console.log(`[aa-relay] ${chain} userOpHash=${hash} accepted`),
       });
-      // A-10: 收据后按 actualGasCost 结算退差（多退少补）；结算失败仅告警
+      // A-10: 收据后按 actualGasCost 结算退差（多退少补，P2-1 失败重试）；结算失败仅告警
       if (chargeTotal > 0n && result.receipt) {
+        const actualGasCost = result.receipt.actualGasCost;
         try {
           const fixed = BigInt(aaFees().userop.feeWei);
-          await settleUserOp(subscriber, chargeRef, chargeTotal, fixed + result.receipt.actualGasCost);
+          await retrySettle(
+            () => settleUserOp(subscriber, chargeRef, chargeTotal, fixed + actualGasCost),
+            'userop settle',
+          );
         } catch (bErr: any) {
           console.warn('[aa-relay] userop gas settle failed:', bErr.message);
         }
@@ -84,9 +88,9 @@ export function relayRoutes(): Router {
       }, 'UserOp sent'));
     } catch (e: any) {
       if (isBundlerBusinessError(e)) {
-        // A-10: bundler 业务拒绝（交易未执行）→ 全额退还预扣
+        // A-10: bundler 业务拒绝（交易未执行）→ 全额退还预扣（P2-1 失败重试）
         if (chargeTotal > 0n) {
-          try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+          try { await retrySettle(() => settleUserOp(subscriber, chargeRef, chargeTotal, 0n), 'userop refund'); }
           catch (bErr: any) { console.warn('[aa-relay] userop refund failed:', bErr.message); }
         }
         return res.status(400).json(apiResponse(null, `bundler: ${rpcErrorMessage(e)}`, 1001));
@@ -95,7 +99,7 @@ export function relayRoutes(): Router {
     }
   }));
 
-  // GET /v1/userops/:hash（收据查询，单次；主端点失败切备）
+  // GET /v1/userops/:hash（状态机 + 收据查询；P2-2：pending/confirmed/reverted，主端点失败切备）
   router.get('/v1/userops/:hash', asyncHandler(async (req: any, res: any) => {
     const { hash } = req.params;
     const cfg = getChain(req.query.chain);
@@ -108,7 +112,13 @@ export function relayRoutes(): Router {
           method: 'eth_getUserOperationReceipt',
           params: [hash],
         })) as any;
-        return res.json(apiResponse({ receipt: r ?? null }));
+        // P2-2 状态机：无收据 = 广播中/未上链 → pending；有收据按 success 判定 confirmed/reverted
+        const status = !r
+          ? 'pending'
+          : (r.success ?? (r.receipt ? r.receipt.status !== '0x0' : true))
+            ? 'confirmed'
+            : 'reverted';
+        return res.json(apiResponse({ status, receipt: r ?? null }, `UserOp ${status}`));
       } catch (e) {
         lastErr = e;
       }

@@ -331,6 +331,31 @@ export async function settleUserOp(
   }
 }
 
+/** P2-1: 结算/退款重试（402 业务性错误不重试；其余网络/服务错误重试 3 次指数退避，账本一致性）。 */
+export async function retrySettle(
+  fn: () => Promise<any>,
+  label: string,
+  attempts = 3,
+  baseDelayMs = 800,
+): Promise<any> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      // 余额不足等业务性错误重试无意义，直接抛（上层 402）
+      if (e instanceof AABillingError && String(e.message).startsWith('[402]')) throw e;
+      if (i < attempts - 1) {
+        const delay = baseDelayMs * 2 ** i;
+        console.warn(`[aa-relay] ${label} attempt ${i + 1}/${attempts} failed (retry in ${delay}ms):`, e?.message);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 /** 资金总览（REQ-2b）：escrow 余额 / EP deposit / 账户 native，供续订前资金预检。 */
 export interface AccountFunds {
   escrowWei: string;      // 托管余额（relay 计费预扣来源）
@@ -394,6 +419,13 @@ export function aaPlansInfo(): Record<string, unknown> {
       : 'UserOp 次数费 + paymaster gas 代付（广播前预扣固定费+预估 gas，收据后按 actualGasCost 多退少补）',
     configured: aaChargeConfigured(),
     escrow: escrowMode ? { address: AA_ESCROW.address, chainId: AA_ESCROW.chainId } : undefined,
+    limits: escrowMode
+      ? {
+          perTxOxa: '1',
+          perDayOxa: '10',
+          note: '链上默认限额（InfraXEscrow DEFAULT_PER_TX_LIMIT=1 / DEFAULT_PER_DAY_LIMIT=10 OXA，按计费账户维度）；用户级可用合约 setChargeLimit(account, perTx, perDay) 定制，owner 可 setChargeDefaultLimit 调全局默认。自动续订单次预扣约 0.0025 OXA，默认限额下单账户每日可支撑约 4000 次续订。',
+        }
+      : undefined,
     platformAddress: AA_PAYMENTS.platformAddress || '(未配置)',
     fees,
     topup: (aaChargeConfigured() || escrowMode)

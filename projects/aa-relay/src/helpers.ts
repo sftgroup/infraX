@@ -12,7 +12,7 @@ import { getChainConfig, userOpToRpc } from '../../aa-sdk/src/index.js';
 import { verifyDisableSignature, getUserOpHash } from '../../aa-sdk/src/index.js';
 import { createKernelAccount, ExternalWalletSigner, BundlerClient } from '../../aa-sdk/src/index.js';
 import type { ChainAAConfig } from '../../aa-sdk/src/index.js';
-import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, settleUserOp } from './billing.js';
+import { aaChargeConfigured, aaFees, estimateUserOpGasWei, chargeUserOp, retrySettle, settleUserOp } from './billing.js';
 
 const RELAY_KEY = process.env.AA_RELAY_API_KEY || '';
 
@@ -223,7 +223,10 @@ export function asyncSettle(
     .then((receipt) => {
       if (!receipt) { console.warn(`[aa-relay] ${label} async settle timeout, keep charge ${chargeTotal}`); return; }
       const fixed = BigInt(aaFees().userop.feeWei);
-      return settleUserOp(subscriber, chargeRef, chargeTotal, fixed + BigInt(receipt.actualGasCost));
+      return retrySettle(
+        () => settleUserOp(subscriber, chargeRef, chargeTotal, fixed + BigInt(receipt.actualGasCost)),
+        `${label} settle`,
+      );
     })
     .catch((bErr: any) => console.warn(`[aa-relay] ${label} async settle failed:`, bErr.message));
 }
@@ -297,9 +300,9 @@ export async function submitSignedOp(params: SubmitSignedOpParams): Promise<{ us
       if (chargeTotal > 0n) asyncSettle(cfg, subscriber, chargeRef, chargeTotal, res.userOpHash, chargeLabel);
       return { ...res, receipt: null };
     } catch (e) {
-      // 广播失败 → 全额退还预扣
+      // 广播失败 → 全额退还预扣（P2-1 失败重试）
       if (chargeTotal > 0n) {
-        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        try { await retrySettle(() => settleUserOp(subscriber, chargeRef, chargeTotal, 0n), `${chargeLabel} refund`); }
         catch (bErr: any) { console.warn(`[aa-relay] ${chargeLabel} refund failed:`, bErr.message); }
       }
       throw e;
@@ -311,10 +314,14 @@ export async function submitSignedOp(params: SubmitSignedOpParams): Promise<{ us
       waitTimeoutMs: 120_000,
       onBroadcast: (h: any) => console.log(`[aa-relay] ${chargeLabel} ${params.chain} userOpHash=${h} accepted`),
     });
-    // 收据后按 actualGasCost 结算退差（多退少补）；结算失败仅告警
+    // 收据后按 actualGasCost 结算退差（多退少补，P2-1 失败重试）；结算失败仅告警
     if (chargeTotal > 0n && result.receipt) {
+      const actualGasCost = result.receipt.actualGasCost;
       try {
-        await settleUserOp(subscriber, chargeRef, chargeTotal, BigInt(aaFees().userop.feeWei) + result.receipt.actualGasCost);
+        await retrySettle(
+          () => settleUserOp(subscriber, chargeRef, chargeTotal, BigInt(aaFees().userop.feeWei) + actualGasCost),
+          `${chargeLabel} settle`,
+        );
       } catch (bErr: any) {
         console.warn(`[aa-relay] ${chargeLabel} gas settle failed:`, bErr.message);
       }
@@ -324,9 +331,9 @@ export async function submitSignedOp(params: SubmitSignedOpParams): Promise<{ us
     return res;
   } catch (e: any) {
     if (isBundlerBusinessError(e)) {
-      // bundler 业务拒绝（交易未执行）→ 全额退还预扣
+      // bundler 业务拒绝（交易未执行）→ 全额退还预扣（P2-1 失败重试）
       if (chargeTotal > 0n) {
-        try { await settleUserOp(subscriber, chargeRef, chargeTotal, 0n); }
+        try { await retrySettle(() => settleUserOp(subscriber, chargeRef, chargeTotal, 0n), `${chargeLabel} refund`); }
         catch (bErr: any) { console.warn(`[aa-relay] ${chargeLabel} refund failed:`, bErr.message); }
       }
       throw Object.assign(new Error(`bundler: ${rpcErrorMessage(e)}`), { statusCode: 400 });
