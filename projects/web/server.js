@@ -19,6 +19,8 @@ const ADMIN_HOST    = process.env.ADMIN_HOST || 'localhost';
 const ADMIN_PORT    = parseInt(process.env.ADMIN_PORT || '9100', 10);
 const COLLECTOR_HOST = process.env.COLLECTOR_HOST || 'localhost';
 const COLLECTOR_PORT = parseInt(process.env.COLLECTOR_PORT || '9101', 10);
+const RPC_HOST = process.env.RPC_HOST || 'localhost';
+const RPC_PORT = parseInt(process.env.RPC_PORT || '9130', 10);
 const DATA_HOST = process.env.DATA_HOST || 'localhost';
 const DATA_PORT = parseInt(process.env.DATA_PORT || '9112', 10);
 const AA_HOST = process.env.AA_HOST || 'localhost';
@@ -35,6 +37,8 @@ const API_ROUTES = {
   '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   // B-11-3 用户级 key（data 服务 :9112 钱包签名鉴权）— 必须先于 /api/v2/data（DC :9102）
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
+  // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130）— 面板服务状态用
+  '/api/v2/rpc':     { host: RPC_HOST,      port: RPC_PORT },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
   '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },

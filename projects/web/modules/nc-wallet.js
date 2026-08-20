@@ -57,14 +57,27 @@ async function ncDash() {
       if (dcResp && dcResp.planId) {
         activeCount++;
         dcPlanName = dcResp.planName || "Data Free";
-        setDashRow("dc", "active", dcPlanName,
-          (dcResp.currentUsage || 0) + "/" + (dcResp.monthlyQuota || 0) + " calls");
+        setDashRow("dc", "active", dcPlanName, "Insights · On-Chain · Market Data");
       } else {
         setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
       }
     } catch (e) {
       setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
     }
+
+    // B2B API Services — 独立服务健康状态（非订阅型，无需激活）
+    (async function () {
+      // Chain RPC :9130（/api/v2/rpc → chain-rpc 反代）
+      try {
+        var rpcResp = await fetch("/api/v2/rpc/health");
+        setDashHealthRow("rpc", rpcResp.ok, "rx_ key", "rpc-gw.0xainet.top · JSON-RPC");
+      } catch (e) { setDashHealthRow("rpc", false, "—", "Unreachable"); }
+      // LightRAG :9721（/api/rag → ragservicer）
+      try {
+        var ragResp = await fetch("/api/rag/health");
+        setDashHealthRow("lightrag", ragResp.ok, "lr_ key", "/api/rag · 知识图谱 RAG");
+      } catch (e) { setDashHealthRow("lightrag", false, "—", "Unreachable"); }
+    })();
 
     // A-9: 统一租户用量视图——聚合各产品线真实配额/余额（计费仍 per-product 分离，仅展示聚合）
     var usageRows = [];
@@ -134,6 +147,17 @@ function setDashRow(svc, status, plan, detail) {
   var label = row.children[0] ? row.children[0].textContent : svc;
   row.innerHTML = "<td>" + label + "</td>" +
     "<td><span class=\"status " + status + "\">" + (status === "active" ? "🟢 Active" : "○ Inactive") + "</span></td>" +
+    "<td>" + plan + "</td>" +
+    "<td class=\"mono\" style=\"font-size:12px\">" + detail + "</td>";
+}
+
+// B2B 独立服务（RPC / LightRAG）：以健康状态呈现，非订阅型
+function setDashHealthRow(svc, ok, plan, detail) {
+  var row = document.getElementById("dash-row-" + svc);
+  if (!row) return;
+  var label = row.children[0] ? row.children[0].textContent : svc;
+  row.innerHTML = "<td>" + label + "</td>" +
+    "<td><span class=\"status " + (ok ? "success" : "failed") + "\">" + (ok ? "🟢 Up" : "🔴 Down") + "</span></td>" +
     "<td>" + plan + "</td>" +
     "<td class=\"mono\" style=\"font-size:12px\">" + detail + "</td>";
 }
