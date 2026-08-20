@@ -90,3 +90,23 @@ LightRAG 流水线内置三通道去重（`pipeline.py`，约 L1290-1380）：
 
 **验证**：`pytest tests/test_dedup.py` 10/10 通过；`compileall` 全量编译通过。
 **SDK**：python `insert`/`insert_batch` 默认改为同步（`async:false`），调用方可直接读取 `deduplicated` 处置；docstring 同步更新。
+
+### 8.1 生产并发 500 修复（2026-08-21 部署）
+
+去重功能部署后冒烟压测触发生产偶发 500，三层修复：
+
+| 层 | 根因 | 修复 |
+|---|---|---|
+| 1 | `tenants/manager.py` 无 `busy_timeout`，每请求 `validate_api_key` 写 `last_used_at`，并发写即 `database is locked` → 500 | 连接加 `PRAGMA busy_timeout=10000`（commit `30797b3`） |
+| 2 | busy_timeout 下仍偶发 | `last_used_at` 60s 节流 + 写失败降级 debug（commit `98d2a18`） |
+| 3 | LightRAG 存储并发争用 | `api/engine.py` 按 `(tenant, namespace)` 用 `asyncio.Lock` 串行化插入（`_insert_one` → `_ns_insert_lock`），同时消除 FAILED 桶 before/after diff 竞态 |
+
+### 8.2 跨 namespace 数据串号（重大缺陷，2026-08-21 发现并修复）
+
+排查并发 500 时发现**跨 namespace 数据合并**：不同 namespace 的文档互相出现在对方的列表/存储中。
+
+**根因**：生产 fork 版 LightRAG 1.5.5（`lightrag/kg/shared_storage.py`）的共享内存存储层以 `(workspace, namespace)` 为键缓存 KV 与锁；`engine.py` 创建实例时未传 `workspace`（默认空）→ 所有 namespace 实例键相同 → 共享同一份 doc_status KV → 数据互相合并 + 存储锁跨 namespace 争用。污染在 fork 引入（8-04）后即存在，**磁盘上 45/49 个 namespace 被污染（665/721 篇文档归属不可信）**。
+
+**修复**（本提交）：`get_rag` 改为 `working_dir=<租户目录>` + `workspace=<namespace>`。fork 的 `global_config["working_dir"]/<workspace>` 文件路径与旧布局 `data/<tenant>/<ns>/` 完全一致，磁盘不变；共享存储键变为 `<ns>:doc_status` 实现隔离。验证：新 namespace 各自仅见自己的文档（iso-a/iso-b），去重仍在 namespace 内正常。
+
+**数据处置**：被污染的 45 个 namespace 已清除（备份 `/home/ubuntu/infraX-1/rag-data-backup-20260821`），由数据方重新上传。`knowledge-injector` 每 6h 自动重灌 `default/market`、`default/onchain` 日报类文档（`crypto:daily` / `volatility:daily` / `tech:*:daily` / `defi:tvl` / `onchain:*` 等）；官网文档（`01-platform-overview.md` 等）与租户人工文档需源头重传。

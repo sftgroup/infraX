@@ -84,11 +84,19 @@ def get_rag(tenant_id: str, namespace: str = "default"):
         with _rag_lock:
             if key not in _rag_instances:
                 cfg = get_config()
-                wd = str(Path(cfg.storage.working_dir) / tenant_id / namespace)
+                # 生产 fork 版 LightRAG 的共享存储层（shared_storage.py）以
+                # (workspace, namespace) 为键缓存 KV/锁；workspace 为空时所有实例
+                # 键相同 → 跨 namespace 数据合并 + 存储锁争用（2026-08-21 生产
+                # 排查实证：admin 租户 16 个 namespace 全污染）。
+                # 必须显式 workspace=<namespace>：fork 会把文件落在
+                # working_dir/<workspace>/ 下，故 working_dir 用租户目录、workspace
+                # 用 namespace，磁盘路径保持 data/<tenant>/<namespace>/ 不变。
+                wd = str(Path(cfg.storage.working_dir) / tenant_id)
                 Path(wd).mkdir(parents=True, exist_ok=True)
 
                 rag = LightRAG(
                     working_dir=wd,
+                    workspace=namespace,
                     llm_model_func=_get_llm_func(),
                     embedding_func=_get_embed_func(),
                     addon_params={"language": cfg.rag.summary_language},
@@ -153,7 +161,7 @@ async def _get_docs_by_ids(rag, doc_id: str) -> dict:
     return res
 
 
-async def _insert_one(rag, text: str, doc_id: str) -> dict:
+async def _insert_one_locked(rag, text: str, doc_id: str) -> dict:
     """单文档 upsert + 去重检测（batch 与单篇共用的唯一实现）。
 
     ⚠️ 必须显式传 file_paths=[doc_id]：不传时 LightRAG 把 file_path 存为
@@ -180,6 +188,36 @@ async def _insert_one(rag, text: str, doc_id: str) -> dict:
     return {"deduplicated": False, "status": status}
 
 
+# 同 namespace 插入串行化（2026-08-21 生产并发 500 修复）：
+# 并发 sync 插入/批量插入会让 LightRAG 自身 SQLite 存储（KV/doc_status）争用，
+# 偶发 pipeline 错误 → 500。全部 LightRAG 操作跑在单全局事件循环，
+# 用 asyncio.Lock 按 (tenant, namespace) 串行化插入；同时使 FAILED 桶
+# before/after diff 无竞态。
+_insert_ns_locks: dict[tuple[str, str], asyncio.Lock] = {}
+_insert_ns_locks_guard = threading.Lock()
+
+
+def _ns_insert_lock(tenant_id: str, namespace: str) -> asyncio.Lock:
+    key = (tenant_id, namespace)
+    with _insert_ns_locks_guard:
+        lock = _insert_ns_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _insert_ns_locks[key] = lock
+        return lock
+
+
+async def _insert_one(rag, tenant_id: str, namespace: str, text: str, doc_id: str) -> dict:
+    """按 (tenant, namespace) 串行化插入，锁内执行真正的 upsert 逻辑。
+
+    锁保证同一 namespace 的并发插入互斥，消除 LightRAG 自身 SQLite 存储
+    （KV/doc_status）争用导致的偶发 pipeline 错误；同时让 FAILED 桶
+    before/after diff 无竞态，去重判定不会串位。
+    """
+    async with _ns_insert_lock(tenant_id, namespace):
+        return await _insert_one_locked(rag, text, doc_id)
+
+
 def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
     """任务工厂：worker 线程先预初始化实例（loop 外），再返回注入 coroutine。
 
@@ -191,7 +229,7 @@ def _insert_coro(tenant_id: str, namespace: str, text: str, doc_id: str):
 
         async def _do():
             rag = get_rag(tenant_id, namespace)
-            return await _insert_one(rag, text, doc_id)
+            return await _insert_one(rag, tenant_id, namespace, text, doc_id)
         return _do()
     return _factory
 
@@ -205,7 +243,7 @@ def _insert_batch_coro(tenant_id: str, namespace: str, documents: list[dict]):
             rag = get_rag(tenant_id, namespace)
             results = []
             for i, doc in enumerate(documents):
-                results.append(await _insert_one(rag, doc["text"], doc.get("doc_id", f"doc_{i}")))
+                results.append(await _insert_one(rag, tenant_id, namespace, doc["text"], doc.get("doc_id", f"doc_{i}")))
             return {"results": results, "count": len(results)}
         return _do()
     return _factory
