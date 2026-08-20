@@ -860,11 +860,25 @@ Body:
         </div>
         <div class="panel">
           <div class="panel-header">
-            <span style="margin-right:8px">🔗</span> Chain Status
-            <span class="stat-chip" id="dc-chain-count" style="margin-left:auto">0 chains</span>
+            <span style="margin-right:8px">🗂️</span> Data Capabilities
+            <span class="stat-chip" style="margin-left:auto">insights · on-chain · market</span>
           </div>
-          <div class="panel-body" id="dc-chain-stats">
-            <div class="empty" style="padding:32px 0"><span class="spin"></span> Subscribe to a Data Center plan to get started</div>
+          <div class="panel-body" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div onclick="dcSwitchTab('dc-explorer')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:22px;margin-bottom:6px">🔍</div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px">链上事件</div>
+              <div style="font-size:12px;color:var(--text-muted)">转账 / 授权 / DEX 交易等链上事件查询</div>
+            </div>
+            <div onclick="dcSwitchTab('dc-insights')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:22px;margin-bottom:6px">📈</div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px">Insights</div>
+              <div style="font-size:12px;color:var(--text-muted)">知识图谱 · 因子 · RAG · ML 预测</div>
+            </div>
+            <div onclick="dcSwitchTab('dc-market')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:22px;margin-bottom:6px">📊</div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px">金融行情</div>
+              <div style="font-size:12px;color:var(--text-muted)">实时报价 · K线 · 宏观数据</div>
+            </div>
           </div>
         </div>
         <div class="panel" style="margin-top:16px">
@@ -1017,7 +1031,7 @@ Body:
 <script src="/modules/safe.js?v=1787187400"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
-  <script src="/modules/datacenter.js?v=1787240400"></script>
+  <script src="/modules/datacenter.js?v=1787240500"></script>
 <script src="/modules/aa.js?v=1787239500"></script>
 <script src="/modules/insights.js?v=1784990000"></script>
 <script src="/modules/payments.js?v=1784991000"></script>

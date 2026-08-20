@@ -215,39 +215,14 @@ async function dcLoadDashboard() {
   }
 }
 
-// ─── Overview 真实数据（/stats /event-stats /events，替代 mock）───
+// ─── Overview 真实数据（/stats 总量 /event-stats /events，替代 mock）───
 async function dcLoadOverview(hdrs) {
-  // 链状态 + 事件总量（/stats，event_checkpoints 增量统计，O(1)）
+  // 链上事件总量（/stats，event_checkpoints 增量统计，O(1)）
   try {
     var s = await afetch('/api/v2/data/stats', { auth: 'none', headers: hdrs });
-    var chains = (s && Array.isArray(s.chains)) ? s.chains : [];
     var total = s && typeof s.total === 'number' ? s.total : 0;
     setHtml('dc-total-events', formatNumber(total));
-    setHtml('dc-chain-count', chains.length + ' chains');
-    if (!chains.length) {
-      setHtml('dc-chain-stats', '<div class="empty" style="padding:32px 0">暂无链上数据</div>');
-    } else {
-      setHtml('dc-chain-stats',
-        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">' +
-        chains.map(function(c) {
-          var meta = DC_CHAINS.find(function(x) { return x.name.toLowerCase() === String(c.chain || '').toLowerCase(); });
-          var icon = meta
-            ? '<img src="' + meta.img + '" width="36" height="36" alt="' + c.chain + '">'
-            : '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-sub,#242a36);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">' + String(c.chain || '?').slice(0, 1).toUpperCase() + '</div>';
-          return '<div class="chain-card">' +
-            '<div class="chain-card-icon">' + icon + '</div>' +
-            '<div class="chain-card-name">' + c.chain + '</div>' +
-            '<div class="chain-card-status"><span class="chain-dot" style="background:#0ecb81"></span> scanning</div>' +
-            '<div class="chain-card-stats">' +
-              '<span class="chain-stat">📦 #' + formatNumber(c.latestBlock) + '</span>' +
-              '<span class="chain-stat">🧾 ' + formatNumber(c.event_count) + '</span>' +
-            '</div>' +
-          '</div>';
-        }).join('') + '</div>');
-    }
-  } catch (_) {
-    setHtml('dc-chain-stats', '<div class="empty" style="padding:24px 0;color:var(--text-muted)">链状态加载失败</div>');
-  }
+  } catch (_) {}
   // 事件分类分布（/event-stats，O(1) event_category_stats）
   try {
     var es = await afetch('/api/v2/data/event-stats', { auth: 'none', headers: hdrs });
