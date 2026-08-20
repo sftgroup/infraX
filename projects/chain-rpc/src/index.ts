@@ -11,6 +11,9 @@
  *   POST /v1/dex-rpc                 A-11: DEX 执行（quote=读 key / approve+swap=广播 key）
  *   GET  /v1/status                  池状态（脱敏，读 key）
  *   WS   /v1/ws                      订阅代理（读 key；仅 eth_subscribe/eth_unsubscribe）
+ *   GET  /v1/enhanced/events         DC 链上事件增强（读 key；代理 DC :9102 解析层）
+ *   GET  /v1/enhanced/event-categories   业务分类目录（读 key）
+ *   GET  /v1/enhanced/event-stats        分类分布统计（读 key）
  */
 import http from 'http';
 import express from 'express';
@@ -25,6 +28,7 @@ import { createReadAuth, createBroadcastAuth } from './middleware/auth';
 import { rpcQuotaEnforce } from './middleware/rpcQuotaEnforce';
 import { createRpcRouter, createBroadcastRouter } from './routes/rpcRoutes';
 import { createDexReadRouter, createDexBroadcastRouter } from './routes/dexRoutes';
+import { createEnhancedRouter } from './routes/enhancedRoutes';
 import { attachWs } from './routes/ws';
 import subscriptionRouter from './routes/rpcSubscriptionRoutes';
 import { initRpcTables } from './services/rpcSubscription';
@@ -83,10 +87,17 @@ const pool = new RpcPoolManager(cfg, {
   maxRetries: config.maxRetries,
   requestTimeoutMs: config.requestTimeoutMs,
 });
-// DC-7: 池参数（env 可配，启动时打印便于核对）
+// DC-9: 池参数（env 可配，启动时打印便于核对）
 logger.info(
   `[chain-rpc] pool params: healthInterval=${config.healthIntervalMs}ms retries=${config.maxRetries} timeout=${config.requestTimeoutMs}ms`
 );
+
+// ── DC 链上事件增强 fail-closed ──────────────────────
+// URL 已配而 apiKey 缺失 → 拒绝启动（半配置静默失败比显式报错更危险）
+if (config.dcEnhanced.baseUrl && !config.dcEnhanced.apiKey) {
+  logger.error('[chain-rpc] DC_ENHANCED_URL configured but DC_ENHANCED_API_KEY missing — refusing to start');
+  process.exit(1);
+}
 
 // ── 健康检查（公开） ───────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -99,6 +110,8 @@ app.use('/v1/broadcast', createBroadcastAuth(), rpcQuotaEnforce(), createBroadca
 // A-11: /v1/dex-rpc 分权限挂载——quote=读 key（计入读配额）；approve/swap=广播 key
 app.use('/v1/dex-rpc', createReadAuth(), rpcQuotaEnforce(), createDexReadRouter(pool));
 app.use('/v1/dex-rpc', createBroadcastAuth(), createDexBroadcastRouter(pool));
+// DC 链上事件增强（RPC 增值层）：代理 DC :9102，读 key 鉴权 + 读配额
+app.use('/v1/enhanced', createReadAuth(), rpcQuotaEnforce(), createEnhancedRouter());
 // MQ-16 T-3: RPC 读套餐订阅（plans/issue-key 内部鉴权，checkout/payment-check/verify/usage 用 rx_ key 鉴权）
 app.use('/v1/subscription', subscriptionRouter);
 app.get('/v1/status', createReadAuth(), (_req, res) => {

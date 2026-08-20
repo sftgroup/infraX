@@ -83,6 +83,14 @@ export const config = {
   // ── 端点级开关 ───────────────────────────────────────
   enableExternalVerify: boolOr(process.env.CHAIN_RPC_ENABLE_EXTERNAL_VERIFY, false),
 
+  // ── DC 链上事件增强（RPC 增值层） ────────────────────
+  // DC_ENHANCED_URL: DC :9102 基地址；DC_ENHANCED_API_KEY: 目标租户 dc_api_key。
+  // URL 已配而 key 缺失 → 启动 fail-closed（见 index.ts），避免半配置静默失败。
+  dcEnhanced: {
+    baseUrl: (process.env.DC_ENHANCED_URL || '').trim(),
+    apiKey: process.env.DC_ENHANCED_API_KEY || '',
+  },
+
   // ── MQ-16 T-3: 支付引擎（订阅套餐计费，:9132） ─────────────
   payments: {
     baseUrl: (process.env.PAYMENTS_URL || '').replace(/\/+$/, ''),
