@@ -56,3 +56,16 @@ legacy/
 
 # RAGservicer runtime graph data (graphml / kv_store, generated on run)
 projects/ragservicer/data/
+
+# Local secrets (encrypted key backups, never commit)
+.secure/
+
+# Understand tooling artifacts (.ua workspace)
+.ua/
+
+# playwright-cli session snapshots (page-*.yml, generated on test)
+.playwright-cli/
+projects/web/.playwright-cli/
+
+# Python build artifacts (sdk)
+projects/data/sdk/python/build/
