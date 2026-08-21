@@ -95,28 +95,45 @@ export class DataCleaner {
       }
 
       // 分区感知清理：events 为分区父表（relkind='p'）时，整分区早于保留窗口
-      // 直接 DROP TABLE（物理删除文件，无死元组），仅残余行走分批 DELETE。
+      // 直接 DROP TABLE（物理删除文件，无死元组）；残余行按分区逐批 DELETE。
+      // EPF-3（2026-08-22）：分区表路径不再走父表 DELETE——父表 DELETE 需跨分区
+      // 扫描路由，20 万批实测 14+ 分钟持锁，曾阻塞新进程 migration（ALTER TABLE
+      // 等 AccessExclusiveLock）导致服务启动假死。改为每个子分区本地 DELETE（走
+      // 分区内索引，快且锁粒度小）。
       const isPartitioned = await this.isPartitioned();
       if (isPartitioned) {
         const dropped = await this.dropExpiredPartitions(retentionHours);
         deletedTotal += dropped;
         logger.info('[cleaner] Partition-aware cleanup', { droppedPartitions: dropped });
-      }
 
-      for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch++) {
-        // 分批 DELETE：PG 的 DELETE 不支持 LIMIT，用 ctid 子查询控制每批行数
-        const result = await pool.query(
-          `DELETE FROM events
-           WHERE ctid IN (
-             SELECT ctid FROM events
-             WHERE collected_at < NOW() - INTERVAL '${retentionHours} hours'
-             LIMIT ${DELETE_BATCH}
-           )`
-        );
-        const deleted = result.rowCount ?? 0;
-        deletedTotal += deleted;
+        const boundarySql = `NOW() - INTERVAL '${retentionHours} hours'`;
+        for (const part of await this.listPartitions()) {
+          const r = await pool.query(
+            `DELETE FROM ${part}
+             WHERE ctid IN (
+               SELECT ctid FROM ${part}
+               WHERE collected_at < ${boundarySql}
+               LIMIT ${DELETE_BATCH}
+             )`
+          );
+          deletedTotal += r.rowCount ?? 0;
+        }
+      } else {
+        for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch++) {
+          // 分批 DELETE：PG 的 DELETE 不支持 LIMIT，用 ctid 子查询控制每批行数
+          const result = await pool.query(
+            `DELETE FROM events
+             WHERE ctid IN (
+               SELECT ctid FROM events
+               WHERE collected_at < NOW() - INTERVAL '${retentionHours} hours'
+               LIMIT ${DELETE_BATCH}
+             )`
+          );
+          const deleted = result.rowCount ?? 0;
+          deletedTotal += deleted;
 
-        if (deleted === 0) break; // 没有更老的数据了
+          if (deleted === 0) break; // 没有更老的数据了
+        }
       }
 
       // 非 FULL VACUUM：仅普通表需要回收死元组空间；分区表已 DROP 物理回收
@@ -154,23 +171,33 @@ export class DataCleaner {
   }
 
   /**
+   * events 的全部子分区名（白名单校验 ^events_p_[0-9]{8}$，防御性防注入）。
+   */
+  private async listPartitions(): Promise<string[]> {
+    const { rows } = await pool.query(
+      `SELECT c.relname AS part
+         FROM pg_inherits i
+         JOIN pg_class c  ON c.oid = i.inhrelid
+         JOIN pg_class p  ON p.oid = i.inhparent
+         JOIN pg_namespace n ON n.oid = p.relnamespace
+        WHERE p.relname = 'events' AND n.nspname = current_schema()`
+    );
+    return rows
+      .map((r: any) => r.part)
+      .filter((p: string) => /^events_p_[0-9]{8}$/.test(p));
+  }
+
+  /**
    * DROP 整分区早于保留窗口的 events 子分区（物理回收，无死元组）。
    * @returns 删除的分区数
    */
   private async dropExpiredPartitions(retentionHours: number): Promise<number> {
     try {
-      const { rows } = await pool.query(
-        `SELECT c.relname AS part
-           FROM pg_inherits i
-           JOIN pg_class c  ON c.oid = i.inhrelid
-           JOIN pg_class p  ON p.oid = i.inhparent
-           JOIN pg_namespace n ON n.oid = p.relnamespace
-          WHERE p.relname = 'events' AND n.nspname = current_schema()`
-      );
-      if (rows.length === 0) return 0;
+      const parts = await this.listPartitions();
+      if (parts.length === 0) return 0;
 
       let dropped = 0;
-      for (const { part } of rows) {
+      for (const part of parts) {
         const maxRow = await pool.query(
           `SELECT max(collected_at) AS max_ts FROM ${part}`
         );
