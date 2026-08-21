@@ -79,6 +79,12 @@ class ServerConfig:
 @dataclass(frozen=True)
 class TenantConfig:
     db_path: str = "./tenants/tenants.db"
+    # SQLite 写锁等待时长（ms）。RWL-1：从环境读取，默认 30s；
+    # 短锁冲突自动等待而非立即抛 database is locked。
+    busy_timeout_ms: int = 30000
+    # 审计日志落库锁等待时长（ms）。RWL-3：审计写不得拖慢请求——
+    # 默认 1s，超时快速降级（仅 debug 记录），避免健康检查/读请求被锁阻塞 10s。
+    audit_busy_timeout_ms: int = 1000
 
 
 @dataclass(frozen=True)
@@ -147,6 +153,8 @@ def load_config() -> AppConfig:
         ),
         tenant=TenantConfig(
             db_path=os.getenv("TENANT_DB_PATH", TenantConfig.db_path),
+            busy_timeout_ms=int(os.getenv("TENANT_BUSY_TIMEOUT_MS", str(TenantConfig.busy_timeout_ms))),
+            audit_busy_timeout_ms=int(os.getenv("TENANT_AUDIT_BUSY_TIMEOUT_MS", str(TenantConfig.audit_busy_timeout_ms))),
         ),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )

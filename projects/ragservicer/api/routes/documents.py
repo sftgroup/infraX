@@ -31,11 +31,13 @@ def _want_async() -> bool:
 
 
 def _submit_or_error(submit_fn, *args):
-    """提交写任务；队列满时返回 503 错误响应。"""
+    """提交写任务；队列满时返回 503 + Retry-After 错误响应。"""
     try:
         return None, submit_fn(*args)
     except WriteQueueFull as exc:
-        return build_error(str(exc), 503), None
+        resp, status = build_error(str(exc), 503, code="WRITE_QUEUE_FULL")
+        resp.headers["Retry-After"] = "5"
+        return resp, status
 
 
 def register(api: Blueprint):

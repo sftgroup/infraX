@@ -21,14 +21,14 @@ def _get_db_path() -> Path:
 
 
 # ── Connection (lazy, no module-level side effects) ─
-def _get_conn() -> sqlite3.Connection:
+def _get_conn(busy_timeout_ms: int | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(_get_db_path()))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    # 每个请求都会写（validate_api_key 更新 last_used_at / audit_logs 落库），
-    # 无 busy_timeout 时并发写会立即抛 "database is locked" → 500（冒烟测试实测触发）。
-    # 10s 内等待锁而非直接失败。
-    conn.execute("PRAGMA busy_timeout=10000")
+    # RWL-1: busy_timeout 从配置读取（默认 30s），短锁冲突自动等待而非直接抛错。
+    if busy_timeout_ms is None:
+        busy_timeout_ms = get_config().tenant.busy_timeout_ms
+    conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
     return conn
 
 
@@ -46,11 +46,17 @@ def _touch_last_used(conn: sqlite3.Connection, key_id: str) -> None:
             return
         _last_used_ts[key_id] = now
     try:
-        conn.execute(
-            "UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?",
-            (key_id,),
-        )
-        conn.commit()
+        # RWL-3: 使用独立短超时连接执行（复用传入的只读连接会延长事务、
+        # 阻塞请求）；写失败仅 debug 降级，不影响鉴权主流程。
+        wconn = _get_conn(busy_timeout_ms=get_config().tenant.audit_busy_timeout_ms)
+        try:
+            wconn.execute(
+                "UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?",
+                (key_id,),
+            )
+            wconn.commit()
+        finally:
+            wconn.close()
     except sqlite3.Error as exc:
         logger.debug("last_used_at update skipped: %s", exc)
 
@@ -115,17 +121,21 @@ def init_db():
 # ── Audit logs（G-8：结构化审计，谁/何时/改了什么）──────────
 
 def add_audit_log(tenant: str, endpoint: str, method: str, status: int, duration_ms: float) -> None:
-    """写入一条审计记录；失败仅记 warning，不影响请求本身。"""
+    """写入一条审计记录；失败仅记 debug，不影响请求本身。
+
+    RWL-3: 审计写走独立短超时连接（默认 1s），锁冲突快速降级，
+    避免 after_request 同步写被长事务持锁拖慢所有请求（晚间 10s 慢响应根因）。
+    """
     try:
-        conn = _get_conn()
+        conn = _get_conn(busy_timeout_ms=get_config().tenant.audit_busy_timeout_ms)
         conn.execute(
             "INSERT INTO audit_logs (tenant, endpoint, method, status, duration_ms) VALUES (?, ?, ?, ?, ?)",
             (tenant, endpoint, method, status, duration_ms),
         )
         conn.commit()
         conn.close()
-    except Exception as exc:
-        logger.warning("audit log write failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — 审计降级绝不影响请求
+        logger.debug("audit log write skipped: %s", exc)
 
 
 # ── Tenant CRUD ────────────────────────────────────────────

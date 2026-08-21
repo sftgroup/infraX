@@ -38,6 +38,7 @@ import asyncio
 import functools
 import logging
 import inspect
+import sqlite3
 from typing import (
     Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, ParamSpec,
 )
@@ -241,6 +242,17 @@ def handle_errors(
                 if _logger:
                     _logger.warning(f"{label}: {exc}" if label else str(exc))
                 return build_error(str(exc), 400, code="VALIDATION_ERROR")
+            except sqlite3.OperationalError as exc:
+                # RWL-2: SQLite 写锁冲突（database is locked）→ 可重试的瞬时故障，
+                # 返回 503 + Retry-After，而不是 500/HTML，让集成方按标准语义重试。
+                if "locked" in str(exc):
+                    if _logger:
+                        _logger.warning(f"{label}: database busy (retryable): {exc}")
+                    resp, status = build_error(
+                        "Database busy, retry later", 503, code="DATABASE_BUSY")
+                    resp.headers["Retry-After"] = "5"
+                    return resp, status
+                raise
             except Exception as exc:
                 if _logger:
                     msg = f"{label}: {exc}" if label else str(exc)

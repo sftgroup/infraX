@@ -89,6 +89,17 @@ def main():
     def _not_found(_e):
         return build_error("Not Found", 404)
 
+    # RWL-2: 全局兜底 —— database is locked → 503 + Retry-After（未走 handle_errors 的路径）
+    @app.errorhandler(500)
+    def _internal_error(e):
+        import sqlite3
+        cause = getattr(e, "original_exception", None) or e
+        if isinstance(cause, sqlite3.OperationalError) and "locked" in str(cause):
+            resp, status = build_error("Database busy, retry later", 503, code="DATABASE_BUSY")
+            resp.headers["Retry-After"] = "5"
+            return resp, status
+        return build_error("Internal Server Error", 500)
+
     # G-6: Prometheus /metrics（/metrics 由 app_auth 豁免，探针免 key 拉取）
     from metrics import register_flask
     register_flask(app, "ragservicer")
