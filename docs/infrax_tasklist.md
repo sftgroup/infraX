@@ -216,3 +216,17 @@
 | RDL-2 | 异步删除 task result 携带删除处置（submit_delete_document 后 GET /tasks/{id} 可见 status/message） | ✅ 已部署 | P1 | `_delete_coro` 返回处置 dict → worker 自动写入 task result。生产验证：async DELETE→task success+result `{status:not_found,status_code:404}` |
 | RDL-3 | list 状态字段滞后修复：`_map_doc_status` 对 DocStatus 枚举取 `.value`（str(枚举) 得 "DocStatus.PROCESSED" 恒显 indexing）；调用处不再预 `str()` | ✅ 已部署 | P3 | `engine.py` `_map_doc_status` + `_insert_one_locked`/`list_documents` 调用处。生产验证：hc-1787333621.md 状态显示 **indexed**（此前恒显 indexing） |
 | RDL-4 | 偶发 query 15s 超时（HTTP 000）：冷查询首次图加载（服务端 `aquery` 300s 超时，客户端/网关 15s 截断）；二次命中缓存 185ms | 🔲 待排期 | P2 | 建议：客户端对首查放宽超时 15s→60s；服务端暂不额外预热（query 需真实参数无法通用预热） |
+
+### 9.18 collector events 分区缺失磁盘事故（EPF，2026-08-22 data 服务器磁盘占满）
+
+> **现象**：data 服务器（43.163.105.172）磁盘 90%，`collector/logs/combined.log` 刷至 **9.7G**。
+> **根因链**：① collector systemd `Environment=` 的 `DATABASE_URL` 指向 **10.3.8.6:5432**（覆盖 `.env.production` 的 localhost，dotenv 默认不覆盖已有环境变量）——collector 真正用的 PG 是 10.3.8.6，本机 PG 与其无关；② 10.3.8.6 的 `events` 为 native 分区父表（RANGE(collected_at)），但**代码中无自动建分区逻辑**，分区靠手动建；③ cleaner 按 72h 保留策略 DROP 8/16/17/18 分区（释放 8/16 的 36GB）后，**8/21 分区无人创建** → INSERT 报 `no partition of relation "events" found` → normalizer 无限重试 → combined.log 刷屏堆满磁盘；④ 连锁：本机 PG 数据目录软链接断裂 + 磁盘满，PG down。
+> **处理**：truncate combined.log 释放 10G（73%）；本机 PG 用 8/6 快照恢复（pocketx 角色重建+全库授权）；10.3.8.6 补建缺失分区 8/21~8/27（含 ca/cb/ce 索引，唯一索引由父表约束自动传播）；定位并终止孤儿 cleaner DELETE 连接（分区父表批量 DELETE 极慢持锁 14 分钟，阻塞新进程 migration 的 `ALTER TABLE events`，导致服务启动假死——新进程 02:41 起无日志、CPU 0.1%）。
+> **根治**：新增 `EventPartitionManager`（`src/services/partitionManager.ts`）——启动 + 每小时确保未来 6 天分区存在（幂等、`pg_try_advisory_lock` 防并发、普通表跳过、索引对齐现有分区），接入 `index.ts` main() migration 之后。单测 6 用例（tests/partitionManager.test.ts）。生产验证（commit 0769ba2）：分区 8/19~8/27 完整，no partition 报错终止（最后一条 02:34:34），5 分钟写入 10 万+ 行，`[partition] Event partition manager started` 正常。
+
+| 编号 | 需求 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|
+| EPF-1 | events 分区自动补齐：启动 + 每小时确保未来 `PARTITION_HORIZON_DAYS`（默认 6）天分区存在，防分区缺失刷屏 | ✅ 已部署 | P0 | `src/services/partitionManager.ts` + `index.ts` 接入；`tests/partitionManager.test.ts` 6 用例；commit 0769ba2 |
+| EPF-2 | 8/21 全天事件数据丢失（分区缺失 INSERT 全失败） | 🔲 不可恢复 | P0 | 需 PITR/WAL 归档方可回放，当前无归档；已确认丢失（events_p_20260821 为 0 行） |
+| EPF-3 | cleaner 分区父表批量 DELETE 极慢（20 万批跑 14+ 分钟持锁），导致重启时新进程 migration 卡锁假死 | 🔲 待排期 | P1 | 建议分区表路径直接 DROP 过期整分区（不再逐批 DELETE），父表 DELETE 仅在普通表路径保留；需评估 8/19 分区 72h 边界残留行处理 |
+| EPF-4 | collector systemd `Environment=` 与 `.env.production` 的 DATABASE_URL 不一致（10.3.8.6 vs localhost） | 🔲 待排期 | P3 | 需确认哪份为准，建议统一并消除混淆（当前行为以 systemd Environment 为准） |
