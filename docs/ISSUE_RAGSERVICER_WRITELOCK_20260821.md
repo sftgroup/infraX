@@ -194,3 +194,33 @@ curl -s -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
 | `indexing` | 处理中（切块/嵌入/写库未完成） |
 | `error` | 切块/嵌入失败——可**重传同名文档**覆盖重试 |
 | `duplicate` | 与已存在文档重复（`dedup_reason` 区分 文件名/内容哈希） |
+
+---
+
+## 11. 客户复测仍全部超时 → 根因：Admin 写端点挂起（2026-08-21 深夜，AIServicer 定位）
+
+### 11.1 客户反馈（与 5f2683b 修复发布前后重合）
+
+客户（bitbyte）复测：对 tx/sales/support 三个 Bot 执行 `POST/DELETE /api/v1/bots/{botId}/lightrag/documents` **全部 8s 无响应超时**（重复多次一致）；同一时刻 Gateway 域 `POST .../knowledge` 201（1.4s）正常——**网络、网关、鉴权均正常**，问题锁定在「网关 → RAGservicer」内部转发。
+
+### 11.2 我方定位（生产复现，2026-08-21 深夜）
+
+| 探测 | 结果 |
+|---|---|
+| 直连 `GET /api/v1/health` | 200，13ms（正常） |
+| 直连业务 `GET .../namespaces/{botId}/documents` | 200，快（正常） |
+| 直连 Admin 读 `GET /api/v1/tenants` | 200，快（正常） |
+| **直连 Admin 写 `POST /api/v1/tenants`（幂等补建）** | **挂起，15s 超时（HTTP 000）——2026-08-22 复测仍 3/3 全超时** |
+| 网关同款 shared 客户端调业务端点（带租户自愈前置） | 挂起 40s+ 被 kill（复现客户超时） |
+
+**根因**：**Admin 写端点 `POST /api/v1/tenants` 挂起**。我方共享客户端（server + gateway 共用）在每次业务调用前执行「租户自愈」`_ensureTenantForBusiness`（Admin POST 幂等补建，原实现超时 120s × 3 次重试）——Admin 写端点挂起时，**每个业务请求（上传/查询/删除）都被前置调用阻塞**，客户侧表现为「网关 → RAGservicer 转发全部超时」。直连 curl 业务端点正常是因为未走客户端（无该前置调用）。Admin 读端点正常、业务端点正常，仅 Admin 写端点挂起——与第 5 节「SQLite 写锁」同源（租户元数据与索引写同一 SQLite）。
+
+### 11.3 我方客户端侧修复（已部署生产，`shared/ragservicer-client.cjs`）
+
+1. 租户自愈调用独立**短超时 3s**（不再 120s×3），失败立即放行不阻塞业务请求；
+2. **失败短缓存 2 分钟 / 成功缓存 30 分钟**——Admin 挂起期间不会每个请求都触发自愈调用（修复后实测：首请求 3.1s，缓存命中后 **67ms**）；
+3. 生产已部署（server + gateway 重启），客户路径回归正常。
+
+### 11.4 请 InfraX 处理
+
+**Admin 写端点 `POST /api/v1/tenants` 持续挂起（P1）**——delete 修复（5f2683b）已生效，但 Admin 写端点仍 3/3 全超时（2026-08-22 复测）。租户补建/管理链路不可用，建议按第 5 节排查该端点的 SQLite 写锁/慢任务持锁。我方已通过客户端侧降级规避（业务请求不再被阻塞），客户可正常上传/查询/删除。
