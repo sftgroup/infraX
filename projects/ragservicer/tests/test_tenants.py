@@ -27,7 +27,7 @@ def test_get_conn_sets_busy_timeout(monkeypatch, tmp_path):
         assert busy >= 10000
         assert wal.lower() == "wal"
     finally:
-        conn.close()
+        tm._release_conn(conn)
 
 
 def test_get_conn_honors_explicit_timeout(monkeypatch, tmp_path):
@@ -39,7 +39,7 @@ def test_get_conn_honors_explicit_timeout(monkeypatch, tmp_path):
         busy = conn.execute("PRAGMA busy_timeout").fetchone()[0]
         assert busy == 1234
     finally:
-        conn.close()
+        tm._release_conn(conn)
 
 
 def test_config_reads_busy_timeout_env(monkeypatch):

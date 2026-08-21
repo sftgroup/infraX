@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import time
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest,
+)
 
 # ── 请求指标（各服务进程独立加载，全局单例） ──────────────
 REQUESTS = Counter(
@@ -31,6 +33,29 @@ DURATION = Histogram(
     "HTTP request duration in seconds",
     ["service", "method", "path"],
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+# RWL-4: SQLite 写锁竞争指标（ragservicer tenants.db 等单写者存储）
+SQLITE_BUSY_TOTAL = Counter(
+    "sqlite_busy_total",
+    "Total SQLite database is locked conflicts observed",
+    ["service"],
+)
+SQLITE_BUSY_WAIT_SECONDS = Histogram(
+    "sqlite_busy_wait_seconds",
+    "SQLite lock wait duration in seconds (busy_timeout window)",
+    ["service"],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+)
+WRITE_QUEUE_DEPTH = Gauge(
+    "write_queue_depth",
+    "Current background write queue depth",
+    ["service"],
+)
+WRITE_QUEUE_FULL_TOTAL = Counter(
+    "write_queue_full_total",
+    "Total write queue full (503) rejections",
+    ["service"],
 )
 
 

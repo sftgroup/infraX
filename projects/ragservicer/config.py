@@ -79,6 +79,9 @@ class ServerConfig:
 @dataclass(frozen=True)
 class TenantConfig:
     db_path: str = "./tenants/tenants.db"
+    # RWL-5: 审计日志独立库（高频写）与租户元数据分离，
+    # 避免审计写锁拖慢鉴权/租户管理主路径。
+    audit_db_path: str = "./tenants/audit.db"
     # SQLite 写锁等待时长（ms）。RWL-1：从环境读取，默认 30s；
     # 短锁冲突自动等待而非立即抛 database is locked。
     busy_timeout_ms: int = 30000
@@ -153,6 +156,7 @@ def load_config() -> AppConfig:
         ),
         tenant=TenantConfig(
             db_path=os.getenv("TENANT_DB_PATH", TenantConfig.db_path),
+            audit_db_path=os.getenv("TENANT_AUDIT_DB_PATH", TenantConfig.audit_db_path),
             busy_timeout_ms=int(os.getenv("TENANT_BUSY_TIMEOUT_MS", str(TenantConfig.busy_timeout_ms))),
             audit_busy_timeout_ms=int(os.getenv("TENANT_AUDIT_BUSY_TIMEOUT_MS", str(TenantConfig.audit_busy_timeout_ms))),
         ),

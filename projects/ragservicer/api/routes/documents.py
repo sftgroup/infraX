@@ -30,6 +30,14 @@ def _want_async() -> bool:
     return data.get("async", True) is not False
 
 
+def _want_async_explicit() -> bool:
+    """仅显式 `?async=1` / body `"async": true` 走异步队列（RDD-5 删除默认同步）。"""
+    if request.args.get("async", "") in ("1", "true"):
+        return True
+    data = parse_json()
+    return data.get("async") is True
+
+
 def _submit_or_error(submit_fn, *args):
     """提交写任务；队列满时返回 503 + Retry-After 错误响应。"""
     try:
@@ -114,7 +122,10 @@ def register(api: Blueprint):
     @require_tenant
     @handle_errors(logger, "Delete failed")
     def api_delete_document(namespace, doc_id, _tenant):
-        if _want_async():
+        # RDD-5: 删除默认同步执行（低频且需即时生效，消除"队列繁忙时已删
+        # 文档短暂仍可检索命中"的时序窗口）。仅显式 `?async=1` / body
+        # `"async": true` 走队列（与写路径一致）。
+        if _want_async_explicit():
             err, task_id = _submit_or_error(submit_delete_document, _tenant, namespace, doc_id)
             if err:
                 return err

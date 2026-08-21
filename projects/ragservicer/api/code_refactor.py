@@ -70,6 +70,18 @@ _ANON_FALLBACK     = "anonymous"
 _UNKNOWN_ENDPOINT  = "unknown"
 
 
+def _observe_sqlite_busy() -> None:
+    """RWL-4: 记录一次 SQLite 写锁冲突（供 /metrics 监控告警）。
+
+    metrics 可选依赖：prometheus_client 不可用时静默降级，不阻断请求路径。
+    """
+    try:
+        from metrics import SQLITE_BUSY_TOTAL
+        SQLITE_BUSY_TOTAL.labels(service="ragservicer").inc()
+    except Exception:
+        pass
+
+
 # ═══════════════════════════════════════════════════════════════
 #  1.  Request Parsing
 # ═══════════════════════════════════════════════════════════════
@@ -248,6 +260,7 @@ def handle_errors(
                 if "locked" in str(exc):
                     if _logger:
                         _logger.warning(f"{label}: database busy (retryable): {exc}")
+                    _observe_sqlite_busy()
                     resp, status = build_error(
                         "Database busy, retry later", 503, code="DATABASE_BUSY")
                     resp.headers["Retry-After"] = "5"

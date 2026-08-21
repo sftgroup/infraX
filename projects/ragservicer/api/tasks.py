@@ -22,6 +22,24 @@ from config import get_config
 
 logger = logging.getLogger("ragservicer.tasks")
 
+
+def _observe_queue_full() -> None:
+    """RWL-4: 记录一次队列满拒绝（/metrics）。可选依赖，失败静默。"""
+    try:
+        from metrics import WRITE_QUEUE_FULL_TOTAL
+        WRITE_QUEUE_FULL_TOTAL.labels(service="ragservicer").inc()
+    except Exception:
+        pass
+
+
+def _observe_queue_depth(depth: int) -> None:
+    """RWL-4: 更新当前队列深度 Gauge（/metrics）。"""
+    try:
+        from metrics import WRITE_QUEUE_DEPTH
+        WRITE_QUEUE_DEPTH.labels(service="ragservicer").set(depth)
+    except Exception:
+        pass
+
 # ── 任务状态 ───────────────────────────────────────────
 QUEUED = "queued"
 RUNNING = "running"
@@ -80,6 +98,7 @@ def _worker_loop() -> None:
         if item is None:
             break
         task_id, coro_factory = item
+        _observe_queue_depth(q.qsize())
         _set_status(task_id, RUNNING)
         try:
             result = _run_async(coro_factory(), timeout=None)
@@ -101,6 +120,7 @@ def submit(coro_factory: Callable[[], Any], *, kind: str,
     """
     init_write_queue()
     if _write_queue.full():  # type: ignore[union-attr]
+        _observe_queue_full()
         raise WriteQueueFull("write queue is full, retry later")
 
     task_id = f"task_{next(_seq)}"
