@@ -461,6 +461,15 @@ async def factors_graph_edges(
             meta["status"] = "building"  # GP-4：结构化状态（ml-service 后台构建中，客户端可重试）
             return {"ts": int(time.time() * 1000), "meta": meta,
                     "nodes": [], "edges": []}
+        if data.get("status") == "building":
+            # GP-2：ml-service 后台构建中，透传 job_id 供客户端轮询构建进度
+            meta["status"] = "building"
+            if data.get("job_id"):
+                meta["job_id"] = data["job_id"]
+            if data.get("reason"):
+                meta["reason"] = data["reason"]
+            return {"ts": int(time.time() * 1000), "meta": meta,
+                    "nodes": [], "edges": []}
         meta["status"] = "ready"
         meta["updated_at"] = data.get("updated_at", 0)
         meta["window"] = data.get("window", 60)

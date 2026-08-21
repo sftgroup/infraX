@@ -25,12 +25,22 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncCacheRunner:
-    """TTLCache 的异步封装：计算放后台线程，请求永不因重计算而阻塞。"""
+    """TTLCache 的异步封装：计算放后台线程，请求永不因重计算而阻塞。
+
+    自 GP-2 起支持任务（job）语义：
+      - trigger() 新启动后台计算时返回 job_id（同 key 已在计算则返回 None）；
+      - active_job_id(key) / get_job_status(job_id) 供端点透传构建进度；
+      - 端点冷态可返回 202 + job_id，客户端轮询 /ml/graph/jobs/{job_id}。
+    """
+
+    _JOB_KEEP_MAX = 100  # 任务记录保留上限（超限淘汰最早完成的任务，防内存膨胀）
 
     def __init__(self, cache, ttl: float) -> None:
         self._cache = cache
         self._ttl = ttl
         self._running: set[str] = set()
+        self._jobs: dict[str, dict] = {}    # job_id → {key, status, started_at, ...}
+        self._key_job: dict[str, str] = {}  # key → 当前运行中 job_id
         self._lock = threading.Lock()
 
     def get(self, key: str, compute: Callable[[], Any]) -> Any:
@@ -51,17 +61,40 @@ class AsyncCacheRunner:
             self._cache.bump(key, stale=1)
         return stale
 
-    def trigger(self, key: str, compute: Callable[[], Any]) -> bool:
-        """确保后台计算已启动（同 key 已在计算则跳过）。返回是否新启动。"""
+    def trigger(self, key: str, compute: Callable[[], Any]) -> str | None:
+        """确保后台计算已启动。新启动返回 job_id；同 key 已在计算返回 None。"""
         with self._lock:
             if key in self._running:
-                return False
+                return None
             self._running.add(key)
+            job_id = f"{key}-{int(time.time() * 1000)}"
+            self._jobs[job_id] = {
+                "job_id": job_id,
+                "key": key,
+                "status": "running",
+                "started_at": int(time.time() * 1000),
+                "finished_at": None,
+                "duration_ms": None,
+                "error": None,
+            }
+            self._key_job[key] = job_id
+            self._trim_jobs_locked()
         t = threading.Thread(
             target=self._run, args=(key, compute), name=f"compute-{key}", daemon=True
         )
         t.start()
-        return True
+        return job_id
+
+    def active_job_id(self, key: str) -> str | None:
+        """返回 key 当前运行中的 job_id（未运行返回 None）。"""
+        with self._lock:
+            return self._key_job.get(key)
+
+    def get_job_status(self, job_id: str) -> dict | None:
+        """查询任务状态（running/success/error + 起止时间/耗时）。不存在返回 None。"""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return dict(job) if job else None
 
     def need_refresh(self, key: str) -> bool:
         """缓存缺失或过期 → 需要刷新（供预热循环判断）。"""
@@ -71,15 +104,37 @@ class AsyncCacheRunner:
         with self._lock:
             return sorted(self._running)
 
+    def _trim_jobs_locked(self) -> None:
+        """保留上限内最新任务；超限时淘汰最早完成（非 running）的任务。"""
+        if len(self._jobs) <= self._JOB_KEEP_MAX:
+            return
+        finished = sorted(
+            (j for j in self._jobs.values() if j["status"] != "running"),
+            key=lambda j: (j["finished_at"] or j["started_at"]),
+        )
+        for j in finished[: len(self._jobs) - self._JOB_KEEP_MAX]:
+            self._jobs.pop(j["job_id"], None)
+
     def _run(self, key: str, compute: Callable[[], Any]) -> None:
+        started = time.monotonic()
+        status, error = "success", None
         try:
             # 复用 TTLCache 的 per-key 锁 + 统计；None 结果不缓存
             self._cache.get_or_compute(key, compute, self._ttl)
         except Exception as exc:
+            status, error = "error", str(exc)
             logger.warning("background compute %s failed: %s", key, exc)
         finally:
             with self._lock:
                 self._running.discard(key)
+                job_id = self._key_job.pop(key, None)
+                if job_id and job_id in self._jobs:
+                    self._jobs[job_id].update({
+                        "status": status,
+                        "finished_at": int(time.time() * 1000),
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                        "error": error,
+                    })
 
 
 def prewarm_loop(

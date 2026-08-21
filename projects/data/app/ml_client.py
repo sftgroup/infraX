@@ -239,8 +239,9 @@ def fetch_graph_catalog() -> list | None:
 def fetch_graph_edges(symbols: list[str] | None = None, limit: int = 300) -> dict | None:
     """拉取 ml-service 相关性图边表（/ml/graph/edges，REQ-G1）。
 
-    返回 {"updated_at", "window", "min_abs_corr", "nodes": [...], "edges": [...]}
-    或 None（fail-silent）。300s TTL 缓存，**按 symbols 集合键控**。
+    GP-2：ml-service 冷态返回 HTTP 202 + meta.job_id，此处透传
+    {"status":"building","job_id",...}（短 TTL 30s，客户端可轮询）；
+    就绪返回 {"status":"ready", ...}。300s TTL 缓存，按 symbols 集合键控。
     data-service /factors/graph/edges 将其透传给 B 端（AIHunter 图谱展示）。
     """
     global _GRAPH_EDGES_CACHE  # 函数内赋值 → 需显式 global
@@ -249,8 +250,9 @@ def fetch_graph_edges(symbols: list[str] | None = None, limit: int = 300) -> dic
         return None
     cache_key = ",".join(sorted(symbols)) if symbols else "_all"
     now = time.time()
+    ttl = _GRAPH_EDGES_CACHE.get("ttl", _GRAPH_EDGES_CACHE_TTL_S)
     if (_GRAPH_EDGES_CACHE.get("key") == cache_key
-            and now - _GRAPH_EDGES_CACHE.get("ts", 0) < _GRAPH_EDGES_CACHE_TTL_S):
+            and now - _GRAPH_EDGES_CACHE.get("ts", 0) < ttl):
         return _GRAPH_EDGES_CACHE.get("data")
     try:
         params: dict = {"limit": limit}
@@ -258,14 +260,30 @@ def fetch_graph_edges(symbols: list[str] | None = None, limit: int = 300) -> dic
             params["symbols"] = ",".join(symbols)
         resp = requests.get(f"{base}/ml/graph/edges",
                             params=params, headers=_headers(), timeout=30)
-        if resp.status_code != 200:
+        if resp.status_code not in (200, 202):
             logger.debug("ml-service /ml/graph/edges → %s", resp.status_code)
             return None
-        data = (resp.json() or {}).get("data")
+        body = resp.json() or {}
+        meta = body.get("meta") or {}
+        data = body.get("data")
+        if meta.get("status") == "building":
+            # 构建中：透传 job_id（短 TTL，客户端轮询构建完成后转 ready）
+            cached = {
+                "updated_at": (data or {}).get("updated_at", 0),
+                "nodes": [], "edges": [],
+                "status": "building",
+                "job_id": meta.get("job_id"),
+                "reason": meta.get("reason"),
+            }
+            _GRAPH_EDGES_CACHE = {"key": cache_key, "ts": now, "data": cached, "ttl": 30}
+            return cached
         if not isinstance(data, dict) or not data.get("edges"):
             return None
-        _GRAPH_EDGES_CACHE = {"key": cache_key, "ts": now, "data": data}
-        return data
+        cached = dict(data)
+        cached["status"] = "ready"
+        _GRAPH_EDGES_CACHE = {"key": cache_key, "ts": now, "data": cached,
+                              "ttl": _GRAPH_EDGES_CACHE_TTL_S}
+        return cached
     except requests.RequestException as exc:
         logger.debug("ml-service /ml/graph/edges request failed: %s", exc)
         return None

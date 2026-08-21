@@ -684,8 +684,8 @@ def graph_edges_endpoint(
 
     GP-1/GP-2：全图边表由 _async_runner 后台计算 + TTL 缓存（ML_CACHE_TTL_SEC，
     默认 1800s）并纳入预热，缓存常满；请求按 symbols（1-hop）/limit 从全图裁剪，
-    命中秒回。冷态（快照未就绪）不阻塞：立即返回空结构 + meta.status="building"，
-    后台构建完成后随预热/下次请求自动就绪。
+    命中秒回。冷态（快照未就绪）返回 HTTP 202 + meta.job_id，客户端可轮询
+    GET /ml/graph/jobs/{job_id} 查询构建进度（running/success/error）。
 
     GP-4：meta.status 结构化状态（ready/building/error）替代 fail-silent，
     客户端可据此区分「生成中 / 就绪 / 故障」。
@@ -701,13 +701,35 @@ def graph_edges_endpoint(
             if data.get("nodes") or data.get("edges"):
                 return {"code": 0, "message": "ok", "data": data,
                         "meta": {"status": "ready"}}
-        return {"code": 0, "message": "ok", "data": empty,
-                "meta": {"status": "building",
-                         "reason": "graph snapshot not ready; background build in progress"}}
+        # 冷态：后台构建已由 get() 触发；透传 job_id 供客户端轮询构建进度
+        job_id = _async_runner.active_job_id("graph_edges")
+        if job_id is None:
+            job_id = _async_runner.trigger("graph_edges", _compute_graph_edges)
+        return JSONResponse(
+            status_code=202,
+            content={"code": 0, "message": "ok", "data": empty,
+                     "meta": {"status": "building", "job_id": job_id,
+                              "reason": "graph snapshot not ready; background build in progress"}},
+        )
     except Exception as exc:
         logger.warning("graph edges failed: %s", exc)
         return {"code": 0, "message": "ok", "data": empty,
                 "meta": {"status": "error", "reason": str(exc)}}
+
+
+@app.get("/ml/graph/jobs/{job_id}")
+def graph_job_status_endpoint(job_id: str):
+    """图构建任务状态查询（GP-2 异步化轮询）。
+
+    契约：{"code":0,"data":{"job_id","key","status":"running|success|error",
+    "started_at","finished_at","duration_ms","error"}}；job_id 不存在返回
+    404 {code,message,data:null}（与统一错误体对齐）。
+    """
+    job = _async_runner.get_job_status(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={
+            "code": 404, "message": f"job {job_id} not found", "data": None})
+    return {"code": 0, "message": "ok", "data": job}
 
 
 # REQ-G2.5：gf_* 历史序列（回测数据面）

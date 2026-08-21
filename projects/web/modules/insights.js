@@ -123,8 +123,31 @@ async function insLoadGraph() {
 
   if (results[0].status === 'fulfilled') insRenderGraphViz(viz, results[0].value);
   else viz.innerHTML = insEmpty('entities 不可用：' + insEsc(results[0].reason && results[0].reason.message));
-  if (results[1].status === 'fulfilled') insRenderEdges(edgesEl, results[1].value);
+  if (results[1].status === 'fulfilled') insRenderEdgesMaybePoll(edgesEl, results[1].value, INS_STATE.edgeSymbols);
   else edgesEl.innerHTML = insEmpty('edges 不可用：' + insEsc(results[1].reason && results[1].reason.message));
+}
+
+// GP-2：edges 冷态（meta.status=building）→ 展示「生成中」并轮询（最多 12 次 × 5s）
+function insRenderEdgesMaybePoll(el, data, symbols) {
+  if (!el) return;
+  if (data && data.meta && data.meta.status === 'building') {
+    var tries = 0;
+    el.innerHTML = insEmpty('🔨 图谱生成中…' + (data.meta.job_id ? '（job ' + data.meta.job_id + '）' : '') + '，后台构建完成后自动刷新');
+    var timer = setInterval(async function() {
+      tries++;
+      try {
+        var d = await insFetch('/factors/graph/edges?symbols=' + encodeURIComponent(symbols || '') + '&limit=200');
+        if (d && d.meta && d.meta.status === 'building' && tries < 12) return; // 继续轮询
+        clearInterval(timer);
+        insRenderEdges(el, d);
+      } catch (e) {
+        clearInterval(timer);
+        el.innerHTML = insEmpty('edges 不可用：' + insEsc(e && e.message));
+      }
+    }, 5000);
+    return;
+  }
+  insRenderEdges(el, data);
 }
 
 function insEmpty(msg) {

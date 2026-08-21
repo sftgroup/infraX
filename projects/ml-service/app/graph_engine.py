@@ -910,7 +910,14 @@ def _graph_embedding(G: nx.Graph, dims: int = _NODE2VEC_DIMS) -> dict[str, list[
     """对称归一化邻接的谱嵌入（类 Node2Vec 的低维表示，确定性 SVD）。
 
     取前 dims 个非平凡右奇异向量 × sqrt(奇异值)；孤立节点为全 0 向量。
+    GP-3：结果按图拓扑+权重签名缓存（TTL _EMBEDDING_CACHE_TTL_S），图结构
+    未变时复用上次 SVD，避免每轮构建重复 O(n³) 分解。
     """
+    sig = _embedding_signature(G)
+    now = time.time()
+    hit = _EMBEDDING_CACHE.get(sig)
+    if hit is not None and now - hit[0] < _EMBEDDING_CACHE_TTL_S:
+        return hit[1]
     nodes = list(G.nodes())
     n = len(nodes)
     if n < 2:
@@ -934,7 +941,30 @@ def _graph_embedding(G: nx.Graph, dims: int = _NODE2VEC_DIMS) -> dict[str, list[
     except Exception as exc:
         logger.debug("graph embedding SVD failed: %s", exc)
         return {}
-    return {s: [float(x) for x in E[i]] for i, s in enumerate(nodes)}
+    emb = {s: [float(x) for x in E[i]] for i, s in enumerate(nodes)}
+    _EMBEDDING_CACHE[sig] = (now, emb)
+    _trim_embedding_cache()
+    return emb
+
+
+def _embedding_signature(G: nx.Graph) -> int:
+    """图拓扑+权重签名（节点集 + 平行边 u/v/kind/weight）。
+
+    同签名 = 谱嵌入可复用（图结构未变）。进程内 hash 一致性足够（内存缓存）。
+    """
+    edges = []
+    for u, v, k, d in G.edges(keys=True, data=True):
+        edges.append((u, v, k, round(float(d.get("weight", 1.0)), 6)))
+    return hash((tuple(sorted(G.nodes())), tuple(sorted(edges))))
+
+
+def _trim_embedding_cache() -> None:
+    """仅保留最近 _EMBEDDING_CACHE_MAX 个签名（按写入时间淘汰最旧）。"""
+    if len(_EMBEDDING_CACHE) <= _EMBEDDING_CACHE_MAX:
+        return
+    oldest = sorted(_EMBEDDING_CACHE, key=lambda k: _EMBEDDING_CACHE[k][0])
+    for k in oldest[: len(_EMBEDDING_CACHE) - _EMBEDDING_CACHE_MAX]:
+        _EMBEDDING_CACHE.pop(k, None)
 
 
 # ── 全图构建 ───────────────────────────────────────────────
@@ -950,6 +980,12 @@ _GRAPH_SNAPSHOT_TTL_S = float(os.getenv("ML_GRAPH_SNAPSHOT_TTL_S", "1800"))
 # bars 拉取结果缓存（秒，GP-3：全市场日线每次构建重复拉取，300s 按标的集合键控复用）
 _BARS_CACHE: dict = {}
 _BARS_CACHE_TTL_S = float(os.getenv("ML_GRAPH_BARS_CACHE_TTL_S", "300"))
+
+# 谱嵌入结果缓存（秒，GP-3）：按图拓扑+权重签名键控，图结构未变（bars 未触发
+# 新边）时复用上次 SVD，避免每轮构建重复 O(n³) 分解（n≤150，numpy SVD ~100ms+）。
+_EMBEDDING_CACHE: dict[str, tuple[float, dict[str, list[float]]]] = {}
+_EMBEDDING_CACHE_TTL_S = float(os.getenv("ML_GRAPH_EMBEDDING_CACHE_TTL_S", "3600"))
+_EMBEDDING_CACHE_MAX = 8  # 仅保留最近 N 个签名（防内存膨胀）
 
 
 def _build_graph() -> dict | None:
