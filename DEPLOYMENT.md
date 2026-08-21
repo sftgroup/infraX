@@ -275,11 +275,21 @@ Environment="OKX_CHAINOS_API_PASSPHRASE=..."
 
 # /etc/systemd/system/infrax-collector.service.d/oxa.conf
 Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
+
+# /etc/systemd/system/infrax-collector.service.d/secrets.conf  (root:600, EPF-8 2026-08-22)
+# 敏感密钥统一集中在此文件，禁止写入 .env.production / .env（两文件均不入 git）。
+# 系统加载顺序：systemd Environment 优先于 dotenv，dotenv 不覆盖已存在环境变量。
+Environment="DATABASE_URL=postgresql://pocketx_app:<强密码>@10.3.8.6:5432/pocketx_collector"
+Environment="ADMIN_USERNAME=admin"
+Environment="ADMIN_PASSWORD=<强随机 24+ 字符>"
+Environment="CWALLET_API_KEY=<64 hex>"
 ```
 
 ## 数据库（43.156.78.59，10.3.8.6:5432）
 
-> **PostgreSQL 14 位于新机 43.156.78.59**（2026-08-16 整盘迁移），172 及各服务经内网 `10.3.8.6:5432` 连接，账密 `postgres:postgres`。
+> **PostgreSQL 14 位于新机 43.156.78.59**（2026-08-16 整盘迁移），172 及各服务经内网 `10.3.8.6:5432` 连接。
+> **collector 从 2026-08-22 起使用专用低权限用户 `pocketx_app`**（EPF-8；仅 pocketx_collector 库，库内 31 表 owner），
+> 不再使用 `postgres:postgres` 超管连接；`postgres:postgres` 仅保留运维用途。
 
 | 数据库 | 表数 | 说明 |
 |--------|------|------|
