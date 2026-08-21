@@ -188,10 +188,10 @@
 |---|---|---|---|---|
 | RWL-1 | SQLite 写锁友好化：`busy_timeout` 从配置读取（默认 30s，当前 10s 硬编码于 `tenants/manager.py:31`）；长事务最小化；幂等写短路 | ✅ 已实施 | P0 | `TENANT_BUSY_TIMEOUT_MS` 默认 30000（config.py TenantConfig）；`_get_conn(busy_timeout_ms=)` 支持覆盖 |
 | RWL-2 | 锁冲突可重试语义：`database is locked` / `WriteQueueFull` 统一 503 + `Retry-After`（当前 WriteQueueFull 已 503 但无 Retry-After 头；SQLite 错误仍透出 500/HTML） | ✅ 已实施 | P0 | `handle_errors` 映射 locked→503+Retry-After=5s（code DATABASE_BUSY）；WriteQueueFull→503+Retry-After；main.py 全局 500 兜底 |
-| RWL-3 | 晚间 10s 稳定慢响应根因排查（health/读 10s、写 20s）——定位慢任务持锁（LightRAG 索引）与 WAL checkpoint 阻塞；写路径超时阈值收紧 | ✅ 已修复 | P0 | 根因=after_request 审计写全量同步 + busy_timeout=10s；审计写改短超时（`TENANT_AUDIT_BUSY_TIMEOUT_MS` 默认 1000）快速降级；last_used 写独立短超时连接 |
-| RWL-4 | 写锁监控与告警：SQLite busy 次数/等待时长、写队列深度、worker 积压、慢任务清单指标 + 故障告警 | 🔲 待办 | P1 | 当前仅 `task_stats()` 有队列深度，无 busy/慢任务指标 |
-| RWL-5 | 建租户与文档写并发解耦：租户元数据迁移 PostgreSQL（服务已有 PG）或至少 Admin API 与 worker 用不同 SQLite 文件 | 🔲 待办 | P1 | 当前建租户（请求线程同步写）与 worker（LightRAG 索引写）争同一 tenants.db |
-| RWL-6 | 连接复用：租户 SQLite 连接级联复用（当前每请求建连/关连） | 🔲 待办 | P1 | 减少建连/关连开销与锁窗口 |
+| RWL-3 | 晚间 10s 稳定慢响应根因排查（health/读 10s、写 20s）——定位慢任务持锁（LightRAG 索引）与 WAL checkpoint 阻塞；写路径超时阈值收紧 | ✅ 已部署 | P0 | 根因=after_request 审计写全量同步 + busy_timeout=10s；审计写改短超时（`TENANT_AUDIT_BUSY_TIMEOUT_MS` 默认 1000）快速降级；last_used 写独立短超时连接。2026-08-21 部署生产（commit 7d6d815），health 14ms 响应、audit.db 独立写入验证通过 |
+| RWL-4 | 写锁监控与告警：SQLite busy 次数/等待时长、写队列深度、worker 积压、慢任务清单指标 + 故障告警 | ✅ 已部署 | P1 | shared/metrics 新增 `SQLITE_BUSY_TOTAL`、`SQLITE_BUSY_WAIT_SECONDS`、`WRITE_QUEUE_DEPTH`、`WRITE_QUEUE_FULL_TOTAL`；`write_queue_depth` 生产 /metrics 可见 |
+| RWL-5 | 建租户与文档写并发解耦：租户元数据迁移 PostgreSQL（服务已有 PG）或至少 Admin API 与 worker 用不同 SQLite 文件 | ✅ 已部署 | P1 | 审计日志独立 `audit.db`（`TENANT_AUDIT_DB_PATH`），高频 after_request 写与租户元数据写锁解耦；生产验证 audit.db 独立写入 |
+| RWL-6 | 连接复用：租户 SQLite 连接级联复用（当前每请求建连/关连） | ✅ 已部署 | P1 | 线程本地 + 按 db_path 缓存连接，`_release_conn` 归还复用（回滚未提交事务）；audit 独立短超时连接 |
 
 ### 9.16 RAGSERVICER 去重与列表透明化（RDD，源：`docs/ISSUE_RAGSERVICER_DEDUP_20260821.md`，AIServicer 提交，2026-08-21）
 
@@ -201,6 +201,6 @@
 |---|---|---|---|---|
 | RDD-1 | 去重决策透出：响应/列表标记 `deduplicated` / `dedup_reason`（file_name_dup/content_hash_dup/filename_conflict）/ `matched_doc_id`；`status: "duplicate"` + `chunks: 0` | ✅ 已部署 | P1 | `2162068`：engine.py L121-188 + list_documents L415-430；API.md §4.1-4.3 已文档化 |
 | RDD-2 | 任务结果携带处置明细：`GET /tasks/{id}` result 返回每篇 indexed/duplicated/error | ✅ 已部署 | P1 | 处置写入 task result（`_disposition_from_failed`）；SDK 默认同步 `async:false` |
-| RDD-3 | batch 接口生产可执行：`/documents/batch` 202+task 后任务真实执行（issue 反馈生产不执行，文档永久卡 indexing） | ⚠️ 待确认 | P1 | submit 链路存在（engine.py L298-301）；需生产验证或改逐篇直传 |
+| RDD-3 | batch 接口生产可执行：`/documents/batch` 202+task 后任务真实执行（issue 反馈生产不执行，文档永久卡 indexing） | ✅ 已部署 | P1 | submit 链路存在（engine.py L298-301）；2026-08-21 生产验证：batch→task queued→running→success，结果含每篇处置明细 |
 | RDD-4 | 列表接口租户/namespace 过滤：list 按 key 绑定租户隔离，不再全局视图 | ✅ 已部署 | P1 | d827e43 workspace 隔离 + `require_tenant`；响应含 tenant/namespace 字段 |
-| RDD-5 | 删除时序：删除走队列，繁忙时短暂窗口已删文档仍可检索 | 🔲 待办 | P2 | issue 6.3；空闲队列实测 0.4s 内 GONE，繁忙场景未验证 |
+| RDD-5 | 删除时序：删除走队列，繁忙时短暂窗口已删文档仍可检索 | ✅ 已部署 | P2 | 删除默认同步执行（仅显式 `?async=1` 走队列）；生产验证 46ms 即时生效 |

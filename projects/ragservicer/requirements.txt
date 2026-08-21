@@ -6,6 +6,7 @@ openai>=1.0
 requests>=2.31
 networkx>=3.0   # graph endpoints (GF-3/GF-5): PageRank + GraphML
 scipy>=1.9      # nx.pagerank backend (graph factors, GF-3)
+prometheus_client>=0.20   # shared/metrics (RWL-4 写锁指标，/metrics)
 # Embedding uses Qwen cloud via DashScope — no local model downloads.
 # (Local SentenceTransformer backend requires installing sentence-transformers separately.)
 # For Postgres storage mode (optional)
