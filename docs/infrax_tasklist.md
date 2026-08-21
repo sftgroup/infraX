@@ -228,5 +228,8 @@
 |---|---|---|---|---|
 | EPF-1 | events 分区自动补齐：启动 + 每小时确保未来 `PARTITION_HORIZON_DAYS`（默认 6）天分区存在，防分区缺失刷屏 | ✅ 已部署 | P0 | `src/services/partitionManager.ts` + `index.ts` 接入；`tests/partitionManager.test.ts` 6 用例；commit 0769ba2 |
 | EPF-2 | 8/21 全天事件数据丢失（分区缺失 INSERT 全失败） | 🔲 不可恢复 | P0 | 需 PITR/WAL 归档方可回放，当前无归档；已确认丢失（events_p_20260821 为 0 行） |
-| EPF-3 | cleaner 分区父表批量 DELETE 极慢（20 万批跑 14+ 分钟持锁），导致重启时新进程 migration 卡锁假死 | 🔲 待排期 | P1 | 建议分区表路径直接 DROP 过期整分区（不再逐批 DELETE），父表 DELETE 仅在普通表路径保留；需评估 8/19 分区 72h 边界残留行处理 |
+| EPF-3 | cleaner 分区父表批量 DELETE 极慢（20 万批跑 14+ 分钟持锁），导致重启时新进程 migration 卡锁假死 | ✅ 已部署 | P1 | 分区表路径改为 **DROP 过期整分区 + 分区级 DELETE**（每分区本地索引，秒级），父表 DELETE 仅在普通表路径保留；分区名白名单校验 `^events_p_[0-9]{8}$`；`tests/cleaner.test.ts` 4 用例；commit c331383 |
 | EPF-4 | collector systemd `Environment=` 与 `.env.production` 的 DATABASE_URL 不一致（10.3.8.6 vs localhost） | 🔲 待排期 | P3 | 需确认哪份为准，建议统一并消除混淆（当前行为以 systemd Environment 为准） |
+| EPF-5 | 防线2 日志刷屏熔断：高频重复错误限流（`level:message:error` 每 10s 窗口仅放行首条 + `_suppressed` 计数） | ✅ 已部署 | P1 | `src/logger.ts` `rateLimitInfo`（winston format 链首）+ Map 定期清理；`tests/logger.test.ts` 5 用例；commit c331383 |
+| EPF-6 | 防线4 磁盘自动止血：`scripts/disk-guard.sh` >1G 日志无条件截断、`/` >85% 收紧截断 | ✅ 已部署 | P1 | 生产 cron `*/15 * * * *`；commit c331383；手动验证 syntax OK |
+| EPF-7 | 孤儿 PG 后端（进程已死但 PG 连接未感知）继续跑旧 cleaner 父表 DELETE，阻塞新进程 migration | 🔲 待排期 | P2 | 机制：SIGKILL 后 PG 未及时感知 TCP 断连；需评估 PG 侧 `tcp_keepalives_idle` / `idle_in_transaction_session_timeout`，或 collector 侧连接 `keepAlive`；生产已用 `pg_terminate_backend` 处理两次 |
