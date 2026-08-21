@@ -37,8 +37,8 @@
 | 编号 | 需求 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|
 | GP-1 | 图谱端点服务端缓存 | ✅ 已部署 | P1 | ml-service `/ml/graph/edges` `_endpoint_cache` 1800s + 图快照新鲜检查 + prewarm；data entities/factors 1h、edges/history 30m 缓存；ragservicer 三 loader SWR（1800s）过期旧图+后台重建+原子切换 |
-| GP-2 | 图谱首次生成异步化（R2） | ✅ 已部署 | P2 | ml-service `AsyncCacheRunner` job 跟踪（trigger 返 job_id / active_job_id / get_job_status）+ `/ml/graph/edges` 冷态 202+meta.job_id + 新增 `GET /ml/graph/jobs/{job_id}`；data-service 透传 building+job_id（30s 短 TTL 轮询）；web insights.js 冷态「生成中」+轮询 12×5s。生产验证：冷态 202→job→success（213s 全量构建）→ready 150 节点 |
-| GP-3 | 图谱生成链路性能优化（R3） | ✅ 已部署 | P2 | bars 300s 结果缓存 + 图快照新鲜检查 + 谱嵌入签名缓存（`_EMBEDDING_CACHE`，TTL 3600s 按拓扑+权重签名键控，图未变复用 SVD 避免 O(n³)）；图谱分片 / LLM 批处理不在本链路（图谱无 LLM 调用，评估后无需实施） |
+| GP-2 | 图谱首次生成异步化（R2） | ✅ 已部署 | P2 | ml-service `AsyncCacheRunner` job 跟踪（trigger 返 job_id / active_job_id / get_job_status）+ `/ml/graph/edges` 冷态 202+meta.job_id + 新增 `GET /ml/graph/jobs/{job_id}`；data-service 透传 building+job_id（30s 短 TTL 轮询）；web insights.js 冷态「生成中」+轮询 12×5s。生产验证（commit 53771d3）：冷态 202→job→success（206s 全量构建，带锁后只触发一次）→ready 150 节点/271 边；二次触发复用同 job_id（防重入）；data-service 透传 ready |
+| GP-3 | 图谱生成链路性能优化（R3） | ✅ 已部署 | P2 | bars 300s 结果缓存 + 图快照新鲜检查 + 谱嵌入签名缓存（`_EMBEDDING_CACHE`，TTL 3600s 按拓扑+权重签名键控，图未变复用 SVD 避免 O(n³)）+ 全量构建互斥锁 `_BUILD_LOCK`（commit 53771d3：graph_factors/graph_edges/prewarm 并发冷触发时锁内二次快照检查，避免重复全量构建——生产曾并发重复构建 >14 分钟，带锁后恢复 206s）；图谱分片 / LLM 批处理不在本链路（图谱无 LLM 调用，评估后无需实施） |
 | GP-4 | 图谱端点 SLA 承诺（R4） | ✅ 已部署 | P2 | 四端点统一 `meta.status`（ready/building/error）+ 结构化 reason；202 Accepted+jobId 异步化已随 GP-2 落地（`/ml/graph/edges` 冷态 202 + `/ml/graph/jobs/{job_id}`） |
 
 ### 9.2 模型与 RAG 里程碑（源：docs/DATA_MODULE_RAG_PLAN.md）
