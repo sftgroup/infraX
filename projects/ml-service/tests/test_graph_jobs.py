@@ -120,3 +120,31 @@ def test_graph_edges_ready(monkeypatch):
     j = r.json()
     assert j["meta"]["status"] == "ready"
     assert j["data"]["edges"][0]["source"] == "BTC"
+
+
+# ── GP-3 全量构建互斥锁 ───────────────────────────────────
+
+def test_build_graph_lock_serializes_concurrent_builds(monkeypatch):
+    """并发调用 _build_graph 时构建体串行执行（冷态只构建一次，峰值并发=1）。"""
+    from app import graph_engine as GE
+    active, peak, alock = 0, 0, threading.Lock()
+
+    def tracked():
+        nonlocal active, peak
+        with alock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.2)
+        with alock:
+            active -= 1
+        return {"updated_at": 1, "values": {"A": {}}}
+
+    monkeypatch.setattr(GE, "_build_graph_locked", tracked)
+    out: list = []
+    threads = [threading.Thread(target=lambda: out.append(GE._build_graph())) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(out) == 3
+    assert peak == 1, f"构建体重叠（peak={peak}）"

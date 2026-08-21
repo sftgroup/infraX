@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -987,6 +988,11 @@ _EMBEDDING_CACHE: dict[str, tuple[float, dict[str, list[float]]]] = {}
 _EMBEDDING_CACHE_TTL_S = float(os.getenv("ML_GRAPH_EMBEDDING_CACHE_TTL_S", "3600"))
 _EMBEDDING_CACHE_MAX = 8  # 仅保留最近 N 个签名（防内存膨胀）
 
+# 全量构建互斥锁（GP-3）：graph_factors / graph_edges / 预热线程可能同时冷态
+# 触发 _build_graph，快照新鲜检查在并发下存在竞态（两线程同时判定过期 → 重复
+# 全量构建）。加锁后第二个进入者等待完成后复用新鲜快照，冷态只构建一次。
+_BUILD_LOCK = threading.Lock()
+
 
 def _build_graph() -> dict | None:
     """组装全市场图并计算 18 个图因子（后台线程重算，结果由调用方缓存）。
@@ -994,9 +1000,15 @@ def _build_graph() -> dict | None:
     返回 {"updated_at": ms, "values": {sym: {gf_*: value}}}；任一步骤失败/无节点
     返回 None（fail-silent）。
     """
+    with _BUILD_LOCK:
+        return _build_graph_locked()
+
+
+def _build_graph_locked() -> dict | None:
+    """全图构建主体（调用方已持 _BUILD_LOCK，多入口冷态仅构建一次）。"""
     global _LAST_GRAPH
-    # 快照新鲜检查（GP-1/GP-3）：_LAST_GRAPH 在新鲜窗口内直接复用，多入口
-    # （graph_factors / graph_edges / 预热）共享一次构建结果，不重复全量构建。
+    # 快照新鲜检查（GP-1/GP-3）：锁内检查，并发下第二个进入者等待完成后
+    # 复用新鲜快照，graph_factors / graph_edges / 预热共享一次构建结果。
     if _LAST_GRAPH is not None and _LAST_GRAPH.get("values"):
         age_ms = int(time.time() * 1000) - _LAST_GRAPH["updated_at"]
         if 0 <= age_ms < _GRAPH_SNAPSHOT_TTL_S * 1000:
