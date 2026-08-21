@@ -136,6 +136,17 @@ def register(api: Blueprint):
             }, status=202)
 
         result = delete_document(_tenant, namespace, doc_id)
+        # RDL-1: not_allowed（pipeline 忙，删除未执行）→ 503 + Retry-After 可重试语义，
+        # 不再掩盖为 deleted:true（此前导致"删不掉但报成功"、旧文档残留仍可检索）。
+        if not result.get("deleted"):
+            if result.get("status") == "not_allowed":
+                resp, status = build_error(
+                    result.get("message") or "Deletion not allowed, pipeline busy; retry later",
+                    503, code="DELETE_NOT_ALLOWED")
+                resp.headers["Retry-After"] = "5"
+                return resp, status
+            return build_error(
+                result.get("message") or "Delete failed", 500, code="DELETE_FAILED")
         return build_success(result)
 
     # ── 写任务状态查询（读写分离：提交后轮询此接口） ──

@@ -8,8 +8,9 @@ Uses api.adapters for LLM/Embedding factories.
 import asyncio
 import logging
 import threading
+from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from config import get_config
 from api.adapters import create_llm_func, create_embedding_func
@@ -184,7 +185,7 @@ async def _insert_one_locked(rag, text: str, doc_id: str) -> dict:
     # 未被去重：以文档自身状态为准（processed → indexed / failed → error / 其他 → indexing）
     by_id = await _get_docs_by_ids(rag, doc_id)
     st = by_id.get(doc_id)
-    status = _map_doc_status(str(getattr(st, "status", ""))) if st is not None else "indexing"
+    status = _map_doc_status(getattr(st, "status", None)) if st is not None else "indexing"
     return {"deduplicated": False, "status": status}
 
 
@@ -255,7 +256,15 @@ def _delete_coro(tenant_id: str, namespace: str, doc_id: str):
 
         async def _do():
             rag = get_rag(tenant_id, namespace)
-            await rag.adelete_by_doc_id(doc_id)
+            # RDL-1: 透传 LightRAG DeletionResult（success / not_found /
+            # not_allowed / fail）——此前忽略返回值，pipeline 忙（not_allowed）
+            # 时删除未执行仍返回 deleted:true，造成"删不掉但报成功"。
+            res = await rag.adelete_by_doc_id(doc_id)
+            return {
+                "status": getattr(res, "status", "fail"),
+                "message": getattr(res, "message", ""),
+                "status_code": getattr(res, "status_code", 500),
+            }
         return _do()
     return _factory
 
@@ -281,9 +290,25 @@ def insert_documents_batch(tenant_id: str, namespace: str, documents: list[dict]
 
 
 def delete_document(tenant_id: str, namespace: str, doc_id: str) -> dict:
-    """同步删除（MCP / legacy 使用）。"""
-    _run_async(_delete_coro(tenant_id, namespace, doc_id)())
-    return {"doc_id": doc_id, "deleted": True}
+    """同步删除（MCP / legacy / REST 同步路径共用）。
+
+    RDL-1：透传 LightRAG 删除处置，不再无条件 `deleted:true`：
+      - success     → {"deleted": true,  "found": true}
+      - not_found   → {"deleted": true,  "found": false}（幂等：不存在视为已删除）
+      - not_allowed → {"deleted": false, "status": "not_allowed", "message": ...}
+                     （pipeline 忙，删除未执行——REST 层转 503 + Retry-After）
+      - fail        → {"deleted": false, "status": "fail", "message": ...}
+    """
+    result = _run_async(_delete_coro(tenant_id, namespace, doc_id)())
+    status = result.get("status", "fail")
+    payload = {
+        "doc_id": doc_id,
+        "deleted": status in ("success", "not_found"),
+        "found": status == "success",
+        "status": status,
+        "message": result.get("message", ""),
+    }
+    return payload
 
 
 # 异步写路径：提交到后台写队列，立即返回 task_id（读写分离）。
@@ -378,11 +403,18 @@ def reload_runtime_config() -> None:
 
 # ── Document Listing (pagination) ───────────────────────
 
-def _map_doc_status(status: str) -> str:
-    """Map LightRAG DocStatus → SDK-friendly status (indexed/indexing/error)."""
-    if status == "processed":
+def _map_doc_status(status: Any) -> str:
+    """Map LightRAG DocStatus → SDK-friendly status (indexed/indexing/error).
+
+    DocStatus 是 str 枚举：str(DocStatus.PROCESSED) 返回 "DocStatus.PROCESSED"
+    而非 "processed"，直接 str() 比对会恒显 indexing（RDL-3）——统一取 .value。
+    """
+    if status is None:
+        return "indexing"
+    value = status.value if isinstance(status, Enum) else str(status)
+    if value == "processed":
         return "indexed"
-    if status == "failed":
+    if value == "failed":
         return "error"
     return "indexing"
 
@@ -422,7 +454,7 @@ def list_documents(tenant_id: str, namespace: str, page: int = 1, limit: int = 2
             "size_bytes": getattr(st, "content_length", 0),
             "chunk_count": getattr(st, "chunks_count", 0) or 0,
             "created_at": getattr(st, "created_at", ""),
-            "status": "duplicate" if is_dup else _map_doc_status(str(getattr(st, "status", ""))),
+            "status": "duplicate" if is_dup else _map_doc_status(getattr(st, "status", None)),
         }
         if is_dup:
             entry["dedup_reason"] = _DEDUP_REASON_MAP.get(str(meta.get("duplicate_kind", "")), "unknown")

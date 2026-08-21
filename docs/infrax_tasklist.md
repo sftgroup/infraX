@@ -204,3 +204,15 @@
 | RDD-3 | batch 接口生产可执行：`/documents/batch` 202+task 后任务真实执行（issue 反馈生产不执行，文档永久卡 indexing） | ✅ 已部署 | P1 | submit 链路存在（engine.py L298-301）；2026-08-21 生产验证：batch→task queued→running→success，结果含每篇处置明细 |
 | RDD-4 | 列表接口租户/namespace 过滤：list 按 key 绑定租户隔离，不再全局视图 | ✅ 已部署 | P1 | d827e43 workspace 隔离 + `require_tenant`；响应含 tenant/namespace 字段 |
 | RDD-5 | 删除时序：删除走队列，繁忙时短暂窗口已删文档仍可检索 | ✅ 已部署 | P2 | 删除默认同步执行（仅显式 `?async=1` 走队列）；生产验证 46ms 即时生效 |
+
+### 9.17 RAGSERVICER 删除可用性遗留（RDL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md` 第 8 节，AIServicer 修复验证反馈，2026-08-21）
+
+> AIServicer 深夜复测：写锁/慢响应已修复（health 12ms、上传 18ms 入队、索引任务正常执行），但发现 **DELETE 接口不生效**（返回 `deleted:true` 但文档仍可检索、list 仍返回）；另附偶发 query 15s 超时（P2）与 list 状态滞后（P3）。
+> **根因定位**：`delete_document` 忽略 `adelete_by_doc_id` 的 `DeletionResult` 返回值——pipeline 忙（索引进行中）时 LightRAG 返回 `not_allowed`（删除未执行、12ms 快速返回），ragservicer 层掩盖为 `deleted:true`。
+
+| 编号 | 需求 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|
+| RDL-1 | DELETE 不生效修复：透传 DeletionResult（success→deleted:true；not_found→幂等 deleted:true+found:false；**not_allowed/fail→deleted:false** 不再掩盖），REST 同步删除 not_allowed → **503+Retry-After**（DELETE_NOT_ALLOWED），fail → 500 | ✅ 已实施 | P1 | `api/engine.py` `_delete_coro`/`delete_document` + `api/routes/documents.py` DELETE 同步路径；`tests/test_delete.py` 9 用例（34 passed） |
+| RDL-2 | 异步删除 task result 携带删除处置（submit_delete_document 后 GET /tasks/{id} 可见 status/message） | ✅ 已实施 | P1 | `_delete_coro` 返回处置 dict → worker 自动写入 task result |
+| RDL-3 | list 状态字段滞后修复：`_map_doc_status` 对 DocStatus 枚举取 `.value`（str(枚举) 得 "DocStatus.PROCESSED" 恒显 indexing）；调用处不再预 `str()` | ✅ 已实施 | P3 | `engine.py` `_map_doc_status` + `_insert_one_locked`/`list_documents` 调用处 |
+| RDL-4 | 偶发 query 15s 超时（HTTP 000）：冷查询首次图加载（服务端 `aquery` 300s 超时，客户端/网关 15s 截断）；二次命中缓存 185ms | 🔲 待排期 | P2 | 建议：客户端对首查放宽超时 15s→60s；服务端暂不额外预热（query 需真实参数无法通用预热） |
