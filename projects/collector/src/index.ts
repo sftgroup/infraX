@@ -11,6 +11,7 @@ import { logger } from './logger';
 import { migrateEventCollectorTables } from './services/migration';
 import { BlockScanner, getScanner } from './services/scanner';
 import { DataCleaner } from './services/cleaner';
+import { getPartitionManager } from './services/partitionManager';
 import { startReclassifyScheduler } from './services/reclassifier';
 import { BinanceFuturesCollector, getBinanceCollector } from './services/binanceFutures';
 import { OkxChainOSCollector, getOkxCollector } from './services/okxChainOS';
@@ -134,6 +135,14 @@ app.use('/api/v1', apiKeyAuth, relayRoutes);
 async function main() {
   // 1. Database tables
   await migrateEventCollectorTables();
+
+  // 1.5 Event partition manager — 自动补齐未来分区，防 events 分区缺失导致
+  //     INSERT "no partition found" 刷屏堆满磁盘（2026-08-22 事故）
+  try {
+    getPartitionManager().start();
+  } catch (e: any) {
+    logger.error('[partition] Start failed', { error: e.message });
+  }
 
   // 2. HTTP server (start immediately, don't wait for collectors)
   const port = config.port || 3000;
