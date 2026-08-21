@@ -109,3 +109,21 @@
 
 - 客户可**开始重传文档**（索引链路已恢复）；但**暂不建议依赖「删同名」步骤**（DELETE 不生效）。
 - 测试文档 `hc-1787333621.md`（13B，租户 `bmt1rmh9w7kxa`）已无法通过 DELETE 清理，保留作排查证据，请 InfraX 侧一并处理。
+
+---
+
+## 9. InfraX 修复确认（2026-08-22，commit 5f2683b，已部署生产）
+
+针对第 8 节遗留问题，InfraX 已完成修复并部署：
+
+**根因（delete 不生效）**：`delete_document` 忽略 LightRAG `adelete_by_doc_id` 的 `DeletionResult` 返回值。pipeline 忙（索引进行中）时 LightRAG 返回 `not_allowed`（删除未执行、12ms 快速返回），服务层掩盖为 `deleted:true` —— 与"返回成功但删不掉"现象完全吻合。
+
+| 遗留项 | 修复 | 生产验证（租户 `bmt1rmh9w7kxa`） |
+|---|---|---|
+| **8.2-1 DELETE 不生效（P1）** | 透传 DeletionResult 四态：success→`deleted:true`；not_found→幂等 `deleted:true`+`found:false`；**not_allowed/fail→不再掩盖**，REST 同步删除 not_allowed → **503 + Retry-After**（`DELETE_NOT_ALLOWED`），fail → 500 | `hc-1787333621.md` DELETE **32ms 真实删除**（success），幂等重删 `not_found`+`found:false`，list total 0（文档已彻底清除，可正常「删同名→重传」） |
+| **8.2-2 偶发 query 15s 超时（P2）** | 定位为冷查询首次图加载（服务端 `aquery` 超时 300s，客户端/网关 15s 截断）；二次命中缓存 185ms | 建议：客户端对首查放宽超时 15s→60s；服务端暂不做通用预热（query 需真实参数），待排期 |
+| **8.2-3 list 状态滞后（P3）** | `_map_doc_status` 对 DocStatus 枚举取 `.value`（此前 `str(枚举)` 得 `"DocStatus.PROCESSED"` 恒显 `indexing`） | `hc-1787333621.md` 状态显示 **`indexed`**（此前恒显 `indexing`） |
+
+**附加**：异步删除（`?async=1`）的任务结果现携带删除处置（`GET /tasks/{id}` → result `{status, message, status_code}`），调用方可对账。
+
+**请 AIServicer 侧按第 8.2 节复现步骤回归**：上传 → DELETE → 确认 list 为空 / query 不再命中；删除未命中时按 503 + Retry-After 重试语义处理。单测 34 passed（含 9 个新增 RDL 用例）。

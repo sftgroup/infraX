@@ -212,7 +212,7 @@
 
 | 编号 | 需求 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|
-| RDL-1 | DELETE 不生效修复：透传 DeletionResult（success→deleted:true；not_found→幂等 deleted:true+found:false；**not_allowed/fail→deleted:false** 不再掩盖），REST 同步删除 not_allowed → **503+Retry-After**（DELETE_NOT_ALLOWED），fail → 500 | ✅ 已实施 | P1 | `api/engine.py` `_delete_coro`/`delete_document` + `api/routes/documents.py` DELETE 同步路径；`tests/test_delete.py` 9 用例（34 passed） |
-| RDL-2 | 异步删除 task result 携带删除处置（submit_delete_document 后 GET /tasks/{id} 可见 status/message） | ✅ 已实施 | P1 | `_delete_coro` 返回处置 dict → worker 自动写入 task result |
-| RDL-3 | list 状态字段滞后修复：`_map_doc_status` 对 DocStatus 枚举取 `.value`（str(枚举) 得 "DocStatus.PROCESSED" 恒显 indexing）；调用处不再预 `str()` | ✅ 已实施 | P3 | `engine.py` `_map_doc_status` + `_insert_one_locked`/`list_documents` 调用处 |
+| RDL-1 | DELETE 不生效修复：透传 DeletionResult（success→deleted:true；not_found→幂等 deleted:true+found:false；**not_allowed/fail→deleted:false** 不再掩盖），REST 同步删除 not_allowed → **503+Retry-After**（DELETE_NOT_ALLOWED），fail → 500 | ✅ 已部署 | P1 | `api/engine.py` `_delete_coro`/`delete_document` + `api/routes/documents.py` DELETE 同步路径；`tests/test_delete.py` 9 用例（34 passed）。生产验证（commit 5f2683b，租户 bmt1rmh9w7kxa）：hc-1787333621.md 删除 32ms success（此前删不掉），幂等重删 not_found+found:false，list total 0 |
+| RDL-2 | 异步删除 task result 携带删除处置（submit_delete_document 后 GET /tasks/{id} 可见 status/message） | ✅ 已部署 | P1 | `_delete_coro` 返回处置 dict → worker 自动写入 task result。生产验证：async DELETE→task success+result `{status:not_found,status_code:404}` |
+| RDL-3 | list 状态字段滞后修复：`_map_doc_status` 对 DocStatus 枚举取 `.value`（str(枚举) 得 "DocStatus.PROCESSED" 恒显 indexing）；调用处不再预 `str()` | ✅ 已部署 | P3 | `engine.py` `_map_doc_status` + `_insert_one_locked`/`list_documents` 调用处。生产验证：hc-1787333621.md 状态显示 **indexed**（此前恒显 indexing） |
 | RDL-4 | 偶发 query 15s 超时（HTTP 000）：冷查询首次图加载（服务端 `aquery` 300s 超时，客户端/网关 15s 截断）；二次命中缓存 185ms | 🔲 待排期 | P2 | 建议：客户端对首查放宽超时 15s→60s；服务端暂不额外预热（query 需真实参数无法通用预热） |
