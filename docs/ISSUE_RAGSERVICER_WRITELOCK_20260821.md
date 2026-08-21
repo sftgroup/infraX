@@ -127,3 +127,70 @@
 **附加**：异步删除（`?async=1`）的任务结果现携带删除处置（`GET /tasks/{id}` → result `{status, message, status_code}`），调用方可对账。
 
 **请 AIServicer 侧按第 8.2 节复现步骤回归**：上传 → DELETE → 确认 list 为空 / query 不再命中；删除未命中时按 503 + Retry-After 重试语义处理。单测 34 passed（含 9 个新增 RDL 用例）。
+
+---
+
+## 10. B 端调试指南（2026-08-22，AIServicer 回归对照用）
+
+### 10.1 删除接口响应语义速查（RDL-1）
+
+| HTTP | 响应体 | 含义 | B 端处理 |
+|---|---|---|---|
+| `200` | `{"deleted": true, "found": true, "status": "success"}` | **删除真实生效**：文档已从知识图谱移除 | 对账：`list` 不再出现该 doc_id；`query` 不再命中其内容 |
+| `200` | `{"deleted": true, "found": false, "status": "not_found"}` | 文档本就不存在，**幂等删除成功** | 无需重试；「删同名→重传」的删除步骤可直接通过 |
+| `503` | `{"code": "DELETE_NOT_ALLOWED", "message": "..."}` + `Retry-After: 5` | **pipeline 忙，删除未执行**（索引/其他删除进行中） | **必须按 `Retry-After`（5s）后重试**；重试期间文档仍存在属预期，不可判定为失败 |
+| `500` | `{"code": "DELETE_FAILED", "message": "..."}` | 删除内部失败（图谱重建异常等） | 指数退避重试；连续失败提供 `message` 反馈给 InfraX |
+
+> **判定删除是否成功的唯一标准**：响应 `status == "success"`（或幂等 `not_found`），且随后 `GET list` 不含该 `doc_id`。若 DELETE 返回 `200 deleted:true` 但 list 仍含该文档，说明遇到的是旧版服务（未部署 5f2683b），请确认网关/服务已更新。
+
+### 10.2 curl 回归验证步骤（可直接执行）
+
+```bash
+BASE="http://<host>:9721/api/v1"          # 或公网入口 infrax.0xainet.top/api/rag/v1
+KEY="<X-Tenant-ID 对应租户 API Key>"
+T="<tenant_id>"; NS="<namespace>"         # 例：T=bmt1rmh9w7kxa NS=bmt1rmh9w7kxa
+
+# 1) 上传测试文档（202 入队 → 轮询 task 至 indexed）
+curl -s -X POST -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
+  -H "Content-Type: text/markdown" --data-binary "RDL regression: delete me" \
+  "$BASE/namespaces/$NS/documents"          # → {"data":{"task_id":"..."}}
+
+# 2) list 确认状态为 indexed（RDL-3：此前恒显 indexing）
+curl -s -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
+  "$BASE/namespaces/$NS/documents?limit=50" # → status: "indexed"
+
+# 3) 同步删除（应 200 success）
+curl -s -X DELETE -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
+  "$BASE/namespaces/$NS/documents/<doc_id>" # → 200 {"deleted":true,"found":true,"status":"success"}
+#    若 503 → sleep 5 后重试，直至 success
+
+# 4) 幂等重删（应 200 not_found）
+curl -s -X DELETE -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
+  "$BASE/namespaces/$NS/documents/<doc_id>" # → 200 {"deleted":true,"found":false,"status":"not_found"}
+
+# 5) 对账：list 不再包含该文档
+curl -s -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: $T" \
+  "$BASE/namespaces/$NS/documents?limit=50" # → total 不含 <doc_id>
+
+# 6)（可选）异步删除 + task 对账
+# DELETE ...?async=1 → 202 task_id → GET .../tasks/{task_id} → result.status ∈ {success,not_found}
+```
+
+### 10.3 常见问题排查
+
+| 现象 | 判定 | 处理 |
+|---|---|---|
+| DELETE 返回 200 `deleted:true` 但 list 仍含文档 | 服务未部署 5f2683b（旧版掩盖 not_allowed） | 确认 ragservicer 已重启到新版本；仍复现则反馈 InfraX |
+| DELETE 返回 503 `DELETE_NOT_ALLOWED` | pipeline 忙（索引任务进行中），删除未执行 | 按 `Retry-After` 重试；批量删除建议排队串行（每次 503 后 sleep 5） |
+| 上传后 list 状态恒 `indexing` | 索引任务未完成（新上传需数十秒~分钟级） | 轮询 list 至 `indexed` 或 `error`；长期卡 indexing 反馈 InfraX |
+| 首查 query 15s 超时（HTTP 000），重试即快 | 冷查询首次图加载（P2，RDL-4） | 对**首次**查询放宽超时到 60s；或预热：先执行一次任意小 query |
+| 删除已索引文档耗时较长 | 正常：LightRAG 图谱重建 | 同步删除建议客户端超时 ≥120s；可改用 `?async=1` 轮询 task |
+
+### 10.4 状态字段语义（RDL-3，list / task 通用）
+
+| 状态 | 含义 |
+|---|---|
+| `indexed` | 已切块并写入知识图谱，可被 query 命中 |
+| `indexing` | 处理中（切块/嵌入/写库未完成） |
+| `error` | 切块/嵌入失败——可**重传同名文档**覆盖重试 |
+| `duplicate` | 与已存在文档重复（`dedup_reason` 区分 文件名/内容哈希） |

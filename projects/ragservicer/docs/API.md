@@ -311,7 +311,7 @@ GET /api/v1/namespaces/{namespace}/documents
 | `size_bytes` | int | 原始文本大小 |
 | `chunk_count` | int | 分块数量（被去重恒为 `0`） |
 | `created_at` | string | ISO 8601 时间 |
-| `status` | string | `"indexed"` / `"indexing"` / `"error"` / `"duplicate"`（不再恒显 indexing） |
+| `status` | string | `"indexed"` / `"indexing"` / `"error"` / `"duplicate"`。`indexed` = 已切块并写入知识图谱、可被 query 命中；`indexing` = 处理中；`error` = 切块/嵌入失败（可重传同名文档覆盖） |
 | `dedup_reason` | string | 仅 `duplicate`：`file_name_dup` / `content_hash_dup` / `filename_conflict` / `unknown` |
 | `matched_doc_id` | string | 仅 `duplicate`：命中的已存在文档 doc_id |
 
@@ -349,17 +349,37 @@ GET /api/v1/namespaces/{namespace}/documents/{doc_id}
 DELETE /api/v1/namespaces/{namespace}/documents/{doc_id}
 ```
 
-**响应** `200`:
-```json
-{
-  "success": true,
-  "doc_id": "intro.md",
-  "deleted": true
-}
+**鉴权**：`Authorization: Bearer {api_key}` + `X-Tenant-ID: {tenant}`（同上传）。
+
+**响应语义（RDL-1，2026-08-22 起）**：
+
+| HTTP | 场景 | 响应体 |
+|---|---|---|
+| `200` | 删除成功（文档真实从知识图谱移除，list 不再返回） | `{"doc_id": "...", "deleted": true, "found": true, "status": "success"}` |
+| `200` | 幂等删除（文档本就不存在，视为已删除） | `{"doc_id": "...", "deleted": true, "found": false, "status": "not_found"}` |
+| `503` | **pipeline 忙，删除未执行**（索引/其他删除进行中）→ 应重试 | `{"code": "DELETE_NOT_ALLOWED", "message": "..."}` + **`Retry-After: 5`** |
+| `500` | 删除内部失败（图谱重建等） | `{"code": "DELETE_FAILED", "message": "..."}` |
+
+> **删除失败的判定**：`503 DELETE_NOT_ALLOWED` 表示**删除没有执行**，必须按 `Retry-After` 后重试；成功删除的标志是 `status: "success"`（或幂等 `"not_found"`），随后 `GET list` 中不再出现该 `doc_id`。
+
+**异步删除**（`?async=1`，删除走后台队列）：
+
+```http
+DELETE /api/v1/namespaces/{namespace}/documents/{doc_id}?async=1
 ```
 
-**错误**:
-- `404`: 文档不存在
+- 响应 `202`：`{"data": {"task_id": "..."}}`
+- 轮询 `GET /api/v1/namespaces/{namespace}/tasks/{task_id}`：`status: "success"` 且 `result` 为 `{"status": "success|not_found|not_allowed|fail", "message": "...", "status_code": ...}` —— 按 `result.status` 判定删除处置。
+
+**示例**：
+```bash
+# 同步删除（推荐：删除后立即对账）
+curl -X DELETE -H "Authorization: Bearer $KEY" -H "X-Tenant-ID: my-project" \
+  "https://.../api/v1/namespaces/docs/documents/intro.md"
+# → 200 {"deleted": true, "found": true, "status": "success"}
+# → 503（pipeline 忙）: Retry-After: 5，5s 后重试
+# → 200 {"deleted": true, "found": false}（文档本就不存在，幂等成功）
+```
 
 ---
 
