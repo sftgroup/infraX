@@ -333,13 +333,63 @@ function dcSwitchTab(sub) {
   }
 }
 
-// ─── Market Data（金融行情：/ticker 实时报价 + /bars K线，data :9112 直通）──
+// ─── Market Data（分类：CEX / DEX / 新闻 / 财经日历 / 宏观经济，WEB-10）──
+var DC_MTABS = ['cex', 'dex', 'news', 'cal', 'macro'];
+var DC_MTAB_KEYS = { cex: 'dc_mkt_tab_cex', dex: 'dc_mkt_tab_dex', news: 'dc_mkt_tab_news', cal: 'dc_mkt_tab_cal', macro: 'dc_mkt_tab_macro' };
 function dcRenderMarket() {
   var root = document.getElementById('dc-market-root');
   if (!root) return;
+  root.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">' +
+      DC_MTABS.map(function(t) {
+        return '<button class="tab-btn" id="dc-mtab-' + t + '" onclick="dcMTab(\'' + t + '\')" style="padding:7px 14px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-sub,#242a36);color:var(--text-muted);cursor:pointer">' + I18N.t(DC_MTAB_KEYS[t]) + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div id="dc-m-pane"><div style="text-align:center;padding:24px;color:var(--text-muted)">' + I18N.t('dc_mkt_loading') + '</div></div>';
+  dcMTab('cex');
+}
+function dcMTab(t) {
+  if (DC_MTABS.indexOf(t) < 0) t = 'cex';
+  DC_MTABS.forEach(function(x) {
+    var b = document.getElementById('dc-mtab-' + x);
+    if (!b) return;
+    var on = x === t;
+    b.style.borderColor = on ? 'var(--brand,#F0B90B)' : 'var(--border)';
+    b.style.color = on ? 'var(--text)' : 'var(--text-muted)';
+    b.style.background = on ? 'rgba(240,185,11,0.08)' : 'var(--bg-sub,#242a36)';
+  });
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
+  if (t === 'cex') dcMCex();
+  else if (t === 'dex') dcMDex();
+  else if (t === 'news') dcMNews();
+  else if (t === 'cal') dcMCal();
+  else dcMMacro();
+}
+// 字段取值 helper：依次尝试候选键，null/undefined 才回退（0 不被丢弃）
+function dcPk(o, keys) {
+  if (!o) return null;
+  for (var i = 0; i < keys.length; i++) { if (o[keys[i]] != null) return o[keys[i]]; }
+  return null;
+}
+// 大数紧凑格式：≥1e6 显示 M / ≥1e3 显示 K，保留 2 位
+function dcCompact(n) {
+  if (n == null) return '—';
+  var v = Number(n);
+  if (!isFinite(v)) return '—';
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+  if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(2) + 'K';
+  return formatNumber(v);
+}
+var DC_DEX_CHAINS = ['ETH', 'BSC', 'SOL', 'BASE', 'ARB', 'OP', 'POLYGON', 'AVAX', 'TRON', 'SUI'];
+
+// ── CEX：中心化交易所行情（/ticker + /bars，data :9112）──
+function dcMCex() {
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
   var inputStyle = 'width:170px;font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
   var selStyle = 'font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
-  root.innerHTML =
+  pane.innerHTML =
     '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
       '<input id="dc-m-symbol" placeholder="' + I18N.t('dc_symbol_placeholder') + '" value="BTC/USDT" style="' + inputStyle + '">' +
       '<select id="dc-m-market" style="' + selStyle + 'width:120px">' +
@@ -401,6 +451,172 @@ async function dcLoadMarket() {
       html += '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + ' · ' + esc(tf) + ' ' + I18N.t('dc_no_bars') + '</div></div>';
     }
     box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+  }
+}
+
+// ── DEX：去中心化交易所数据（collector /api/dex/*，R1 hot-tokens）──
+function dcMDex() {
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
+  var selStyle = 'font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
+  var chainOpts = '<option value="">all</option>' + DC_DEX_CHAINS.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
+  pane.innerHTML =
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<span style="font-size:11px;color:var(--text-muted)">' + I18N.t('dc_mkt_chain') + '</span>' +
+      '<select id="dc-d-chain" style="' + selStyle + 'width:96px">' + chainOpts + '</select>' +
+      '<span style="font-size:11px;color:var(--text-muted)">' + I18N.t('dc_mkt_ranking') + '</span>' +
+      '<select id="dc-d-rank" style="' + selStyle + 'width:116px">' +
+        '<option value="trending">' + I18N.t('dc_mkt_rank_trending') + '</option>' +
+        '<option value="x_mentions">' + I18N.t('dc_mkt_rank_mentions') + '</option>' +
+      '</select>' +
+      '<button class="btn btn-sm btn-primary" onclick="dcLoadDex()">🔄 ' + I18N.t('dc_query') + '</button>' +
+    '</div></div>' +
+    '<div id="dc-dex-result"><div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div></div>';
+  dcLoadDex();
+}
+async function dcLoadDex() {
+  var box = document.getElementById('dc-dex-result');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div>';
+  var chain = document.getElementById('dc-d-chain').value;
+  var rank = document.getElementById('dc-d-rank').value;
+  var q = '/api/dex/hot-tokens?limit=20&ranking=' + encodeURIComponent(rank) + (chain ? '&chain=' + encodeURIComponent(chain) : '');
+  try {
+    var d = await afetch(q, { auth: 'none' }) || {};
+    var okx = d.okx || [];
+    var ds = d.dexscreener || [];
+    var mkTable = function(list, title) {
+      return '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + title + ' · ' + list.length + '</div>' +
+        '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Symbol</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Chain</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_price') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_change24h') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_volume24h') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_liquidity') + '</th></tr></thead><tbody>' +
+        list.map(function(tk) {
+          var price = dcPk(tk, ['price', 'priceUsd']);
+          var chg = dcPk(tk, ['change24h', 'change_percent', 'priceChange24h']);
+          var chgTxt = (chg == null) ? '—' : '<span style="color:' + (Number(chg) >= 0 ? 'var(--success)' : 'var(--error)') + '">' + (Number(chg) >= 0 ? '+' : '') + Number(chg).toFixed(2) + '%</span>';
+          return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px;font-weight:600">' + esc(tk.symbol || '?') + '</td><td style="padding:6px 10px">' + esc(tk.chain || '') + '</td><td style="padding:6px 10px" class="dc-mono">' + formatNumber(price) + '</td><td style="padding:6px 10px">' + chgTxt + '</td><td style="padding:6px 10px" class="dc-mono">' + dcCompact(dcPk(tk, ['volume24h', 'volume_24h', 'volume'])) + '</td><td style="padding:6px 10px" class="dc-mono">' + dcCompact(dcPk(tk, ['liquidity', 'liquidityUsd'])) + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+    };
+    if (!okx.length && !ds.length) {
+      box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_dex') + '</div></div>';
+    } else {
+      var html = '';
+      if (okx.length) html += mkTable(okx, 'OKX ' + I18N.t('dc_mkt_hot_tokens'));
+      if (ds.length) html += mkTable(ds, 'DexScreener ' + I18N.t('dc_mkt_hot_tokens'));
+      box.innerHTML = html;
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+  }
+}
+
+// ── News：金融/加密新闻（data :9112 /snapshots?type=news，R-I2 语言过滤）──
+function dcMNews() {
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
+  var selStyle = 'font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
+  pane.innerHTML =
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<span style="font-size:11px;color:var(--text-muted)">' + I18N.t('dc_mkt_lang') + '</span>' +
+      '<select id="dc-n-lang" style="' + selStyle + 'width:84px">' +
+        '<option value="zh">zh</option><option value="en" selected>en</option><option value="all">' + I18N.t('dc_mkt_all_lang') + '</option>' +
+      '</select>' +
+      '<button class="btn btn-sm btn-primary" onclick="dcLoadNews()">🔄 ' + I18N.t('dc_query') + '</button>' +
+    '</div></div>' +
+    '<div id="dc-news-result"><div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div></div>';
+  dcLoadNews();
+}
+async function dcLoadNews() {
+  var box = document.getElementById('dc-news-result');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div>';
+  var lang = document.getElementById('dc-n-lang').value;
+  try {
+    var d = await afetch('/snapshots?type=news' + (lang && lang !== 'all' ? '&lang=' + encodeURIComponent(lang) : ''), { auth: 'none' }) || {};
+    var news = d.news;
+    var items = Array.isArray(news) ? news : (news && news.items ? news.items : []);
+    if (!items.length) {
+      box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_news') + '</div></div>';
+      return;
+    }
+    box.innerHTML = items.slice(0, 30).map(function(n) {
+      var href = n.link || n.url || '#';
+      return '<div class="panel" style="margin-bottom:10px"><div class="panel-body" style="font-size:13px">' +
+        '<a href="' + esc(href) + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;font-weight:600">' + esc(n.title || n.link || '—') + '</a>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + esc(n.source || '') + (n.published ? ' · ' + esc(new Date(n.published).toLocaleString()) : '') + '</div>' +
+        (n.snippet ? '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">' + esc(n.snippet) + '</div>' : '') +
+      '</div></div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+  }
+}
+
+// ── Economic Calendar：财经日历（data :9112 /snapshots?type=calendar）──
+function dcMCal() {
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
+  pane.innerHTML = '<div id="dc-cal-result"><div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div></div>';
+  dcLoadCal();
+}
+async function dcLoadCal() {
+  var box = document.getElementById('dc-cal-result');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div>';
+  try {
+    var d = await afetch('/snapshots?type=calendar', { auth: 'none' }) || {};
+    var cal = d.calendar;
+    var items = Array.isArray(cal) ? cal : (cal && cal.items ? cal.items : []);
+    if (!items.length) {
+      box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_cal') + '</div></div>';
+      return;
+    }
+    box.innerHTML = '<div class="panel"><div class="panel-header">📅 ' + I18N.t('dc_mkt_tab_cal') + ' · ' + items.length + '</div>' +
+      '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Date</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Country</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Event</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_impact') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_forecast') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_mkt_previous') + '</th></tr></thead><tbody>' +
+      items.slice(0, 60).map(function(ev) {
+        var dstr = ev.timestamp ? new Date(ev.timestamp * 1000 || ev.timestamp).toLocaleString() : (ev.date || '—');
+        var imp = String(ev.impact || '').toLowerCase();
+        var impColor = imp === 'high' ? 'var(--binance-red,#F6465D)' : imp === 'medium' ? 'var(--warning)' : 'var(--text-muted)';
+        return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px">' + esc(dstr) + '</td><td style="padding:6px 10px">' + esc(ev.country || '') + '</td><td style="padding:6px 10px;font-weight:600">' + esc(ev.name || ev.event || '—') + '</td><td style="padding:6px 10px"><span style="color:' + impColor + '">' + esc(ev.impact || '—') + '</span></td><td style="padding:6px 10px">' + esc(ev.forecast || '—') + '</td><td style="padding:6px 10px">' + esc(ev.previous || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+  } catch (e) {
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+  }
+}
+
+// ── Macro：宏观经济数据（data :9112 /macro/history，FRED 序列）──
+function dcMMacro() {
+  var pane = document.getElementById('dc-m-pane');
+  if (!pane) return;
+  pane.innerHTML = '<div id="dc-macro-result"><div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div></div>';
+  dcLoadMacro();
+}
+async function dcLoadMacro() {
+  var box = document.getElementById('dc-macro-result');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div>';
+  try {
+    var d = await afetch('/macro/history?limit=2000', { auth: 'none' }) || {};
+    var series = d.series || {};
+    var names = Object.keys(series);
+    if (!names.length) {
+      box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_macro') + '</div></div>';
+      return;
+    }
+    box.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">' +
+      names.map(function(nm) {
+        var pts = series[nm] || [];
+        var last = pts[pts.length - 1] || {};
+        var prev = pts[pts.length - 2] || {};
+        var v = last.value;
+        var p = prev.value;
+        var chg = (typeof v === 'number' && typeof p === 'number' && p !== 0) ? (v - p) / Math.abs(p) * 100 : null;
+        var vTxt = (v == null) ? '—' : (typeof v === 'number' ? formatNumber(v) : esc(String(v)));
+        return '<div class="panel"><div class="panel-header" style="font-size:12px">' + esc(nm) + '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + esc(last.date || '') + '</span></div>' +
+          '<div class="panel-body"><div class="kpi-val mono" style="font-size:18px;font-weight:700">' + vTxt +
+          (chg != null ? '<span style="font-size:12px;color:' + (chg >= 0 ? 'var(--success)' : 'var(--error)') + ';margin-left:8px">' + (chg >= 0 ? '▲' : '▼') + chg.toFixed(2) + '%</span>' : '') +
+          '</div><div style="font-size:10px;color:var(--text-muted);margin-top:4px">' + pts.length + ' obs · ' + esc((pts[0] && pts[0].date) || '—') + ' → ' + esc(last.date || '—') + '</div></div></div>';
+      }).join('') + '</div>';
   } catch (e) {
     box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
   }

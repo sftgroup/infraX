@@ -76,6 +76,9 @@ const API_ROUTES = {
   // 金融行情数据面（data-service :9112）— /bars（K线）、/ticker（实时行情）
   '/bars':           { host: DATA_HOST,    port: DATA_PORT },
   '/ticker':         { host: DATA_HOST,    port: DATA_PORT },
+  // Market Data 分类数据面（data-service :9112，WEB-10）— /snapshots（新闻/财经日历/热力图）、/macro（FRED 宏观序列）
+  '/snapshots':      { host: DATA_HOST,    port: DATA_PORT },
+  '/macro':          { host: DATA_HOST,    port: DATA_PORT },
   // ML 模型推理面（ml-service :9120）— 注入 Authorization Bearer
   '/ml':             { host: ML_HOST,      port: ML_PORT },
   // 通用支付网关（infrax-payments :9132）— invites / transfers / a2a / mpp
