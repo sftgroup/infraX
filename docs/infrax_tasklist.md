@@ -203,6 +203,11 @@
 >   - **内部详情页**（lr-dash）：4 KPI（方案/租户数/文档配额/调用配额，随套餐联动）+ 4 tabs —— 我的订阅（当前套餐 + 配额 + `lrUpgradeHtml` 升级卡片，点击 `lrSwitchPlan` 切换，Enterprise 显示最高方案提示）、API Key（`lr_ key` 本地保存 `px_rag_key` 明文仅本机）、节点状态（真实 health 探针 `/api/rag/api/v1/health` → service/instances 实测 17 实例）、API Docs（ragservicer 5 核心端点 insert/query/delete/instances/health）。
 >   - **顺带修复**：core.js 清理 dc-explorer 残留 subLoader 绑定；版本号 bump 时补齐上轮 b2b.js/datacenter.js 未 bump 的缓存问题（统一 v=1787360000）。
 >   - **验证**：本地 playwright 全流程（激活→KPI/tabs/升级卡→Pro 切→Enterprise MAX→key 保存→中英切换）0 console 错误；check-i18n-keys 820 键全通过；生产实测（套餐卡/详情页/节点状态 instances:17 真实数据/无横向溢出/0 console 错误）；生产 `43.163.105.172` git pull 至 f3064a8。
+> - **W-9d（✅，2026-08-23，commit 8d21dd7 已部署生产）**：LightRAG 详情页接入真实只读用量（后端调研确认：admin 控制台 + ragservicer 已有完整租户/Key 签发服务；对接方式经用户确认为 **admin 开通 + 门户只读**）。
+>   - **后端确认**：`ragservicer/api/routes/admin.py` 全量租户/Key 管理（require_admin：tenants CRUD + keys 签发/吊销/scope）；`admin/server/dataRoutes.ts` 统一签发 API（service='rag' 自动建租户+签发，生产已配 ADMIN_API_KEY）；普通 lr_ key 可访问的唯一只读端点 `GET /api/v1/namespaces/<ns>/documents`（require_tenant，返回 `{documents,total}`）。
+>   - **API Key 表单三字段**：`lrKeyHtml`/`lrSaveKey` 扩展为 lr_ key + X-Tenant-ID + namespace 三输入框（已存值 localStorage 回填，key 明文展示于只读 savedBlock），保存后 `lrLoadMySub` 刷新真实用量。
+>   - **真实用量直连**：`lrLoadRealUsage` 以 `X-API-Key` + `X-Tenant-ID` 头直连 ragservicer `GET /documents`，展示真实文档数 total / 租户 / namespace / 最近文档 doc_id；无 key 显示引导文案（`lr_real_nokey`），连接失败 fail-silent 显示 `lr_real_unreachable`。
+>   - **验证**：i18n 新增 8 键（828 键 zh/en 一致全通过）；生产 playwright（connect.html 入口 → 注入三字段 + 拦截 /documents 模拟 total:7）实测真实用量区块渲染"文档数 7 / 租户 / namespace / 最近文档 rag-doc-001,002"、tenant/ns 回填正确、0 console 错误；生产 `43.163.105.172` git pull 至 8d21dd7。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
 
