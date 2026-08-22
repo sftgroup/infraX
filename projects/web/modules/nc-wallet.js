@@ -76,7 +76,7 @@ async function ncDash() {
       } catch (e) { setDashHealthRow("rpc", false, "—", "Unreachable"); }
       // LightRAG :9721（/api/rag → ragservicer）
       try {
-        var ragResp = await fetch("/api/rag/health");
+        var ragResp = await fetch("/api/rag/api/v1/health");
         setDashHealthRow("lightrag", ragResp.ok, "lr_ key", "/api/rag · 知识图谱 RAG");
         if (ragResp.ok) healthActive++;
       } catch (e) { setDashHealthRow("lightrag", false, "—", "Unreachable"); }
@@ -142,6 +142,8 @@ async function ncDash() {
     if (dotEl) dotEl.className = "topbar-wallet-dot connected";
 
   } catch (e) {
+    var uEl = document.getElementById("dash-usage");
+    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">🔌 Connect wallet to view usage</div>';
     console.error("Dashboard init failed:", e);
   }
 }
