@@ -65,7 +65,7 @@ function insRenderShell() {
       '<button class="tab-btn" data-ins-tab="rag">🔎 RAG</button>' +
       '<button class="tab-btn" data-ins-tab="ml">🤖 ML</button>' +
     '</div>' +
-    '<div class="ins-pane active" id="ins-pane-graph"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading…</div></div>' +
+    '<div class="ins-pane active" id="ins-pane-graph"><div style="padding:6px"><div class="skeleton" style="height:26px;width:45%;margin:18px auto 10px;border-radius:8px"></div><div class="skeleton-card" style="height:150px;max-width:680px;margin:0 auto 12px"></div><div class="skeleton-text" style="width:70%;margin:0 auto"></div><div class="skeleton-text short" style="margin:0 auto"></div></div></div>' +
     '<div class="ins-pane" id="ins-pane-factors"></div>' +
     '<div class="ins-pane" id="ins-pane-rag"></div>' +
     '<div class="ins-pane" id="ins-pane-ml"></div>';

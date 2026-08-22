@@ -288,7 +288,7 @@ async function dcQueryEvents(pageToken) {
   params.set('page_size', '20');
   if (pageToken) params.set('page_token', pageToken);
   const tbody = document.getElementById('dc-events-tbody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px">Loading...</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:14px 20px"><div class="skeleton-text" style="width:95%"></div><div class="skeleton-text" style="width:70%"></div><div class="skeleton-text short"></div></td></tr>';
   try {
     const headers = {};
     if (dcUsage && dcUsage.dcApiKey) headers['x-dc-api-key'] = dcUsage.dcApiKey;
@@ -382,7 +382,7 @@ function dcRenderMarket() {
 async function dcLoadMarket() {
   var box = document.getElementById('dc-market-result');
   if (!box) return;
-  box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted)">加载中…</div>';
+  box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div><div class="skeleton-text short"></div></div>';
   var symbol = (document.getElementById('dc-m-symbol').value || 'BTC/USDT').trim();
   var market = document.getElementById('dc-m-market').value;
   var mtype = document.getElementById('dc-m-type').value;

@@ -133,7 +133,9 @@
       <div class="panel-header">📊 Usage</div>
       <div class="panel-body">
         <div id="dash-usage">
-          <div style="text-align:center;padding:20px;color:var(--text-muted)">Loading usage data…</div>
+          <div class="skeleton-text" style="width:100%"></div>
+          <div class="skeleton-text" style="width:86%"></div>
+          <div class="skeleton-text" style="width:55%"></div>
         </div>
       </div>
     </div>
@@ -404,7 +406,7 @@
 
         <!-- Upgrade Plan -->
         <div class="panel" style="margin-bottom:12px" id="waas-upgrade-panel">
-          <div class="panel-header" style="display:flex;align-items:center;gap:8px"><span>📦 Subscription Plan</span><span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto" id="waas-ov-sub-status">Loading…</span></div>
+          <div class="panel-header" style="display:flex;align-items:center;gap:8px"><span>📦 Subscription Plan</span><span id="waas-ov-sub-status" style="margin-left:auto;display:inline-flex"><span class="skeleton" style="display:inline-block;width:72px;height:11px"></span></span></div>
           <div class="panel-body">
             <div style="display:flex;gap:12px;flex-wrap:wrap" id="waas-upgrade-plans">
               <div style="background:var(--bg-card);border:2px solid var(--success);border-radius:8px;padding:14px 18px;text-align:center;cursor:pointer;min-width:150px" onclick="waasUpgradePlan('free')" id="waas-upgrade-free">
@@ -496,7 +498,9 @@
           <div class="panel-body">
             <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Deposits from allocated addresses are auto-collected to their respective destination. Add one per chain.</div>
             <div id="waas-sweep-targets" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-              <div style="text-align:center;padding:20px;font-size:12px;color:var(--text-muted)">Loading targets...</div>
+              <div class="skeleton-card" style="height:44px"></div>
+              <div class="skeleton-card" style="height:44px"></div>
+              <div class="skeleton-card" style="height:44px"></div>
             </div>
             <div class="form-row" style="grid-template-columns:2fr 1fr auto auto;align-items:end;border-top:1px solid var(--border);padding-top:12px">
               <div><label style="font-size:13px;font-weight:600;color:var(--text-dim)">Target Address</label><input class="input" id="waas-sweep-addr" placeholder="0x..." style="margin-bottom:0"></div>
@@ -935,7 +939,7 @@ Body:
               <table style="min-width:640px">
                 <thead><tr><th>label</th><th>scope</th><th>key</th><th>状态</th><th>RPM</th><th>请求数</th><th>最后使用</th><th>操作</th></tr></thead>
                 <tbody id="mykeys-tbody">
-                  <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">Loading…</td></tr>
+                  <tr><td colspan="8" style="padding:14px 20px"><div class="skeleton-text" style="width:94%"></div><div class="skeleton-text" style="width:68%"></div><div class="skeleton-text short"></div></td></tr>
                 </tbody>
               </table>
             </div>
@@ -1004,28 +1008,28 @@ Body:
         <div id="dc-explorer-pager" style="display:flex;justify-content:center;gap:8px;margin-top:12px"></div>
       </div>
       <div class="sub-panel" id="sub-dc-insights">
-        <div id="insights-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading insights…</div></div>
+        <div id="insights-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
       </div>
       <div class="sub-panel" id="sub-dc-market">
-        <div id="dc-market-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading market data…</div></div>
+        <div id="dc-market-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
       </div>
     </div>
   </div>
 
   <div class="page" id="page-aa">
-    <div id="aa-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading Smart Account…</div></div>
+    <div id="aa-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
   </div>
 
   <div class="page" id="page-payments">
-    <div id="payments-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading payments…</div></div>
+    <div id="payments-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
   </div>
 
   <div class="page" id="page-rpc">
-    <div id="rpc-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading Chain RPC…</div></div>
+    <div id="rpc-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
   </div>
 
   <div class="page" id="page-lightrag">
-    <div id="lightrag-root"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading LightRAG…</div></div>
+    <div id="lightrag-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
   </div>
 
   </div>
@@ -1037,11 +1041,11 @@ Body:
 <script src="/modules/safe.js?v=1787270500"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
-  <script src="/modules/datacenter.js?v=1787240500"></script>
+  <script src="/modules/datacenter.js?v=1787305000"></script>
 <script src="/modules/aa.js?v=1787239500"></script>
-<script src="/modules/insights.js?v=1784990000"></script>
-<script src="/modules/payments.js?v=1784991000"></script>
-<script src="/modules/b2b.js?v=1787304000"></script>
+<script src="/modules/insights.js?v=1787305000"></script>
+<script src="/modules/payments.js?v=1787305000"></script>
+<script src="/modules/b2b.js?v=1787305000"></script>
 
 
 <script>

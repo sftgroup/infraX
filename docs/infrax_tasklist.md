@@ -178,6 +178,7 @@
 
 > **✅ W-1~W-8 + W-8b~W-8g 完成（2026-08-21）**：web 门户前端界面优化（landing/套餐/文档导航/移动端适配）；`node --check` 通过，本地 :6100 浏览器实测。
 > **W-8g（界面审计修复，2026-08-21）**：① LightRAG 健康条误显示 🔴 Down —— `b2bHealthBar` 调用 `/api/rag/health`（404），修正为 `/api/rag/api/v1/health`（200 + 17 instances）后恢复 🟢 Up；② 移动端 390px 横向溢出（`.main` flex item `min-width:auto` 被内容撑至 476px）—— `@media(max-width:768px)` 的 `.main` 补 `min-width:0;overflow-x:hidden`，全部页面实测 `scrollWidth==innerWidth` 无横向滚动；缓存版本号 bump 1787304000。
+> **W-8h（骨架屏，2026-08-21）**：页面加载过程全面骨架屏化，提升首屏体验——① index.html 静态容器：dashboard Usage / WaaS Subscription Plan / Sweep Targets / 管理端 mykeys 表格、以及 aa-root、payments-root、rpc-root、lightrag-root、insights-root、dc-market-root 6 个 JS 渲染容器由 "Loading…" 文本替换为 `.skeleton` 骨架屏（标题条 + 文本行 + 卡片网格 + 内容块）；② 异步加载区：rpc-key-box、rpc-status-root、rpc 我的订阅、链上事件表格、dc 事件表格、dc 行情结果、insights graph 面板、payments overview 面板全部改为骨架行/卡片（复用现有 `.skeleton/.skeleton-text/.skeleton-card` shimmer 动画类，零新增 CSS）；③ 兼容性：waas-ov-sub-status 保留 id（waas.js 以 textContent 写入时骨架自动被替换）；④ playwright 实测：阻断 JS 后 rpc-root 7 骨架元素 / dash-usage 3 条，JS 加载后骨架全部消失并渲染真实内容，隐藏 tab 面板骨架在激活时懒加载替换；缓存版本号 bump 1787305000。
 > ⚠️ **遗留**：交易对面板双榜单（OKX + DexScreener）来源联调待 AIHunter 前端。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）

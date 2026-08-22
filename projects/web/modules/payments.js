@@ -69,7 +69,7 @@ function pmRenderShell() {
       '<button class="tab-btn" data-pm-tab="transfers">🔁 Transfers</button>' +
       '<button class="tab-btn" data-pm-tab="a2a">⚡ A2A</button>' +
     '</div>' +
-    '<div class="pm-pane active" id="pm-pane-overview"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading…</div></div>' +
+    '<div class="pm-pane active" id="pm-pane-overview"><div style="padding:6px"><div class="skeleton" style="height:26px;width:45%;margin:18px auto 10px;border-radius:8px"></div><div class="skeleton-card" style="height:120px;max-width:680px;margin:0 auto 12px"></div><div class="skeleton-text" style="width:70%;margin:0 auto"></div><div class="skeleton-text short" style="margin:0 auto"></div></div></div>' +
     '<div class="pm-pane" id="pm-pane-invites"></div>' +
     '<div class="pm-pane" id="pm-pane-transfers"></div>' +
     '<div class="pm-pane" id="pm-pane-a2a"></div>';
@@ -99,7 +99,7 @@ function pmLoadTab(t) {
 async function pmLoadOverview() {
   var pane = document.getElementById('pm-pane-overview');
   if (!pane) return;
-  pane.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Loading…</div>';
+  pane.innerHTML = '<div style="padding:6px"><div class="skeleton" style="height:26px;width:45%;margin:18px auto 10px;border-radius:8px"></div><div class="skeleton-card" style="height:120px;max-width:680px;margin:0 auto 12px"></div><div class="skeleton-text" style="width:70%;margin:0 auto"></div><div class="skeleton-text short" style="margin:0 auto"></div></div>';
   var results = await Promise.allSettled([
     pmFetch('/payments/capabilities'),
     pmFetch('/payments/info'),

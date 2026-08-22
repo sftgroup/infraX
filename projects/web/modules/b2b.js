@@ -120,7 +120,7 @@ function rpcDashHtml() {
     '</div>' +
     '<div class="panel" style="margin-bottom:16px">' +
       '<div class="panel-header">🔑 API Key <span class="stat-chip" style="margin-left:auto">明文仅签发时展示一次</span></div>' +
-      '<div class="panel-body"><div id="rpc-key-box" style="font-size:13px">Loading…</div></div>' +
+      '<div class="panel-body"><div id="rpc-key-box" style="font-size:13px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text short"></div></div></div>' +
     '</div>' +
     '<div class="tab-row">' +
       '<button class="tab-btn active" data-sub="rpc-sub">📋 我的订阅</button>' +
@@ -295,7 +295,7 @@ function rpcStatusHtml() {
     '<div class="panel-header">📊 节点状态 · 我们提供的 RPC 端点</div>' +
     '<div class="panel-body">' +
       '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 14px">各链对外 JSON-RPC 端点实时状态（<code>X-API-Key</code> 认证访问；读 <code>rx_</code> / 广播 <code>bx_</code> 读写分离）。</p>' +
-      '<div id="rpc-status-root"><div style="text-align:center;padding:24px;color:var(--text-muted)">Loading node status…</div></div>' +
+      '<div id="rpc-status-root"><div class="skeleton-text" style="width:96%"></div><div class="skeleton-text" style="width:88%"></div><div class="skeleton-text" style="width:72%"></div><div class="skeleton-text short"></div></div>' +
     '</div></div>';
 }
 
@@ -391,7 +391,7 @@ function rpcMySubHtml(noWallet) {
       '<div style="font-size:15px;color:var(--gold-light);margin-bottom:6px">Connect wallet to subscribe &amp; get your rx_ key</div>' +
       '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a></div>';
   }
-  return '<div style="text-align:center;padding:14px;color:var(--text-muted);font-size:13px">Loading your subscription…</div>';
+  return '<div style="padding:14px 4px"><div class="skeleton-text" style="width:96%"></div><div class="skeleton-text" style="width:74%"></div><div class="skeleton-text short"></div></div>';
 }
 
 function rpcLoadMySub() {
@@ -607,7 +607,7 @@ function rpcLoadEvents() {
   if (addr) params.set('address', addr);
   params.set('page_size', '10');
   var tbody = document.getElementById('rpc-ev-tbody');
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted)">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="padding:14px 20px"><div class="skeleton-text" style="width:95%"></div><div class="skeleton-text" style="width:70%"></div><div class="skeleton-text short"></div></td></tr>';
   fetch('/api/v2/enhanced/events?' + params.toString())
     .then(function (r) { return r.json(); })
     .then(function (j) {
