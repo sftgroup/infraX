@@ -11,6 +11,7 @@ Pool tuning (all via env, safe defaults):
     DB_POOL_HEALTH_CHECK      "true" / "false"              default "true"
 """
 import os
+import re
 import time
 import threading
 from typing import Optional, Any, List, Dict
@@ -236,14 +237,44 @@ def _acquire_conn_with_wait(pg_pool):
 
 class PostgresCursor:
     """PostgreSQL cursor wrapper with placeholder conversion for backward compatibility"""
-    
+
+    # Cached per-process "does table have an id column" check, so INSERTs into
+    # tables whose PK is not ``id`` (e.g. qd_market_cache) skip the RETURNING id
+    # attempt and never generate ERROR logs on the PG side.
+    _table_has_id_cache: Dict[str, bool] = {}
+    _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+([^\s(]+)", re.IGNORECASE)
+
     def __init__(self, cursor):
         self._cursor = cursor
         self._last_insert_id = None
         # INSERT ... RETURNING: execute() peeks the first row for lastrowid; callers
         # that also cur.fetchone() must see the same row (not a second fetch from PG).
         self._buffered_row: Optional[Dict[str, Any]] = None
-    
+
+    @classmethod
+    def _table_has_id(cls, cursor, table: str) -> bool:
+        """Return True if ``table`` has an ``id`` column (with a process-level cache)."""
+        has = cls._table_has_id_cache.get(table)
+        if has is not None:
+            return has
+        try:
+            cur = cursor.connection.cursor()
+            try:
+                cur.execute(
+                    "SELECT 1 FROM pg_attribute "
+                    "WHERE attrelid = %s::regclass AND attname = 'id' "
+                    "AND attnum > 0 AND NOT attisdropped",
+                    (table,),
+                )
+                has = cur.fetchone() is not None
+            finally:
+                cur.close()
+        except Exception:
+            # Conservative: if we cannot probe, keep the original SAVEPOINT fallback.
+            has = True
+        cls._table_has_id_cache[table] = has
+        return has
+
     def _convert_placeholders(self, query: str) -> str:
         """
         Convert ? placeholders to PostgreSQL %s for backward compatibility.
@@ -281,6 +312,14 @@ class PostgresCursor:
         has_returning = 'RETURNING' in query.upper()
 
         if is_insert and not has_returning:
+            # Skip the RETURNING id attempt entirely when the target table has
+            # no ``id`` column — otherwise every INSERT generates an ERROR log
+            # on the PG side (even though the SAVEPOINT fallback below recovers).
+            m = self._INSERT_TABLE_RE.match(query)
+            if m and not self._table_has_id(self._cursor, m.group(1)):
+                if args:
+                    return self._cursor.execute(query, args)
+                return self._cursor.execute(query)
             q_with_id = query.rstrip(';').rstrip() + ' RETURNING id'
             savepoint = '_pg_ins_ret_id'
             try:
