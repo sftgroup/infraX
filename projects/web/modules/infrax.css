@@ -283,7 +283,7 @@ label{font-size:11.5px;font-weight:600;color:var(--text-tertiary);display:block;
 @media(max-width:768px){
   .sidebar{display:none;position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;z-index:100;background:var(--surface-sidebar);box-shadow:4px 0 24px rgba(0,0,0,.5);transition:transform .25s;transform:translateX(-100%)}
   .sidebar.open{display:flex;transform:translateX(0)}
-  .main{margin-left:0}
+  .main{margin-left:0;min-width:0;overflow-x:hidden}
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
   .form-row{grid-template-columns:1fr}
   .page{padding:18px}

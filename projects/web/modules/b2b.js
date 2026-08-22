@@ -7,7 +7,7 @@
 function b2bHealthBar(svc, elId) {
   var el = document.getElementById(elId);
   if (!el) return;
-  fetch(svc === 'rpc' ? '/api/v2/rpc/health' : '/api/rag/health')
+  fetch(svc === 'rpc' ? '/api/v2/rpc/health' : '/api/rag/api/v1/health')
     .then(function (r) { el.innerHTML = r.ok ? '<span class="status success">🟢 Up</span>' : '<span class="status failed">🔴 Down</span>'; })
     .catch(function () { el.innerHTML = '<span class="status failed">🔴 Down</span>'; });
 }

@@ -176,7 +176,8 @@
 
 ### 9.14 web 门户前端界面优化（2026-08-21）
 
-> **✅ W-1~W-8 + W-8b~W-8f 完成（2026-08-21）**：web 门户前端界面优化（landing/套餐/文档导航/移动端适配）；`node --check` 通过，本地 :6100 浏览器实测。
+> **✅ W-1~W-8 + W-8b~W-8g 完成（2026-08-21）**：web 门户前端界面优化（landing/套餐/文档导航/移动端适配）；`node --check` 通过，本地 :6100 浏览器实测。
+> **W-8g（界面审计修复，2026-08-21）**：① LightRAG 健康条误显示 🔴 Down —— `b2bHealthBar` 调用 `/api/rag/health`（404），修正为 `/api/rag/api/v1/health`（200 + 17 instances）后恢复 🟢 Up；② 移动端 390px 横向溢出（`.main` flex item `min-width:auto` 被内容撑至 476px）—— `@media(max-width:768px)` 的 `.main` 补 `min-width:0;overflow-x:hidden`，全部页面实测 `scrollWidth==innerWidth` 无横向滚动；缓存版本号 bump 1787304000。
 > ⚠️ **遗留**：交易对面板双榜单（OKX + DexScreener）来源联调待 AIHunter 前端。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
