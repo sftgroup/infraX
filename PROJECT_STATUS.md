@@ -33,30 +33,30 @@ InfraX 是一个 **Web3 基础设施平台**，提供钱包管理、多签保险
 | 服务 | 端口 | 数据库 | 语言 | 状态 |
 |------|------|--------|------|:--:|
 | Admin | 9100 | 跨 7 DB | TypeScript (tsx) | 🟢 |
-| Collector | 9101 | `pocketx_collector` | TypeScript | 🟢 |
-| DC | 9102 | `pocketx_dc` | TypeScript | 🟢 |
+| Collector | 9101 | `infrax_collector` | TypeScript | 🟢 |
+| DC | 9102 | `infrax_dc` | TypeScript | 🟢 |
 | DC MCP | 9103 | — | TypeScript | 🟢 |
-| MPC | 9104 | `pocketx_mpc` | TypeScript | 🟢 |
+| MPC | 9104 | `infrax_mpc` | TypeScript | 🟢 |
 | MPC MCP | 9105 | — | TypeScript | 🟢 |
-| Payment | 9106 | `pocketx_payment` | TypeScript | 🟢 |
-| Vault | 9107 | `pocketx_vault` | TypeScript (tsx) | 🟢 |
+| Payment | 9106 | `infrax_payment` | TypeScript | 🟢 |
+| Vault | 9107 | `infrax_vault` | TypeScript (tsx) | 🟢 |
 | Vault MCP | 9108 | — | TypeScript | 🟢 |
-| WAAS | 9109 | `pocketx_waas` | TypeScript | 🟢 |
+| WAAS | 9109 | `infrax_waas` | TypeScript | 🟢 |
 | Wallet MCP | 9110 | — | TypeScript | 🟢 |
 | Web | 9111 | — | JavaScript (纯 Node) | 🟢 |
-| Cleanup Timer | — | `pocketx_collector` | Shell | 🟢 (每日 03:00) |
+| Cleanup Timer | — | `infrax_collector` | Shell | 🟢 (每日 03:00) |
 
 ### 数据库（7 个 PostgreSQL）
 
 | 数据库 | 用途 |
 |--------|------|
-| `pocketx_collector` | 链上事件 + checkpoint + OKX/Binance 价格 |
-| `pocketx_waas` | 钱包/用户/交易/SaaS 租户 (17 表) |
-| `pocketx_vault` | Safe 多签 (4 表) |
-| `pocketx_dc` | 数据订阅 |
-| `pocketx_mpc` | MPC 钱包 |
-| `pocketx_payment` | 支付订单 |
-| `pocketx_admin` | 管理后台 |
+| `infrax_collector` | 链上事件 + checkpoint + OKX/Binance 价格 |
+| `infrax_waas` | 钱包/用户/交易/SaaS 租户 (17 表) |
+| `infrax_vault` | Safe 多签 (4 表) |
+| `infrax_dc` | 数据订阅 |
+| `infrax_mpc` | MPC 钱包 |
+| `infrax_payment` | 支付订单 |
+| `infrax_admin` | 管理后台 |
 
 **数据保留**: 5 天自动清理（`infrax-cleanup.timer` 每日凌晨执行）
 

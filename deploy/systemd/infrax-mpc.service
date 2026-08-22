@@ -17,7 +17,7 @@ Environment="CHAIN_RPC_URL=http://127.0.0.1:9130"
 Environment="CHAIN_RPC_READ_KEY=CHANGE_ME_READ_KEY"
 Environment="CHAIN_RPC_BROADCAST_KEY=CHANGE_ME_BROADCAST_KEY"
 Environment="PORT=9104"
-Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_mpc"
+Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/infrax_mpc"
 Environment="PATH=/usr/bin:/usr/local/bin:/home/ubuntu/.npm-global/bin:/opt/infraX/projects/mpc/node_modules/.bin:$PATH"
 ExecStart=/usr/bin/tsx server.ts
 Restart=on-failure

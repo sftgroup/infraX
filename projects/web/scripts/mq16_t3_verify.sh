@@ -73,7 +73,7 @@ static() {
 
 # ═══════════ api：生产服务联调 ═══════════
 api() {
-  local DB=${DB:-pocketx_chainrpc}
+  local DB=${DB:-infrax_chainrpc}
   [ -n "$BRIDGE_KEY" ] || { echo "需要 BRIDGE_KEY（chain-rpc 读 key）"; exit 1; }
 
   section "api [1/12] chain-rpc 冒烟 + 套餐列表"

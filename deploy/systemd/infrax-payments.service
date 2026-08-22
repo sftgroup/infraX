@@ -7,7 +7,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/infraX-1/projects/payments
 Environment="PORT=9132"
-Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pocketx_payments"
+Environment="DATABASE_URL=postgresql://postgres:postgres@localhost:5432/infrax_payments"
 # 统一平台鉴权（bridge key；外部 key 走 data 校验）
 Environment="PAYMENTS_API_KEY=CHANGE_ME_PAYMENTS_API_KEY"
 Environment="DATA_URL=http://127.0.0.1:9112"

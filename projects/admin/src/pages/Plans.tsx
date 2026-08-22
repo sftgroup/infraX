@@ -131,8 +131,8 @@ export default function Plans() {
             <div>
               <label className="form-label">库</label>
               <select className="form-input" value={form.db} onChange={e => setForm({ ...form, db: e.target.value, service: e.target.value === 'dc' ? 'dc-data' : 'waas-subscription' })}>
-                <option value="waas">waas（pocketx_waas）</option>
-                <option value="dc">dc（pocketx_dc）</option>
+                <option value="waas">waas（infrax_waas）</option>
+                <option value="dc">dc（infrax_dc）</option>
               </select>
             </div>
             <div>

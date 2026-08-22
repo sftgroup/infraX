@@ -41,21 +41,21 @@ ssh ubuntu@43.156.25.197   # ML 机
 |------|------|-----|------|------|
 | Admin | 9100 | 跨 10 DB（@10.3.8.6） | `systemctl start infrax-admin` | 🟢 |
 | Admin Legacy | 3002 | — | `systemctl start infrax-admin-legacy` | 🟢 |
-| Collector | 9101 | pocketx_collector（@10.3.8.6） | `systemctl start infrax-collector` | 🟢 |
-| DC | 9102 | pocketx_dc + pocketx_collector（@10.3.8.6） | `systemctl start infrax-dc` | 🟢 |
-| MPC | 9104 | pocketx_mpc（@10.3.8.6） | `systemctl start infrax-mpc` | 🟢 |
-| ~~Payment（旧支付）~~ | ~~9106~~ | pocketx_payment（历史残留） | ~~infrax-payment~~ 已删除 | 🔴 已下线（MQ-15 T-7，代码保留 git 历史） |
-| Vault | 9107 | pocketx_vault（@10.3.8.6） | `systemctl start infrax-vault` | 🟢 |
-| WAAS | 9109 | pocketx_waas（@10.3.8.6） | `systemctl start infrax-waas` | 🟢 |
+| Collector | 9101 | infrax_collector（@10.3.8.6） | `systemctl start infrax-collector` | 🟢 |
+| DC | 9102 | infrax_dc + infrax_collector（@10.3.8.6） | `systemctl start infrax-dc` | 🟢 |
+| MPC | 9104 | infrax_mpc（@10.3.8.6） | `systemctl start infrax-mpc` | 🟢 |
+| ~~Payment（旧支付）~~ | ~~9106~~ | infrax_payment（历史残留） | ~~infrax-payment~~ 已删除 | 🔴 已下线（MQ-15 T-7，代码保留 git 历史） |
+| Vault | 9107 | infrax_vault（@10.3.8.6） | `systemctl start infrax-vault` | 🟢 |
+| WAAS | 9109 | infrax_waas（@10.3.8.6） | `systemctl start infrax-waas` | 🟢 |
 | Web | 9111 | — | `systemctl start infrax-web` | 🟢 |
 
 ### B. 43.163.105.172 — 平台服务（9130-9132 / 9200-9201 / 3500）
 
 | 服务 | 端口 | DB | 启动 | 状态 |
 |------|------|-----|------|------|
-| Chain RPC（链 RPC 网关） | 9130 | pocketx_chainrpc（@10.3.8.6） | `systemctl start infrax-chain-rpc` | 🟢 |
-| AA Relay | 9131 | pocketx_mpc（@10.3.8.6，drop-in override.conf） | `systemctl start infrax-aa-relay` | 🟢 |
-| **Payments（通用支付引擎）** | 9132 | pocketx_payments（@10.3.8.6） | `systemctl start infrax-payments` | 🟢 |
+| Chain RPC（链 RPC 网关） | 9130 | infrax_chainrpc（@10.3.8.6） | `systemctl start infrax-chain-rpc` | 🟢 |
+| AA Relay | 9131 | infrax_mpc（@10.3.8.6，drop-in override.conf） | `systemctl start infrax-aa-relay` | 🟢 |
+| **Payments（通用支付引擎）** | 9132 | infrax_payments（@10.3.8.6） | `systemctl start infrax-payments` | 🟢 |
 | MPC TSS Signer | 9200 | — | `systemctl start infrax-mpc-tss-signer` | 🟢 |
 | MPC Signer | 9201 | — | `systemctl start infrax-mpc-signer` | 🟢 |
 | Session Key | 3500 | session_key_engine（@10.3.8.6，`.env`） | `systemctl start infrax-session-key` | 🟢 |
@@ -279,7 +279,7 @@ Environment="OXA_RPC_URL=https://rpc-oxa.0xainet.top"
 # /etc/systemd/system/infrax-collector.service.d/secrets.conf  (root:600, EPF-8 2026-08-22)
 # 敏感密钥统一集中在此文件，禁止写入 .env.production / .env（两文件均不入 git）。
 # 系统加载顺序：systemd Environment 优先于 dotenv，dotenv 不覆盖已存在环境变量。
-Environment="DATABASE_URL=postgresql://pocketx_app:<强密码>@10.3.8.6:5432/pocketx_collector"
+Environment="DATABASE_URL=postgresql://infrax_app:<强密码>@10.3.8.6:5432/infrax_collector"
 Environment="ADMIN_USERNAME=admin"
 Environment="ADMIN_PASSWORD=<强随机 24+ 字符>"
 Environment="CWALLET_API_KEY=<64 hex>"
@@ -288,20 +288,20 @@ Environment="CWALLET_API_KEY=<64 hex>"
 ## 数据库（43.156.78.59，10.3.8.6:5432）
 
 > **PostgreSQL 14 位于新机 43.156.78.59**（2026-08-16 整盘迁移），172 及各服务经内网 `10.3.8.6:5432` 连接。
-> **collector 从 2026-08-22 起使用专用低权限用户 `pocketx_app`**（EPF-8；仅 pocketx_collector 库，库内 31 表 owner），
+> **collector 从 2026-08-22 起使用专用低权限用户 `infrax_app`**（EPF-8；仅 infrax_collector 库，库内 31 表 owner），
 > 不再使用 `postgres:postgres` 超管连接；`postgres:postgres` 仅保留运维用途。
 
 | 数据库 | 表数 | 说明 |
 |--------|------|------|
-| pocketx_payments | 11 | **通用支付引擎 ledger**（余额/转账/邀请/批次/意图/授权，MQ-14/16 能力全量） |
-| pocketx_chainrpc | 3 | **Chain RPC 对外套餐**（rpc_keys/rpc_usage/rpc_usage_daily，MQ-16 T-3） |
-| pocketx_collector | 18 | 事件 + checkpoint + OKX + Binance + Market 套餐（market_usage，MQ-16 T-2；含 ~90 万行 events） |
-| pocketx_waas | 18 | 钱包/用户/交易/SaaS/订阅 |
-| pocketx_dc | 4 | 订阅 + api_usage/api_usage_daily 配额（MQ-16 T-1） |
-| pocketx_mpc | 5 | MPC 钱包/会话/验证码 + 订阅（MQ-16 T-4；aa-relay 共用） |
-| pocketx_vault | 5 | Safe 多签 |
-| pocketx_payment | 3 | 旧支付（🔴 已下线，历史残留） |
-| pocketx_admin | 0 | 管理（数据跨库查询，本库无表） |
+| infrax_payments | 11 | **通用支付引擎 ledger**（余额/转账/邀请/批次/意图/授权，MQ-14/16 能力全量） |
+| infrax_chainrpc | 3 | **Chain RPC 对外套餐**（rpc_keys/rpc_usage/rpc_usage_daily，MQ-16 T-3） |
+| infrax_collector | 18 | 事件 + checkpoint + OKX + Binance + Market 套餐（market_usage，MQ-16 T-2；含 ~90 万行 events） |
+| infrax_waas | 18 | 钱包/用户/交易/SaaS/订阅 |
+| infrax_dc | 4 | 订阅 + api_usage/api_usage_daily 配额（MQ-16 T-1） |
+| infrax_mpc | 5 | MPC 钱包/会话/验证码 + 订阅（MQ-16 T-4；aa-relay 共用） |
+| infrax_vault | 5 | Safe 多签 |
+| infrax_payment | 3 | 旧支付（🔴 已下线，历史残留） |
+| infrax_admin | 0 | 管理（数据跨库查询，本库无表） |
 | session_key_engine | 2 | Session Key :3500 会话密钥 |
 
 ## 数据盘挂载（43.156.78.59）
@@ -374,7 +374,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now infrax-cleanup.timer
 ```
 
-> 清理脚本内 `DATABASE_URL` 需指向 `postgresql://postgres:postgres@10.3.8.6:5432/pocketx_collector`。
+> 清理脚本内 `DATABASE_URL` 需指向 `postgresql://postgres:postgres@10.3.8.6:5432/infrax_collector`。
 
 ### 手动触发与监控
 ```bash
@@ -395,7 +395,7 @@ sudo systemctl list-timers --all | grep infrax
 ### Collector
 ```bash
 PORT=9101
-DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_collector
+DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/infrax_collector
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ETH_RPC_URL=https://ethereum-rpc.publicnode.com
 BSC_RPC_URL=https://bsc-dataseed.bnbchain.org
@@ -416,7 +416,7 @@ INJECTOR_BASE=http://10.3.8.6:9113       # 新机
 ```bash
 PORT=9104
 MPC_ENCRYPTION_SECRET=<32-byte-hex>  # 必填
-DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc
+DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/infrax_mpc
 ```
 
 ### MCP Servers
@@ -1146,7 +1146,7 @@ done
 sudo journalctl -u infrax-collector --no-pager -n 20 | grep scanner
 
 # DB checkpoint（连新机）
-psql "postgresql://postgres:postgres@10.3.8.6:5432/pocketx_collector" -c \
+psql "postgresql://postgres:postgres@10.3.8.6:5432/infrax_collector" -c \
   "SELECT chain, collector_name, last_block, status FROM event_checkpoints ORDER BY chain;"
 ```
 

@@ -37,13 +37,13 @@ infraX/ (Monorepo, 10 modules)
 
 | DB | 表数 | 说明 |
 |----|------|------|
-| pocketx_waas | 14 | tenants, users, transactions, wallets, subscriptions, api_usage, chains, tokens |
-| pocketx_vault | 9 | safe_wallets, safe_transactions, safe_signatures, risk_rules, mpc_wallets |
-| pocketx_dc | 1 | dc_subscriptions |
-| pocketx_mpc | 3 | mpc_key_shares, mpc_registrations, mpc_wallets |
-| pocketx_payment | 5 | payment_orders, payment_events, subscriptions, fee_configs |
-| pocketx_admin | 2 | admin_users, admin_rpc_config |
-| pocketx_collector | 9 | events(630万行), chains, tokens, api_keys |
+| infrax_waas | 14 | tenants, users, transactions, wallets, subscriptions, api_usage, chains, tokens |
+| infrax_vault | 9 | safe_wallets, safe_transactions, safe_signatures, risk_rules, mpc_wallets |
+| infrax_dc | 1 | dc_subscriptions |
+| infrax_mpc | 3 | mpc_key_shares, mpc_registrations, mpc_wallets |
+| infrax_payment | 5 | payment_orders, payment_events, subscriptions, fee_configs |
+| infrax_admin | 2 | admin_users, admin_rpc_config |
+| infrax_collector | 9 | events(630万行), chains, tokens, api_keys |
 
 ## Git
 

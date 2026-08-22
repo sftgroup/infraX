@@ -1,5 +1,5 @@
 // InfraX Payment Server — standalone payment & x402 engine
-// DB: pocketx_payment | Port: 6004
+// DB: infrax_payment | Port: 6004
 import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
@@ -22,7 +22,7 @@ const authMw = createAuthMiddleware({
 app.use(authMw);
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_payment',
+  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_payment',
   max: 10,
   idleTimeoutMillis: 30000,
 });

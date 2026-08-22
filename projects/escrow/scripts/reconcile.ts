@@ -21,7 +21,7 @@ import { Pool } from "pg";
  *
  * 用法：
  *   ESCROW_ADDRESS=0x... \
- *   DATABASE_URL=postgresql://ubuntu@10.3.8.6:5432/pocketx_payments \
+ *   DATABASE_URL=postgresql://ubuntu@10.3.8.6:5432/infrax_payments \
  *   [FROM_BLOCK=0] [DAY=<unix day>] [DIFF_THRESHOLD_WEI=0] [USERS=a,b,c] \
  *   [LEGACY_BASE_BLOCK=<区块>] [LEGACY_BASE_BY_USER=0xuser=wei,...] \
  *   npx hardhat run scripts/reconcile.ts --network oxachain

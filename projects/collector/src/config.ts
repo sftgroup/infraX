@@ -9,9 +9,9 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // Database
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://localhost:5432/pocketx_collector',
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://localhost:5432/infrax_collector',
   // A-12: rx_ 读 key 校验连接（chain-rpc 的 rpc_keys 表所在库）
-  chainRpcDatabaseUrl: process.env.CHAIN_RPC_DATABASE_URL || 'postgresql://localhost:5432/pocketx_chainrpc',
+  chainRpcDatabaseUrl: process.env.CHAIN_RPC_DATABASE_URL || 'postgresql://localhost:5432/infrax_chainrpc',
 
   // CWallet Internal API (legacy, used by database.ts migration seed)
   cwallet: {

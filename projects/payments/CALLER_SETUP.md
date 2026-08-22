@@ -155,7 +155,7 @@ app.listen(3000)
 ```ini
 # ── 基础 ────────────────────────────────────────────────
 PORT=9132
-DATABASE_URL=postgresql://user:pass@host:5432/pocketx_payments   # 调用方自己的库
+DATABASE_URL=postgresql://user:pass@host:5432/infrax_payments   # 调用方自己的库
 PAYMENTS_API_KEY=<随机 hex>                                       # 服务间调用 key
 
 # ── 收款① chain 轨：你自己的 SubscriptionManager ────────

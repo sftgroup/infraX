@@ -1,7 +1,7 @@
 // ============================================================================
 // aa-relay session 持久化存储（E-3a/b）
 // 多租户三维键 (product, network, session_id) 落库；重启不失效。
-// 复用 MPC 的 Postgres（DATABASE_URL，缺省 pocketx_mpc 库，独立表 aa_sessions）。
+// 复用 MPC 的 Postgres（DATABASE_URL，缺省 infrax_mpc 库，独立表 aa_sessions）。
 // ============================================================================
 import { Pool } from 'pg';
 import type { Address } from 'viem';

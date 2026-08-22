@@ -132,7 +132,7 @@ router.get('/docs', asyncHandler(async (_req, res) => {
         { name: 'event_type', type: 'string', required: false, description: 'Event type: transfer' },
         { name: 'page_size', type: 'number', required: false, description: 'Results per page (max 500)' },
         { name: 'page_token', type: 'string', required: false, description: 'Cursor for next page' },
-      ], example: 'curl -H "x-dc-api-key: pocketx_dc_..." "BASE/events?chain=ethereum&page_size=50"' },
+      ], example: 'curl -H "x-dc-api-key: infrax_dc_..." "BASE/events?chain=ethereum&page_size=50"' },
       { method: 'GET', path: '/stats', description: 'Chain-level statistics', params: [] },
       { method: 'GET', path: '/health', description: 'Collector health + storage', params: [] },
       { method: 'GET', path: '/checkpoints', description: 'Scan checkpoints', params: [] },

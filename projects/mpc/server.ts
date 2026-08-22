@@ -33,7 +33,7 @@ const authMw = createAuthMiddleware({
 app.use(authMw);
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_mpc',
+  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_mpc',
   max: 10,
   idleTimeoutMillis: 30000,
 });

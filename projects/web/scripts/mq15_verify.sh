@@ -39,6 +39,7 @@ static() {
   [ -z "$h" ] && ok "server.js 无旧代理路由/常量" || bad "server.js 残留: $h"
 
   section "static [3/4] admin — 无旧库/端口引用"
+  # EPF-9：历史库名检测模式（pocketx_payment 已改 infrax_payment，此模式用于确认 admin 代码无旧库名残留）
   h=$(grep -rn "pocketx_payment\b\|pools\.payment\b\|total_usd\|:9106" projects/admin/server projects/admin/src 2>/dev/null | grep -v node_modules | head -5)
   [ -z "$h" ] && ok "admin 代码无旧库/旧字段/旧端口" || bad "admin 残留: $h"
 
@@ -133,9 +134,9 @@ api() {
 
   section "api 清理测试数据"
   local uid
-  uid=$(sudo -u postgres psql -d pocketx_waas -t -A -c "SELECT id FROM users WHERE wallet_address='$ADDR'" 2>/dev/null || echo "")
+  uid=$(sudo -u postgres psql -d infrax_waas -t -A -c "SELECT id FROM users WHERE wallet_address='$ADDR'" 2>/dev/null || echo "")
   if [ -n "$uid" ]; then
-    sudo -u postgres psql -d pocketx_waas -c "DELETE FROM subscriptions WHERE user_id='$uid'; DELETE FROM users WHERE id='$uid';" >/dev/null 2>&1
+    sudo -u postgres psql -d infrax_waas -c "DELETE FROM subscriptions WHERE user_id='$uid'; DELETE FROM users WHERE id='$uid';" >/dev/null 2>&1
     ok "已清理测试钱包数据（user=$uid）"
   else
     ok "无测试数据残留（用户未落库）"

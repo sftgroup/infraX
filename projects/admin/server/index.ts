@@ -22,13 +22,13 @@ app.use(express.static(path.join(__dirname, '..', 'dist')));
 const BASE = 'postgresql://ubuntu@localhost:5432';
 
 const pools: Record<string, Pool> = {
-  mpc:     new Pool({ connectionString: process.env.MPC_DB     || `${BASE}/pocketx_mpc`,     max: 3 }),
-  admin:   new Pool({ connectionString: process.env.ADMIN_DB   || `${BASE}/pocketx_admin`,   max: 3 }),
-  waas:    new Pool({ connectionString: process.env.WAAS_DB    || `${BASE}/pocketx_waas`,    max: 3 }),
-  dc:      new Pool({ connectionString: process.env.DC_DB      || `${BASE}/pocketx_dc`,      max: 3 }),
-  vault:   new Pool({ connectionString: process.env.VAULT_DB   || `${BASE}/pocketx_vault`,   max: 3 }),
-  payments: new Pool({ connectionString: process.env.PAYMENTS_DB || process.env.PAYMENT_DB || `${BASE}/pocketx_payments`, max: 3 }),
-  collector: new Pool({ connectionString: process.env.COLLECTOR_DB || `${BASE}/pocketx_collector`, max: 3 }),
+  mpc:     new Pool({ connectionString: process.env.MPC_DB     || `${BASE}/infrax_mpc`,     max: 3 }),
+  admin:   new Pool({ connectionString: process.env.ADMIN_DB   || `${BASE}/infrax_admin`,   max: 3 }),
+  waas:    new Pool({ connectionString: process.env.WAAS_DB    || `${BASE}/infrax_waas`,    max: 3 }),
+  dc:      new Pool({ connectionString: process.env.DC_DB      || `${BASE}/infrax_dc`,      max: 3 }),
+  vault:   new Pool({ connectionString: process.env.VAULT_DB   || `${BASE}/infrax_vault`,   max: 3 }),
+  payments: new Pool({ connectionString: process.env.PAYMENTS_DB || process.env.PAYMENT_DB || `${BASE}/infrax_payments`, max: 3 }),
+  collector: new Pool({ connectionString: process.env.COLLECTOR_DB || `${BASE}/infrax_collector`, max: 3 }),
 };
 
 // ─── Helpers ───
@@ -140,7 +140,7 @@ app.get('/api/v2/admin/orders', requireAdmin, asyncHandler(async (req: any, res:
 
 // ─── API Usage ───
 app.get('/api/v2/admin/api-usage', requireAdmin, asyncHandler(async (_req: any, res: any) => {
-  // api_usage_daily 实际位于 pocketx_dc（此前误查 waas 库导致恒为空）
+  // api_usage_daily 实际位于 infrax_dc（此前误查 waas 库导致恒为空）
   const result = await pools.dc.query(
     "SELECT date, endpoint, COALESCE(total_calls, 0)::int as calls FROM api_usage_daily WHERE date >= NOW() - INTERVAL '30 days' ORDER BY date DESC, endpoint LIMIT 500"
   ).catch(() => ({ rows: [] }));
@@ -409,7 +409,7 @@ app.get('/api/v2/admin/dc-subscriptions', requireAdmin, asyncHandler(async (_req
   res.json(apiResponse(rows));
 }));
 
-// ─── Settings — FIXED: tokens/chains/fee_configs in pocketx_collector ───
+// ─── Settings — FIXED: tokens/chains/fee_configs in infrax_collector ───
 app.get('/api/v2/admin/settings', requireAdmin, asyncHandler(async (_req: any, res: any) => {
   const [tokens, chains, feeConfigs] = await Promise.all([
     pools.collector.query('SELECT * FROM tokens ORDER BY symbol').catch(() => ({ rows: [] })),

@@ -15,7 +15,7 @@
 --   * 仅适用于 native 分区（非 TimescaleDB；TimescaleDB 未安装）
 --
 -- 执行方式（2026-08-17 排期停机窗口，见 tasklist §9.16 遗留① / backup 排期）：
---   psql -h 10.3.8.6 -U postgres -d pocketx_collector -f events_partition_migrate.sql
+--   psql -h 10.3.8.6 -U postgres -d infrax_collector -f events_partition_migrate.sql
 --   或分步执行（第 3 步数据迁移最长，可分多次运行后原子切换）。
 -- 回滚：切换前 events_old 保留；确认后 DROP TABLE events_old。
 --

@@ -61,7 +61,7 @@ static() {
 
 # ═══════════ api：生产服务联调 ═══════════
 api() {
-  local DB=${DB:-pocketx_collector}
+  local DB=${DB:-infrax_collector}
 
   section "api [1/10] collector 冒烟 + 套餐列表"
   curl -sf "$COL_BASE/health" >/dev/null 2>&1 && ok "collector /health" || bad "collector /health 失败"

@@ -30,13 +30,13 @@
 
 | 服务 | 端口 | DB |
 |------|:---:|-----|
-| infrax-waas | 9109 | pocketx_waas (17表) |
-| infrax-vault | 9107 | pocketx_vault (4表) |
-| infrax-dc | 9102 | pocketx_dc + pocketx_collector |
-| infrax-mpc | 9104 | pocketx_mpc (2表) |
-| infrax-payment | 9106 | pocketx_payment (3表) |
-| infrax-collector | 9101 | pocketx_collector (10+表) |
-| infrax-admin | 9100 | pocketx_admin + 跨7DB |
+| infrax-waas | 9109 | infrax_waas (17表) |
+| infrax-vault | 9107 | infrax_vault (4表) |
+| infrax-dc | 9102 | infrax_dc + infrax_collector |
+| infrax-mpc | 9104 | infrax_mpc (2表) |
+| infrax-payment | 9106 | infrax_payment (3表) |
+| infrax-collector | 9101 | infrax_collector (10+表) |
+| infrax-admin | 9100 | infrax_admin + 跨7DB |
 | infrax-web | 9111 | — (SPA + proxy) |
 | infrax-dc-mcp | 9103 | — |
 | infrax-mpc-mcp | 9105 | — |

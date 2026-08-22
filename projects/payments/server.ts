@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
 // InfraX Payments — standalone generic payment gateway (infrax-payments)
-// DB: pocketx_payments | Port: 9132 (default) | shape: standalone-library
+// DB: infrax_payments | Port: 9132 (default) | shape: standalone-library
 // Entry: tsx server.ts (CJS, run directly against TypeScript sources).
 //
 // Standalone deployment of @0xinfrax/payments as a microservice, aligned with
 // the platform conventions: unified auth (Bearer / X-API-Key / X-Service-Key),
-// per-service DB (pocketx_payments), chain reads via the chain-rpc gateway
+// per-service DB (infrax_payments), chain reads via the chain-rpc gateway
 // (DC-10) when CHAIN_RPC_READ_KEY is set, /health for observability.
 // ---------------------------------------------------------------------------
 import express from 'express'
@@ -54,7 +54,7 @@ const authMw = createAuthMiddleware({
 app.use(authMw)
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_payments',
+  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_payments',
   max: 10,
   idleTimeoutMillis: 30_000,
 })

@@ -1,6 +1,6 @@
 // InfraX DC Server — Data Center Service
 // API: subscription management + B-end data query (events/stats/checkpoints)
-// DB: pocketx_dc (independent PostgreSQL)
+// DB: infrax_dc (independent PostgreSQL)
 import express from 'express';
 import { Pool } from 'pg';
 import crypto from 'crypto';
@@ -8,9 +8,9 @@ import cors from 'cors';
 import { randomUUID } from 'crypto';
 import client from 'prom-client';
 
-// ─── DB Pools: dc service uses pocketx_dc (users/tenants) + pocketx_collector (events) ───
+// ─── DB Pools: dc service uses infrax_dc (users/tenants) + infrax_collector (events) ───
 const eventsPool = new Pool({
-  connectionString: process.env.COLLECTOR_DB_URL || 'postgresql://ubuntu@localhost:5432/pocketx_collector',
+  connectionString: process.env.COLLECTOR_DB_URL || 'postgresql://ubuntu@localhost:5432/infrax_collector',
   max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000,
 });
 
@@ -19,7 +19,7 @@ app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_dc',
+  connectionString: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_dc',
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
@@ -216,7 +216,7 @@ function monthStart(): Date {
 
 // ─── MQ-16 监控：Prometheus /metrics（配额使用率 + 订阅状态分布）───
 // 对齐 projects/shared/metrics.py 的统一监控接入（/metrics 免鉴权，探针可拉取）。
-// 数据源：pocketx_dc（api_usage 月度计数 + tenants 订阅状态），刮取时刷新（15s TTL 防频繁查库）。
+// 数据源：infrax_dc（api_usage 月度计数 + tenants 订阅状态），刮取时刷新（15s TTL 防频繁查库）。
 const metricsRegistry = new client.Registry();
 client.collectDefaultMetrics({ register: metricsRegistry });
 
@@ -651,7 +651,7 @@ app.get('/api/v2/data/key', asyncHandler(async (req: any, res: any) => {
   res.json(apiResponse({ dcApiKey: tenantResult.rows[0].dc_api_key, dcApiKeyObscured: obscureKey(tenantResult.rows[0].dc_api_key || ''), dataPlanId: tenantResult.rows[0].data_plan_id }));
 }));
 
-// ─── B-end Data Query Endpoints (require x-dc-api-key, direct DB on pocketx_collector) ───
+// ─── B-end Data Query Endpoints (require x-dc-api-key, direct DB on infrax_collector) ───
 
 app.get('/api/v2/data/events', requireDcApiKey, dcQuotaEnforce, asyncHandler(async (req: any, res: any) => {
   const pageSize = Math.min(parseInt(req.query.page_size) || 100, 500);

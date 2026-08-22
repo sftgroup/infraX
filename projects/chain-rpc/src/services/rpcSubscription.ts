@@ -6,7 +6,7 @@
  *   （chain/fiat/x402 收钱 + period 周期授权扣费）。
  *
  * 设计要点：
- *   - chain-rpc 新增独立库（默认 pocketx_chainrpc，DATABASE_URL 可覆盖）
+ *   - chain-rpc 新增独立库（默认 infrax_chainrpc，DATABASE_URL 可覆盖）
  *   - `rx_` 前缀 key 由本服务签发，订阅绑定到 key（rpc_keys 表，仅存 SHA-256 哈希）
  *   - 本地 bridge key（CHAIN_RPC_READ_KEY / BROADCAST_KEY）豁免配额（平台内部服务用）
  *   - 套餐按自然月结算，配额 = features.callsPerMonth；超配额 → 503 + 升级提示
@@ -34,7 +34,7 @@ export function planById(id: string | undefined | null): (typeof RPC_PLANS)[numb
 
 // ─── DB Pool（独立库，表结构自举） ─────────────────────────────
 export const rpcPool = new Pool({
-  connectionString: process.env.CHAIN_RPC_DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_chainrpc',
+  connectionString: process.env.CHAIN_RPC_DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_chainrpc',
   max: 5,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

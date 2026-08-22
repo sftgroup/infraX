@@ -10,7 +10,7 @@ PG="psql -h 10.3.8.6 -U postgres"
 export PGPASSWORD=postgres
 
 # Collecter events: 删除 5 天前的数据
-DELETED=$($PG -d pocketx_collector -t -A -c \
+DELETED=$($PG -d infrax_collector -t -A -c \
   "WITH deleted AS (DELETE FROM events WHERE collected_at < NOW() - INTERVAL '5 days' RETURNING id) SELECT COUNT(*) FROM deleted" 2>&1)
 
 echo "[$(date)] Deleted $DELETED events older than 5 days" >> "$LOG"
@@ -35,5 +35,5 @@ BNB_DELETED=$($PG -d pocketx_collector -t -A -c \
 echo "[$(date)] Deleted $BNB_DELETED binance_futures_prices older than 5 days" >> "$LOG"
 
 # VACUUM to reclaim disk space
-$PG -d pocketx_collector -c "VACUUM ANALYZE events" >> "$LOG" 2>&1
+$PG -d infrax_collector -c "VACUUM ANALYZE events" >> "$LOG" 2>&1
 echo "[$(date)] VACUUM complete" >> "$LOG"

@@ -57,7 +57,7 @@ function readCode(email) {
   const code = readCode(EMAIL);
   check('journal 取到验证码', !!code, `code=${code}`);
   if (code) {
-    const rows = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d pocketx_mpc -t -A -c "SELECT code_hash, attempts FROM mpc_verification_codes WHERE email='${EMAIL}'"`).toString().trim().split('|');
+    const rows = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d infrax_mpc -t -A -c "SELECT code_hash, attempts FROM mpc_verification_codes WHERE email='${EMAIL}'"`).toString().trim().split('|');
     check('验证码落库(哈希非明文)', rows.length === 2 && !rows[0].includes(code) && rows[0].length === 64, rows.join(''));
     globalThis.__CODE = code;
   }
@@ -69,10 +69,10 @@ if (code) {
   const r = await api('POST', '/api/v2/mpc/register', { email: EMAIL, code });
   check('register 201', r.status === 201 && r.json?.code === 0, JSON.stringify(r.json));
 
-  const row = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d pocketx_mpc -t -A -c "SELECT wallet_address, shard_count, total_shards, length(encrypted_shard), length(coalesce(recovery_shard,'')) FROM mpc_wallets WHERE email='${EMAIL}'"`).toString().trim().split('|');
+  const row = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d infrax_mpc -t -A -c "SELECT wallet_address, shard_count, total_shards, length(encrypted_shard), length(coalesce(recovery_shard,'')) FROM mpc_wallets WHERE email='${EMAIL}'"`).toString().trim().split('|');
   check('DB 双片存在(片1+片2)', row.length === 5 && Number(row[1]) === 2 && Number(row[2]) === 2 && Number(row[3]) > 100 && Number(row[4]) > 100, row.join('|'));
   globalThis.__ADDR = row[0];
-  const shards = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d pocketx_mpc -t -A -c "SELECT encrypted_shard || '||' || coalesce(recovery_shard,'') FROM mpc_wallets WHERE email='${EMAIL}'"`).toString().trim();
+  const shards = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d infrax_mpc -t -A -c "SELECT encrypted_shard || '||' || coalesce(recovery_shard,'') FROM mpc_wallets WHERE email='${EMAIL}'"`).toString().trim();
   const shardFmt = /^[0-9a-f]{64}:[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+(\|\|[0-9a-f]{64}:[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+)?$/;
   check('DB 双片为 AES-GCM 密文格式(salt:iv:tag:ct)', shardFmt.test(shards), shards.slice(0, 60));
 
@@ -101,7 +101,7 @@ if (code) {
     const token = ru.json?.data?.token;
     if (token) {
       globalThis.__TOKEN = token;
-      const srow = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d pocketx_mpc -t -A -c "SELECT token_hash, wallet_address FROM mpc_sessions WHERE wallet_address='${globalThis.__ADDR}'"`).toString().trim();
+      const srow = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d infrax_mpc -t -A -c "SELECT token_hash, wallet_address FROM mpc_sessions WHERE wallet_address='${globalThis.__ADDR}'"`).toString().trim();
       check('会话落库(token哈希)', srow.length > 0 && !srow.split('|')[0].includes(token), srow.split('|')[0]?.slice(0, 20));
       const ss = await api('GET', `/api/v2/mpc/session/status?token=${encodeURIComponent(token)}`);
       check('session/status unlocked', ss.json?.data?.unlocked === true && ss.json?.data?.address?.toLowerCase() === globalThis.__ADDR?.toLowerCase(), JSON.stringify(ss.json));
@@ -145,7 +145,7 @@ if (code) {
       check('lock 200', rl.json?.data?.locked === true, JSON.stringify(rl.json));
       const ss2 = await api('GET', `/api/v2/mpc/session/status?token=${encodeURIComponent(token)}`);
       check('lock 后 status unlocked:false', ss2.json?.data?.unlocked === false, JSON.stringify(ss2.json));
-      const lockedRow = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d pocketx_mpc -t -A -c "SELECT count(*) FROM mpc_sessions WHERE wallet_address='${globalThis.__ADDR}'"`).toString().trim();
+      const lockedRow = execSync(`PGPASSWORD=postgres psql -h localhost -U postgres -d infrax_mpc -t -A -c "SELECT count(*) FROM mpc_sessions WHERE wallet_address='${globalThis.__ADDR}'"`).toString().trim();
       check('会话 DB 已删除', lockedRow === '0', lockedRow);
     }
   }

@@ -58,7 +58,7 @@ export default function Users() {
         {/* WAAS C 端用户 */}
         <div className="card" style={{ flex: '1 1 420px' }}>
           <div className="card-header">
-            <div className="card-title"><Mail size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> WAAS 用户（邮箱 · pocketx_waas.users）</div>
+            <div className="card-title"><Mail size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> WAAS 用户（邮箱 · infrax_waas.users）</div>
             <span className="tooltip">{waas.length} 条</span>
           </div>
           <div className="table-wrap">
@@ -84,7 +84,7 @@ export default function Users() {
         {/* DC 钱包用户 */}
         <div className="card" style={{ flex: '1 1 420px' }}>
           <div className="card-header">
-            <div className="card-title"><Wallet size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> DC 用户（钱包地址 · pocketx_dc.users）</div>
+            <div className="card-title"><Wallet size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> DC 用户（钱包地址 · infrax_dc.users）</div>
             <span className="tooltip">{dc.length} 条</span>
           </div>
           <div className="table-wrap">
@@ -108,7 +108,7 @@ export default function Users() {
         {/* MPC 钱包邮箱聚合 */}
         <div className="card" style={{ flex: '1 1 100%' }}>
           <div className="card-header">
-            <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> MPC 钱包（按 email 聚合 · pocketx_mpc.mpc_wallets）</div>
+            <div className="card-title"><KeyRound size={13} style={{ verticalAlign: 'middle', marginRight: 6 }} /> MPC 钱包（按 email 聚合 · infrax_mpc.mpc_wallets）</div>
             <span className="tooltip">E-4 后放开 1:1 时单邮箱多子钱包，此处按邮箱分组</span>
           </div>
           <div className="table-wrap">

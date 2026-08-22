@@ -17,7 +17,7 @@ WorkingDirectory=/home/ubuntu/infraX-1/projects/aa-relay
 Environment="AA_RELAY_API_KEY=CHANGE_ME_AA_RELAY_API_KEY"
 Environment="PORT=9131"
 # E-3：session 持久化（与 infrax-mpc 同库；生产实际为 2026-08-16 迁移后新机 postgres 10.3.8.6，见 tasklist §9.19 M-3 补记）
-Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc"
+Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/infrax_mpc"
 # 启用链（多链逗号分隔）+ 每链 RPC/合约/bundler；生产实际为 oxachain（2026-08-16 对齐实值）
 Environment="AA_ENABLED_CHAINS=oxachain"
 Environment="AA_OXACHAIN_RPC_URL=https://rpc-oxa.0xainet.top"
@@ -30,7 +30,7 @@ Environment="AA_OXACHAIN_BUNDLERS=[{\"url\":\"http://43.159.60.46:4338\",\"prior
 # E-1a：paymaster 代理（隐藏 apikey；URL 含 apikey 仅服务端持有，勿下发客户端）
 # ── 生产 drop-in（systemd override，覆盖主 unit 同名项；密钥勿入库，模板仅注释留档）──
 #   /etc/systemd/system/infrax-aa-relay.service.d/override.conf：
-#     Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc"   （M-3 迁移补记，2026-08-16 人工修正）
+#     Environment="DATABASE_URL=postgresql://postgres:postgres@10.3.8.6:5432/infrax_mpc"   （M-3 迁移补记，2026-08-16 人工修正）
 #     Environment="AA_PAYMENTS_URL=http://127.0.0.1:9132"
 #     Environment="AA_PAYMENTS_API_KEY=CHANGE_ME_PAYMENTS_API_KEY"
 #     Environment="AA_PLATFORM_ADDRESS=0x5682e2d55770e46ad24b92e51d6d0a3b629fa0b3"

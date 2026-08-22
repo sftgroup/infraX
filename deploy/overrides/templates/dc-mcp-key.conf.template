@@ -15,7 +15,7 @@
 #   # market-mcp（如部署）同理落到 infrax-market-mcp.service.d/
 #
 # 获取真实租户 key（任一 active 租户，建议专用数据租户）：
-#   psql pocketx_dc -c "SELECT name, dc_api_key FROM tenants WHERE status='active';"
+#   psql infrax_dc -c "SELECT name, dc_api_key FROM tenants WHERE status='active';"
 #
 # 验证：
 #   curl -s http://127.0.0.1:9102/api/v2/data/tokens \

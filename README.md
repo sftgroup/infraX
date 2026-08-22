@@ -181,14 +181,14 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
 
 ```
 postgres://localhost:5432
-├── pocketx_collector (10+ 表) — 链上事件、checkpoint、OKX、Binance
-├── pocketx_waas       (17 表) — 钱包、用户、交易、租户、SaaS
-├── pocketx_vault      (4 表)  — safe_wallets/transactions/signatures/risk_rules
-├── pocketx_dc         (3 表)  — subscriptions/api_keys/usage_log
-├── pocketx_mpc        (2 表)  — mpc_wallets/mpc_sessions
-├── pocketx_payments   (11 表) — payment_intents/sessions/credits/transfers/invites 等（通用支付引擎）
-└── pocketx_admin      (3 表)  — users/rpc_configs/settings
-（旧 pocketx_payment 库已归档至 backups/infrax_payment_20260811.sql，MQ-15 T-7）
+├── infrax_collector (10+ 表) — 链上事件、checkpoint、OKX、Binance
+├── infrax_waas       (17 表) — 钱包、用户、交易、租户、SaaS
+├── infrax_vault      (4 表)  — safe_wallets/transactions/signatures/risk_rules
+├── infrax_dc         (3 表)  — subscriptions/api_keys/usage_log
+├── infrax_mpc        (2 表)  — mpc_wallets/mpc_sessions
+├── infrax_payments   (11 表) — payment_intents/sessions/credits/transfers/invites 等（通用支付引擎）
+└── infrax_admin      (3 表)  — users/rpc_configs/settings
+（旧 infrax_payment 库已归档至 backups/infrax_payment_20260811.sql，MQ-15 T-7）
 
 每个模块拥有独立数据库，模块间不共享 schema。
 跨模块调用通过 HTTP API，不跨库 JOIN。
@@ -310,20 +310,20 @@ infraX/
 
 | 服务 | 端口 | DB | 状态 |
 |------|------|-----|------|
-| **Admin** | 9100 | pocketx_admin + 跨 7 DB | 🟢 SPA + REST |
-| **Collector** | 9101 | pocketx_collector (10+ 表) | 🟢 5 链扫描 + Market 订阅 |
-| **DC** | 9102 | pocketx_dc + pocketx_collector | 🟢 数据订阅（MQ-16 T-1） |
+| **Admin** | 9100 | infrax_admin + 跨 7 DB | 🟢 SPA + REST |
+| **Collector** | 9101 | infrax_collector (10+ 表) | 🟢 5 链扫描 + Market 订阅 |
+| **DC** | 9102 | infrax_dc + infrax_collector | 🟢 数据订阅（MQ-16 T-1） |
 | **DC MCP** | 9103 | — | 🟢 11 tools |
-| **MPC** | 9104 | pocketx_mpc (2 表) | 🟢 按量计费（MQ-16 T-4） |
+| **MPC** | 9104 | infrax_mpc (2 表) | 🟢 按量计费（MQ-16 T-4） |
 | **MPC MCP** | 9105 | — | 🟢 17 tools |
-| ~~**Payment**~~ | ~~9106~~ | ~~pocketx_payment (3 表)~~ | 🔴 已下线（MQ-15 T-7） |
-| **Vault** | 9107 | pocketx_vault (4 表) | 🟢 |
+| ~~**Payment**~~ | ~~9106~~ | ~~infrax_payment (3 表)~~ | 🔴 已下线（MQ-15 T-7） |
+| **Vault** | 9107 | infrax_vault (4 表) | 🟢 |
 | **Vault MCP** | 9108 | — | 🟢 13 tools |
-| **WAAS** | 9109 | pocketx_waas (17 表) | 🟢 |
+| **WAAS** | 9109 | infrax_waas (17 表) | 🟢 |
 | **Wallet MCP** | 9110 | — | 🟢 34 tools（含 payments batch/invite/transfer） |
 | **Web** | 9111 | — | 🟢 Node proxy + 静态 |
-| **Chain RPC** | 9130 | pocketx_chainrpc (3 表) | 🟢 RPC 套餐订阅（MQ-16 T-3） |
-| **Payments 引擎** | 9132 | pocketx_payments (11 表) | 🟢 通用支付（MQ-16 T-5） |
+| **Chain RPC** | 9130 | infrax_chainrpc (3 表) | 🟢 RPC 套餐订阅（MQ-16 T-3） |
+| **Payments 引擎** | 9132 | infrax_payments (11 表) | 🟢 通用支付（MQ-16 T-5） |
 | **RPC MCP** | 3012 | — | 🟢 10 tools |
 | **Market MCP** | 3013 | — | 🟢 18 tools（MQ-16 T-2） |
 

@@ -12,8 +12,8 @@ set -uo pipefail
 REPO=${REPO:-/home/ubuntu/infraX-1}
 MPC_BASE=${MPC_BASE:-http://127.0.0.1:9104}
 BRIDGE_KEY=${BRIDGE_KEY:-}
-MPC_DB=${MPC_DB:-pocketx_mpc}
-PAY_DB=${PAY_DB:-pocketx_payments}
+MPC_DB=${MPC_DB:-infrax_mpc}
+PAY_DB=${PAY_DB:-infrax_payments}
 
 PASS=0; FAIL=0
 ok()  { echo "  ✅ $1"; PASS=$((PASS+1)); }

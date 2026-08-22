@@ -9,7 +9,7 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // Database
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/pocketx_vault',
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://ubuntu@localhost:5432/infrax_vault',
 
   // Redis
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',

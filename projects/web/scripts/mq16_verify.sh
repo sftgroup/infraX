@@ -115,12 +115,12 @@ api() {
   section "api [9/11] 配额限流 429（直接灌 api_usage 至超配额）"
   local quota used ins
   quota=$(curl -s "${HDRS[@]}" "$DC_BASE/api/v2/data/usage?walletAddress=$ADDR" | jget data.monthlyQuota)
-  used=$(sudo -u postgres psql -d pocketx_dc -t -A -c "SELECT COUNT(*) FROM api_usage WHERE tenant_id='$tid'" 2>/dev/null || echo "0")
+  used=$(sudo -u postgres psql -d infrax_dc -t -A -c "SELECT COUNT(*) FROM api_usage WHERE tenant_id='$tid'" 2>/dev/null || echo "0")
   ins=$((quota - used + 1))
-  sudo -u postgres psql -d pocketx_dc -c "INSERT INTO api_usage (tenant_id, endpoint) SELECT '$tid','mq16-test' FROM generate_series(1,$ins)" >/dev/null 2>&1
+  sudo -u postgres psql -d infrax_dc -c "INSERT INTO api_usage (tenant_id, endpoint) SELECT '$tid','mq16-test' FROM generate_series(1,$ins)" >/dev/null 2>&1
   code=$(curl -s -o /dev/null -w '%{http_code}' -H "x-dc-api-key: $key" "$DC_BASE/api/v2/data/events?chain=sepolia&page_size=1")
   [ "$code" = "429" ] && ok "超配额 → 429（+$ins 行）" || bad "超配额未 429，返回 $code"
-  sudo -u postgres psql -d pocketx_dc -c "DELETE FROM api_usage WHERE tenant_id='$tid' AND endpoint='mq16-test'" >/dev/null 2>&1
+  sudo -u postgres psql -d infrax_dc -c "DELETE FROM api_usage WHERE tenant_id='$tid' AND endpoint='mq16-test'" >/dev/null 2>&1
 
   section "api [10/11] payment-callback 负向（无签名/伪造签名 → 401）"
   code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"type":"webhook"}' "$DC_BASE/api/v2/data/payment-callback")
@@ -130,9 +130,9 @@ api() {
   r=$(curl -s -X POST "${HDRS[@]}" -H 'Content-Type: application/json' -d '{"planId":"data_free"}' "$DC_BASE/api/v2/data/subscribe")
   [ "$(echo "$r" | jget data.dcSubStatus)" = "active" ] && ok "回归：再次订阅 free → active" || bad "回归失败: $r"
   local uid
-  uid=$(sudo -u postgres psql -d pocketx_dc -t -A -c "SELECT id FROM users WHERE wallet_address='$ADDR'" 2>/dev/null || echo "")
+  uid=$(sudo -u postgres psql -d infrax_dc -t -A -c "SELECT id FROM users WHERE wallet_address='$ADDR'" 2>/dev/null || echo "")
   if [ -n "$uid" ]; then
-    sudo -u postgres psql -d pocketx_dc -c "DELETE FROM api_usage_daily WHERE tenant_id IN (SELECT id FROM tenants WHERE owner_user_id='$uid'); DELETE FROM api_usage WHERE tenant_id IN (SELECT id FROM tenants WHERE owner_user_id='$uid'); DELETE FROM tenants WHERE owner_user_id='$uid'; DELETE FROM users WHERE id='$uid';" >/dev/null 2>&1
+    sudo -u postgres psql -d infrax_dc -c "DELETE FROM api_usage_daily WHERE tenant_id IN (SELECT id FROM tenants WHERE owner_user_id='$uid'); DELETE FROM api_usage WHERE tenant_id IN (SELECT id FROM tenants WHERE owner_user_id='$uid'); DELETE FROM tenants WHERE owner_user_id='$uid'; DELETE FROM users WHERE id='$uid';" >/dev/null 2>&1
     ok "已清理测试数据（user=$uid）"
   else
     ok "无测试数据残留"

@@ -8,7 +8,7 @@ O=0xcccc00000000000000000000000000000000cccc
 A=0x0000000000000000000000000000000000000000
 H=http://127.0.0.1:9132/payments
 export PGPASSWORD=postgres
-PSQL() { psql -h localhost -U postgres -d pocketx_payments -q -c "$1"; }
+PSQL() { psql -h localhost -U postgres -d infrax_payments -q -c "$1"; }
 
 PSQL "INSERT INTO payment_balances (address, asset, balance_wei) VALUES ('$P','$A','1000000') ON CONFLICT (address, asset) DO UPDATE SET balance_wei='1000000';"
 
