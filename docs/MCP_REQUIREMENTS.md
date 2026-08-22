@@ -5,13 +5,13 @@
 ## 架构
 
 ```
-                          ┌─ vault-mcp    (:9108) ── pocketx_vault DB
+                          ┌─ vault-mcp    (:9108) ── infrax_vault DB
                           │
-                          ├─ waas-mcp     (:9110) ── pocketx_waas DB
+                          ├─ waas-mcp     (:9110) ── infrax_waas DB
                           │
-AI Agent ── MCP 协议 ──┼─ dc-mcp       (:9103) ── pocketx_dc / collector DB
+AI Agent ── MCP 协议 ──┼─ dc-mcp       (:9103) ── infrax_dc / collector DB
                           │
-                          ├─ mpc-mcp      (:9105) ── pocketx_mpc DB
+                          ├─ mpc-mcp      (:9105) ── infrax_mpc DB
                           │
                           └─ session-key-mcp (:9111) ── session_key_engine DB
 ```

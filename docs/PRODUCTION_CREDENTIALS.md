@@ -46,7 +46,7 @@
 | MPC_API_KEY | infrax-bridge-2fd4fbe0d33805362ac980fde74c86b2 |
 | MPC_ENCRYPTION_SECRET | 2cca2225961a0b6e4edf2979f102d2e9de0b5531d4a2443e30a3bf8097b352a4 |
 | ADMIN_USER / ADMIN_PASS | admin / a87cefd6e1ce487334a67b0c |
-| DATABASE_URL | postgresql://postgres:postgres@localhost:5432/pocketx_mpc |
+| DATABASE_URL | postgresql://postgres:postgres@localhost:5432/infrax_mpc |
 | PORT | 9104 |
 | MPC_SIGNER_URL | http://127.0.0.1:9201 |
 | TSS_SIGNER_URL | http://127.0.0.1:9200 |
@@ -92,7 +92,7 @@
 | AA_OXACHAIN_SESSION_MODULE | 0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74 | 主 unit |
 | AA_OXACHAIN_BUNDLERS | [{"url":"http://43.156.78.59:4338","priority":0}] | 主 unit（2026-08-19 迁移：原 43.159.60.46 随 AgentX 系统盘丢失，bundler 迁至 infraX 43.156.78.59:4338，见 tasklist AA Bundler 迁移与恢复） |
 | PORT | 9131 | 主 unit |
-| DATABASE_URL | postgresql://postgres:postgres@10.3.8.6:5432/pocketx_mpc | drop-in `override.conf`（M-3 迁移修正，原 localhost） |
+| DATABASE_URL | postgresql://postgres:postgres@10.3.8.6:5432/infrax_mpc | drop-in `override.conf`（M-3 迁移修正，原 localhost） |
 | AA_PAYMENTS_URL | http://127.0.0.1:9132 | drop-in `override.conf` |
 | AA_PAYMENTS_API_KEY | e56159786fe107b808c29c3c75cd098a31ba58d97772dea3 | drop-in `override.conf` |
 | AA_PLATFORM_ADDRESS | 0x5682e2d55770e46ad24b92e51d6d0a3b629fa0b3 | drop-in `override.conf`（x402 充值收款平台钱包，EOA → 托管合约见 tasklist §9.20） |

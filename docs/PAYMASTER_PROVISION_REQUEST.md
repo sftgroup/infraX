@@ -142,7 +142,7 @@ AA_OXACHAIN_BUNDLERS=[{"url":"http://43.159.60.46:4338","priority":0}]
 > 预存对象（Subscriber/sender）：`0x121E843DA317522634a0b64f3305cD03337f1a83`
 > （联调固定测试私钥推导；运营钱包 `0x52Ec58…8e06` 已直调 factory 预部署，code 61 B）
 
-**执行位置**：生产机 payments DB（systemd 配置 `postgresql://postgres:postgres@localhost:5432/pocketx_payments`；payments 引擎无预存 REST 端点，入账仅 x402 verify，故走 DB 直写）。
+**执行位置**：生产机 payments DB（systemd 配置 `postgresql://postgres:postgres@localhost:5432/infrax_payments`；payments 引擎无预存 REST 端点，入账仅 x402 verify，故走 DB 直写）。
 
 ```sql
 BEGIN;
@@ -170,7 +170,7 @@ COMMIT;
 
 ```bash
 # ① DB 直查（期望 1000000000000000000）
-psql "postgresql://postgres:postgres@localhost:5432/pocketx_payments" -tAc \
+psql "postgresql://postgres:postgres@localhost:5432/infrax_payments" -tAc \
   "SELECT balance_wei FROM payment_balances WHERE address='0x121e843da317522634a0b64f3305cd03337f1a83';"
 # ② 引擎 REST（aa-relay A-10 计费实际查询路径）
 curl -s "http://127.0.0.1:9132/payments/balance?address=0x121E843DA317522634a0b64f3305cD03337f1a83"

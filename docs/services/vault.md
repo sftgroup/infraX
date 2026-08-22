@@ -43,7 +43,7 @@ curl -s http://127.0.0.1:9107/health
 
 ## 1. 服务定位
 
-基于 Safe{Core} 协议的多签保险库微服务（systemd `infrax-vault`，DB `pocketx_vault`）：Safe 合约部署、交易提案/确认/执行、Owner 管理（走链上多签）、pending 交易重试/同步，以及链上交易风控规则（risk rules）检查。独立于其他模块，集成 Safe{Core} SDK。
+基于 Safe{Core} 协议的多签保险库微服务（systemd `infrax-vault`，DB `infrax_vault`）：Safe 合约部署、交易提案/确认/执行、Owner 管理（走链上多签）、pending 交易重试/同步，以及链上交易风控规则（risk rules）检查。独立于其他模块，集成 Safe{Core} SDK。
 
 生产访问：
 - 内网直连 `http://127.0.0.1:9107`

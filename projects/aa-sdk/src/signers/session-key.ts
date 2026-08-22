@@ -4,7 +4,7 @@ import { isHttpOk, postJson } from '../utils/rpc.js';
 
 // ============================================================================
 // Session Key 签名器（P3.1）：对接 InfraX Session Key Engine execute 接口
-// 场景：session key 私钥由 Engine 托管（sessionKeyEnc 加密存储，PocketX 不落私钥），
+// 场景：session key 私钥由 Engine 托管（sessionKeyEnc 加密存储，InfraX 不落私钥），
 // 签名委托 Engine 完成 —— POST /api/v1/execute 代签 + 广播 EOA 交易并返回 txHash。
 // 映射（对齐 docs/INFRAX_HANDOVER.md §6.1）：
 //   signUserOp(userOpHash) → execute({ to, data: userOpHash })  # 引擎侧签 hash 并上链

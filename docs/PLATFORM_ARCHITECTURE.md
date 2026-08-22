@@ -64,13 +64,13 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 | `:9120` | ml-service | 数据 | — | infrax-dk / OpenAPI | hub-index ml_predictions |
 | `:9113` | knowledge-injector | 数据 | — | — | hub-index injector_* |
 | `:9721` | ragservicer | 数据 | — | lightrag-client / ragservicer-sdk | STDIO 5 工具 |
-| `:9109` | waas | 链 | pocketx_waas | infrax-dk | wallet-mcp :9110 |
-| `:9107` | vault | 链 | pocketx_vault | infrax-dk | vault-mcp :9108 |
-| `:9104` | mpc | 链 | pocketx_mpc | infrax-dk / mpc-sdk | mpc-mcp :9105 |
-| `:9102` | dc | 链 | pocketx_dc | infrax-dk / dc-sdk | dc-mcp :9103 |
-| `:9101` | collector | 链 | pocketx_collector | infrax-dk / market-sdk | market-mcp :3013 |
+| `:9109` | waas | 链 | infrax_waas | infrax-dk | wallet-mcp :9110 |
+| `:9107` | vault | 链 | infrax_vault | infrax-dk | vault-mcp :9108 |
+| `:9104` | mpc | 链 | infrax_mpc | infrax-dk / mpc-sdk | mpc-mcp :9105 |
+| `:9102` | dc | 链 | infrax_dc | infrax-dk / dc-sdk | dc-mcp :9103 |
+| `:9101` | collector | 链 | infrax_collector | infrax-dk / market-sdk | market-mcp :3013 |
 | `:9130` | chain-rpc | 链 | — | infrax-dk / chain-rpc-sdk | chain-rpc-mcp :3012 |
-| `:9132` | payments | 链 | pocketx_payments | infrax-dk / payments-sdk | wallet-mcp payment_* |
+| `:9132` | payments | 链 | infrax_payments | infrax-dk / payments-sdk | wallet-mcp payment_* |
 | `:3500` | session-key | 链 | session_key_engine | session-key-client | session-key-mcp :3011 |
 | `:9131` | aa-relay | 链 | — | aa-sdk | — |
 | `:3008` | hub-index | 数据·MCP | — | — | 13 工具 |
@@ -147,7 +147,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 
 ## 5. 区块链栈微服务
 
-### 5.1 waas（:9109，pocketx_waas）
+### 5.1 waas（:9109，infrax_waas）
 
 **职责**：SaaS 多租户钱包基础设施（认证/钱包/交易/风控/事件回调/套餐/数据订阅）。
 
@@ -166,7 +166,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 
 > 无 `register` 端点（邮箱注册在 mpc）；payment/mpc 路由已迁移 :9132（B-10-5）。
 
-### 5.2 vault（:9107，pocketx_vault）
+### 5.2 vault（:9107，infrax_vault）
 
 **职责**：Safe 多签保险库（创建/提案/确认/执行链上闭环 + owner 管理 + 风控）。
 
@@ -181,7 +181,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 | 链上同步 | `POST /api/vault/safe/sync` | 同步链上状态 |
 | 风控检查 | `POST /api/vault/risk/check` | 金额/链预检 |
 
-### 5.3 mpc（:9104，pocketx_mpc）
+### 5.3 mpc（:9104，infrax_mpc）
 
 **职责**：邮箱验证码 → 注册/恢复 MPC 密钥分片托管钱包（cggmp21 真 TSS）→ 会话解锁 → 签名/交易/合约 + MQ-16 按量计费。
 
@@ -196,7 +196,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 
 > TSS 签名：cggmp21，生产分片服务 :9200/9201，签名全程无完整私钥重建；TEE 硬件隔离延后。
 
-### 5.4 dc（:9102，pocketx_dc）
+### 5.4 dc（:9102，infrax_dc）
 
 **职责**：链上 DEX 数据（事件/统计/检查点/代币/链/跨链余额）+ MQ-16 数据订阅（T-1）。
 
@@ -208,7 +208,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 | 跨链余额 | `GET /api/v2/data/balance` | `{address, chainBalances, total}` |
 | 订阅（T-1） | `/plans` `/subscribe` `/payment-check` `/verify` `/usage` `/payment-callback` | x-wallet-address 鉴权，free 直通/付费 pending |
 
-### 5.5 collector（:9101，pocketx_collector）
+### 5.5 collector（:9101，infrax_collector）
 
 **职责**：5 链区块扫描器 + OKX ChainOS v6 行情数据面 + MQ-16 Market 订阅面（T-2）。
 
@@ -231,7 +231,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 | 订阅（T-3） | `/v1/subscription/plans` `issue-key` `checkout` `payment-check` `verify` `usage` | issue-key 签发 `rx_` 读 key（X-Service-Key 管理操作） |
 | WebSocket | `/v1/ws` | 实时推送 |
 
-### 5.7 payments（:9132，pocketx_payments）
+### 5.7 payments（:9132，infrax_payments）
 
 **职责**：通用支付引擎（chain/fiat/x402/MPP/batch/invite/transfer/period），独立实例自配凭证。
 

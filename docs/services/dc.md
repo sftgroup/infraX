@@ -42,7 +42,7 @@ curl -s http://127.0.0.1:9102/api/v2/data/stats \
 
 ## 1. 服务定位
 
-**DC（Data Center）链上数据中心**是 InfraX 的链上事件查询与数据订阅服务（`projects/dc/index.ts`，独立 PostgreSQL `pocketx_dc` + 只读 `pocketx_collector` 事件库）。
+**DC（Data Center）链上数据中心**是 InfraX 的链上事件查询与数据订阅服务（`projects/dc/index.ts`，独立 PostgreSQL `infrax_dc` + 只读 `infrax_collector` 事件库）。
 
 - **数据面（B 端查询）**：覆盖 5 条链——`sepolia` / `ethereum` / `bsc` / `base` / `oxa`——的链上事件查询、事件统计、扫描检查点、Token 目录与原始 receipt 导出。数据来源为 collector 区块扫描器落库（`events` 表 1 亿+ 行，150GB+）。
 - **订阅面（套餐计费，MQ-16 T-1）**：按钱包地址订阅 DC 数据套餐，免费套餐直通激活并签发 `dc_api_key`，付费套餐经支付引擎（chain / fiat / x402 rail）确认后激活；月度配额超限返回 **429**。

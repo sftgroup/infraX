@@ -1,7 +1,7 @@
 # MQ-16 上线监控 — DC 配额使用率与订阅状态分布
 
 > 2026-08-11 · 覆盖 MQ-16 T-1（DC 套餐配额真实扣减）上线后的可观测性。
-> 数据源：`pocketx_dc`（`api_usage` 月度计数 + `tenants.dc_sub_status`），经 [dc/index.ts](../projects/dc/index.ts) 的 `GET /metrics` 暴露为 Prometheus 指标。
+> 数据源：`infrax_dc`（`api_usage` 月度计数 + `tenants.dc_sub_status`），经 [dc/index.ts](../projects/dc/index.ts) 的 `GET /metrics` 暴露为 Prometheus 指标。
 
 ## 1. 指标清单（infrax-dc :9102 `/metrics`）
 
@@ -55,7 +55,7 @@ groups:
         annotations: { summary: '存在待支付订阅', description: '{{ $value }} 个租户订阅待支付确认' }
 ```
 
-## 5. SQL 兜底查询（无 Prometheus/Grafana 时，直查 `pocketx_dc`）
+## 5. SQL 兜底查询（无 Prometheus/Grafana 时，直查 `infrax_dc`）
 
 ```sql
 -- 配额使用率（按套餐）

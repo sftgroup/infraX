@@ -13,17 +13,17 @@
 
 | 库 | 内容 | 大小 | 备份优先级 |
 |---|---|---|---|
-| `pocketx_mpc` | MPC 钱包/密钥分片/验证码 | 9.4MB | **P0（丢了=用户资产不可恢复）** |
-| `pocketx_payments` + `pocketx_payment` | 支付订单/账务流水 | 18MB | P0 |
-| `pocketx_waas` / `pocketx_vault` / `pocketx_chainrpc` | 链上操作账本/多签/广播记录 | 29MB | P0 |
-| `pocketx_dc` / `pocketx_admin` / `session_key_engine` | 租户 API Key/会话/后台配置 | 30MB | P1 |
+| `infrax_mpc` | MPC 钱包/密钥分片/验证码 | 9.4MB | **P0（丢了=用户资产不可恢复）** |
+| `infrax_payments` + `infrax_payment` | 支付订单/账务流水 | 18MB | P0 |
+| `infrax_waas` / `infrax_vault` / `infrax_chainrpc` | 链上操作账本/多签/广播记录 | 29MB | P0 |
+| `infrax_dc` / `infrax_admin` / `session_key_engine` | 租户 API Key/会话/后台配置 | 30MB | P1 |
 | 配置文件（`.env`、systemd override、OpenD.xml） | 密钥凭证/连接串 | KB 级 | P0（**加密后**备份） |
 
 ### 1.2 不备份（可再生 / 重拉即得，**2026-08-17 用户确认整库排除**）
 
 | 数据 | 理由 |
 |---|---|
-| **`pocketx_collector`（整库，~104GB，其中 events 表 103GB）** | events 设计即 72h 保留自动删，可从链上 RPC 重扫恢复；OKX 快照等小表可重拉；**2026-08-17 用户裁定 collector 不备份** |
+| **`infrax_collector`（整库，~104GB，其中 events 表 103GB）** | events 设计即 72h 保留自动删，可从链上 RPC 重扫恢复；OKX 快照等小表可重拉；**2026-08-17 用户裁定 collector 不备份** |
 | 日志、缓存 | 临时数据 |
 
 > 备份口径结论：**全量 `pg_dump -Fc` 9 个业务库（不含 collector）+ 加密配置文件**，压缩后每日增量 ~50~90MB，跨网传输无压力。

@@ -43,19 +43,19 @@
 
 **postgres 物理结构**：
 - `data_directory` = `/var/lib/postgresql/14/main` → 符号链接 → `/mnt/pgdata/main`（`/dev/vdb` 挂载点，fstab 已配置）
-- 全部 10 个业务库物理文件在 `/dev/vdb` 上：pocketx_collector(85G) + dc/waas/payments/mpc/chainrpc/vault/admin + session_key_engine + 旧 pocketx_payment
+- 全部 10 个业务库物理文件在 `/dev/vdb` 上：infrax_collector(85G) + dc/waas/payments/mpc/chainrpc/vault/admin + session_key_engine + 旧 infrax_payment
 - postgres 版本：**14**（新机默认 22.04 源为 14，需对齐）
 
 **连接方（9 个服务，全部 `localhost:5432`）**：
 
 | 服务 | 库 | 连接方式 |
 |---|---|---|
-| infrax-collector | pocketx_collector + pocketx_chainrpc | unit env + override.conf |
-| infrax-chain-rpc | pocketx_chainrpc | 代码默认（改 env） |
-| infrax-dc | pocketx_dc | unit env |
+| infrax-collector | infrax_collector + infrax_chainrpc | unit env + override.conf |
+| infrax-chain-rpc | infrax_chainrpc | 代码默认（改 env） |
+| infrax-dc | infrax_dc | unit env |
 | infrax-vault / waas / mpc / payments | 各自库 | unit env |
 | infrax-session-key | session_key_engine | .env |
-| infrax-admin-legacy | pocketx_payment | .env（回退链） |
+| infrax-admin-legacy | infrax_payment | .env（回退链） |
 
 ## 5. 配置改动清单（172 侧）
 

@@ -58,7 +58,7 @@ metadata:
 
 - MCP server：`infrax-mpc-mcp`（HTTP Streamable 传输）
 - 端口：dev `:3007`，生产 `:9105`（systemd `infrax-mpc-mcp.service`）
-- 上游：MPC 引擎 `infrax-mpc.service` `:9104`（生产），DB `pocketx_mpc`
+- 上游：MPC 引擎 `infrax-mpc.service` `:9104`（生产），DB `infrax_mpc`
 - 鉴权：`Authorization: Bearer <INFRAX_MCP_API_KEY>`；MPC 引擎业务端点需 `MPC_API_KEY`
 
 ## Quick Start

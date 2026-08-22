@@ -39,7 +39,7 @@ curl -s http://127.0.0.1:9104/api/v2/mpc/plans   # 公开，生产实测 200
 
 ## 1. 服务定位
 
-**MPC（多方计算钱包 / Agent Wallet）**是 InfraX 的密钥分片托管钱包服务（`projects/mpc/server.ts`，独立 PostgreSQL `pocketx_mpc`；签名链路经 TSS 签名器 :9200/:9201 完成 2-of-2 分片签名，完整私钥不落库、不重建）。
+**MPC（多方计算钱包 / Agent Wallet）**是 InfraX 的密钥分片托管钱包服务（`projects/mpc/server.ts`，独立 PostgreSQL `infrax_mpc`；签名链路经 TSS 签名器 :9200/:9201 完成 2-of-2 分片签名，完整私钥不落库、不重建）。
 
 - **邮件验证码**：`send-code` 下发 6 位验证码（SMTP 真实发信；5 分钟过期、5 次尝试上限、哈希落库）。
 - **密钥分片**：注册时 TSS 2-of-2 分片（片 1 服务端 AES 加密、片 2 RecoveryKey 加密，双片密钥上下文分离），支持 `register` / `recover` / `status` / `wallets`。

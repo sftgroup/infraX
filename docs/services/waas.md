@@ -40,7 +40,7 @@ curl -s http://127.0.0.1:9109/health
 
 ## 1. 服务定位
 
-钱包即服务 B2B 平台（systemd `infrax-waas`，DB `pocketx_waas`）：托管钱包 / HD 地址分配、交易（send/estimate-gas/sweep）、SaaS 租户管理（tenant CRUD + API key + 归集/提现）、订阅计费（MQ-12，支付走通用支付引擎 :9132）。`/api/v2/*` 按模块挂载：`wallet` / `tx` / `saas` / `subscription` / `data`（DC 数据订阅）/ `auth` / `risk` / `events` / `dashboard`。
+钱包即服务 B2B 平台（systemd `infrax-waas`，DB `infrax_waas`）：托管钱包 / HD 地址分配、交易（send/estimate-gas/sweep）、SaaS 租户管理（tenant CRUD + API key + 归集/提现）、订阅计费（MQ-12，支付走通用支付引擎 :9132）。`/api/v2/*` 按模块挂载：`wallet` / `tx` / `saas` / `subscription` / `data`（DC 数据订阅）/ `auth` / `risk` / `events` / `dashboard`。
 
 生产访问：
 - 内网直连 `http://127.0.0.1:9109`

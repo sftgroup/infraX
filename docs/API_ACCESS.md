@@ -38,14 +38,14 @@ InfraX 提供三种接入方式，覆盖同一套后端能力，API 合约完全
 |------|------|--------|------|
 | `:80` | Web Proxy | — | Nginx 反向代理，统一入口 |
 | `:3500` | Session Key Engine | session_key_engine | 跨项目自动化授权代签 |
-| `:6003` | MPC 内部 | pocketx_mpc | Agent Wallet 托管 |
-| `:9101` | Collector | pocketx_collector | 5 链区块扫描器 + **Market 套餐订阅面（MQ-16 T-2）** |
-| `:9102` | DC (数据中心) | pocketx_dc | 链上数据查询 + **数据订阅（MQ-16 T-1）** |
-| `:9104` | MPC | pocketx_mpc | 钱包托管 + **按量计费（MQ-16 T-4）** |
-| `:9107` | Vault | pocketx_vault | Safe 多签保险库 |
-| `:9109` | WAAS | pocketx_waas | B2B 钱包即服务 |
+| `:6003` | MPC 内部 | infrax_mpc | Agent Wallet 托管 |
+| `:9101` | Collector | infrax_collector | 5 链区块扫描器 + **Market 套餐订阅面（MQ-16 T-2）** |
+| `:9102` | DC (数据中心) | infrax_dc | 链上数据查询 + **数据订阅（MQ-16 T-1）** |
+| `:9104` | MPC | infrax_mpc | 钱包托管 + **按量计费（MQ-16 T-4）** |
+| `:9107` | Vault | infrax_vault | Safe 多签保险库 |
+| `:9109` | WAAS | infrax_waas | B2B 钱包即服务 |
 | `:9130` | Chain RPC | — | 链 RPC 网关 + **RPC 套餐订阅（MQ-16 T-3）**（公网入口 `rpc-gw.0xainet.top`，RPC-1） |
-| `:9132` | **Payments（通用支付引擎）** | pocketx_payments | chain/fiat/x402/MPP + **batch/invite/transfer（MQ-16 T-5）** |
+| `:9132` | **Payments（通用支付引擎）** | infrax_payments | chain/fiat/x402/MPP + **batch/invite/transfer（MQ-16 T-5）** |
 | `:9103` | DC MCP | — | AI Agent 数据 |
 | `:9105` | MPC MCP | — | AI Agent 钱包 |
 | `:9108` | Vault MCP | — | AI Agent 多签 |

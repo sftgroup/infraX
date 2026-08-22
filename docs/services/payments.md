@@ -46,7 +46,7 @@ curl -s http://127.0.0.1:9132/payments/capabilities \
 
 ## 1. 服务定位
 
-通用支付引擎（`@0xinfrax/payments` standalone 实例，systemd `infrax-payments`），统一承载平台的"钱"通道：**chain**（链上 SubscriptionManager escrow 订阅）、**fiat**（Stripe checkout + webhook）、**x402**（单笔链上原生代币支付验证）、**mpp**（状态通道），以及 MQ-16 T-5 新增的 **period**（周期授权扣费）、**invite**（账单邀请）、**transfer**（账本内部转账）、**batch**（一次多 payee 批量收款）能力。业务服务（waas / dc / collector / chain-rpc）只管"权益激活"，钱全部走本引擎；`pocketx_payments` 库。
+通用支付引擎（`@0xinfrax/payments` standalone 实例，systemd `infrax-payments`），统一承载平台的"钱"通道：**chain**（链上 SubscriptionManager escrow 订阅）、**fiat**（Stripe checkout + webhook）、**x402**（单笔链上原生代币支付验证）、**mpp**（状态通道），以及 MQ-16 T-5 新增的 **period**（周期授权扣费）、**invite**（账单邀请）、**transfer**（账本内部转账）、**batch**（一次多 payee 批量收款）能力。业务服务（waas / dc / collector / chain-rpc）只管"权益激活"，钱全部走本引擎；`infrax_payments` 库。
 
 生产访问：
 - 内网直连 `http://127.0.0.1:9132`（端点统一挂 `/payments` 前缀）
