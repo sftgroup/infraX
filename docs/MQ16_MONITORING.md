@@ -2,6 +2,8 @@
 
 > 2026-08-11 · 覆盖 MQ-16 T-1（DC 套餐配额真实扣减）上线后的可观测性。
 > 数据源：`infrax_dc`（`api_usage` 月度计数 + `tenants.dc_sub_status`），经 [dc/index.ts](../projects/dc/index.ts) 的 `GET /metrics` 暴露为 Prometheus 指标。
+>
+> **全系统监控（含服务健康/磁盘/数据库/定时任务等 6 维度）见 [INFRAX_MONITORING.md](./INFRAX_MONITORING.md)**；本文为 DC 配额专项。
 
 ## 1. 指标清单（infrax-dc :9102 `/metrics`）
 
