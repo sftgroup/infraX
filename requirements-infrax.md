@@ -1,6 +1,7 @@
 # B 端数据服务（infraX）需求清单
 
 - 日期：2026-08-17
+- 更新：2026-08-23（新增 REQ-3 rx key RPC 配额升级；上游问题关联见 INFRAX_UPSTREAM.md）
 - 接收方：B 端数据服务（infraX，43.163.105.172）
 - 来源：生产环境全量测试（28 用例）+ 市场状态页数据排查
 - **版本封版：2026-08-18 infraX v0.6.0**（data-service：REQ-1/REQ-2 实现 + 快照截断修复，生产已生效；配套 `infra-data-client` PyPI 0.2.0）
@@ -70,3 +71,27 @@
 | 1.1 | /snapshots 截断修复正式合入 | 高 | ✅ 已合入（v0.6.0 附带修复） |
 | REQ-1 | K 线数据整体缺失（/bars 全周期 count:0） | 高 | ✅ 已完成（v0.6.0 封版，USDC 对补采） |
 | REQ-2 | 热力图全市场覆盖（付费源启用） | 中 | ✅ 已完成（v0.6.0 封版；commodities 部分受限于 yfinance/TD 限流，解封后自愈） |
+| REQ-3 | rx key RPC 配额升级（生产读链 503） | 高 | 🔴 待处理（2026-08-23 新增，阻塞 AIHunter 11.7 NFT mint 端到端验证） |
+
+---
+
+## 五、REQ-3【高】rx key RPC 配额耗尽（rpc_free 10000/10004，生产读链 503）【2026-08-23 新增】
+
+- **现象**：`POST /v1/rpc/oxa`（生产 rx_ key）`eth_chainId` / `eth_getBalance` 返回 `{"code":503,"message":"RPC quota exhausted — upgrade your plan at /v1/subscription/plans","data":{"used":10004,"quota":10000,"plan":"rpc_free"}}`
+- **影响（AIHunter 侧）**：gateway 所有链上读（NFT mint `populateTransaction`、`agentExistsOnChain`、余额/交易回执确认）全部 503；**阻塞 11.7 完整发布端到端验证**（Pinata 已配置就绪，仅差链上读）
+- **期望**：
+  1. 升级 rx key 至付费计划（配额 ≥ 100k/日），或按需提高 rpc_free 配额；
+  2. 提供配额使用告警（used/quota ≥ 80% 主动通知，避免静默耗尽影响上线窗口）；
+  3. 提供各 key（rx_/bx_/dx_）当前配额与用量清单接口。
+- **验收**：`eth_chainId` 返回 200；used < quota × 0.8；告警机制可用。
+
+---
+
+## 六、上游问题关联（详见 `INFRAX_UPSTREAM.md`，2026-08-23 已推送 infraX 仓库）
+
+| # | 问题 | 状态 | 待 InfraX 确认 |
+|---|------|------|----------------|
+| 1 | `token/history` 对多数币 `count:0`（画像快照覆盖限制） | 观测中 | 快照覆盖范围与数据来源 |
+| 2 | 上游间歇 502/504（生产实测 ~1/3，last-ok 缓存已兜底） | 观测中 | 根因与 SLA |
+| 3 | `dx_6d2a2d` key 解冻 | 已恢复 | 正式回执 + 通知机制 |
+| 4 | rx key RPC 配额耗尽（rpc_free 10000/10004，503） | 阻塞中 | 升级/配额/告警（见 REQ-3） |
