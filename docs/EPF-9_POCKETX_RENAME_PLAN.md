@@ -67,18 +67,18 @@
 
 admin SPA 侧边栏/登录页/footer 品牌、mpc/vault `/health` 服务标识、waas/mpc/vault npm 包名统一 `infrax-*`（含 lock、修正 `infrax-ault`/`infrax-pc` 笔误）。
 
-### T-1 文档/注释/示例清理 —— 🔲 P2（零运行时风险，可批量执行）
+### T-1 文档/注释/示例清理 —— ✅ 已完成（commit e53ecac，2026-08-22）
 
-- 执行方式：按 2.3 清单逐文件清理 `pocketx` 品牌字样（注释、README、docs、.env.example、示例 curl、verify 脚本中**纯展示**引用）。
-- **范围外（保留）**：2.4 表内全部运行语义项。
-- 验证：`grep -ri pocketx projects --include=*.ts --include=*.js --include=*.json | grep -v node_modules` 应仅剩 T-4 保留项；服务 smoke（waas health / payments health / collector health）。
+- 22 个 `.md` 品牌词批量替换（141 处）并修复语义破损：迁移叙述冗余（INFRAX_HANDOVER/FEATURE_REQUEST/AASDK4）、`@pocketx/aa-sdk`→`@0xinfrax/aa-sdk` 指令倒置、`POCKETX_EXPANSION`→`INFRAX_EXPANSION`。
+- 代码注释品牌词：aa-sdk `signers/mpc.ts`、`signers/session-key.ts`、`scripts/chain-smoke.mjs`、`__tests__/bundler.test.ts`；mpc `server.ts:998`；deploy `infrax-aa-relay.service`；payment `middleware.ts:21`（JWT 前缀 `pocketx-admin-`→`infrax-admin-`）。
+- **范围外（保留）**：§2.4 运行语义项 + T-3 库名。
 
-### T-2 SDK 包名/类名变更 —— 🔲 P1（需发版 + 通知 B 端）
+### T-2 SDK 包名/类名变更 —— ✅ 已完成（commit e53ecac，2026-08-22）
 
 1. `payment`：`pocketx-payment` → `infrax-payment`（package.json + package-lock.json）。
-2. `collector/sdk/pocketx-sdk.ts`：类名 `PocketX`/`PocketXConfig`/`PocketXError` → `Infrax*`；注释包名 → `infrax-collector-sdk`。**前置确认**：该 SDK 是否已发布 npm 或 B 端本地引用（若已发布，需双包名并存一个版本或直接通知）。
-3. `aa-sdk`：description/注释中 PocketX 字样清理（包名已定 `@0xinfrax/aa-sdk` 无需再改）。
-4. 通知 B 端（文案见 §5）。
+2. `collector/sdk`：删除冗余旧版 `pocketx-sdk.ts`（363 行，无引用）；保留新版 `infrax-sdk.ts`（522 行，含 DEX 端点，c1df2a3，零 PocketX 残留）。类名 `PocketX*` 无历史外部使用者，无需迁移。
+3. `aa-sdk`：description 清除历史来源表述（包名已为 `@0xinfrax/aa-sdk`）；`chain-smoke.mjs` import 同步。
+4. B 端通知（文案见 §5）——B 端仅依赖 API 契约与 `@0xinfrax/aa-sdk`，无 `pocketx-*` 包依赖，**无需通知**。
 
 ### T-3 数据库改名（9 库） —— 🔲 P0（需停机窗口）
 
