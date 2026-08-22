@@ -208,6 +208,11 @@
 >   - **API Key 表单三字段**：`lrKeyHtml`/`lrSaveKey` 扩展为 lr_ key + X-Tenant-ID + namespace 三输入框（已存值 localStorage 回填，key 明文展示于只读 savedBlock），保存后 `lrLoadMySub` 刷新真实用量。
 >   - **真实用量直连**：`lrLoadRealUsage` 以 `X-API-Key` + `X-Tenant-ID` 头直连 ragservicer `GET /documents`，展示真实文档数 total / 租户 / namespace / 最近文档 doc_id；无 key 显示引导文案（`lr_real_nokey`），连接失败 fail-silent 显示 `lr_real_unreachable`。
 >   - **验证**：i18n 新增 8 键（828 键 zh/en 一致全通过）；生产 playwright（connect.html 入口 → 注入三字段 + 拦截 /documents 模拟 total:7）实测真实用量区块渲染"文档数 7 / 租户 / namespace / 最近文档 rag-doc-001,002"、tenant/ns 回填正确、0 console 错误；生产 `43.163.105.172` git pull 至 8d21dd7。
+> - **W-9e（✅，2026-08-23，commit 60f6cac 已部署生产）**：LightRAG 选套餐自动分配 lr_ key（用户确认方案：**全部套餐自动开通 + 平台代管可回看**，替代人工 admin 签发）。
+>   - **后端（data-service）**：新增 `app/rag_grants.py`（SQLite `rag_grants` 表，钱包唯一租户+key 明文代管，`UNIQUE(owner)` 幂等兜底）与 `app/rag_provision.py`（内部持 ragservicer admin key：确定性租户 id `u_`+地址 32hex → `POST /api/v1/tenants`（500 duplicate 视为已存在）→ `POST /api/v1/tenants/<id>/keys`（expires_days=0）→ 落库）；新增端点 `POST /api/v2/lightrag/provision`（body `{plan_id: lr_free|lr_pro|lr_enterprise}`）+ `GET /api/v2/lightrag/keys`（回看），钱包签名鉴权（`_wallet_owner`，豁免 prefixes 加入 `/api/v2/lightrag/`）；配置 `RAGSERVICER_ADMIN_URL`（生产 `http://43.156.78.59:9721`，systemd drop-in `infrax-data.service.d/lightrag.conf`）/ `RAGSERVICER_ADMIN_KEY`。
+>   - **前端（web）**：b2b.js `lrActivate` 改为选套餐即调自动开通（`lrProvision` 幂等），订阅页无 key 时自动签发兜底；API Key tab 移除原手动三字段表单，改为展示平台已分配 key/租户/ns + "重新获取"回看（`lrFetchGrant`）；server.js 新增 `/api/v2/lightrag` → data-service 代理路由；i18n 增删键后 861 键 zh/en 对齐。
+>   - **顺带修复**：`data/app_auth.py` 缺失 G-7 `monitor_key` 参数的旧副本漂移（与 shared 同步，避免生产无 shared PYTHONPATH 时每请求 TypeError）；`tests/test_auth.py` 引用已重构 `_api_authorized` 的存量失败修正。
+>   - **验证**：data 单测 7 例（test_lightrag_provision.py 幂等/建租户/失败路径）+ 存量 54 例通过；本地 playwright 全流程（选 Pro → 自动开通 → 仪表盘 key/租户/真实用量 → 回看刷新 → 手动表单已移除）0 console 错误；生产 E2E（公网 https://infrax.0xainet.top/api/v2/lightrag + ethers 钱包签名）provision 200 / keys 200 / 幂等 true，ragservicer 侧 `u_091a...` 租户已建；生产 data 机 git pull 至 60f6cac + infrax-data 重启 + web 9111 代理 401/200 验证。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
 
