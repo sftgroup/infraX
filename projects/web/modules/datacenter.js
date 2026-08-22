@@ -9,6 +9,30 @@ function obscureKey(key) { return key && key.length > 16 ? key.slice(0,14) + '�
 let dcPlan = null;
 let dcUsage = null;
 
+// WSG-1: DC 套餐目录（与 intro 订阅卡一致，用于"我的订阅"升级卡）
+var DC_DEFAULT_PLANS = [
+  { id: 'data_free', name: 'Free', price: 0, badge: 'Free', emoji: '🆓', features: ['Sepolia only', '10,000 calls/mo', '24h retention'] },
+  { id: 'data_pro', name: 'Pro', price: 29, badge: 'Popular', emoji: '📡', features: ['All 7 chains', '100,000 calls/mo', '72h retention'] },
+  { id: 'data_enterprise', name: 'Enterprise', price: 99, badge: 'Enterprise', emoji: '🏭', features: ['All chains + custom', '1,000,000 calls/mo', 'Unlimited retention'] }
+];
+
+// 支付状态可写入多个目标（intro dc-sub-status + dash dc-upgrade-status）
+function dcSetSubStatus(html, ok) {
+  var els = [];
+  var a = document.getElementById('dc-sub-status'); if (a) els.push(a);
+  var b = document.getElementById('dc-upgrade-status'); if (b) els.push(b);
+  els.forEach(function (el) {
+    el.innerHTML = '<span style="color:' + (ok ? 'var(--success)' : 'var(--error)') + '">' + html + '</span>';
+  });
+}
+
+function dcShowIntro() {
+  var ie = document.getElementById('dc-intro');
+  var de = document.getElementById('dc-dash');
+  if (ie) ie.style.display = 'block';
+  if (de) de.style.display = 'none';
+}
+
 // ─── Init ────────────────────────────────────────────────────────────
 async function dcInit() {
   var addr = '';
@@ -69,10 +93,7 @@ async function dcRefreshUsage() {
 async function dcSubscribe(planId) {
   const wallet = (typeof user !== 'undefined' && user()?.walletAddress) || '';
   if (!wallet) { showToast('Connect wallet first', 'error'); return; }
-  var statusEl = document.getElementById('dc-sub-status');
-  function setStatus(html, ok) {
-    if (statusEl) statusEl.innerHTML = '<span style="color:' + (ok ? 'var(--success)' : 'var(--error)') + '">' + html + '</span>';
-  }
+  function setStatus(html, ok) { dcSetSubStatus(html, ok); }
   try {
     const resp = await afetch('/api/v2/data/subscribe', {
       method: 'POST', auth: 'none',
@@ -126,15 +147,13 @@ function dcPollSubscription(timeoutMs) {
         clearInterval(dcPollTimer); dcPollTimer = null;
         await dcRefreshUsage();
         showToast('Data plan activated!', 'success');
-        var statusEl = document.getElementById('dc-sub-status');
-        if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">' + I18N.t('sub_activated') + '</span>';
+        dcSetSubStatus(I18N.t('sub_activated'), true);
         await dcLoadDashboard();
       }
     } catch (_) {}
     if (Date.now() - started > (timeoutMs || 5 * 60 * 1000)) {
       clearInterval(dcPollTimer); dcPollTimer = null;
-      var statusEl = document.getElementById('dc-sub-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">' + I18N.t('sub_timeout') + '</span>';
+      dcSetSubStatus(I18N.t('sub_timeout'), false);
     }
   }, 4000);
 }
@@ -148,8 +167,7 @@ async function dcSubmitX402(network) {
     if (d.verified && d.activated) {
       showToast(I18N.t('sub_activated_toast'), 'success');
       await dcRefreshUsage();
-      var statusEl = document.getElementById('dc-sub-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">' + I18N.t('sub_activated') + '</span>';
+      dcSetSubStatus(I18N.t('sub_activated'), true);
       await dcLoadDashboard();
     } else if (d.verified) {
       showToast(I18N.t('sub_verified_no_sub'), 'error');
@@ -189,10 +207,96 @@ async function dcLoadDashboard() {
     var apiKey = dcUsage?.dcApiKey || '—';
     var ki = document.getElementById('dc-api-key');
     if (ki) ki.value = apiKey;
+
+    dcLoadMySub(); // WSG-1: 默认 tab 为"我的订阅"
   } else {
     if (ie) ie.style.display = 'block';
     if (de) de.style.display = 'none';
   }
+}
+
+// WSG-1: dc-dash "我的订阅"——刷新真实用量后渲染（当前套餐 + 当月用量进度条 + 升级卡片）
+function dcLoadMySub() {
+  var el = document.getElementById('dc-my-sub');
+  if (!el) return;
+  var wallet = '';
+  try { wallet = user().walletAddress || ''; } catch (e) {}
+  if (!wallet) { dcRenderMySub(el, 'nowallet'); return; }
+  dcRefreshUsage()
+    .then(function (ok) { dcRenderMySub(el, ok ? null : 'nosub'); })
+    .catch(function () { dcRenderMySub(el, 'failed'); });
+}
+
+function dcRenderMySub(el, mode) {
+  if (!el) return;
+  if (mode === 'nowallet') {
+    el.innerHTML = '<div style="text-align:center;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">' +
+      '<div style="font-size:30px;margin-bottom:10px">🔌</div>' +
+      '<div style="font-size:14px;color:var(--gold-light);margin-bottom:10px">' + I18N.t("dc_connect_sub") + '</div>' +
+      '<a href="/connect.html" style="color:var(--gold);font-size:14px">' + I18N.t("dash_go_connect") + '</a></div>';
+    return;
+  }
+  if (mode === 'failed') {
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--error);font-size:13px">' + I18N.t("dc_load_failed") + ' <button class="btn btn-sm btn-secondary" onclick="dcLoadMySub()">🔄 ' + I18N.t("st_refresh") + '</button></div>';
+    return;
+  }
+  if (mode === 'nosub' || !dcUsage || !dcPlan) {
+    el.innerHTML = '<div style="text-align:center;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">' +
+      '<div style="font-size:30px;margin-bottom:10px">📡</div>' +
+      '<div style="font-size:14px;color:var(--gold-light);margin-bottom:10px">' + I18N.t("dc_no_sub") + '</div>' +
+      '<button class="btn btn-primary" onclick="dcShowIntro()">' + I18N.t("dc_activate_now") + '</button></div>';
+    return;
+  }
+  var quota = dcUsage.monthlyQuota || 0;
+  var used = dcUsage.currentUsage || 0;
+  var pct = quota ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+  var st = dcUsage.dcSubStatus === 'active'
+    ? '<span class="status success">● active</span>'
+    : '<span style="color:var(--warning)">● ' + (dcUsage.dcSubStatus || 'pending') + '</span>';
+  el.innerHTML = '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;text-align:left">' +
+    '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:12px">' + I18N.t("dc_my_sub") + '</div>' +
+    '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">' +
+      '<div><div style="font-size:20px;font-weight:700;color:var(--gold-light)">📡 ' + dcPlan.name + '</div>' + st + '</div>' +
+      '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("dc_usage_title") + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<span style="font-size:16px;font-weight:600">' + formatNumber(used) + ' / ' + formatNumber(quota) + '</span>' +
+          '<div style="width:120px;height:8px;background:var(--surface);border-radius:4px;overflow:hidden">' +
+            '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--gold,#F0B90B),#d98e04)"></div></div>' +
+        '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--text-tertiary)">dx_ key</div><code style="font-size:13px;color:var(--gold-light)">' + (dcUsage.dcApiKey ? obscureKey(dcUsage.dcApiKey) : '—') + '</code></div>' +
+    '</div>' +
+    dcUpgradeHtml(dcPlan.name) +
+    '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:10px">' + I18N.t("dc_my_sub_note") + '</div>' +
+  '</div>';
+}
+
+// WSG-1: dc 套餐升级卡片 —— 基于 DC_DEFAULT_PLANS 价格基线，过滤高于当前套餐的候选
+function dcUpgradeHtml(planName) {
+  var cur = 0;
+  for (var i = 0; i < DC_DEFAULT_PLANS.length; i++) {
+    if (planName && planName.toLowerCase().indexOf(DC_DEFAULT_PLANS[i].name.toLowerCase()) !== -1) {
+      cur = DC_DEFAULT_PLANS[i].price;
+      break;
+    }
+  }
+  var up = DC_DEFAULT_PLANS.filter(function (p) { return p.price > cur; });
+  if (!up.length) {
+    return '<div style="text-align:center;padding:14px;color:var(--gold-light);font-size:13px;border:1px dashed var(--border);border-radius:var(--r-md);margin-top:16px">' + I18N.t("dc_upgrade_max") + '</div>';
+  }
+  return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">' +
+    '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:10px">' + I18N.t("dc_upgrade_title") +
+    ' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">' + I18N.t("dc_upgrade_note") + '</span></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">' +
+      up.map(function (p) {
+        return '<div class="waas-plan" style="cursor:pointer" data-plan="' + p.id + '" onclick="dcSubscribe(\'' + p.id + '\')">' +
+          '<div class="waas-plan-badge">' + p.badge + '</div>' +
+          '<div class="waas-plan-name">' + p.emoji + ' ' + p.name + '</div>' +
+          '<div class="waas-plan-price">$' + p.price + '</div><div class="waas-plan-period">/mo</div>' +
+          '<div class="waas-plan-features">' + p.features.join('<br>') + '</div>' +
+          '<button class="btn btn-primary" style="margin-top:12px;width:100%">' + I18N.t("dc_upgrade_to") + '</button>' +
+        '</div>';
+      }).join('') +
+    '</div></div>';
 }
 
 // ─── Copy Key ────────────────────────────────────────────────────────

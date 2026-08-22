@@ -142,6 +142,14 @@ async function mpcDash() {
     document.getElementById('mpc-bal-val').textContent = '0 ETH';
     document.getElementById('mpc-status').innerHTML = '🟢 Active';
   }
+  // WSG-3: 计费模式展示（/api/v2/mpc/plans → mode/configured；fail-silent）
+  try {
+    var mpcP = await afetch('/api/v2/mpc/plans', { auth: 'none' });
+    if (mpcP) {
+      var modeTxt = mpcP.mode === 'metered' ? I18N.t('mpc_usage_metered') : I18N.t('mpc_usage_free');
+      document.getElementById('mpc-status').innerHTML = '🟢 Active · ' + I18N.t('mpc_usage_mode') + ': ' + modeTxt;
+    }
+  } catch (e2) {}
 }
 
 // ── Send ──

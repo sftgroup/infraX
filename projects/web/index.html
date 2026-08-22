@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/modules/infrax.css?v=1787304000">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-<script src="/modules/i18n.js?v=1787376000"></script>
+<script src="/modules/i18n.js?v=1787430000"></script>
 </head>
 <body>
 <!-- Background orbs -->
@@ -70,6 +70,13 @@
     <button class="nav-item" data-page="payments">
       <span class="nav-label" data-i18n="nav_payments">💳 Payments</span>
       <span class="badge">Gateway</span>
+    </button>
+  </nav>
+
+  <div class="nav-section" data-i18n="section_ops">Operations</div>
+  <nav class="sidebar-nav">
+    <button class="nav-item" data-page="status">
+      <span class="nav-label" data-i18n="nav_status">🩺 Service Status</span>
     </button>
   </nav>
 
@@ -840,13 +847,18 @@ Body:
     </div>
     <div id="dc-dash" style="display:none">
       <div class="tab-row">
-        <button class="tab-btn active" data-sub="dc-overview">📊 Overview</button>
+        <button class="tab-btn active" data-sub="dc-sub" data-i18n="dc_tab_sub">📋 My Subscription</button>
+        <button class="tab-btn" data-sub="dc-overview">📊 Overview</button>
         <button class="tab-btn" data-sub="dc-apikey">🔑 API Key</button>
         <button class="tab-btn" data-sub="dc-docs">📖 API Docs</button>
         <button class="tab-btn" data-sub="dc-insights">📈 Insights</button>
         <button class="tab-btn" data-sub="dc-market">📊 Market Data</button>
       </div>
-      <div class="sub-panel active" id="sub-dc-overview">
+      <div class="sub-panel active" id="sub-dc-sub">
+        <div id="dc-my-sub"></div>
+        <div id="dc-upgrade-status" style="text-align:center;margin-top:14px;font-size:13px;min-height:20px"></div>
+      </div>
+      <div class="sub-panel" id="sub-dc-overview">
         <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
           <div class="kpi">
             <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">⚡</div>
@@ -982,20 +994,25 @@ Body:
     <div id="lightrag-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
   </div>
 
+  <div class="page" id="page-status">
+    <div id="status-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div></div></div>
   </div>
 
-<script src="/modules/core.js?v=1787360000"></script>
+  </div>
+
+<script src="/modules/core.js?v=1787430000"></script>
 <script src="/modules/nc-wallet.js?v=1787305000"></script>
-<script src="/modules/mpc-wallet.js?v=1783734639"></script>
+<script src="/modules/mpc-wallet.js?v=1787430000"></script>
 <script src="/modules/waas.js?v=1787270500"></script>
 <script src="/modules/safe.js?v=1787270500"></script>
 <script src="/modules/waas-extras.js?v=1783731217"></script>
 <script src="/modules/exports.js?v=1783731217"></script>
-  <script src="/modules/datacenter.js?v=1787360000"></script>
+  <script src="/modules/datacenter.js?v=1787430000"></script>
 <script src="/modules/aa.js?v=1787239500"></script>
 <script src="/modules/insights.js?v=1787305000"></script>
 <script src="/modules/payments.js?v=1787305000"></script>
 <script src="/modules/b2b.js?v=1787376000"></script>
+<script src="/modules/status.js?v=1787430000"></script>
 
 
 <script>

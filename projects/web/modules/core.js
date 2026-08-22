@@ -20,7 +20,7 @@ var API = "";
   var waasSelectedPlan = 'free';
   var safeEnabled = false;
 
-  var PAGE_TITLES = { noncustodial:'dash_title', mpc:'nav_mpc', waas:'nav_waas', datacenter:'nav_datacenter', safe:'nav_safe', aa:'nav_aa', payments:'nav_payments', rpc:'nav_chain_rpc', lightrag:'nav_lightrag' };
+  var PAGE_TITLES = { noncustodial:'dash_title', mpc:'nav_mpc', waas:'nav_waas', datacenter:'nav_datacenter', safe:'nav_safe', aa:'nav_aa', payments:'nav_payments', rpc:'nav_chain_rpc', lightrag:'nav_lightrag', status:'nav_status' };
 
   // ── Re-declare all functions below (code preserved from original, wrapped) ──
 // ═══════════════════════════════════════════════════════
@@ -260,14 +260,14 @@ function setupNav() {
       if (!target) return;
       target.classList.add('active');
       document.getElementById('page-title').textContent = I18N.t(PAGE_TITLES[p] || p);
-      var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit };
+      var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit, status: statusInit };
       try { if (loaders[p]) loaders[p](); } catch(e) { console.error('Page loader failed:', p, e); }
     });
   });
 }
 
 function initActivePage() {
-  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit };
+  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit, status: statusInit };
   var activePage = document.querySelector('.page.active');
   if (!activePage) return;
   var pageId = activePage.id.replace('page-', '');
@@ -276,7 +276,7 @@ function initActivePage() {
 
 // 语言切换后重载当前页 loader，让动态渲染内容（innerHTML）立即跟随语言
 document.addEventListener('i18n:changed', function () {
-  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit };
+  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit, status: statusInit };
   // 带 dataset.loaded 防重复初始化的 loader，重载前先解除 guard 才会重新渲染
   var guardedRoots = { rpc: 'rpc-root', lightrag: 'lightrag-root' };
   var activePage = document.querySelector('.page.active');
@@ -317,7 +317,7 @@ document.addEventListener('click', function (e) {
     'mpc-reg': mpcReg, 'mpc-rec': mpcRec, 'mpc-dash': mpcDash, 'mpc-send': mpcSendLoad, 'mpc-recv': mpcReceiveLoad,
     'waas-dash-overview': waasLoadOverviewWithState, 'waas-dash-tokens': waasTokens, 'waas-dash-addresses': waasAddresses,
     'waas-dash-sweep': waasSweep, 'waas-dash-withdrawals': waasWithdrawals, 'waas-dash-api': waasApiTab,
-    'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {},
+    'dc-sub': dcLoadMySub, 'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {},
     'safe-pending': function () {}, 'safe-owners': function () {}
   };
   if (subLoaders[s]) subLoaders[s]();

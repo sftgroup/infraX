@@ -135,6 +135,18 @@
     "dc_th_requests": "请求数",
     "dc_th_last_used": "最后使用",
     "dc_th_actions": "操作",
+    // WSG-1: dc-dash 我的订阅（套餐 + 用量 + 升级卡）
+    "dc_tab_sub": "📋 我的订阅",
+    "dc_my_sub": "我的订阅",
+    "dc_my_sub_note": "按自然月结算；超配额返回 503 + 升级提示。升级付费套餐需使用已保存的 dx_ key。",
+    "dc_upgrade_title": "⚡ 套餐升级",
+    "dc_upgrade_note": "按需升级，提升调用额度与保留时长。",
+    "dc_upgrade_to": "升级",
+    "dc_upgrade_max": "🏆 当前已是最高方案",
+    "dc_no_sub": "未订阅 — 请从介绍页选择套餐激活。",
+    "dc_activate_now": "激活套餐",
+    "dc_connect_sub": "连接钱包以查看订阅",
+    "dc_usage_title": "当月用量",
 
     // ── Landing ──
     "landing_title": "InfraX — Web3 Infrastructure Platform",
@@ -878,7 +890,35 @@
     "aa_wallet_sign": "🦊 钱包签名",
     "aa_confirm_sign": "确认签名",
     "aa_sign_failed": "签名失败",
-    "aa_sign_first": "请先签名"
+    "aa_sign_first": "请先签名",
+
+    // ── 服务状态（status.js，WSG-2）──
+    "nav_status": "🩺 服务状态",
+    "section_ops": "运维",
+    "st_title": "🩺 服务状态",
+    "st_desc": "全平台服务实时健康探针（经公网网关探测）· 30s 自动刷新",
+    "st_refresh": "🔄 刷新",
+    "st_auto": "30s 自动刷新",
+    "st_kpi_up": "正常服务",
+    "st_kpi_down": "异常服务",
+    "st_kpi_latency": "平均延迟",
+    "st_th_service": "服务",
+    "st_th_status": "状态",
+    "st_th_latency": "延迟",
+    "st_th_detail": "详情 / 端点",
+    "st_ok": "🟢 正常",
+    "st_warn": "🟡 可达（需鉴权/未订阅）",
+    "st_down": "🔴 不可用",
+    "st_unreachable": "不可达",
+    "st_loading": "正在探测全部服务…",
+    "st_load_failed": "状态探测失败",
+    "st_ms": "ms",
+
+    // ── MPC 用量（WSG-3）──
+    "mpc_usage_mode": "计费模式",
+    "mpc_usage_free": "免费",
+    "mpc_usage_metered": "按量计费",
+    "mpc_usage_unknown": "未知"
   };
 
   // en: 键名即英文原文（去除 emoji 前缀）
@@ -1347,6 +1387,18 @@
     "dc_th_low": "Low",
     "dc_th_close": "Close",
     "dc_th_volume": "Volume",
+    // WSG-1: dc-dash My Subscription
+    "dc_tab_sub": "📋 My Subscription",
+    "dc_my_sub": "My Subscription",
+    "dc_my_sub_note": "Billed per calendar month; exceeding quota returns 503 + upgrade prompt. Upgrading to a paid plan requires the saved dx_ key.",
+    "dc_upgrade_title": "⚡ Plan Upgrade",
+    "dc_upgrade_note": "Upgrade anytime to raise call quota & retention.",
+    "dc_upgrade_to": "Upgrade",
+    "dc_upgrade_max": "🏆 You're on the highest plan",
+    "dc_no_sub": "Not subscribed — choose a plan from the intro page to activate.",
+    "dc_activate_now": "Activate Plan",
+    "dc_connect_sub": "Connect wallet to view your subscription",
+    "dc_usage_title": "Monthly Usage",
 
     // ── My Keys (self-service key management) ──
     "mykeys_new_once": "New key — shown once only, copy and save it now",
@@ -1580,7 +1632,34 @@
     "aa_wallet_sign": "🦊 Wallet Sign",
     "aa_confirm_sign": "Confirm Signature",
     "aa_sign_failed": "sign failed",
-    "aa_sign_first": "Sign first"
+    "aa_sign_first": "Sign first",
+
+    // ── Service Status (status.js, WSG-2) ──
+    "nav_status": "🩺 Service Status",
+    "section_ops": "Operations",
+    "st_title": "🩺 Service Status",
+    "st_desc": "Real-time health probes for all platform services (via public gateway) · auto-refresh 30s",
+    "st_refresh": "🔄 Refresh",
+    "st_kpi_up": "Healthy",
+    "st_kpi_down": "Degraded",
+    "st_kpi_latency": "Avg Latency",
+    "st_th_service": "Service",
+    "st_th_status": "Status",
+    "st_th_latency": "Latency",
+    "st_th_detail": "Detail / Endpoint",
+    "st_ok": "🟢 Healthy",
+    "st_warn": "🟡 Reachable (auth required / not subscribed)",
+    "st_down": "🔴 Unavailable",
+    "st_unreachable": "Unreachable",
+    "st_loading": "Probing all services…",
+    "st_load_failed": "Status probe failed",
+    "st_ms": "ms",
+
+    // ── MPC Usage (WSG-3) ──
+    "mpc_usage_mode": "Billing Mode",
+    "mpc_usage_free": "Free",
+    "mpc_usage_metered": "Metered",
+    "mpc_usage_unknown": "Unknown"
   };
   for (var e in EN_OVERRIDES) {
     I18N.en[e] = EN_OVERRIDES[e];
