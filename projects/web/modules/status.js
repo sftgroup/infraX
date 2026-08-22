@@ -1,10 +1,12 @@
 /**
  * InfraX Service Status — 全平台统一服务状态监控页（WSG-2）
  * Dependencies: core.js, infrax.css
- * 经公网网关（infrax.0xainet.top）探测各服务真实 health 端点；fail-silent 降级。
+ * 探测由 web 后端聚合（/api/v2/system/status：内网直连各服务 + 30s 进程缓存），
+ * 前端仅请求单接口渲染，避免每用户每刷新打 9 个公网请求；fail-silent 降级。
  */
 
-// 服务清单：name 展示名 / url 公网探测端点 / status 判定见 statusProbe
+// 服务清单：name 展示名 / url 公网探测端点（展示用）— 实际探测由 web 后端聚合
+//（/api/v2/system/status，内网直连 + 30s 缓存），本列表顺序与后端 STATUS_SERVICES 一致。
 var STATUS_SERVICES = [
   { name: '🔗 Chain RPC', url: '/api/v2/rpc/health' },
   { name: '🔎 LightRAG', url: '/api/rag/api/v1/health' },
@@ -49,35 +51,33 @@ function statusInit() {
   _statusTimer = setInterval(statusRefresh, 30000);
 }
 
-function statusProbe(svc) {
-  var t0 = Date.now();
-  return fetch(svc.url, { method: 'GET' })
-    .then(function (r) { return { svc: svc, status: r.status, ms: Date.now() - t0 }; })
-    .catch(function () { return { svc: svc, status: 0, ms: Date.now() - t0 }; });
-}
-
 function statusRefresh() {
   var tbody = document.getElementById('st-tbody');
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="4" style="padding:14px 20px;color:var(--text-muted)">' + I18N.t('st_loading') + '</td></tr>';
-  Promise.all(STATUS_SERVICES.map(statusProbe)).then(function (results) {
-    var up = 0, warn = 0, down = 0, totalMs = 0;
-    var rows = results.map(function (r) {
-      var cls, label;
-      if (r.status >= 200 && r.status < 300) { cls = 'success'; label = I18N.t('st_ok'); up++; }
-      else if (r.status >= 400 && r.status < 500) { cls = 'pending'; label = I18N.t('st_warn'); warn++; }
-      else { cls = 'failed'; label = r.status ? I18N.t('st_down') + ' (' + r.status + ')' : I18N.t('st_unreachable'); down++; }
-      totalMs += r.ms;
-      return '<tr><td>' + r.svc.name + '</td>' +
-        '<td><span class="status ' + cls + '">' + label + '</span></td>' +
-        '<td class="mono">' + r.ms + ' ' + I18N.t('st_ms') + '</td>' +
-        '<td class="mono" style="font-size:12px">' + r.svc.url + (r.status ? '' : ' — ' + I18N.t('st_unreachable')) + '</td></tr>';
-    }).join('');
-    tbody.innerHTML = rows;
-    setHtml('st-kpi-up', up + '/' + STATUS_SERVICES.length);
-    setHtml('st-kpi-down', (down + warn) + '/' + STATUS_SERVICES.length);
-    setHtml('st-kpi-lat', Math.round(totalMs / results.length) + ' ' + I18N.t('st_ms'));
-  }).catch(function (e) {
-    tbody.innerHTML = '<tr><td colspan="4" style="padding:14px 20px;color:var(--error)">' + I18N.t('st_load_failed') + ': ' + (e.message || '') + '</td></tr>';
-  });
+  fetch('/api/v2/system/status', { method: 'GET' })
+    .then(function (r) { return r.json(); })
+    .then(function (payload) {
+      var results = (payload && payload.services) || [];
+      var up = 0, warn = 0, down = 0, totalMs = 0;
+      var rows = results.map(function (svc, i) {
+        var meta = STATUS_SERVICES[i] || { name: '#' + i, url: '' };
+        var r = { status: svc.status || 0, ms: svc.ms || 0 };
+        var cls, label;
+        if (r.status >= 200 && r.status < 300) { cls = 'success'; label = I18N.t('st_ok'); up++; }
+        else if (r.status >= 400 && r.status < 500) { cls = 'pending'; label = I18N.t('st_warn'); warn++; }
+        else { cls = 'failed'; label = r.status ? I18N.t('st_down') + ' (' + r.status + ')' : I18N.t('st_unreachable'); down++; }
+        totalMs += r.ms;
+        return '<tr><td>' + meta.name + '</td>' +
+          '<td><span class="status ' + cls + '">' + label + '</span></td>' +
+          '<td class="mono">' + r.ms + ' ' + I18N.t('st_ms') + '</td>' +
+          '<td class="mono" style="font-size:12px">' + meta.url + (r.status ? '' : ' — ' + I18N.t('st_unreachable')) + '</td></tr>';
+      }).join('');
+      tbody.innerHTML = rows;
+      setHtml('st-kpi-up', up + '/' + STATUS_SERVICES.length);
+      setHtml('st-kpi-down', (down + warn) + '/' + STATUS_SERVICES.length);
+      setHtml('st-kpi-lat', Math.round(totalMs / (results.length || 1)) + ' ' + I18N.t('st_ms'));
+    }).catch(function (e) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:14px 20px;color:var(--error)">' + I18N.t('st_load_failed') + ': ' + (e.message || '') + '</td></tr>';
+    });
 }

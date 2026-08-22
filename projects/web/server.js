@@ -30,12 +30,19 @@ const ML_PORT = parseInt(process.env.ML_PORT || '9120', 10);
 const ML_API_KEY = process.env.ML_API_KEY || '';
 const PAYMENTS_HOST = process.env.PAYMENTS_HOST || 'localhost';
 const PAYMENTS_PORT = parseInt(process.env.PAYMENTS_PORT || '9132', 10);
+// LightRAG 内网探测（/api/v2/system/status 聚合用；生产 RAGSERVICER 43.156.78.59:9721，systemd 配置）
+const RAG_HOST = process.env.RAG_HOST || 'localhost';
+const RAG_PORT = parseInt(process.env.RAG_PORT || '9721', 10);
 
 // 代理 socket 超时（ms）：路由可配 timeout 覆盖，未配用全局默认。
 //   DEX 冷路径（hot-tokens）需串行补池（OKX 25s 超时 + DexScreener），15s 过短 → 504；
 //   nginx 侧已放开至 120s（2026-08-23），collector 路由留 90s 余量。
 const WEB_PROXY_TIMEOUT_MS = parseInt(process.env.WEB_PROXY_TIMEOUT_MS || '15000', 10);
 const COLLECTOR_ROUTE_TIMEOUT_MS = parseInt(process.env.COLLECTOR_ROUTE_TIMEOUT_MS || '90000', 10);
+// 服务状态聚合（WSG-2 /api/v2/system/status）：内网探测 + 进程内存缓存，
+// 一个缓存窗口内所有用户共享一轮探测，避免每用户每刷新打 9 个公网请求
+const STATUS_CACHE_MS = parseInt(process.env.STATUS_CACHE_MS || '30000', 10);
+const STATUS_PROBE_TIMEOUT_MS = parseInt(process.env.STATUS_PROBE_TIMEOUT_MS || '3000', 10);
 
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
@@ -169,6 +176,47 @@ function proxyRequest(req, res, target) {
   req.pipe(proxy);
 }
 
+// ─── 服务状态聚合（WSG-2）─────────────────────────────────────
+// 顺序与前端 modules/status.js STATUS_SERVICES 保持一致（name/url 由前端渲染，本侧按 index 对应 status/ms）。
+// 探测走内网直连（不绕 nginx/公网），每服务 3s 超时，并发执行；结果缓存 STATUS_CACHE_MS。
+const STATUS_SERVICES = [
+  { probe: { host: RPC_HOST, port: RPC_PORT, path: '/health' } },                            // Chain RPC
+  { probe: { host: RAG_HOST, port: RAG_PORT, path: '/api/v1/health' } },                      // LightRAG
+  { probe: { host: DATA_HOST, port: DATA_PORT, path: '/health' } },                           // Data Service
+  { probe: { host: ML_HOST, port: ML_PORT, path: '/health' } },                               // ML Service
+  { probe: { host: MPC_HOST, port: MPC_PORT, path: '/api/v2/mpc/status' } },                  // MPC Wallet
+  { probe: { host: VAULT_HOST, port: VAULT_PORT, path: '/api/vault/safe/status' } },          // Safe Vault
+  { probe: { host: WAAS_HOST, port: WAAS_PORT, path: '/api/v2/saas/tenants/my' } },           // WaaS
+  { probe: { host: DC_HOST, port: DC_PORT, path: '/api/v2/data/usage' } },                    // Data & Insights
+  { probe: { host: AA_HOST, port: AA_PORT, path: '/v1/plans' } },                             // Smart Account
+];
+
+function probeService(p) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const req = http.get({ hostname: p.host, port: p.port, path: p.path, timeout: STATUS_PROBE_TIMEOUT_MS }, (res) => {
+      res.resume(); // drain，立即返回
+      resolve({ status: res.statusCode || 0, ms: Date.now() - t0 });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, ms: Date.now() - t0 }); });
+    req.on('error', () => { resolve({ status: 0, ms: Date.now() - t0 }); });
+  });
+}
+
+let _statusCache = null; // { ts, services } 进程内存缓存
+function getSystemStatus() {
+  const now = Date.now();
+  if (_statusCache && now - _statusCache.ts < STATUS_CACHE_MS) return Promise.resolve(_statusCache);
+  return Promise.all(STATUS_SERVICES.map((s) => probeService(s.probe)))
+    .then((services) => (_statusCache = { ts: Date.now(), services }))
+    .catch(() => {
+      // 探测自身异常：有旧缓存则回退旧缓存，否则返回全 0（前端显示 unreachable）
+      return _statusCache && _statusCache.services
+        ? _statusCache
+        : { ts: now, services: STATUS_SERVICES.map(() => ({ status: 0, ms: 0 })) };
+    });
+}
+
 // ─── Server ──────────────────────────────────────────────────────
 const serverStartTime = Date.now();
 
@@ -189,6 +237,16 @@ const server = http.createServer((req, res) => {
         Object.entries(API_ROUTES).map(([prefix, t]) => [prefix, `${t.host}:${t.port}`])
       ),
     }));
+    return;
+  }
+
+  // 服务状态聚合接口（WSG-2，服务器缓存；须在 API_ROUTES 循环前）
+  if (urlPath === '/api/v2/system/status') {
+    getSystemStatus().then((c) => {
+      applySecurityHeaders(res);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ code: 0, updated_at: new Date(c.ts).toISOString(), services: c.services }));
+    });
     return;
   }
 
