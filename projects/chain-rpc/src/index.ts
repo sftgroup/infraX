@@ -31,7 +31,7 @@ import { createDexReadRouter, createDexBroadcastRouter } from './routes/dexRoute
 import { createEnhancedRouter } from './routes/enhancedRoutes';
 import { attachWs } from './routes/ws';
 import subscriptionRouter from './routes/rpcSubscriptionRoutes';
-import { initRpcTables } from './services/rpcSubscription';
+import { initRpcTables, checkQuotaAlerts, RPC_QUOTA_ALERT_INTERVAL_MS } from './services/rpcSubscription';
 
 const app = express();
 
@@ -134,6 +134,12 @@ attachWs(server, pool);
 
 // MQ-16 T-3: 订阅计费表自举（rpc_keys / rpc_usage / rpc_usage_daily），失败仅告警不阻断启动
 initRpcTables().catch((e) => logger.error(`[chain-rpc] rpc tables init failed: ${e.message}`));
+// REQ-3: 配额告警定时扫描（用量 ≥ 阈值 → logger.warn + 可选 webhook），unref 不阻塞退出
+initRpcTables().then(() => {
+  logger.info(`[chain-rpc] quota alert scheduler: every ${RPC_QUOTA_ALERT_INTERVAL_MS}ms`);
+  setInterval(() => checkQuotaAlerts().catch(() => undefined), RPC_QUOTA_ALERT_INTERVAL_MS).unref?.();
+  checkQuotaAlerts().catch(() => undefined); // 启动即扫一次
+}).catch(() => undefined);
 
 server.listen(config.port, () => {
   logger.info(`[chain-rpc] listening on :${config.port} (env=${config.nodeEnv})`);

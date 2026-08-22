@@ -8,7 +8,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { CHAIN_IDS } from '../services/rpcPoolConfig';
 import {
-  RPC_PLANS, RPC_FREE_PLAN_ID, rpcPool, paymentsApi, PaymentsError,
+  RPC_PLANS, RPC_FREE_PLAN_ID, RPC_QUOTA_ALERT_THRESHOLD, rpcPool, paymentsApi, PaymentsError,
   generateRpcKey, findRpcKeyByRaw, activateRpcSubscription,
   verifyWebhookSignature, monthStart,
 } from '../services/rpcSubscription';
@@ -31,6 +31,13 @@ async function rpcKeyAuth(req: any, res: any, next: any): Promise<void> {
   if (!row || row.enabled === false) { res.status(401).json({ detail: 'invalid or disabled rpc key', code: 1004 }); return; }
   req.rpcKey = row;
   next();
+}
+
+/** 管理操作鉴权：X-Service-Key = CHAIN_RPC_READ_KEY / CHAIN_RPC_BROADCAST_KEY（同 issue-key） */
+function serviceKeyAuthorized(req: any): boolean {
+  const svcKey = (req.headers['x-service-key'] || req.headers['x-api-key']
+    || (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || '').trim();
+  return timingSafeEqualStr(svcKey, config.readKey) || timingSafeEqualStr(svcKey, config.broadcastKey);
 }
 
 // GET /v1/subscription/plans — 套餐目录 + 完整链表（RPC-3：链参数与 chainId 映射文档化，公开无敏感数据）
@@ -333,6 +340,56 @@ router.get('/usage', rpcKeyAuth, asyncHandler(async (req, res) => {
       rpcSubStatus: row.rpc_sub_status || 'active',
     },
   });
+}));
+
+// GET /v1/subscription/admin/keys — 管理用量清单（REQ-3）：全部 rx_/bx_ keys 的掩码/套餐/配额/
+// 本月用量/使用率/告警标记。鉴权同 issue-key（X-Service-Key = CHAIN_RPC_READ_KEY / BROADCAST_KEY）。
+// 说明：dx_ 等 data-service 签发 key 的用量清单见 data 服务管理面板（/admin/api-keys，request_count）。
+router.get('/admin/keys', asyncHandler(async (req, res) => {
+  if (!serviceKeyAuthorized(req)) return res.status(401).json({ detail: 'unauthorized' });
+  const [keysResult, usageResult] = await Promise.all([
+    rpcPool.query(
+      `SELECT id, label, key_prefix, key_tail, rpc_plan_id, rpc_sub_status, rpc_payment_method,
+              wallet_address, enabled, created_at
+       FROM rpc_keys ORDER BY id`
+    ),
+    rpcPool.query(
+      `SELECT key_id, COUNT(*)::int AS total
+       FROM rpc_usage WHERE timestamp >= $1 GROUP BY key_id`,
+      [monthStart()]
+    ),
+  ]);
+  const usageMap: Record<number, number> = {};
+  for (const u of usageResult.rows) usageMap[u.key_id] = u.total;
+  const keys = keysResult.rows.map((k: any) => {
+    const plan = RPC_PLANS.find((p) => p.id === k.rpc_plan_id) || RPC_PLANS[0];
+    const used = usageMap[k.id] || 0;
+    const quota = plan.features.callsPerMonth;
+    const usagePercent = quota > 0 ? Number(((used / quota) * 100).toFixed(1)) : 0;
+    return {
+      keyId: k.id,
+      label: k.label,
+      maskedKey: `${k.key_prefix}…${k.key_tail}`,
+      kind: k.key_prefix.startsWith('bx_') ? 'broadcast' : 'read',
+      planId: plan.id,
+      planName: plan.name,
+      monthlyQuota: quota,
+      currentUsage: used,
+      usagePercent,
+      alerting: usagePercent >= RPC_QUOTA_ALERT_THRESHOLD * 100,
+      rpcSubStatus: k.rpc_sub_status,
+      paymentMethod: k.rpc_payment_method || null,
+      walletAddress: k.wallet_address || null,
+      enabled: k.enabled,
+      createdAt: k.created_at,
+    };
+  });
+  const summary = {
+    total: keys.length,
+    alerting: keys.filter((k) => k.alerting).length,
+    alertThresholdPercent: Number((RPC_QUOTA_ALERT_THRESHOLD * 100).toFixed(0)),
+  };
+  res.json({ code: 0, message: 'ok', data: { generatedAt: new Date().toISOString(), summary, keys } });
 }));
 
 export default router;

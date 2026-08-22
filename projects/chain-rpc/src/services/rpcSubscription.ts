@@ -220,3 +220,63 @@ export function verifyWebhookSignature(payload: Buffer, signature: string | unde
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ received.charCodeAt(i);
   return diff === 0;
 }
+
+// ─── 配额告警（REQ-3：用量 ≥ 阈值主动告警，2026-08-23） ───────────
+function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
+}
+
+/** 告警阈值（用量/配额 比例，默认 80%）。 */
+export const RPC_QUOTA_ALERT_THRESHOLD = clamp01(parseFloat(process.env.RPC_QUOTA_ALERT_THRESHOLD || '0.8'));
+/** 可选告警 webhook（配置则 POST JSON；未配置仅 logger.warn）。 */
+export const RPC_QUOTA_ALERT_WEBHOOK_URL = (process.env.RPC_QUOTA_ALERT_WEBHOOK_URL || '').trim();
+/** 告警扫描间隔（默认 30 分钟）。 */
+export const RPC_QUOTA_ALERT_INTERVAL_MS = Math.max(60_000, parseInt(process.env.RPC_QUOTA_ALERT_INTERVAL_MS || '1800000', 10));
+
+/**
+ * 配额告警扫描：enabled rx_/bx_ keys 本月用量 ≥ 阈值 → logger.warn（含掩码/用量/配额/使用率）
+ * + 可选 webhook POST（若 RPC_QUOTA_ALERT_WEBHOOK_URL 配置）。失败仅告警不抛异常。
+ */
+export async function checkQuotaAlerts(): Promise<void> {
+  try {
+    const r = await rpcPool.query(
+      `SELECT k.id, k.label, k.key_prefix, k.key_tail, k.rpc_plan_id, k.rpc_sub_status,
+              (SELECT COUNT(*)::int FROM rpc_usage u WHERE u.key_id = k.id AND u.timestamp >= $1) AS used
+       FROM rpc_keys k WHERE k.enabled = true`,
+      [monthStart()]
+    );
+    for (const row of r.rows) {
+      const plan = planById(row.rpc_plan_id) || RPC_PLANS[0];
+      const quota = plan.features.callsPerMonth;
+      if (quota <= 0) continue;
+      const pct = (row.used || 0) / quota;
+      if (pct < RPC_QUOTA_ALERT_THRESHOLD) continue;
+      const masked = `${row.key_prefix}…${row.key_tail}`;
+      const payload = {
+        event: 'rpc_quota_alert',
+        keyId: row.id,
+        maskedKey: masked,
+        label: row.label,
+        planId: row.rpc_plan_id,
+        planName: plan.name,
+        used: row.used || 0,
+        quota,
+        usagePercent: Number((pct * 100).toFixed(1)),
+        thresholdPercent: Number((RPC_QUOTA_ALERT_THRESHOLD * 100).toFixed(0)),
+        rpcSubStatus: row.rpc_sub_status,
+        ts: new Date().toISOString(),
+      };
+      logger.warn(`[chain-rpc] RPC quota alert: key=${masked} label=${row.label} plan=${row.rpc_plan_id} used=${payload.used}/${quota} (${payload.usagePercent}%)`);
+      if (RPC_QUOTA_ALERT_WEBHOOK_URL) {
+        fetch(RPC_QUOTA_ALERT_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5000),
+        }).catch((e: any) => logger.warn(`[chain-rpc] quota alert webhook failed: ${e.message}`));
+      }
+    }
+  } catch (e: any) {
+    logger.warn(`[chain-rpc] quota alert scan failed: ${e.message}`);
+  }
+}
