@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/modules/infrax.css?v=1787304000">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+<script src="/modules/i18n.js?v=1787306000"></script>
 </head>
 <body>
 <!-- Background orbs -->
@@ -29,45 +30,45 @@
 
   <nav class="sidebar-nav">
     <button class="nav-item active" data-page="noncustodial">
-      <span>🏠</span> Dashboard
+      <span class="nav-label" data-i18n="nav_dashboard">🏠 Dashboard</span>
     </button>
   </nav>
 
-  <div class="nav-section">B2B API</div>
+  <div class="nav-section" data-i18n="section_b2b_api">B2B API</div>
   <nav class="sidebar-nav">
     <button class="nav-item" data-page="rpc">
-      <span>🔗</span> Chain RPC
+      <span class="nav-label" data-i18n="nav_chain_rpc">🔗 Chain RPC</span>
       <span class="badge">RPC</span>
     </button>
     <button class="nav-item" data-page="datacenter">
-      <span>📡</span> Data & Insights
+      <span class="nav-label" data-i18n="nav_datacenter">📡 Data & Insights</span>
       <span class="badge">API</span>
     </button>
     <button class="nav-item" data-page="lightrag">
-      <span>🔎</span> LightRAG
+      <span class="nav-label" data-i18n="nav_lightrag">🔎 LightRAG</span>
       <span class="badge">RAG</span>
     </button>
   </nav>
 
-  <div class="nav-section">Wallets</div>
+  <div class="nav-section" data-i18n="section_wallets">Wallets</div>
   <nav class="sidebar-nav">
     <button class="nav-item" data-page="mpc">
-      <span>🔐</span> MPC Wallet
+      <span class="nav-label" data-i18n="nav_mpc">🔐 MPC Wallet</span>
     </button>
     <button class="nav-item" data-page="waas">
-      <span>🏢</span> WaaS
+      <span class="nav-label" data-i18n="nav_waas">🏢 WaaS</span>
       <span class="badge">B2B</span>
     </button>
     <button class="nav-item" data-page="safe">
-      <span>🛡️</span> Safe Vault
+      <span class="nav-label" data-i18n="nav_safe">🛡️ Safe Vault</span>
       <span class="badge">Multi-Sig</span>
     </button>
     <button class="nav-item" data-page="aa">
-      <span>🤖</span> Smart Account
+      <span class="nav-label" data-i18n="nav_aa">🤖 Smart Account</span>
       <span class="badge">ERC-4337</span>
     </button>
     <button class="nav-item" data-page="payments">
-      <span>💳</span> Payments
+      <span class="nav-label" data-i18n="nav_payments">💳 Payments</span>
       <span class="badge">Gateway</span>
     </button>
   </nav>
@@ -80,8 +81,8 @@
   <!-- Topbar -->
   <div class="topbar">
     <div class="topbar-left">
-      <div class="topbar-title" id="page-title">Non-Custodial Wallet</div>
-      <div class="topbar-chain" id="topbar-chain" onclick="toggleChainPicker()" title="Switch active chain">
+      <div class="topbar-title" id="page-title" data-i18n="dash_title">Non-Custodial Wallet</div>
+      <div class="topbar-chain" id="topbar-chain" onclick="toggleChainPicker()" title="Switch active chain" data-i18n-title="switch_active_chain">
         <span class="topbar-chain-dot"></span>
         <span id="topbar-chain-label">Sepolia</span>
         <span class="topbar-chain-caret">▾</span>
@@ -89,12 +90,13 @@
       </div>
     </div>
     <div class="topbar-right">
+      <button class="btn-outline i18n-toggle" onclick="I18N.toggle()" title="Switch language" style="margin-right:10px">🇬🇧 EN</button>
       <div class="topbar-wallet">
         <span class="topbar-wallet-dot" id="topbar-wallet-dot"></span>
         <span id="topbar-wallet-addr"></span>
       </div>
       
-      <button class="btn-outline topbar-disconnect-btn" onclick="logout()" title="Disconnect wallet">
+      <button class="btn-outline topbar-disconnect-btn" onclick="logout()" title="Disconnect wallet" data-i18n="topbar_disconnect" data-i18n-title="topbar_disconnect">
         ↩ Disconnect
       </button>
     </div>
@@ -104,33 +106,33 @@
   <!-- ═══ Dashboard — Service Status Overview ═══ -->
   <div class="page active" id="page-noncustodial">
     <div class="kpi-grid" id="dash-kpi" style="margin-bottom:20px">
-      <div class="kpi"><div class="kpi-label">Wallet</div><div class="kpi-val mono" id="dash-wallet" style="font-size:14px">—</div></div>
-      <div class="kpi"><div class="kpi-label">Active Services</div><div class="kpi-val" id="dash-active-count">—</div></div>
-      <div class="kpi"><div class="kpi-label">DC Plan</div><div class="kpi-val" id="dash-dc-plan">—</div></div>
-      <div class="kpi"><div class="kpi-label">WaaS Plan</div><div class="kpi-val" id="dash-waas-plan">—</div></div>
+      <div class="kpi"><div class="kpi-label" data-i18n="dash_kpi_wallet">Wallet</div><div class="kpi-val mono" id="dash-wallet" style="font-size:14px">—</div></div>
+      <div class="kpi"><div class="kpi-label" data-i18n="dash_kpi_services">Active Services</div><div class="kpi-val" id="dash-active-count">—</div></div>
+      <div class="kpi"><div class="kpi-label" data-i18n="dash_kpi_dc_plan">DC Plan</div><div class="kpi-val" id="dash-dc-plan">—</div></div>
+      <div class="kpi"><div class="kpi-label" data-i18n="dash_kpi_waas_plan">WaaS Plan</div><div class="kpi-val" id="dash-waas-plan">—</div></div>
     </div>
 
     <div class="panel">
-      <div class="panel-header">🔌 Services</div>
+      <div class="panel-header" data-i18n="dash_services">🔌 Services</div>
       <div class="panel-body" style="padding:0">
         <table class="data-table">
-          <thead><tr><th>Service</th><th>Status</th><th>Plan</th><th>Detail</th></tr></thead>
+          <thead><tr><th data-i18n="dash_th_service">Service</th><th data-i18n="dash_th_status">Status</th><th data-i18n="dash_th_plan">Plan</th><th data-i18n="dash_th_detail">Detail</th></tr></thead>
           <tbody id="dash-services-body">
-            <tr class="dash-group-row"><td colspan="4">🗂️ B2B API Services</td></tr>
-            <tr id="dash-row-rpc"><td>🔗 Chain RPC</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
-            <tr id="dash-row-dc"><td>📡 Data & Insights</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
-            <tr id="dash-row-lightrag"><td>🔎 LightRAG</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
-            <tr class="dash-group-row"><td colspan="4">🔐 Wallet Services</td></tr>
-            <tr id="dash-row-mpc"><td>🔑 MPC Wallet</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
-            <tr id="dash-row-waas"><td>🏦 WaaS</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
-            <tr id="dash-row-safe"><td>🔐 Multi-Sig Vault</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr class="dash-group-row"><td colspan="4" data-i18n="dash_group_b2b">🗂️ B2B API Services</td></tr>
+            <tr id="dash-row-rpc"><td data-i18n="dash_row_rpc">🔗 Chain RPC</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
+            <tr id="dash-row-dc"><td data-i18n="dash_row_dc">📡 Data & Insights</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-lightrag"><td data-i18n="dash_row_lightrag">🔎 LightRAG</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr class="dash-group-row"><td colspan="4" data-i18n="dash_group_wallet">🔐 Wallet Services</td></tr>
+            <tr id="dash-row-mpc"><td data-i18n="dash_row_mpc">🔑 MPC Wallet</td><td><span class="status">—</span></td><td>—</td><td class="mono">—</td></tr>
+            <tr id="dash-row-waas"><td data-i18n="dash_row_waas">🏦 WaaS</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
+            <tr id="dash-row-safe"><td data-i18n="dash_row_safe">🔐 Multi-Sig Vault</td><td><span class="status">—</span></td><td>—</td><td>—</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <div class="panel">
-      <div class="panel-header">📊 Usage</div>
+      <div class="panel-header" data-i18n="dash_usage">📊 Usage</div>
       <div class="panel-body">
         <div id="dash-usage">
           <div class="skeleton-text" style="width:100%"></div>
@@ -834,7 +836,7 @@ Body:
       <div style="text-align:center;margin-bottom:20px"><button class="btn btn-primary btn-lg" style="padding:14px 40px;font-size:15px" id="dc-activate-btn" onclick="dcSubscribe('data_free')">🚀 Activate Data Center</button></div>
       <div id="dc-sub-status" style="text-align:center;margin-bottom:16px;font-size:13px;min-height:20px"></div>
       <p class="waas-intro-note" style="text-align:center">Free tier: Sepolia testnet · 10K calls · 24h retention. Upgrade anytime.</p>
-      <div style="text-align:center;margin-top:8px"><button class="btn btn-secondary" style="padding:10px 28px;font-size:14px" onclick="dcSkipToInsights()">📈 直接体验 Insights（无需订阅）</button></div>
+      <div style="text-align:center;margin-top:8px"><button class="btn btn-secondary" style="padding:10px 28px;font-size:14px" onclick="dcSkipToInsights()" data-i18n="dc_skip_insights">📈 直接体验 Insights（无需订阅）</button></div>
     </div>
     <div id="dc-dash" style="display:none">
       <div class="tab-row">
@@ -864,7 +866,7 @@ Body:
           </div>
           <div class="kpi">
             <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🧾</div>
-            <div class="kpi-label">链上事件总量</div>
+            <div class="kpi-label" data-i18n="dc_kpi_events_total">链上事件总量</div>
             <div class="kpi-val" id="dc-total-events" style="font-size:20px;font-weight:700">—</div>
           </div>
         </div>
@@ -876,18 +878,18 @@ Body:
           <div class="panel-body" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
             <div onclick="dcSwitchTab('dc-explorer')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
               <div style="font-size:22px;margin-bottom:6px">🔍</div>
-              <div style="font-weight:700;font-size:14px;margin-bottom:4px">链上事件</div>
-              <div style="font-size:12px;color:var(--text-muted)">转账 / 授权 / DEX 交易等链上事件查询</div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px" data-i18n="dc_feature_events">链上事件</div>
+              <div style="font-size:12px;color:var(--text-muted)" data-i18n="dc_feature_events_desc">转账 / 授权 / DEX 交易等链上事件查询</div>
             </div>
             <div onclick="dcSwitchTab('dc-insights')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
               <div style="font-size:22px;margin-bottom:6px">📈</div>
               <div style="font-weight:700;font-size:14px;margin-bottom:4px">Insights</div>
-              <div style="font-size:12px;color:var(--text-muted)">知识图谱 · 因子 · RAG · ML 预测</div>
+              <div style="font-size:12px;color:var(--text-muted)" data-i18n="dc_feature_insights_desc">知识图谱 · 因子 · RAG · ML 预测</div>
             </div>
             <div onclick="dcSwitchTab('dc-market')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
               <div style="font-size:22px;margin-bottom:6px">📊</div>
-              <div style="font-weight:700;font-size:14px;margin-bottom:4px">金融行情</div>
-              <div style="font-size:12px;color:var(--text-muted)">实时报价 · K线 · 宏观数据</div>
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px" data-i18n="dc_feature_market">金融行情</div>
+              <div style="font-size:12px;color:var(--text-muted)" data-i18n="dc_feature_market_desc">实时报价 · K线 · 宏观数据</div>
             </div>
           </div>
         </div>
@@ -929,15 +931,15 @@ Body:
             <span style="margin-left:auto;color:var(--text-tertiary);font-size:12px" id="mykeys-hint"></span>
           </div>
           <div class="panel-body">
-            <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px">钱包签名鉴权 · 自助签发/轮换/吊销（<code>dx_</code> data / <code>mx_</code> MCP 等统一 key 池）。</p>
+            <p style="color:var(--text-secondary);font-size:13px;margin:0 0 16px" data-i18n="dc_mykeys_desc">钱包签名鉴权 · 自助签发/轮换/吊销（<code>dx_</code> data / <code>mx_</code> MCP 等统一 key 池）。</p>
             <div class="form-row" style="margin-bottom:12px;gap:10px">
               <input type="text" id="mykeys-label" class="input" style="max-width:280px" placeholder="label（如 my-agent）">
-              <button class="btn btn-primary" style="padding:8px 18px" onclick="myKeysCreate()">＋ 签发新 Key</button>
+              <button class="btn btn-primary" style="padding:8px 18px" onclick="myKeysCreate()" data-i18n="dc_issue_key">＋ 签发新 Key</button>
             </div>
             <div id="mykeys-msg" style="font-size:12px;min-height:18px;margin-bottom:8px"></div>
             <div class="table-wrap" style="overflow:auto">
               <table style="min-width:640px">
-                <thead><tr><th>label</th><th>scope</th><th>key</th><th>状态</th><th>RPM</th><th>请求数</th><th>最后使用</th><th>操作</th></tr></thead>
+                <thead><tr><th>label</th><th>scope</th><th>key</th><th data-i18n="dc_th_status">状态</th><th>RPM</th><th data-i18n="dc_th_requests">请求数</th><th data-i18n="dc_th_last_used">最后使用</th><th data-i18n="dc_th_actions">操作</th></tr></thead>
                 <tbody id="mykeys-tbody">
                   <tr><td colspan="8" style="padding:14px 20px"><div class="skeleton-text" style="width:94%"></div><div class="skeleton-text" style="width:68%"></div><div class="skeleton-text short"></div></td></tr>
                 </tbody>

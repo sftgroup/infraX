@@ -20,7 +20,7 @@ var API = "";
   var waasSelectedPlan = 'free';
   var safeEnabled = false;
 
-  var PAGE_TITLES = { noncustodial:'Non-Custodial Wallet', mpc:'MPC Wallet', waas:'WaaS · B2B Wallet Service', datacenter:'Data & Insights · API', safe:'Multi-Sig Vault', aa:'Smart Account · Session Keys', payments:'Payments · Gateway', rpc:'Chain RPC · JSON-RPC Gateway', lightrag:'LightRAG · Knowledge Graph RAG' };
+  var PAGE_TITLES = { noncustodial:'dash_title', mpc:'nav_mpc', waas:'nav_waas', datacenter:'nav_datacenter', safe:'nav_safe', aa:'nav_aa', payments:'nav_payments', rpc:'nav_chain_rpc', lightrag:'nav_lightrag' };
 
   // ── Re-declare all functions below (code preserved from original, wrapped) ──
 // ═══════════════════════════════════════════════════════
@@ -36,7 +36,7 @@ function logout() { localStorage.clear(); window.location.href = '/connect.html'
 // _sig/_ts/_addr (IIFE scoped)
 async function signOnce() {
   var a = user().walletAddress;
-  if (!a) throw new Error('Not connected');
+  if (!a) throw new Error(I18N.t("not_connected"));
   // Reuse cached signature (memory or localStorage, 24h TTL)
   if (_sig && _addr === a && Date.now() - parseInt(_ts) < 86400000) return;
   // Read from localStorage (saved at connect time)
@@ -50,10 +50,10 @@ async function signOnce() {
   }
   // Fallback: prompt MetaMask (first connect or expired session)
   var w = window.ethereum;
-  if (!w) throw new Error('No wallet detected');
+  if (!w) throw new Error(I18N.t("no_wallet_detected"));
   _ts = Date.now().toString();
   _addr = a;
-  _sig = await Promise.race([w.request({ method: "personal_sign", params: ["InfraX auth: " + _ts, a] }), new Promise(function(_, r){ setTimeout(function(){ r(new Error("MetaMask timeout")); }, 10000); })]);
+  _sig = await Promise.race([w.request({ method: "personal_sign", params: ["InfraX auth: " + _ts, a] }), new Promise(function(_, r){ setTimeout(function(){ r(new Error(I18N.t("meta_mask_timeout"))); }, 10000); })]);
   localStorage.setItem('px_sig', _sig);
   localStorage.setItem('px_ts', _ts);
 }
@@ -84,9 +84,9 @@ async function afetch(url, opts) {
   }
   try {
     var r = await fetch(API + url, opts);
-    if (r.status === 401) { throw new Error('Wallet auth required — please reconnect'); }
-    var j; try { j = await r.json(); } catch(e) { throw new Error('Invalid response'); }
-    if (j.code && j.code !== 0) throw new Error(j.message || 'API error');
+    if (r.status === 401) { throw new Error(I18N.t("auth_required")); }
+    var j; try { j = await r.json(); } catch(e) { throw new Error(I18N.t("invalid_response")); }
+    if (j.code && j.code !== 0) throw new Error(j.message || I18N.t("api_error"));
     return j.data !== undefined ? j.data : j;
   } catch(e) {
     if (opts.method && opts.method !== 'GET') throw e;
@@ -168,7 +168,7 @@ function fmtUSD(n) { return n ? '$' + Number(n).toLocaleString(undefined, { mini
 
 // ── Copy ──
 function copyText(txt) {
-  navigator.clipboard.writeText(txt).then(function () { showToast('Copied!', 'success'); }).catch(function () { showToast('Copy failed', 'error'); });
+  navigator.clipboard.writeText(txt).then(function () { showToast(I18N.t("copied"), 'success'); }).catch(function () { showToast(I18N.t("copy_failed"), 'error'); });
 }
 
 // ── Modal ──
@@ -189,7 +189,7 @@ function updateTopbarChain() {
 }
 
 function setActiveChain(c) {
-  if (!CHAIN_NAMES[c]) return showToast('Unsupported chain: ' + c, 'error');
+  if (!CHAIN_NAMES[c]) return showToast(I18N.t("unsupported_chain") + c, 'error');
   activeChain = c;
   try { localStorage.setItem('px_chain', c); } catch (_) {}
   updateTopbarChain();
@@ -199,7 +199,7 @@ function setActiveChain(c) {
   if (typeof ncDash === 'function' && document.getElementById('page-noncustodial') && document.getElementById('page-noncustodial').classList.contains('active')) {
     try { ncDash(); } catch (e) { console.error(e); }
   }
-  showToast('Active chain: ' + chainDisplayName(c), 'success');
+  showToast(I18N.t("active_chain") + chainDisplayName(c), 'success');
 }
 
 // 将 activeChain 同步到各页面链下拉（waas-token-chain 用 chainId 值，其余用链名值）
@@ -259,7 +259,7 @@ function setupNav() {
       var target = document.getElementById('page-' + p);
       if (!target) return;
       target.classList.add('active');
-      document.getElementById('page-title').textContent = PAGE_TITLES[p] || p;
+      document.getElementById('page-title').textContent = I18N.t(PAGE_TITLES[p] || p);
       var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit };
       try { if (loaders[p]) loaders[p](); } catch(e) { console.error('Page loader failed:', p, e); }
     });
@@ -273,6 +273,21 @@ function initActivePage() {
   var pageId = activePage.id.replace('page-', '');
   if (loaders[pageId]) { try { loaders[pageId](); } catch(e) { console.error('Init loader failed:', pageId, e); } }
 }
+
+// 语言切换后重载当前页 loader，让动态渲染内容（innerHTML）立即跟随语言
+document.addEventListener('i18n:changed', function () {
+  var loaders = { noncustodial: ncDash, mpc: mpcInit, waas: waasInit, datacenter: dcInit, safe: safeInit, aa: aaInit, payments: paymentsInit, rpc: rpcInit, lightrag: lightragInit };
+  // 带 dataset.loaded 防重复初始化的 loader，重载前先解除 guard 才会重新渲染
+  var guardedRoots = { rpc: 'rpc-root', lightrag: 'lightrag-root' };
+  var activePage = document.querySelector('.page.active');
+  if (!activePage) return;
+  var pageId = activePage.id.replace('page-', '');
+  if (guardedRoots[pageId]) {
+    var g = document.getElementById(guardedRoots[pageId]);
+    if (g) delete g.dataset.loaded;
+  }
+  if (loaders[pageId]) { try { loaders[pageId](); } catch(e) { console.error('i18n reload failed:', pageId, e); } }
+});
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function() { setupNav(); initActivePage(); updateTopbarChain(); syncChainSelectors(); setTimeout(function(){ if (typeof updateTopbar === 'function') updateTopbar(); }, 100); });

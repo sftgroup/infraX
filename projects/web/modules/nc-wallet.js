@@ -11,11 +11,11 @@ async function ncDash() {
     document.getElementById("dash-services-body").innerHTML =
       '<tr><td colspan="4" style="text-align:center;padding:40px">' +
       '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
-      '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view services</div>' +
-      '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a>' +
+      '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">' + I18N.t("dash_connect_services") + '</div>' +
+      '<a href="/connect.html" style="color:var(--gold);font-size:14px">' + I18N.t("dash_go_connect") + '</a>' +
       '</td></tr>';
     var uEl = document.getElementById("dash-usage");
-    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">🔌 Connect wallet to view usage</div>';
+    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">' + I18N.t("dash_connect_usage") + '</div>';
     return;
   }
 
@@ -29,9 +29,9 @@ async function ncDash() {
     // MPC — {registered, walletAddress, email, ...}
     if (me.mpc && me.mpc.registered) {
       activeCount++;
-      setDashRow("mpc", "active", "Free", "Wallet: " + fmtAddr(me.mpc.walletAddress));
+      setDashRow("mpc", "active", "Free", I18N.t("dash_wallet_prefix") + fmtAddr(me.mpc.walletAddress));
     } else {
-      setDashRow("mpc", "inactive", "—", "Activate in MPC tab");
+      setDashRow("mpc", "inactive", "—", I18N.t("dash_act_mpc"));
     }
 
     // WaaS — {status, planName, apiKey, ...}
@@ -39,17 +39,17 @@ async function ncDash() {
       activeCount++;
       waasPlan = me.waas.planName || "Starter";
       var keySnippet = me.waas.apiKey ? me.waas.apiKey.slice(0, 14) + "…" : "—";
-      setDashRow("waas", "active", waasPlan, "API Key: " + keySnippet);
+      setDashRow("waas", "active", waasPlan, I18N.t("dash_apikey_prefix") + keySnippet);
     } else {
-      setDashRow("waas", "inactive", "—", "Activate in WaaS tab");
+      setDashRow("waas", "inactive", "—", I18N.t("dash_act_waas"));
     }
 
     // Vault — {enabled, count}
     if (me.safe && me.safe.count > 0) {
       activeCount++;
-      setDashRow("safe", "active", "Free", me.safe.count + " safe(s)");
+      setDashRow("safe", "active", "Free", me.safe.count + I18N.t("dash_safe_count"));
     } else {
-      setDashRow("safe", "inactive", "—", "Create in Vault tab");
+      setDashRow("safe", "inactive", "—", I18N.t("dash_create_vault"));
     }
 
     // DC — {planId, planName, currentUsage, monthlyQuota, ...}
@@ -59,12 +59,12 @@ async function ncDash() {
       if (dcResp && dcResp.planId) {
         activeCount++;
         dcPlanName = dcResp.planName || "Data Free";
-        setDashRow("dc", "active", dcPlanName, "Insights · On-Chain · Market Data");
+        setDashRow("dc", "active", dcPlanName, I18N.t("dash_dc_detail"));
       } else {
-        setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
+        setDashRow("dc", "inactive", "—", I18N.t("dash_subscribe_dc"));
       }
     } catch (e) {
-      setDashRow("dc", "inactive", "—", "Subscribe in DC tab");
+      setDashRow("dc", "inactive", "—", I18N.t("dash_subscribe_dc"));
     }
 
     // B2B API Services — 独立服务健康状态（非订阅型，无需激活）；健康即计入 Active Services
@@ -93,30 +93,30 @@ async function ncDash() {
     try {
       var dcU = await afetch("/api/v2/data/usage", { auth: "none" });
       usageRows.push(dcU && dcU.planId
-        ? ['📡 Data Center', dcU.planName || 'Data Free', (dcU.currentUsage || 0) + '', (dcU.monthlyQuota || 0) + ' calls']
-        : ['📡 Data Center', '—', '—', '未订阅']);
-    } catch (e) { usageRows.push(['📡 Data Center', '—', '—', '不可用']); }
+        ? ['📡 Data Center', dcU.planName || 'Data Free', (dcU.currentUsage || 0) + '', (dcU.monthlyQuota || 0) + I18N.t("dash_usage_calls")]
+        : ['📡 Data Center', '—', '—', I18N.t("dash_usage_unsubscribed")]);
+    } catch (e) { usageRows.push(['📡 Data Center', '—', '—', I18N.t("dash_usage_unavailable")]); }
 
     // 2) MPC — 价目公开（ledger 余额需会话 token，面板不持 token 故只展示模式）
     try {
       var mpcP = await afetch("/api/v2/mpc/plans", { auth: "none" });
-      usageRows.push(['🔐 MPC Wallet', mpcP && mpcP.mode === 'metered' ? '按量计费' : 'Free',
-        '—', (mpcP && mpcP.configured) ? 'ledger 按量' : '免费']);
-    } catch (e) { usageRows.push(['🔐 MPC Wallet', 'Free', '—', '—']); }
+      usageRows.push(['🔐 MPC Wallet', mpcP && mpcP.mode === 'metered' ? I18N.t("dash_usage_metered") : I18N.t("dash_usage_free"),
+        '—', (mpcP && mpcP.configured) ? I18N.t("dash_usage_ledger_metered") : I18N.t("dash_usage_free")]);
+    } catch (e) { usageRows.push(['🔐 MPC Wallet', I18N.t("dash_usage_free"), '—', '—']); }
 
     // 3) WaaS — 订阅套餐
     var waasPlanName = (me.waas && me.waas.status === "active") ? (me.waas.planName || "Starter") : "—";
-    usageRows.push(['🏦 WaaS', waasPlanName, '—', (me.waas && me.waas.status === "active") ? 'API Key 计费' : '未激活']);
+    usageRows.push(['🏦 WaaS', waasPlanName, '—', (me.waas && me.waas.status === "active") ? I18N.t("dash_usage_apikey_billed") : I18N.t("dash_usage_not_active")]);
 
     // 4) Safe Vault — gas 自付 ledger 余额（subscriber = 钱包地址）
     try {
       var vPlans = await afetch("/api/vault/plans", { auth: "none" });
       var vBal = null;
       try { vBal = await afetch("/api/vault/ledger-balance", { method: "POST", auth: "none", body: { userId: walletAddr } }); } catch (e) {}
-      usageRows.push(['🛡️ Safe Vault', 'gas 自付',
+      usageRows.push(['🛡️ Safe Vault', I18N.t("dash_usage_gas_selfpay"),
         vBal && vBal.balance ? vBal.balance + ' ETH' : '—',
-        (vPlans && vPlans.configured) ? '实际 gas 结算' : '免费']);
-    } catch (e) { usageRows.push(['🛡️ Safe Vault', '—', '—', '不可用']); }
+        (vPlans && vPlans.configured) ? I18N.t("dash_usage_gas_settled") : I18N.t("dash_usage_free")]);
+    } catch (e) { usageRows.push(['🛡️ Safe Vault', '—', '—', I18N.t("dash_usage_unavailable")]); }
 
     // 5) AA/Session — UserOp 次数费 + paymaster gas 代付（ledger 余额 = 智能账户）
     try {
@@ -125,14 +125,14 @@ async function ncDash() {
       try { aaBal = await afetch("/v1/ledger-balance", { method: "POST", auth: "none", body: { account: walletAddr } }); } catch (e) {}
       usageRows.push(['⚡ Smart Account', (aaP && aaP.mode) || '—',
         aaBal && aaBal.balance ? aaBal.balance + ' ETH' : '—',
-        (aaP && aaP.configured) ? '次数 + gas 代付' : '免费']);
-    } catch (e) { usageRows.push(['⚡ Smart Account', '—', '—', '不可用']); }
+        (aaP && aaP.configured) ? I18N.t("dash_usage_uop_gas") : I18N.t("dash_usage_free")]);
+    } catch (e) { usageRows.push(['⚡ Smart Account', '—', '—', I18N.t("dash_usage_unavailable")]); }
 
     var rowsHtml = usageRows.map(function (r) {
       return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>';
     }).join('');
     document.getElementById("dash-usage").innerHTML =
-      '<table class="data-table"><thead><tr><th>Service</th><th>Plan</th><th>Used / Balance</th><th>Quota / Billing</th></tr></thead><tbody>' +
+      '<table class="data-table"><thead><tr><th>' + I18N.t("dash_th_service") + '</th><th>' + I18N.t("dash_th_plan") + '</th><th>' + I18N.t("dash_th_used_balance") + '</th><th>' + I18N.t("dash_th_quota_billing") + '</th></tr></thead><tbody>' +
       rowsHtml + '</tbody></table>';
 
     // KPI cards（Active Services 最终计数由上面的健康检查异步块刷新到 /6）
@@ -145,17 +145,22 @@ async function ncDash() {
 
   } catch (e) {
     var uEl = document.getElementById("dash-usage");
-    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">🔌 Connect wallet to view usage</div>';
+    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">' + I18N.t("dash_connect_usage") + '</div>';
     console.error("Dashboard init failed:", e);
   }
+}
+
+var DASH_LABEL_KEYS = { rpc: 'dash_row_rpc', dc: 'dash_row_dc', lightrag: 'dash_row_lightrag', mpc: 'dash_row_mpc', waas: 'dash_row_waas', safe: 'dash_row_safe' };
+function dashRowLabel(svc, row) {
+  if (DASH_LABEL_KEYS[svc]) return I18N.t(DASH_LABEL_KEYS[svc]);
+  return row && row.children[0] ? row.children[0].textContent : svc;
 }
 
 function setDashRow(svc, status, plan, detail) {
   var row = document.getElementById("dash-row-" + svc);
   if (!row) return;
-  var label = row.children[0] ? row.children[0].textContent : svc;
-  row.innerHTML = "<td>" + label + "</td>" +
-    "<td><span class=\"status " + status + "\">" + (status === "active" ? "🟢 Active" : "○ Inactive") + "</span></td>" +
+  row.innerHTML = "<td>" + dashRowLabel(svc, row) + "</td>" +
+    "<td><span class=\"status " + status + "\">" + (status === "active" ? I18N.t("dash_status_active") : I18N.t("dash_status_inactive")) + "</span></td>" +
     "<td>" + plan + "</td>" +
     "<td class=\"mono\" style=\"font-size:12px\">" + detail + "</td>";
 }
@@ -164,9 +169,8 @@ function setDashRow(svc, status, plan, detail) {
 function setDashHealthRow(svc, ok, plan, detail) {
   var row = document.getElementById("dash-row-" + svc);
   if (!row) return;
-  var label = row.children[0] ? row.children[0].textContent : svc;
-  row.innerHTML = "<td>" + label + "</td>" +
-    "<td><span class=\"status " + (ok ? "success" : "failed") + "\">" + (ok ? "🟢 Up" : "🔴 Down") + "</span></td>" +
+  row.innerHTML = "<td>" + dashRowLabel(svc, row) + "</td>" +
+    "<td><span class=\"status " + (ok ? "success" : "failed") + "\">" + (ok ? I18N.t("dash_status_up") : I18N.t("dash_status_down")) + "</span></td>" +
     "<td>" + plan + "</td>" +
     "<td class=\"mono\" style=\"font-size:12px\">" + detail + "</td>";
 }
