@@ -173,13 +173,19 @@ gateway dex-data.ts
 
 ### 7.2 问题二：502/504 — 根因确认 + 已修复（2026-08-23）
 
-**根因（两层）**
+**根因（三层）**
 1. nginx `location /api/v2/data/market/dex/` **未配置 `proxy_read_timeout`**（默认 60s）；OKX OnchainOS 慢响应时超 60s → 504
 2. collector OKX 客户端 `fetch()` **无超时**（[okxMarketV6.ts](file:///home/steven/infraX/projects/collector/src/services/okxMarketV6.ts)）→ 上游慢/挂起时无限等待，拖到 nginx 超时；OKX 5xx/429 指数退避重试（1s→2s→4s，最多 3 次）+ hot-tokens 逐 token 补池行情（串行）放大延迟 → 502（upstream 中断）
+3. web 代理（[server.js](file:///home/steven/infraX/projects/web/server.js)）所有后端路由 **全局 socket `timeout: 15000`** → collector 冷调（OKX 慢响应 + 逐 token 补池，实测 22~25s）超 15s → 504（生产实测 hot-tokens 冷开 504@15s）
 
-**已落地修复（commit c36c8e6）**
+**已落地修复（collector/nginx 层 commit c8c78a4；web 层 commit 387576b）**
 - nginx：`/api/v2/data/market/dex/` 增加 `proxy_read_timeout 120s`
 - collector：OKX `fetch()` 增加 `AbortSignal.timeout(25000)`（`OKX_MARKET_HTTP_TIMEOUT_MS` 可调），超时抛明确错误并由各端点 try/catch / Promise.allSettled 降级（非 500）
+- web：collector 路由（`/api/v2/data/market`、`/api/dex`、`/api/v2/market`）改路由级 `timeout: 90000`（`COLLECTOR_ROUTE_TIMEOUT_MS` 可调），其余路由保持 15s（`WEB_PROXY_TIMEOUT_MS` 可调）
+
+**修复后生产实测（2026-08-23）**
+- `hot-tokens` 冷调用：原 504@15s → 现 200@24s（OKX 慢响应被 25s 超时兜底，web 90s 放行）；缓存命中 0.5s
+- `token/history`（SOL 链）：200 真实数据（Bicat count=1）
 
 **可观测性建议（供后续）**
 - 可提供上游成功率/延迟指标（collector 已有请求日志，可对接 Prometheus）；当前无 SLA 承诺
