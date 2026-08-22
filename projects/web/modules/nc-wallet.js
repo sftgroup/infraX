@@ -14,6 +14,8 @@ async function ncDash() {
       '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view services</div>' +
       '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a>' +
       '</td></tr>';
+    var uEl = document.getElementById("dash-usage");
+    if (uEl) uEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:13px">🔌 Connect wallet to view usage</div>';
     return;
   }
 
