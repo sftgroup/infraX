@@ -31,12 +31,18 @@ const ML_API_KEY = process.env.ML_API_KEY || '';
 const PAYMENTS_HOST = process.env.PAYMENTS_HOST || 'localhost';
 const PAYMENTS_PORT = parseInt(process.env.PAYMENTS_PORT || '9132', 10);
 
+// 代理 socket 超时（ms）：路由可配 timeout 覆盖，未配用全局默认。
+//   DEX 冷路径（hot-tokens）需串行补池（OKX 25s 超时 + DexScreener），15s 过短 → 504；
+//   nginx 侧已放开至 120s（2026-08-23），collector 路由留 90s 余量。
+const WEB_PROXY_TIMEOUT_MS = parseInt(process.env.WEB_PROXY_TIMEOUT_MS || '15000', 10);
+const COLLECTOR_ROUTE_TIMEOUT_MS = parseInt(process.env.COLLECTOR_ROUTE_TIMEOUT_MS || '90000', 10);
+
 const API_ROUTES = {
   '/api/v2/admin':   { host: ADMIN_HOST,   port: ADMIN_PORT },
   // collector 行情数据面（/api/v2/data/market/*）必须位于 /api/v2/data 之前，否则被 DC 前缀吞掉
-  '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
+  '/api/v2/data/market': { host: COLLECTOR_HOST, port: COLLECTOR_PORT, timeout: COLLECTOR_ROUTE_TIMEOUT_MS },
   // DEX 策略数据（R1-R10，AIHunter 消费面）：/api/dex/* → collector /api/v2/data/market/dex/*
-  '/api/dex': { host: COLLECTOR_HOST, port: COLLECTOR_PORT, strip: '/api/dex', prefix: '/api/v2/data/market/dex' },
+  '/api/dex': { host: COLLECTOR_HOST, port: COLLECTOR_PORT, strip: '/api/dex', prefix: '/api/v2/data/market/dex', timeout: COLLECTOR_ROUTE_TIMEOUT_MS },
   // B-11-3 用户级 key（data 服务 :9112 钱包签名鉴权）— 必须先于 /api/v2/data（DC :9102）
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
   // LightRAG 门户自助开通（data 服务 :9112 钱包签名鉴权）— 选套餐自动签发 lr_ key
@@ -46,7 +52,7 @@ const API_ROUTES = {
   // Chain RPC 增强层（DC 链上事件解析增值）：/api/v2/enhanced/events → :9130/v1/enhanced/events
   '/api/v2/enhanced': { host: RPC_HOST,     port: RPC_PORT, strip: '/api/v2/enhanced', prefix: '/v1/enhanced' },
   '/api/v2/data':    { host: DC_HOST,      port: DC_PORT },
-  '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT },
+  '/api/v2/market':  { host: COLLECTOR_HOST, port: COLLECTOR_PORT, timeout: COLLECTOR_ROUTE_TIMEOUT_MS },
   '/api/v2/mpc':     { host: MPC_HOST,     port: MPC_PORT },
   '/api/v2/wallet':  { host: WAAS_HOST,    port: WAAS_PORT },
   '/api/v2/waas':    { host: WAAS_HOST,    port: WAAS_PORT },
@@ -141,7 +147,7 @@ function proxyRequest(req, res, target) {
     })(),
     method: req.method,
     headers,
-    timeout: 15000,
+    timeout: target.timeout || WEB_PROXY_TIMEOUT_MS,
   };
   const proxy = http.request(opts, (pres) => {
     // Forward status and headers from backend
