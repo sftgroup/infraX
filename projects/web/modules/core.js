@@ -303,11 +303,14 @@ if (document.readyState === 'loading') {
 document.addEventListener('click', function (e) {
   var btn = e.target.closest('.tab-btn');
   if (!btn) return;
+  var s = btn.dataset.sub;
+  // 无 data-sub 的 tab 按钮（如 Insights 子 tab Graph/Factors/RAG/ML，由模块自身切换）
+  // 不进入 sub-panel 切换逻辑，否则会把所在 .sub-panel 隐藏且无法恢复 → 黑屏
+  if (!s) return;
   var page = btn.closest('.page');
   if (!page) return;
   page.querySelectorAll('.tab-btn').forEach(function (x) { x.classList.remove('active'); });
   btn.classList.add('active');
-  var s = btn.dataset.sub;
   page.querySelectorAll('.sub-panel').forEach(function (x) { x.classList.remove('active'); });
   var subEl = document.getElementById('sub-' + s);
   if (subEl) subEl.classList.add('active');
