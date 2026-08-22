@@ -925,7 +925,7 @@ function lrLoadRealUsage() {
   el.innerHTML = '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:10px">' + I18N.t("lr_real_usage") + '</div>' +
     '<div class="skeleton-text" style="width:60%"></div><div class="skeleton-text short"></div>';
   var hdrs = { 'X-API-Key': key, 'X-Tenant-ID': tenant };
-  fetch('/api/rag/api/v1/namespaces/' + encodeURIComponent(ns) + '/documents?page=1&limit=1', { headers: hdrs })
+  fetch('/api/rag/api/v1/namespaces/' + encodeURIComponent(ns) + '/documents?page=1&limit=100', { headers: hdrs })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
@@ -934,12 +934,38 @@ function lrLoadRealUsage() {
       var data = (d && d.data) || {};
       var total = typeof data.total === 'number' ? data.total : 0;
       var docs = Array.isArray(data.documents) ? data.documents : [];
+      // 文档列表：doc_id / 状态 / 大小 / 分块 / 创建时间
+      function lrSize(b) {
+        if (typeof b !== 'number' || b <= 0) return '—';
+        if (b >= 1048576) return (b / 1048576).toFixed(2) + ' MB';
+        if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+        return b + ' B';
+      }
+      function lrStColor(s) {
+        if (s === 'indexed') return 'var(--success)';
+        if (s === 'error') return 'var(--error)';
+        if (s === 'duplicate') return 'var(--text-tertiary)';
+        return 'var(--warning)';
+      }
+      var rows = docs.slice(0, 100).map(function (x) {
+        var st = String(x.status || 'indexing');
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="padding:6px 10px;font-weight:600;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(x.doc_id || '') + '">' + esc(x.doc_id || '—') + '</td>' +
+          '<td style="padding:6px 10px"><span style="color:' + lrStColor(st) + '">' + esc(st) + '</span></td>' +
+          '<td style="padding:6px 10px;font-family:monospace">' + lrSize(x.size_bytes) + '</td>' +
+          '<td style="padding:6px 10px;font-family:monospace">' + (typeof x.chunk_count === 'number' ? x.chunk_count : '—') + '</td>' +
+          '<td style="padding:6px 10px">' + esc(x.created_at || '—') + '</td></tr>';
+      }).join('');
+      var listHtml = docs.length
+        ? '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('lr_docs_title') + ' · ' + total + '</div>' +
+          '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('lr_docs_id') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('lr_docs_status') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('lr_docs_size') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('lr_docs_chunks') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('lr_docs_created') + '</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+          (total > docs.length ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:8px">' + I18N.t('lr_docs_more').replace('{n}', String(docs.length)).replace('{total}', String(total)) + '</div>' : '')
+        : '<div style="font-size:12px;color:var(--text-muted);margin-top:12px">' + I18N.t('lr_docs_empty') + '</div>';
       el.innerHTML = '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
         '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_real_docs") + '</div><div style="font-size:18px;font-weight:700">' + total + '</div></div>' +
         '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_real_tenant") + '</div><div style="font-size:15px;font-weight:600;color:var(--gold-light)">' + tenant + '</div></div>' +
         '<div><div style="font-size:12px;color:var(--text-tertiary)">namespace</div><div style="font-size:15px;font-weight:600">' + ns + '</div></div>' +
-      '</div>' +
-      (docs.length ? '<div style="margin-top:12px;font-size:12px;color:var(--text-muted)">' + I18N.t("lr_real_recent") + ': ' + docs.map(function (x) { return x.doc_id; }).join(', ') + '</div>' : '');
+      '</div>' + listHtml;
     })
     .catch(function (e) {
       el.innerHTML = '<div style="font-size:12.5px;color:var(--binance-red,#F6465D)">⚠️ ' + I18N.t("lr_real_unreachable") + ' (' + (e.message || '') + ')</div>';
