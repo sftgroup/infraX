@@ -332,3 +332,11 @@
 | 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | WEB-9 | ML tab 6 卡片全「0 syms / no symbols」 | ① 前端只适配 `symbols`+`avg_prob_up`，tree_predictions 是 `predictions[]` 且各端点聚合字段不同 ② 公网 `/ml/` nginx 直连 ml-service 未注入鉴权 → 401 | ① insights.js `INS_ML_ENDPOINTS` 增 `arrKey`/`aggKey`/均值回退（commit c56847d）② nginx `/ml/`+`/api/ml/` 注入 `X-Service-Key`（2026-08-23，reload 生效） | ✅ 已部署（c56847d + a23dede） | P0 | browser 生产实测：5/6 卡片 30 syms 真实数据（LightGBM/共识/Bolt/Moirai/TimesFM）；Kronos 显示 data=null 属预期（TTL 缓存 miss 时 fail-silent，公网直连 200 有 29 syms）；LightGBM 卡片头部模型名曾渲染 `[object Object]`（model 为对象），commit a23dede 提取 `model.name` 修复并 bump `insights.js?v=1787600200`；nginx 修改为生产机 /etc/nginx/sites-enabled/infrax（非仓库文件，已备注于 DEPLOYMENT.md） |
+
+### 9.25 Market Data 页面分类（数据面 + WSG 前端，2026-08-23）
+
+> **✅ 已部署（commit da5b521 + e508a84 + 81c58d2/7757f10/9c5d23d）**：Market Data 页面新增 5 个分类 Tab——🔁 中心化交易所（CEX）、🦄 去中心化交易所（DEX）、📰 新闻、📅 财经日历、🌐 宏观经济数据。数据面按分类打通：CEX 走 data :9112 `/ticker`+`/bars`（既有）；DEX 走 collector `/api/dex/*`（web 代理 strip/prefix → `/api/v2/data/market/dex/*`）；新闻/日历走 data `/snapshots?type=news|calendar`；宏观走 data `/macro/history`（FRED 序列）。web server.js 新增 `/snapshots`、`/macro` 两条代理路由（[server.js](file:///home/steven/infraX/projects/web/server.js#L79-L81)）。
+
+| 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|---|
+| WEB-10 | Market Data 页面缺少分类，CEX/DEX/新闻/日历/宏观数据混杂 | 前端单页混排 + web 代理未覆盖新闻/日历/宏观路由 + collector 鉴权只认 `X-API-Key`（web 注入的 `X-Service-Key` 无效）→ DEX 401 | ① [datacenter.js](file:///home/steven/infraX/projects/web/modules/datacenter.js) `dcRenderMarket` 重构 5 分类 Tab（`dcMTab` 分派 dcMCex/dcMDex/dcMNews/dcMCal/dcMMacro，i18n 新增 28 个 `dc_mkt_*` 键）② server.js 新增 `/snapshots`+`/macro` 代理 ③ collector `apiKeyAuth` 新增 `X-Service-Key` 平台 bridge key 直通分支（config.ts 增 `service.apiKey`，commit e508a84）④ `/snapshots` 返回裸 `{ts,snapshots:{...}}` 无信封，dcLoadNews/dcLoadCal 改 `d.news||d.snapshots.news` 兼容（commit 81c58d2/7757f10）⑤ 新闻时间 `"8/21"` 短格式不再 `new Date` 误解析、日历标题去重 emoji（commit 9c5d23d） | ✅ 已部署（da5b521 + e508a84 + 7757f10 + 9c5d23d） | P1 | browser 生产实测 5 tab 全通：CEX BTC/USDT 实时报价+K线、DEX OKX 400 条 + DexScreener 双表、新闻 78 条真实条目、日历 38 条表格、宏观 CPI/US10Y 卡片；collector 生产经 tsx 直跑 src（免编译），`SERVICE_API_KEY` 走 systemd drop-in `secrets.conf`（与 web bridge key 同源），重启后进程环境变量已核验；公网 `/api/dex/hot-tokens` 200（okx 400 + dexscreener 2） |

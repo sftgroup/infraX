@@ -173,6 +173,8 @@ ssh ubuntu@43.156.25.197   # ML 机
 
 > **代理鉴权注入**（server.js）：默认注入 `X-Service-Key: $SERVICE_API_KEY`（平台 bridge key）；`/ml` 特判注入 `Authorization: Bearer $ML_API_KEY`；`/payments` 特判覆盖注入 `X-Service-Key: $PAYMENTS_API_KEY`（payments 引擎独立 key，与平台 bridge key 不同源，infrax-web drop-in `payments.conf` 配置）。
 
+- **Market Data 分类数据面路由（2026-08-23，WEB-10）**：前端 Market Data 5 分类 Tab 走 web `server.js` 相对路径代理——`/snapshots`、`/macro` → data `:9112`（新闻/财经日历/宏观 FRED）；`/api/dex/*` → collector `:9101`（strip `/api/dex` + prefix `/api/v2/data/market/dex`，OKX + DexScreener 双源）。collector `apiKeyAuth` 已支持 `X-Service-Key` 平台 bridge key 直通（`config.service.apiKey` = `SERVICE_API_KEY`，生产经 systemd drop-in `secrets.conf` 配置，与 web bridge key 同源）；data `:9112` 的 `/snapshots` 返回裸 `{ts, snapshots:{...}}`（无信封），前端需按 `d.snapshots.*` 解包。
+
 ### nginx 公网入口（172，80/443，统一对外）
 
 所有公网流量统一经 172 nginx 进入（后端服务大多绑定 127.0.0.1，外部不可直连）：
