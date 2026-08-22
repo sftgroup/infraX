@@ -738,17 +738,28 @@ function lrDashHtml() {
   '</div>';
 }
 
-// W-9c: API Key（本地保存 lr_ key，明文仅本机）
+// W-9c: API Key（本地保存 lr_ key + 租户 + namespace，明文仅本机；admin 控制台开通后填入）
 function lrKeyHtml() {
   var saved = '';
-  try { saved = localStorage.getItem('px_rag_key') || ''; } catch (e) {}
+  var tenant = '';
+  var ns = '';
+  try { saved = localStorage.getItem('px_rag_key') || ''; tenant = localStorage.getItem('px_rag_tenant') || ''; ns = localStorage.getItem('px_rag_ns') || ''; } catch (e) {}
+  var savedBlock = saved || tenant ? '<div style="margin-bottom:14px">' +
+    '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">' + I18N.t("lr_key_saved_label") + '</div>' +
+    (saved ? '<code style="font-size:13px;color:var(--gold-light);word-break:break-all">' + saved + '</code><br>' : '') +
+    (tenant ? '<code style="font-size:12px;color:var(--text-tertiary)">X-Tenant-ID: ' + tenant + '</code>' : '') +
+    (ns ? '<span style="font-size:12px;color:var(--text-tertiary)"> · ns: ' + ns + '</span>' : '') +
+  '</div>' : '';
   return '<div class="panel">' +
     '<div class="panel-header">🔑 API Key <span class="stat-chip" style="margin-left:auto">' + I18N.t("lr_key_hint") + '</span></div>' +
     '<div class="panel-body">' +
-      (saved ? '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">' + I18N.t("lr_key_saved_label") + '</div>' +
-        '<code style="font-size:13px;color:var(--gold-light);word-break:break-all">' + saved + '</code></div>' : '') +
+      savedBlock +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
         '<input type="text" id="lr-key-input" class="input" placeholder="' + I18N.t("lr_key_save_ph") + '" style="flex:1;min-width:260px">' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
+        '<input type="text" id="lr-tenant-input" class="input" placeholder="' + I18N.t("lr_key_tenant_ph") + '" style="flex:1;min-width:200px" value="' + tenant + '">' +
+        '<input type="text" id="lr-ns-input" class="input" placeholder="' + I18N.t("lr_key_ns_ph") + '" style="flex:1;min-width:200px" value="' + ns + '">' +
         '<button class="btn btn-primary" onclick="lrSaveKey()">' + I18N.t("lr_key_save_btn") + '</button>' +
       '</div>' +
       '<p style="font-size:12.5px;color:var(--text-tertiary);margin:12px 0 0">' + I18N.t("lr_key_empty") + '</p>' +
@@ -758,10 +769,17 @@ function lrKeyHtml() {
 function lrSaveKey() {
   var inp = document.getElementById('lr-key-input');
   if (!inp || !inp.value.trim()) { showToast(I18N.t("lr_key_need"), 'error'); return; }
-  try { localStorage.setItem('px_rag_key', inp.value.trim()); } catch (e) {}
+  var tenant = (document.getElementById('lr-tenant-input') || {}).value || '';
+  var ns = (document.getElementById('lr-ns-input') || {}).value || '';
+  try {
+    localStorage.setItem('px_rag_key', inp.value.trim());
+    localStorage.setItem('px_rag_tenant', tenant);
+    localStorage.setItem('px_rag_ns', ns || tenant);
+  } catch (e) {}
   showToast(I18N.t("lr_key_saved_toast"), 'success');
   var panel = document.getElementById('sub-lr-key');
   if (panel) panel.innerHTML = lrKeyHtml();
+  lrLoadMySub();
 }
 
 // W-9c: 节点状态（真实 health 探针）
@@ -857,8 +875,44 @@ function lrLoadMySub() {
       '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_kpi_calls") + '</div><div style="font-size:16px;font-weight:600">' + formatNumber(p.calls) + '</div></div>' +
     '</div>' +
     lrUpgradeHtml(p.name) +
+    '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)"><div id="lr-real-usage"></div></div>' +
     '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:10px">' + I18N.t("lr_my_sub_note") + '</div>' +
   '</div>';
+  lrLoadRealUsage();
+}
+
+// W-9c: 真实用量（admin 开通后保存 key+租户 → 直连 ragservicer list_documents）
+function lrLoadRealUsage() {
+  var el = document.getElementById('lr-real-usage');
+  if (!el) return;
+  var key = '', tenant = '', ns = '';
+  try { key = localStorage.getItem('px_rag_key') || ''; tenant = localStorage.getItem('px_rag_tenant') || ''; ns = localStorage.getItem('px_rag_ns') || ''; } catch (e) {}
+  if (!key || !tenant) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-tertiary)">📦 ' + I18N.t("lr_real_nokey") + '</div>';
+    return;
+  }
+  el.innerHTML = '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:10px">' + I18N.t("lr_real_usage") + '</div>' +
+    '<div class="skeleton-text" style="width:60%"></div><div class="skeleton-text short"></div>';
+  var hdrs = { 'X-API-Key': key, 'X-Tenant-ID': tenant };
+  fetch('/api/rag/api/v1/namespaces/' + encodeURIComponent(ns) + '/documents?page=1&limit=1', { headers: hdrs })
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      var data = (d && d.data) || {};
+      var total = typeof data.total === 'number' ? data.total : 0;
+      var docs = Array.isArray(data.documents) ? data.documents : [];
+      el.innerHTML = '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+        '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_real_docs") + '</div><div style="font-size:18px;font-weight:700">' + total + '</div></div>' +
+        '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_real_tenant") + '</div><div style="font-size:15px;font-weight:600;color:var(--gold-light)">' + tenant + '</div></div>' +
+        '<div><div style="font-size:12px;color:var(--text-tertiary)">namespace</div><div style="font-size:15px;font-weight:600">' + ns + '</div></div>' +
+      '</div>' +
+      (docs.length ? '<div style="margin-top:12px;font-size:12px;color:var(--text-muted)">' + I18N.t("lr_real_recent") + ': ' + docs.map(function (x) { return x.doc_id; }).join(', ') + '</div>' : '');
+    })
+    .catch(function (e) {
+      el.innerHTML = '<div style="font-size:12.5px;color:var(--binance-red,#F6465D)">⚠️ ' + I18N.t("lr_real_unreachable") + ' (' + (e.message || '') + ')</div>';
+    });
 }
 
 function lrLoadDashboard() {
