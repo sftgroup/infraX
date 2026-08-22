@@ -19,43 +19,43 @@ os.environ.setdefault("DATA_CONFIG_PATH", "data_config.json")
 import pytest  # noqa: E402
 
 import app_auth  # noqa: E402
-from main import _api_authorized  # noqa: E402
+from main import _api_auth_status  # noqa: E402
 
 
 def _req(**headers):
-    return SimpleNamespace(headers=headers)
+    return SimpleNamespace(headers=headers, method="GET")
 
 
 def test_open_when_no_key(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "")
-    assert _api_authorized(_req()) is True
+    assert _api_auth_status(_req()) is None
 
 
 def test_service_key_matches(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "s3cret")
-    assert _api_authorized(_req(**{"X-Service-Key": "s3cret"})) is True
+    assert _api_auth_status(_req(**{"X-Service-Key": "s3cret"})) is None
 
 
 def test_api_key_matches(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "s3cret")
-    assert _api_authorized(_req(**{"X-API-Key": "s3cret"})) is True
+    assert _api_auth_status(_req(**{"X-API-Key": "s3cret"})) is None
 
 
 def test_bearer_matches(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "s3cret")
-    assert _api_authorized(_req(Authorization="Bearer s3cret")) is True
+    assert _api_auth_status(_req(Authorization="Bearer s3cret")) is None
 
 
 def test_no_header_rejected(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "s3cret")
-    assert _api_authorized(_req()) is False
+    assert _api_auth_status(_req()) == 401
 
 
 def test_wrong_key_rejected(monkeypatch):
     monkeypatch.setattr("app.config.DATA_API_KEY", "s3cret")
-    assert _api_authorized(_req(**{"X-Service-Key": "wrong"})) is False
-    assert _api_authorized(_req(**{"X-API-Key": "wrong"})) is False
-    assert _api_authorized(_req(Authorization="Bearer wrong")) is False
+    assert _api_auth_status(_req(**{"X-Service-Key": "wrong"})) == 401
+    assert _api_auth_status(_req(**{"X-API-Key": "wrong"})) == 401
+    assert _api_auth_status(_req(Authorization="Bearer wrong")) == 401
 
 
 def test_health_exempt():

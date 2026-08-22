@@ -738,48 +738,64 @@ function lrDashHtml() {
   '</div>';
 }
 
-// W-9c: API Key（本地保存 lr_ key + 租户 + namespace，明文仅本机；admin 控制台开通后填入）
+// W-9c: API Key —— 选套餐即自动签发（平台代管，可回看）。data-service 持
+// ragservicer admin key 为用户建租户 + 签发 lr_ key，前端仅展示 + 回看同步。
 function lrKeyHtml() {
   var saved = '';
   var tenant = '';
   var ns = '';
   try { saved = localStorage.getItem('px_rag_key') || ''; tenant = localStorage.getItem('px_rag_tenant') || ''; ns = localStorage.getItem('px_rag_ns') || ''; } catch (e) {}
-  var savedBlock = saved || tenant ? '<div style="margin-bottom:14px">' +
+  var block = saved || tenant ? '<div style="margin-bottom:14px">' +
     '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">' + I18N.t("lr_key_saved_label") + '</div>' +
     (saved ? '<code style="font-size:13px;color:var(--gold-light);word-break:break-all">' + saved + '</code><br>' : '') +
     (tenant ? '<code style="font-size:12px;color:var(--text-tertiary)">X-Tenant-ID: ' + tenant + '</code>' : '') +
     (ns ? '<span style="font-size:12px;color:var(--text-tertiary)"> · ns: ' + ns + '</span>' : '') +
-  '</div>' : '';
+  '</div>' : '<div style="margin-bottom:14px;font-size:12.5px;color:var(--text-tertiary)">' + I18N.t("lr_key_empty") + '</div>';
   return '<div class="panel">' +
     '<div class="panel-header">🔑 API Key <span class="stat-chip" style="margin-left:auto">' + I18N.t("lr_key_hint") + '</span></div>' +
     '<div class="panel-body">' +
-      savedBlock +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        '<input type="text" id="lr-key-input" class="input" placeholder="' + I18N.t("lr_key_save_ph") + '" style="flex:1;min-width:260px">' +
-      '</div>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">' +
-        '<input type="text" id="lr-tenant-input" class="input" placeholder="' + I18N.t("lr_key_tenant_ph") + '" style="flex:1;min-width:200px" value="' + tenant + '">' +
-        '<input type="text" id="lr-ns-input" class="input" placeholder="' + I18N.t("lr_key_ns_ph") + '" style="flex:1;min-width:200px" value="' + ns + '">' +
-        '<button class="btn btn-primary" onclick="lrSaveKey()">' + I18N.t("lr_key_save_btn") + '</button>' +
-      '</div>' +
-      '<p style="font-size:12.5px;color:var(--text-tertiary);margin:12px 0 0">' + I18N.t("lr_key_empty") + '</p>' +
+      block +
+      '<button class="btn" onclick="lrFetchGrant()">↻ ' + I18N.t("lr_key_save_btn") + '</button>' +
     '</div></div>';
 }
 
-function lrSaveKey() {
-  var inp = document.getElementById('lr-key-input');
-  if (!inp || !inp.value.trim()) { showToast(I18N.t("lr_key_need"), 'error'); return; }
-  var tenant = (document.getElementById('lr-tenant-input') || {}).value || '';
-  var ns = (document.getElementById('lr-ns-input') || {}).value || '';
-  try {
-    localStorage.setItem('px_rag_key', inp.value.trim());
-    localStorage.setItem('px_rag_tenant', tenant);
-    localStorage.setItem('px_rag_ns', ns || tenant);
-  } catch (e) {}
-  showToast(I18N.t("lr_key_saved_toast"), 'success');
-  var panel = document.getElementById('sub-lr-key');
-  if (panel) panel.innerHTML = lrKeyHtml();
-  lrLoadMySub();
+// 平台自动开通：选套餐 → POST /api/v2/lightrag/provision → 本地缓存 key/租户/ns
+function lrProvision() {
+  var plan = lrGetPlan();
+  return afetch('/api/v2/lightrag/provision', {
+    method: 'POST', auth: 'wallet',
+    body: { plan_id: (plan && plan.id) || 'lr_free' }
+  }).then(function (g) {
+    if (!g || !g.api_key) throw new Error('empty grant');
+    try {
+      localStorage.setItem('px_rag_key', g.api_key);
+      localStorage.setItem('px_rag_tenant', g.tenant_id);
+      localStorage.setItem('px_rag_ns', g.namespace || g.tenant_id);
+    } catch (e) {}
+    return g;
+  });
+}
+
+// 回看（平台代管）：GET /api/v2/lightrag/keys → 同步本地 → 重渲染
+function lrFetchGrant() {
+  return afetch('/api/v2/lightrag/keys', { auth: 'wallet' }).then(function (d) {
+    var grants = (d && d.grants) || [];
+    var g = grants[0];
+    if (!g || !g.api_key) throw new Error('no grant');
+    try {
+      localStorage.setItem('px_rag_key', g.api_key);
+      localStorage.setItem('px_rag_tenant', g.tenant_id);
+      localStorage.setItem('px_rag_ns', g.namespace || g.tenant_id);
+    } catch (e) {}
+    var panel = document.getElementById('sub-lr-key');
+    if (panel) panel.innerHTML = lrKeyHtml();
+    lrLoadMySub();
+    showToast(I18N.t("lr_key_refresh_ok"), 'success');
+    return g;
+  }).catch(function (e) {
+    showToast(I18N.t("lr_prov_error") + (e && e.message ? ' (' + e.message + ')' : ''), 'error');
+    return null;
+  });
 }
 
 // W-9c: 节点状态（真实 health 探针）
@@ -865,6 +881,21 @@ function lrLoadMySub() {
       '<button class="btn btn-primary" onclick="lrResetToIntro()">' + I18N.t("lr_activate_now") + '</button></div>';
     return;
   }
+  // 自动开通兜底：已选套餐但尚无 lr_ key → 平台自动签发（幂等，可重试）
+  var cachedKey = '';
+  try { cachedKey = localStorage.getItem('px_rag_key') || ''; } catch (e) {}
+  if (!cachedKey) {
+    el.innerHTML = '<div style="text-align:center;padding:22px;color:var(--text-tertiary);font-size:13px">' + I18N.t("lr_prov_loading") + '</div>';
+    lrProvision().then(function () {
+      lrLoadMySub();
+      var kp = document.getElementById('sub-lr-key');
+      if (kp) kp.innerHTML = lrKeyHtml();
+    }).catch(function (e) {
+      el.innerHTML = '<div style="text-align:center;padding:22px;color:var(--binance-red,#F6465D);font-size:13px">⚠️ ' +
+        I18N.t("lr_prov_error") + (e && e.message ? ' (' + e.message + ')' : '') + '</div>';
+    });
+    return;
+  }
   el.innerHTML = '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;text-align:left">' +
     '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:12px">' + I18N.t("lr_my_sub") + '</div>' +
     '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">' +
@@ -929,6 +960,8 @@ function lrLoadDashboard() {
   setHtml('lr-kpi-calls', p ? formatNumber(p.calls) : '—');
   lrLoadMySub();
   lrLoadStatus();
+  var kp = document.getElementById('sub-lr-key');
+  if (kp) kp.innerHTML = lrKeyHtml();
 }
 
 function lrRefresh() {
@@ -939,9 +972,15 @@ function lrRefresh() {
 function lrActivate(planId) {
   var p = lrFindPlan(planId);
   if (!p) return;
-  lrSavePlan({ id: p.id, name: p.name });
-  showToast(I18N.t("lr_activated_toast"), 'success');
-  lrLoadDashboard();
+  // 选套餐 → 平台自动开通 lr_ key（幂等）；成功后保存套餐并进入仪表盘
+  showToast(I18N.t("lr_prov_loading"), 'info');
+  lrProvision().then(function () {
+    lrSavePlan({ id: p.id, name: p.name });
+    showToast(I18N.t("lr_activated_toast"), 'success');
+    lrLoadDashboard();
+  }).catch(function (e) {
+    showToast(I18N.t("lr_prov_error") + (e && e.message ? ' (' + e.message + ')' : ''), 'error');
+  });
 }
 
 function lrSwitchPlan(planId) {

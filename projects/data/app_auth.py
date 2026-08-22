@@ -28,8 +28,8 @@ from typing import Callable, Container
 # 统一 401 响应体（与 data-service DS-12 契约一致）
 UNAUTHORIZED = {"detail": "unauthorized"}
 
-# 默认豁免路径（存活探针）
-DEFAULT_PUBLIC_PATHS = frozenset({"/health"})
+# 默认豁免路径（存活探针 + Prometheus 指标拉取）
+DEFAULT_PUBLIC_PATHS = frozenset({"/health", "/metrics"})
 
 HeaderGetter = Callable[[str], str]
 
@@ -46,12 +46,28 @@ def extract_api_key(get_header: HeaderGetter) -> str:
     return ""
 
 
-def is_authorized(get_header: HeaderGetter, expected_key: str | None) -> bool:
-    """常量时间比较；expected_key 为空 → 未配置即开放（向后兼容）。"""
-    if not expected_key:
+def is_authorized(
+    get_header: HeaderGetter,
+    expected_key: str | None,
+    method: str = "GET",
+    monitor_key: str | None = None,
+) -> bool:
+    """常量时间比较；expected_key 为空 → 未配置即开放（向后兼容）。
+
+    G-7：monitor_key 为独立只读监控 key，与业务 bridge key 权限解耦——
+    仅允许安全方法（GET/HEAD/OPTIONS），写操作一律拒绝。monitor_key
+    为空时行为与旧版完全一致。
+    """
+    if not expected_key and not monitor_key:
         return True
     key = extract_api_key(get_header)
-    return bool(key) and hmac.compare_digest(key, expected_key)
+    if not key:
+        return False
+    if expected_key and hmac.compare_digest(key, expected_key):
+        return True
+    if monitor_key and hmac.compare_digest(key, monitor_key):
+        return method in ("GET", "HEAD", "OPTIONS")
+    return False
 
 
 def is_exempt(

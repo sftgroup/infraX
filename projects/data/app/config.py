@@ -113,6 +113,10 @@ ML_API_KEY = os.getenv("ML_API_KEY", "")           # ml-service 自身鉴权（�
 # B 端无需再持有 ragservicer key（双轨收敛为单入口单 key）。
 RAGSERVICER_BASE_URL = os.getenv("RAGSERVICER_BASE_URL", "").rstrip("/")
 RAGSERVICER_SERVICE_KEY = os.getenv("RAGSERVICER_SERVICE_KEY", "")
+# LightRAG 门户自助开通：data-service 内部持 ragservicer admin key 为用户
+# 自动建租户 + 签发 lr_ key（B 端选套餐即开通，无需人工）。仅本机回环可达。
+RAGSERVICER_ADMIN_URL = os.getenv("RAGSERVICER_ADMIN_URL", "").rstrip("/")
+RAGSERVICER_ADMIN_KEY = os.getenv("RAGSERVICER_ADMIN_KEY", "")
 
 # ── P2 单模型快照落库（§5.7）：30min 拉 bolt/moirai/timesfm → ml_predictions ──
 P2_COLLECT_ENABLED = os.getenv("P2_COLLECT_ENABLED", "true").lower() == "true"

@@ -187,8 +187,9 @@ async def _api_auth(request, call_next):
     if not app_auth.is_exempt(
         request.url.path,
         exact={"/health", "/metrics", "/docs", "/redoc", "/openapi.json"},
-        # /admin/* 由 ADMIN_API_KEY 校验；/api/v2/data/my-keys* 由钱包签名自校验
-        prefixes=("/admin/", "/api/v2/data/my-keys"),
+        # /admin/* 由 ADMIN_API_KEY 校验；/api/v2/data/my-keys* 与
+        # /api/v2/lightrag/* 由钱包签名自校验（B 端自助：我的 keys / LightRAG 订阅）
+        prefixes=("/admin/", "/api/v2/data/my-keys", "/api/v2/lightrag/"),
     ):
         status = _api_auth_status(request)
         if status == 401:
@@ -1329,6 +1330,41 @@ async def my_keys_delete(key_id: int, request: Request):
         raise HTTPException(status_code=404, detail="api key not found")
     logger.info("User api-key deleted: owner=%s id=%s", owner, key_id)
     return {"code": 0, "message": "ok", "data": {"deleted": True}}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  LightRAG 门户自助开通（/api/v2/lightrag/*）— 选套餐即自动分配 lr_ key
+#  鉴权：钱包签名（同 my-keys）。流程：data-service 内部持 ragservicer
+#  admin key 自动建租户 + 签发 lr_ key，明文存入 rag_grants（平台代管，
+#  用户可随时回看；B 端无需再联系 admin 手动开通）。
+# ═══════════════════════════════════════════════════════════════
+
+_PLAN_IDS = ("lr_free", "lr_pro", "lr_enterprise")
+
+
+@app.get("/api/v2/lightrag/keys")
+async def lightrag_keys_list(request: Request):
+    owner = _wallet_owner(request)
+    from app import rag_grants
+    grants = rag_grants.list_by_owner(owner)
+    return {"code": 0, "message": "ok", "data": {"owner": owner, "grants": grants}}
+
+
+@app.post("/api/v2/lightrag/provision")
+async def lightrag_provision(request: Request):
+    owner = _wallet_owner(request)
+    body = await request.json()
+    plan_id = str(body.get("plan_id") or "lr_free").strip().lower()
+    if plan_id not in _PLAN_IDS:
+        raise HTTPException(status_code=400, detail=f"plan_id must be one of {list(_PLAN_IDS)}")
+    from app import rag_provision
+    try:
+        record = rag_provision.provision(owner, plan_id)
+    except rag_provision.ProvisionError as exc:
+        logger.warning("LightRAG provision failed: owner=%s err=%s", owner, exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    logger.info("LightRAG provision ok: owner=%s plan=%s", owner, plan_id)
+    return {"code": 0, "message": "ok", "data": record}
 
 
 # ── Startup ────────────────────────────────────────────────────

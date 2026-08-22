@@ -39,6 +39,8 @@ const API_ROUTES = {
   '/api/dex': { host: COLLECTOR_HOST, port: COLLECTOR_PORT, strip: '/api/dex', prefix: '/api/v2/data/market/dex' },
   // B-11-3 用户级 key（data 服务 :9112 钱包签名鉴权）— 必须先于 /api/v2/data（DC :9102）
   '/api/v2/data/my-keys': { host: DATA_HOST, port: DATA_PORT },
+  // LightRAG 门户自助开通（data 服务 :9112 钱包签名鉴权）— 选套餐自动签发 lr_ key
+  '/api/v2/lightrag': { host: DATA_HOST, port: DATA_PORT },
   // Chain RPC 只读状态（/api/v2/rpc/health → chain-rpc :9130 /health）— 面板服务状态用（strip 前缀）
   '/api/v2/rpc':     { host: RPC_HOST,      port: RPC_PORT, strip: '/api/v2/rpc' },
   // Chain RPC 增强层（DC 链上事件解析增值）：/api/v2/enhanced/events → :9130/v1/enhanced/events
