@@ -1,5 +1,5 @@
-// PocketX Vault Server — multi-sig + Safe chain execution + risk control
-// Standalone Express service, independent of other PocketX modules
+// InfraX Vault Server — multi-sig + Safe chain execution + risk control
+// Standalone Express service, independent of other InfraX modules
 import express from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
@@ -38,7 +38,7 @@ function apiResponse(data: any = null, message = 'success', code = 0) {
 }
 
 // ─── Health ───
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-vault', uptime: process.uptime() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-vault', uptime: process.uptime() }));
 
 // ─── Dashboard ───
 app.get('/api/vault/dashboard', asyncHandler(async (_req: any, res: any) => {

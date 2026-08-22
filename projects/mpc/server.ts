@@ -1,5 +1,5 @@
-// PocketX MPC Server — email-based MPC key shard management
-// Standalone Express service, independent of other PocketX modules
+// InfraX MPC Server — email-based MPC key shard management
+// Standalone Express service, independent of other InfraX modules
 import express from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
@@ -634,7 +634,7 @@ const ERC20_APPROVE_ABI = [
 })().catch(e => console.error('[MPC] Table init error:', e.message));
 
 // ─── Health ───
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'pocketx-mpc', uptime: process.uptime() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'infrax-mpc', uptime: process.uptime() }));
 
 // ─── Send verification code ───
 app.post('/api/v2/mpc/send-code', asyncHandler(async (req: any, res: any) => {

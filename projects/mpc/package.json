@@ -1,5 +1,5 @@
 {
-  "name": "infrax-pc",
+  "name": "infrax-mpc",
   "version": "1.0.0",
   "private": true,
   "description": "InfraX MPC Wallet Service — email-based MPC key shard management",

@@ -32,7 +32,7 @@ export default function Login() {
       <form className="login-card" onSubmit={submit}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>⛓️</div>
-          <div className="login-title">PocketX Collector</div>
+          <div className="login-title">InfraX Collector</div>
           <div className="login-sub">Admin Panel</div>
         </div>
         {err && <div className="login-error">{err}</div>}

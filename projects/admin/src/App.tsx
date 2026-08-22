@@ -70,7 +70,7 @@ function Sidebar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent), #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>⛓️</div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#e5e7eb' }}>PocketX</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e5e7eb' }}>InfraX</div>
             <div style={{ fontSize: 11, color: 'var(--dim)' }}>Admin Panel</div>
           </div>
         </div>
@@ -85,7 +85,7 @@ function Sidebar() {
       </nav>
       <div className="sidebar-footer">
         <div style={{ fontSize: 13, color: '#e5e7eb', fontWeight: 500 }}>Admin</div>
-        <div style={{ fontSize: 11, color: 'var(--dim)' }}>admin@pocketx.io</div>
+        <div style={{ fontSize: 11, color: 'var(--dim)' }}>admin@infrax.0xainet.top</div>
         <button onClick={logout} style={{ marginTop: 8, background: 'transparent', border: '1px solid var(--border)', color: 'var(--dim)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>Logout</button>
       </div>
     </aside>
