@@ -314,3 +314,11 @@
 |---|---|---|---|---|---|
 | AFR-1 | **/factory 因子目录 `GET /api/market-data/catalog` → 503** | **InfraX 侧已恢复**：根因 rx key（id=4）rpc_free 1 万/月耗尽连带的间歇不可达；已升级 rpc_pro（10 万/月，本月已用 11072≈11%）；data-service `/factors/catalog` 生产实测 200 完整目录（bridge key :9111→:9112）。AIHunter 前端降级「因子目录不可用」为 fail-silent 正确行为 | ✅ 已答复 | P2 | 见回执 7.6①；若 AIHunter 仍复现，自查 `DATA_SERVICE_URL`（IP 直连）可达性与 10s 超时 |
 | AFR-2 | **/factory 历史运行 `GET /api/strategy-factory/runs/10` → 404** | **AIHunter 侧数据问题，只通知不代修**（协作原则 13.5）：python-backend `get_run(10, user_id)` 按用户隔离查自有运行记录表，run 10 不存在或归属他人；可能原因旧记录清理/表重建 id 不连续/归属他用户。建议 AIHunter 前端处理 404 + 明确记录保留策略 | ✅ 已答复 | P3 | 见回执 7.6②；InfraX 无此数据 |
+
+### 9.23 Insights 子 tab 黑屏修复（WSG 前端缺陷，2026-08-23）
+
+> **✅ 已修复部署（commit 9c2a89f）**：Data & Insights 页面点击 🕸️ Graph / 📈 Factors / 🔎 RAG / ML 子 tab 后内容区全黑无内容——根因 [core.js](file:///home/steven/infraX/projects/web/modules/core.js#L302-L316) 全局 tab 事件委托对**任意 `.tab-btn`** 点击执行「隐藏页内所有 `.sub-panel` → 按 `data-sub` 恢复」；Insights 子 tab 仅 `data-ins-tab`（无 `data-sub`），`sub-undefined` 不存在 → 所在 `#sub-dc-insights` 被隐藏不恢复 → 黑屏。修复：无 `data-sub` 的 tab 按钮直接 return（由模块自身切换），bump `core.js?v=1787430100` 防浏览器缓存。
+
+| 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|---|
+| WEB-8 | Insights 四个子 tab 点击后内容区全黑 | core.js L303 全局委托把子 tab 当主 tab 处理：隐藏所有 sub-panel 后 `getElementById('sub-undefined')` 为 null 无法恢复 | core.js L306-309 守卫：无 `data-sub` 的 `.tab-btn`（Insights 子 tab）直接 return，不进入 sub-panel 切换 | ✅ 已部署（commit 9c2a89f） | P0 | 涉及 core.js + index.html（版本号 bump）；本地 browser 实测修复生效（点击子 tab 后 `sub-dc-insights` 保持 `active`/`block`，`ins-pane` 正常切换，无 console 错误）；生产源站与公网 `/index.html` 均已确认新版本号；接口层 6 项（graph/entities/edges、factors/current、history、rag/retrieve、ml/*）生产均 200 有数据，与黑屏无关 |
