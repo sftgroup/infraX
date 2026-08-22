@@ -23,7 +23,7 @@
 
 - **入账路径**：① DB 直插（联调/运维）② x402 verify（用户向平台钱包转账 → 引擎入账）
 - **键维度**：`subscriber = userOp.sender`（智能账户地址）
-- **已实测**：PocketX 联调 tx `0x8f1666db…be0862`（alto 直连）EP 存款扣减 `312,612,002,188,284 wei = actualGasCost`；relay 广播经 A-10 计费 402 拦截后，ledger 预存 1 OXA 放行
+- **已实测**：InfraX 联调 tx `0x8f1666db…be0862`（alto 直连）EP 存款扣减 `312,612,002,188,284 wei = actualGasCost`；relay 广播经 A-10 计费 402 拦截后，ledger 预存 1 OXA 放行
 
 ### 1.2 现状问题（本设计的动因）
 
@@ -42,7 +42,7 @@
 1. **资金安全**：平台托管资金从 EOA 迁入**智能合约托管**，消除私钥单点；用户存管资金合约可验证。**治理不依赖外部多签**——全部由合约机制承担（owner 密钥 HSM/轮换 + pause 冻结计费 + 限额兜底 + 升级需先暂停）。
 2. **计费链上化**：原子预扣、扣款、退款在**链上合约记账**（storage 操作），不依赖 DB 事务保证资金语义。
 3. **零信任边界**：任何"资金状态"均可在链上校验；ledger 降级为索引/对账层。
-4. **向后兼容**：迁移期间 ledger 与合约双轨（feature flag），现有 PocketX 调用不改协议。
+4. **向后兼容**：迁移期间 ledger 与合约双轨（feature flag），现有 InfraX 调用不改协议。
 5. **成本可控**：扣款走**记账而非转账**（合约内 storage 加减），单次扣款 gas 远低于转账；支持批量结算。
 
 ---
@@ -138,7 +138,7 @@ interface IInfraXEscrow {
 ### 阶段 0：现状（不动）
 
 - ledger 单轨计费；平台 EOA 直收 x402；paymaster EP deposit 链上结算已运行。
-- 目标：**不破坏现有 PocketX 联调**（ledger 已预存 1 OXA，可继续跑）。
+- 目标：**不破坏现有 InfraX 联调**（ledger 已预存 1 OXA，可继续跑）。
 
 ### 阶段 1：托管合约落地 + 资金迁入（解决 P1 单点风险）
 

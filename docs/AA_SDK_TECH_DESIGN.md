@@ -1,14 +1,14 @@
 # aa-sdk 技术方案细化 — ERC-4337 智能账户实现
 
 > **版本**: v1.10 | **日期**: 2026-08-21 | **作者**: stevenwang 团队（架构师）
-> **上游需求**: `docs/POCKETX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
+> **上游需求**: `docs/INFRAX_EXPANSION.md` §5（ERC-4337 智能账户集成，P0 最高优先级）
 > **状态**: 评审中
 >
 > **v1.10（2026-08-21）**：**SDK v0.1.3——InfraXEscrow 充值构建 helper（AgentX 自动续订 REQ-1/REQ-5）**——新增 `src/escrow.ts`：`InfraXEscrowAbi`（deposit/depositFor/depositForBatch/depositForERC20/depositForERC20Batch，对齐 `projects/escrow/contracts/interfaces/IInfraXEscrow.sol`）+ 编码 helper（`encodeDepositFor*`）+ UserOp 构建（`buildDepositForUserOp`/`buildDepositForBatchUserOp`/`buildDepositForERC20UserOp`/`buildDepositForERC20BatchUserOp`，组合 Kernel v3 execute/executeBatch；users/amounts 不等长抛错防链上 revert）。两条路径：EOA 直连 `InfraXEscrowAbi`+viem `writeContract`（REQ-1 主钱包代充值）；智能账户自付 `buildDepositFor*UserOp`（session key 兜底，REQ-4）。barrel 已导出，13 单测（134 全绿）。计费语义见 `docs/AA_RELAY_BILLING.md` §5。`@0xinfrax/aa-sdk@0.1.3`。
 >
-> **v1.9（2026-08-16）**：**SDK v0.1.1——自定义 headers 支持（PocketX 联调反馈 ⑤）**——`PaymasterClient` 构造第三参数 `headers`（或 `PaymasterConfig.headers`，config 优先）、`BundlerClient` 构造第二参数 `headers`（或 `BundlerConfig[].headers`，端点级优先），relay 模式注入 `X-API-Key` 过 aa-relay 鉴权（此前 rpc() 硬编码 headers 导致 wallet 端直用 relay 时 401）；`parseBundlers` 透传 `headers` 字段，`parsePaymaster` 支持 JSON `{"url","headers"}`；单测 +2（bundler 构造/端点级 headers 注入、paymaster config/构造 headers 合并）。`@0xinfrax/aa-sdk@0.1.1`。
+> **v1.9（2026-08-16）**：**SDK v0.1.1——自定义 headers 支持（InfraX 联调反馈 ⑤）**——`PaymasterClient` 构造第三参数 `headers`（或 `PaymasterConfig.headers`，config 优先）、`BundlerClient` 构造第二参数 `headers`（或 `BundlerConfig[].headers`，端点级优先），relay 模式注入 `X-API-Key` 过 aa-relay 鉴权（此前 rpc() 硬编码 headers 导致 wallet 端直用 relay 时 401）；`parseBundlers` 透传 `headers` 字段，`parsePaymaster` 支持 JSON `{"url","headers"}`；单测 +2（bundler 构造/端点级 headers 注入、paymaster config/构造 headers 合并）。`@0xinfrax/aa-sdk@0.1.1`。
 >
-> **v1.8（2026-08-16）**：**SDK 公开发布**——`@0xinfrax/aa-sdk@0.1.0` 发布至 npm（`@infrax` scope 私有发布需付费 E402，改 `@0xinfrax` scope + `--access public`）；`entryPointAbi`（activate.ts）、`parseBundlers`（config.ts）按 PocketX 需求单三.1/三.2 导出；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 上线（9131 网关对外 / 9134 内部 signer 仅内网）。详见 `docs/PAYMASTER_PROVISION_REQUEST.md` §八。
+> **v1.8（2026-08-16）**：**SDK 公开发布**——`@0xinfrax/aa-sdk@0.1.0` 发布至 npm（`@infrax` scope 私有发布需付费 E402，改 `@0xinfrax` scope + `--access public`）；`entryPointAbi`（activate.ts）、`parseBundlers`（config.ts）按 InfraX 需求单三.1/三.2 导出；aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 上线（9131 网关对外 / 9134 内部 signer 仅内网）。详见 `docs/PAYMASTER_PROVISION_REQUEST.md` §八。
 >
 > **v1.7（2026-08-10）**：**产品方向修正（stevenwang 确认）：不做免 gas / 不替用户付费**——用户自行充值原生代币支付 gas（引导充值流程，余额不足时提示）；Paymaster 保留为可选组件（默认不启用，不用于替用户付费）。同步修正 §1.1 需求表、D5、§5.5、§6.2、§10.2 验收、§11 风控、§13 M3 完成标准。
 >
@@ -16,7 +16,7 @@
 >
 > **v1.5（2026-08-08）**：源码已移交 infraX 仓库 `projects/aa-sdk/`（白标 `@0xinfrax/aa-sdk` 0.1.0，79/79 绿）；§8.1 `SESSION_KEY_ENGINE_URL/TOKEN` 生效——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute`（P3.1 完成，14 条单测）。
 >
-> **v1.4（2026-08-07）**：新增 §1.3 三层架构与 InfraX 统一管理：aa-sdk 定位升级为 InfraX 共享 SDK（`@0xinfrax/aa-sdk` 白标），PocketX 仅基于 SDK 构建；链上/服务能力归 InfraX 统一承载；新增 product 多租户隔离（`SessionStore` 键 `(product, network, sessionId)`）。
+> **v1.4（2026-08-07）**：新增 §1.3 三层架构与 InfraX 统一管理：aa-sdk 定位升级为 InfraX 共享 SDK（`@0xinfrax/aa-sdk` 白标），InfraX 仅基于 SDK 构建；链上/服务能力归 InfraX 统一承载；新增 product 多租户隔离（`SessionStore` 键 `(product, network, sessionId)`）。
 >
 > **v1.3（2026-08-07）**：新增 §7.6 任意地址转账模式（原生币）：哨兵 target 授权（data 必须为空 + value 单笔/日限额 + 目标非合约），随 P0.12 增强模块一并实现；说明原生币与 ERC-20 转账接收方约束差异。
 >
@@ -30,7 +30,7 @@
 
 ### 1.1 目标
 
-为 PocketX 提供一套生产级 ERC-4337 智能账户 SDK，支撑两大角色：
+为 InfraX 提供一套生产级 ERC-4337 智能账户 SDK，支撑两大角色：
 
 | 使用方 | 需求 | 关键能力 |
 |--------|------|----------|
@@ -51,10 +51,10 @@
 
 ### 1.3 三层架构与 InfraX 统一管理（stevenwang 2026-08-07 确认）
 
-**定位**：aa-sdk 升级为 **InfraX 共享 SDK**（`@0xinfrax/aa-sdk` 白标）——PocketX 及所有产品**只基于 SDK 构建**，链上与服务能力由 InfraX 统一承载。
+**定位**：aa-sdk 升级为 **InfraX 共享 SDK**（`@0xinfrax/aa-sdk` 白标）——InfraX 及所有产品**只基于 SDK 构建**，链上与服务能力由 InfraX 统一承载。
 
 ```
-┌─ 产品层：PocketX（wallet-base / mobile / desktop）───────────┐
+┌─ 产品层：InfraX（wallet-base / mobile / desktop）───────────┐
 │  仅依赖 @0xinfrax/aa-sdk（链上交互 + Signer 抽象）+ InfraX SDK │
 ├─ 服务层：InfraX 统一管理（多产品共享）───────────────────────┤
 │  · Session Key Engine :3500（签发/托管/签名委托，P3.1 对接） │
@@ -71,8 +71,8 @@
 | 链上合约栈 + Bundler | InfraX 共享部署 | 一次部署，多产品/多链复用 |
 | Session Key 签发/托管/签名 | InfraX :3500 | 不重复开发（§1.2 / P3.1） |
 | UserOp 中继 + apikey | InfraX aa-relay | 前端零密钥（P0.5） |
-| aa-sdk | **InfraX 共享 SDK**（`@0xinfrax/aa-sdk`） | 白标；PocketX 基于其构建 |
-| 产品 UI / 品牌 / 授权配置入口 | PocketX | 只调 SDK |
+| aa-sdk | **InfraX 共享 SDK**（`@0xinfrax/aa-sdk`） | 白标；InfraX 基于其构建 |
+| 产品 UI / 品牌 / 授权配置入口 | InfraX | 只调 SDK |
 
 **多租户隔离（关键）**：InfraX 统一管理多个产品，授权数据按 `product` 维度隔离——`SessionStore` 键从 `(network, sessionId)` 扩展为 **`(product, network, sessionId)`**；每产品独立授权记录、互不可见。
 
@@ -423,7 +423,7 @@ packages/core/               packages/aa-sdk/
   tx.ts       ──► (保留 EOA 直发路径，AA 新增并行路径)
 ```
 
-**MPC 签名器关键点**：现有 `mpcSign(email, message)` 返回 ECDSA 签名（r,s,v 打包 hex）。Kernel 的 ECDSA validator 验证标准 `ecrecover`，MPC 签名可直接作为 owner 签名使用 —— **MPC 账户无缝成为 Kernel owner**（这是 PocketX 的差异化：MPC 邮箱恢复 + AA 智能账户叠加）。
+**MPC 签名器关键点**：现有 `mpcSign(email, message)` 返回 ECDSA 签名（r,s,v 打包 hex）。Kernel 的 ECDSA validator 验证标准 `ecrecover`，MPC 签名可直接作为 owner 签名使用 —— **MPC 账户无缝成为 Kernel owner**（这是 InfraX 的差异化：MPC 邮箱恢复 + AA 智能账户叠加）。
 
 ### 6.2 双路径共存策略
 
@@ -439,7 +439,7 @@ SDK 提供 `isActivated(address)` 查询，钱包 UI 据此切换。
 ### 6.3 `packages/core/src/index.ts` 扩展（新增导出）
 
 ```typescript
-export * from '@pocketx/aa-sdk'  // 或显式转发核心 API
+export * from '@0xinfrax/aa-sdk'  // 或显式转发核心 API
 ```
 > monorepo workspace 依赖：`packages/aa-sdk` 被 `wallet-base` 和 `apps/mobile` 直接引用。
 
@@ -492,7 +492,7 @@ Agent 交易 → 用 session key 签 userOpHash → 发 bundler
 | 网络抽象 | `NetworkId = 'evm' \| 'solana'`；`SessionPolicy.network` 标记授权所属网络（aa-sdk `types.ts`） |
 | EVM 多链（BSC/ETH/BASE） | 复用 Kernel v3 + ERC-7579 session validator：`CHAIN_ALIASES` 已含 `bsc:56` / `ethereum:1` / `base:8453`，各链经 `AA_{CHAIN}_*` env 注入合约地址与 Bundler（§8.2 链矩阵）；链上 enable/disable 走 `encodeEnableSessionCall`（链无关，按链选 validator 地址） |
 | 登记表隔离 | `SessionStore` 以 `(network, sessionId)` 为键，`listSessions(account, network)` / `revokeSessionKey(id, network)` 按网络隔离（`session.ts`） |
-| UI | `SessionKeyManagerPage` 增加网络 Tab（`networks` prop，缺省仅 EVM）；切换网络加载/创建/撤销对应网络 session（`pocketx-ui`） |
+| UI | `SessionKeyManagerPage` 增加网络 Tab（`networks` prop，缺省仅 EVM）；切换网络加载/创建/撤销对应网络 session（`infrax-ui`） |
 | Solana（阶段 2） | 智能账户 **PDA + 自建 session 程序**（白名单/限额/有效期合约强制，语义对齐 EVM）；权限类型扩展为 `programs`（阶段 1 仅预留 `network: 'solana'` 维度，权限仍复用 targets，阶段 2 切换） |
 
 **落地顺序（stevenwang 确认）**：① EVM 多链先行（代码改造 + 各链合约/Bundler 部署）；② Solana PDA + session 程序（独立排期）。
@@ -572,7 +572,7 @@ export interface TokenLimit {
 ```
 
 - `session.ts`：`SessionModuleDataBuilder` 扩展 tokenLimits 序列化（enableData 拼接）；`validateSessionCall` 新增金额分支（off-chain 预检，与链上语义一致，入参补 `token` + `amount`）
-- `pocketx-ui`：`CreateSessionModal` 增加可折叠"Token 限额"配置区（token 地址 + 单笔 + 日限额）；`summarizePermissions` 展示 token 限额摘要
+- `infrax-ui`：`CreateSessionModal` 增加可折叠"Token 限额"配置区（token 地址 + 单笔 + 日限额）；`summarizePermissions` 展示 token 限额摘要
 - 单测：aa-sdk off-chain 预检（transfer/approve 金额超限、跨 token 隔离、daily 累计）；Solidity 模块 forge 单测（签名/有效期/金额解析/日累计/白名单兜底）
 
 **链上部署项**（每链）：`KernelSessionWithTokenLimitModule` 部署 → 登记 `AA_{CHAIN}_SESSION_MODULE`。⚠️ **迁移风险**：从原模块切换后旧 session 失效，需引导用户重新 enable（UI 提示 + 撤销旧记录）。⚠️ **ABI 校准（2026-08-07 修复）**：`enableSession` 的 calls 为 **`CallPermission[]`**（增强 6 参数 selector `0xc620957b` / 5 参数 `0x7d993787`），禁止再用 bytes[] 预编码（旧 `0x6991a8aa...3c29` 因此作废）；后续 BSC/BASE/ETH 部署必须使用修复后源码编译，且 aa-sdk `KernelV3SessionDataBuilder` 默认编码已对齐（单测含 selector 断言防漂移）。
@@ -702,7 +702,7 @@ AA_RELAY_API_KEY=xxx                 # Pimlico apikey，仅服务端可见
 > 1. ✅ RPC 可达：`rpc-oxa.0xainet.top`（DNS → 43.163.105.172），chainId 19505 确认，区块活跃（85240+）
 > 2. ✅ **EntryPoint v0.7 已部署**：`0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（0.8.23 + runs 1e6 编译，runtime 17,690 bytes；非标准 create2 地址，须 `AA_OXACHAIN_ENTRYPOINT_V07` 覆盖）
 > 3. ✅ **Kernel v3.1 implementation + KernelFactory + ECDSA validator 已部署**（2026-08-07 全栈部署成功）：implementation `0x5131d75af2126eba05edbb6bc24902c42d1b52b4`（runtime 20,427 bytes = 主网官方字节码一致）/ factory `0xf8abe4510a6810d5ef26aa3222c0f63d32b757d1` / ECDSA validator `0xb0d4f548e022b8a9d5b454ffb7f327ee2afeb16c`
-> 4. ✅ **Bundler 已部署（自建 Alto）**：`http://43.156.78.59:4338`（2026-08-19 迁移：原 `43.159.60.46:4338` 随 AgentX 系统盘丢失，已按 infraX 通用服务重建于 43.156.78.59 pm2 `pocketx-alto`，node 20.20.2，指向 `rpc-oxa.0xainet.top`，chainId 19505，block time ~31s，新执行钱包 `0xF434e525...65c8B` 余额 5 OXA）。Pimlico 不支持 19505，故自建 Alto；simulations 合约已手动部署（见 §8.3 第 6-9 行），`--deploy-simulations-contract false` + 显式传地址启动。✅ 安全组已放行 4338（163.105 → 78.59 连通验证，见 tasklist AA Bundler 迁移与恢复）。
+> 4. ✅ **Bundler 已部署（自建 Alto）**：`http://43.156.78.59:4338`（2026-08-19 迁移：原 `43.159.60.46:4338` 随 AgentX 系统盘丢失，已按 infraX 通用服务重建于 43.156.78.59 pm2 `infrax-alto`，node 20.20.2，指向 `rpc-oxa.0xainet.top`，chainId 19505，block time ~31s，新执行钱包 `0xF434e525...65c8B` 余额 5 OXA）。Pimlico 不支持 19505，故自建 Alto；simulations 合约已手动部署（见 §8.3 第 6-9 行），`--deploy-simulations-contract false` + 显式传地址启动。✅ 安全组已放行 4338（163.105 → 78.59 连通验证，见 tasklist AA Bundler 迁移与恢复）。
 > 5. ✅ **P0.2 链上实测通过**（2026-08-07）：`chain-smoke.mjs` 场景④——create2 懒部署 + 首笔 UserOp 转账 0.001 OXA 经自建 Alto 成功上链（smart account 已部署 61 B，收款地址余额 = 0.001 OXA）。修复了 Alto 对 OxaChain 定制 EP 的模拟结果解码崩溃（见 §8.3「Alto 定制补丁」）。→ **P0.2 前置全部就绪**
 
 > 需求文档中 `AA_BUNDLER_URL=https://bundler.xlayer.tech` 的 XLayer 需要单独验证其 AA 生态；**首期不阻塞**，P0 用 Base Sepolia 打通。
@@ -732,7 +732,7 @@ OxaChain（chainId 19505）ERC-4337 全栈已部署并验证（部署方式：Fo
 
 > **Alto 定制补丁（OxaChain 定制 EP 模拟解码，2026-08-07）**：
 > - **背景**：OxaChain 的 EntryPoint 是 v0.7 定制 fork——模拟通过 `delegateAndRevert(target, data)`（selector `0x850aaf62`）最终 `revert DelegateAndRevert(bool success, bytes ret)`（error selector `0x99410554`）传播结果。Alto `SafeValidator.getValidationResultWithTracerV07` 用 `pimlicoSimulationsAbi`（**无任何 error 定义**）对顶层 revert data 执行 `decodeErrorResult` → 抛 `AbiErrorSignatureNotFoundError` → `eth_sendUserOperation` 返回 HTTP 500。
-> - **修复**（修改 `/opt/pocketx/alto/src/esm/rpc/validation/SafeValidator.js`，pm2 实际运行产物；TS 源 `src/rpc/validation/SafeValidator.ts` 同步，避免重新构建覆盖）：
+> - **修复**（修改 `/opt/infrax/alto/src/esm/rpc/validation/SafeValidator.js`，pm2 实际运行产物；TS 源 `src/rpc/validation/SafeValidator.ts` 同步，避免重新构建覆盖）：
 >   1. 解码用 `EntryPointV07Abi` 回退（含 `DelegateAndRevert` error 定义）：先试 `pimlicoSimulationsAbi`，失败回退 `EntryPointV07Abi`；
 >   2. `errorName === "DelegateAndRevert"` 时解包 `(success, ret)`：`success=false` → 解内层 error 并抛 `RpcError(SimulateValidation)`；`success=true` → 用**手写单 tuple v0.7 ValidationResult 参数**（returnInfo 5 字段 preOpGas/prefund/accountValidationData/paymasterValidationData/paymasterContext + senderInfo/factoryInfo/paymasterInfo/aggregatorInfo，来自 `IEntryPointSimulations.sol` L93-99）`decodeAbiParameters` 解码 ret；
 >   3. 其余分支（AA24/AA31 等）原有映射逻辑保留。
@@ -826,7 +826,7 @@ POST /api/v1/aa/session/create  # 创建 session key（返回私钥给 InfraX �
 | M3 | Bundler 容灾 | 用户自充 gas 成功发起 UserOp；Paymaster 仅可选、不替用户付费 |
 | M4 | Session Key 权限系统 | 限额/撤销场景测试通过 |
 | M5 | 服务端 aa-relay 路由 | apikey 不出前端 |
-| M6 | WalletBase SmartAccountSetup 向导接线 | 全流程 UI 可操作（UI 属 pocketx-ui，本包提供 API） |
+| M6 | WalletBase SmartAccountSetup 向导接线 | 全流程 UI 可操作（UI 属 infrax-ui，本包提供 API） |
 
 ---
 

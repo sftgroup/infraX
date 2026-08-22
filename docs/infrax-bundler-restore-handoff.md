@@ -20,7 +20,7 @@ AgentX gateway ──▶ aa-relay (:9131, 43.163.105.172) ──▶ Alto bundler
 
 | 项 | 状态 |
 |---|---|
-| Alto bundler | ✅ **已由 infraX 恢复**（迁移至 **43.156.78.59:4338**，pm2 `pocketx-alto`；relay `AA_OXACHAIN_BUNDLERS` 已指向新地址） |
+| Alto bundler | ✅ **已由 infraX 恢复**（迁移至 **43.156.78.59:4338**，pm2 `infrax-alto`；relay `AA_OXACHAIN_BUNDLERS` 已指向新地址） |
 | AgentX 网关代码 | ✅ 已部署（commit `003b803`），含 AA24 修复（ENABLE benignCall + 白名单）与续订指针前移 |
 | Alto 兼容性补丁 | ✅ AgentX 已应用两处（见 §7，**请 infraX 源码侧确认保留**） |
 | confirm | ✅ **receiptSuccess=true**（2026-08-18，op `0x2b0d5ede…`，tx `0xdf24e8a9…`） |
@@ -39,12 +39,12 @@ AgentX gateway ──▶ aa-relay (:9131, 43.163.105.172) ──▶ Alto bundler
 ### 3.1 安装（与 2026-08-07 原部署一致）
 
 1. Pimlico `alto` 仓库 clone，`pnpm install` → `pnpm run build:contracts` → `pnpm build`；
-2. rsync 至 `/opt/pocketx/alto/`（pm2 进程名 `pocketx-alto`）；
+2. rsync 至 `/opt/infrax/alto/`（pm2 进程名 `infrax-alto`）；
 3. **必须禁用 Alto 自动部署 simulations**（上游 `DETERMINISTIC_DEPLOYER_TRANSACTION` 常量损坏 + OxaChain 无 deterministic deployer）：
    - `--deploy-simulations-contract false`
    - 显式传地址：`--pimlico-simulation-contract` / `--entrypoint-simulation-contract-v7/v8/v9`（见 §3.3）
 
-### 3.2 配置（`/opt/pocketx/alto/.env`，chmod 600）
+### 3.2 配置（`/opt/infrax/alto/.env`，chmod 600）
 
 ```
 ALTO_RPC_URL=https://rpc-oxa.0xainet.top
@@ -56,7 +56,7 @@ ALTO_ENABLE_CORS=true
 ALTO_BLOCK_TIME=31000        # OxaChain 区块 ~31s
 ```
 
-- **执行私钥**：原 key（executor `0x52Ec58173042E8d0C9be0BdA81e95a8CbB5B8e06`，~10 OXA）随 `/opt/pocketx` 丢失无法找回，**需新建 key 并充值 OXA**（预计若干 OXA 足够，gas 成本很低）。
+- **执行私钥**：原 key（executor `0x52Ec58173042E8d0C9be0BdA81e95a8CbB5B8e06`，~10 OXA）随 `/opt/infrax` 丢失无法找回，**需新建 key 并充值 OXA**（预计若干 OXA 足够，gas 成本很低）。
 - 安全组 `4338` 端口放行（原已放行，若重建需确认保留）。
 
 ### 3.3 simulations 合约地址（已部署在链上，无需重新部署）
@@ -70,7 +70,7 @@ ALTO_BLOCK_TIME=31000        # OxaChain 区块 ~31s
 
 ### 3.4 必须应用 SafeValidator 定制补丁（OxaChain 定制 EP 模拟解码）
 
-修改 `/opt/pocketx/alto/src/esm/rpc/validation/SafeValidator.js`（TS 源 `src/rpc/validation/SafeValidator.ts` 同步，避免重新构建覆盖）：
+修改 `/opt/infrax/alto/src/esm/rpc/validation/SafeValidator.js`（TS 源 `src/rpc/validation/SafeValidator.ts` 同步，避免重新构建覆盖）：
 
 1. 解码用 `EntryPointV07Abi` 回退（含 `DelegateAndRevert` error 定义）：先试 `pimlicoSimulationsAbi`，失败回退 `EntryPointV07Abi`；
 2. `errorName === "DelegateAndRevert"` 时解包 `(success, ret)`：`success=false` → 解内层 error 并抛 `RpcError(SimulateValidation)`；`success=true` → 用**手写单 tuple v0.7 ValidationResult 参数**（returnInfo 5 字段 preOpGas/prefund/accountValidationData/paymasterValidationData/paymasterContext + senderInfo/factoryInfo/paymasterInfo/aggregatorInfo）`decodeAbiParameters` 解码 ret；

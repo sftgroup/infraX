@@ -227,7 +227,7 @@ This means ALL admin routes are unauthenticated at the route level (though they'
 ```typescript
 if (username === config.admin.username && password === config.admin.password)
 ```
-With default values `admin` / `pocketx123`. While config defaults are fine for dev, the password is stored in plaintext in config and there's no password hashing (unlike admin_users table which uses SHA-256 hash). The login endpoint should use the `admin_users` table instead of env config.
+With default values `admin` / `infrax123`. While config defaults are fine for dev, the password is stored in plaintext in config and there's no password hashing (unlike admin_users table which uses SHA-256 hash). The login endpoint should use the `admin_users` table instead of env config.
 
 ⚠️ **MEDIUM (#ADM-06)** — Session tokens are stored in memory (`initSessionStore`). If the server restarts, all admin sessions are invalidated. Should use Redis (which is a dependency in package.json but not used for sessions).
 

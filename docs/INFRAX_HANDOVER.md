@@ -1,29 +1,29 @@
-# InfraX 接受文档（PocketX → InfraX 迁移交接）
+# InfraX 接受文档（品牌迁移交接）
 
 > **版本**: v1.3 | **日期**: 2026-08-08 | **作者**: stevenwang 团队（架构师）
 > **接收方**: InfraX 团队
-> **依据**: `docs/AA_SDK_TECH_DESIGN.md`（§1.3 三层架构与 InfraX 统一管理 + §8.3 Alto 定制补丁）+ `docs/TASK_LIST.md`（P0.2/P0.12，v1.42）+ `docs/POCKETX_EXPANSION.md`（§5.4）
+> **依据**: `docs/AA_SDK_TECH_DESIGN.md`（§1.3 三层架构与 InfraX 统一管理 + §8.3 Alto 定制补丁）+ `docs/TASK_LIST.md`（P0.2/P0.12，v1.42）+ `docs/INFRAX_EXPANSION.md`（§5.4）
 > **状态**: 待接受方确认
 > **v1.1 变更**: P0.2 链上实测通过（首笔 UserOp 经自建 Alto 上链）+ Alto 模拟解码定制补丁 + aa-sdk Bundler receipt 解析修复 + 自建链配置经验（§5/§8）
 > **v1.2 变更**: §6.1 新增 Session Key Engine 接口契约（`@0xinfrax/session-key-client` / `session-key-core` v0.1.0 已发布 npm，字段级契约 + aa-sdk 对接映射）
 > **v1.3 变更**: ① aa-sdk 源码已移交至本仓库 `projects/aa-sdk/`（白标 `@0xinfrax/aa-sdk` 0.1.0，含完整 src + 6 测试文件，79/79 绿）② §6.1 交付状态更新——`SessionKeySigner`（signUserOp/signMessage）已接线 Engine `execute` 接口（P3.1 完成，14 条单测）
-> **v1.4 变更**: ① aa-sdk 已公开发布 **`@0xinfrax/aa-sdk@0.1.0`**（`@infrax` scope 私有发布需付费，改 `@0xinfrax` scope + `--access public`）② `entryPointAbi` / `parseBundlers` 已导出（PocketX 需求单三.1/三.2）③ aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 已上线（PocketX 三项阻塞全部就绪，详见 `PAYMASTER_PROVISION_REQUEST.md` 八）
+> **v1.4 变更**: ① aa-sdk 已公开发布 **`@0xinfrax/aa-sdk@0.1.0`**（`@infrax` scope 私有发布需付费，改 `@0xinfrax` scope + `--access public`）② `entryPointAbi` / `parseBundlers` 已导出（InfraX 需求单三.1/三.2）③ aa-relay 公网入口 `https://rpc-gw.0xainet.top/aa-relay/` 已上线（InfraX 三项阻塞全部就绪，详见 `PAYMASTER_PROVISION_REQUEST.md` 八）
 > **v1.5 变更**: aa-sdk 迭代发布至 **`@0xinfrax/aa-sdk@0.1.3`**（0.1.1 自定义 headers；0.1.2 三段批量 session disable；**0.1.3 InfraXEscrow 充值构建 helper**——`InfraXEscrowAbi`/`encodeDepositFor*`/`buildDepositFor*UserOp`，AgentX 自动续订 REQ-1/REQ-5，见 `AA_RELAY_BILLING.md` §5）
 
 ---
 
 ## 1. 文档目的
 
-本文档是 PocketX → InfraX 迁移的**交接/接受文档**，供 InfraX 团队了解并接管从 PocketX 侧移交的资产。迁移核心定位（stevenwang 2026-08-07 确认）：
+本文档是品牌迁移的**交接/接受文档**，供 InfraX 团队了解并接管移交的资产。迁移核心定位（stevenwang 2026-08-07 确认）：
 
-- **aa-sdk 升级为 InfraX 共享 SDK**（`@0xinfrax/aa-sdk` 白标）——PocketX 及所有产品只基于 SDK 构建
+- **aa-sdk 升级为 InfraX 共享 SDK**（`@0xinfrax/aa-sdk` 白标）——InfraX 及所有产品只基于 SDK 构建
 - **链上与服务能力由 InfraX 统一承载**（共享合约栈 + Bundler + Session Key Engine + aa-relay）
 - **多租户隔离**：授权数据按 `product` 维度隔离，每产品独立授权记录、互不可见
 
 ## 2. 三层架构（接收方需接管的职责边界）
 
 ```
-┌─ 产品层：PocketX（wallet-base / mobile / desktop）───────────┐
+┌─ 产品层：InfraX（wallet-base / mobile / desktop）───────────┐
 │  仅依赖 @0xinfrax/aa-sdk（链上交互 + Signer 抽象）+ InfraX SDK │
 ├─ 服务层：InfraX 统一管理（多产品共享）───────────────────────┤
 │  · Session Key Engine :3500（签发/托管/签名委托，P3.1 对接） │
@@ -41,16 +41,16 @@
 | Session Key 签发/托管/签名 | InfraX :3500 | ⏳ 等 InfraX 微服务完成（P3.1） |
 | UserOp 中继 + apikey | InfraX aa-relay | ⏳ P0.5 |
 | aa-sdk | **InfraX 共享 SDK**（`@0xinfrax/aa-sdk`） | ✅ **已移交本仓库 `projects/aa-sdk/`**（白标 `@0xinfrax/aa-sdk` 0.1.0，79/79 绿） |
-| 产品 UI / 品牌 / 授权配置入口 | PocketX | ✅ 只调 SDK |
+| 产品 UI / 品牌 / 授权配置入口 | InfraX | ✅ 只调 SDK |
 
 ## 3. 交付资产清单
 
-### 3.1 代码仓库（aa-sdk 已移交 infraX `projects/aa-sdk/`；pocketx-ui / contracts 仍驻 pocketx-wallet main 分支）
+### 3.1 代码仓库（aa-sdk 已移交 infraX `projects/aa-sdk/`；infrax-ui / contracts 仍驻 infrax-wallet main 分支）
 
 | 模块 | 路径 | 说明 | 测试 |
 |------|------|------|------|
-| aa-sdk | **`projects/aa-sdk/`**（本仓库，白标 `@0xinfrax/aa-sdk` 0.1.0；原始 `pocketx-wallet/packages/aa-sdk/` 同源） | ERC-4337 智能账户 SDK：Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；**P0.2 链上实测通过**（含 `scripts/chain-smoke.mjs` 验证脚本）；**P3.1 SessionKeySigner 已接线 Engine execute（v1.3）** | vitest **79/79** |
-| pocketx-ui aa 模块 | `packages/pocketx-ui/src/aa/` | SessionKeyCard / CreateSessionModal / hooks / 7 语言 i18n | vitest **76/76** |
+| aa-sdk | **`projects/aa-sdk/`**（本仓库，白标 `@0xinfrax/aa-sdk` 0.1.0；原始 `infrax-wallet/packages/aa-sdk/` 同源） | ERC-4337 智能账户 SDK：Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key；**P0.2 链上实测通过**（含 `scripts/chain-smoke.mjs` 验证脚本）；**P3.1 SessionKeySigner 已接线 Engine execute（v1.3）** | vitest **79/79** |
+| infrax-ui aa 模块 | `packages/infrax-ui/src/aa/` | SessionKeyCard / CreateSessionModal / hooks / 7 语言 i18n | vitest **76/76** |
 | 合约（foundry） | `contracts/` | `KernelSessionWithTokenLimitModule`（P0.12 增强 session validator，solc 0.8.24 + optimizer 200） | forge **24/24** |
 
 ### 3.2 文档
@@ -61,7 +61,7 @@
 | `docs/TASK_LIST.md`（v1.42） | 任务清单与 P0.2/P0.12 落地状态 |
 | `DEPLOY_RECORDS.md` | 部署记录（链上地址/tx/验证） |
 | `test-reports/TEST_SCENARIOS_CT.md` | 合约+链上测试场景（CT-12 链上 ABI 校准 + **CT-13 P0.2 链上实测**） |
-| `docs/POCKETX_EXPANSION.md`（§5.4） | InfraX Session Key Engine 对接时序 |
+| `docs/INFRAX_EXPANSION.md`（§5.4） | InfraX Session Key Engine 对接时序 |
 | `projects/aa-sdk/scripts/chain-smoke.mjs` | **P0.2 链上实测脚本**：RPC/Bundler 连通 → 地址预计算+注资 → activateSmartAccount（create2 懒部署+转账）→ 收据/代码/余额验证；零硬编码（配置全走 `.env` `AA_OXACHAIN_*`） |
 
 ## 4. aa-sdk 共享 SDK 接口面（交付核心）
@@ -90,7 +90,7 @@
 
 ### 4.1 SmartAccount 激活向导（Web 端集成步骤）
 
-> 产品层接入 AA 激活的标准路径（wallet-base 参考实现，P0.6/P0.8 ✅）：UI 只消费 `SmartAccountApi` 鸭子契约，SDK/链细节全在 host 层，产品零硬编码。向导组件 `SmartAccountSetup` 与状态机 `useSmartAccount` 位于 `@pocketx/ui`（`packages/pocketx-ui/src/aa/`），数据源装配位于 `wallet-base/src/host/aa.ts`。
+> 产品层接入 AA 激活的标准路径（wallet-base 参考实现，P0.6/P0.8 ✅）：UI 只消费 `SmartAccountApi` 鸭子契约，SDK/链细节全在 host 层，产品零硬编码。向导组件 `SmartAccountSetup` 与状态机 `useSmartAccount` 位于 `@infrax/ui`（`packages/infrax-ui/src/aa/`），数据源装配位于 `wallet-base/src/host/aa.ts`。
 
 **① 环境装配**（`wallet-base/src/host/appEnv.ts`，构建期 `VITE_AA_*` 注入）：
 
@@ -155,12 +155,12 @@ idle → connecting（选签名器）→ confirming（地址/余额/nonce/部署
 | 5 | **SessionKey Validator（P0.12 增强）** | `0xfbbca78d2d7d08c1163aa57a0056973ef4fd8c74` | 金额限额 + 任意转账；**ABI 修复后版本**，链上实测 13/13 |
 | 6-9 | Alto simulations（PimlicoSimulations + EPSim07/08/09） | 见 `AA_SDK_TECH_DESIGN.md` §8.3 | 手动 CREATE 部署 |
 
-**Bundler**：自建 Pimlico Alto，生产 `http://43.159.60.46:4338`（pm2 `pocketx-alto`），指向 `rpc-oxa.0xainet.top`。✅ 安全组 **4338 已放行**（外部可直达）；**P0.2 链上实测已通过**（2026-08-07：create2 懒部署 + 首笔 UserOp 转账 0.001 OXA 上链，smart account 已部署 61 B，收款地址余额验证通过）。
+**Bundler**：自建 Pimlico Alto，生产 `http://43.159.60.46:4338`（pm2 `infrax-alto`），指向 `rpc-oxa.0xainet.top`。✅ 安全组 **4338 已放行**（外部可直达）；**P0.2 链上实测已通过**（2026-08-07：create2 懒部署 + 首笔 UserOp 转账 0.001 OXA 上链，smart account 已部署 61 B，收款地址余额验证通过）。
 
 **⚠️ Alto 定制补丁（接受方必读，OxaChain 定制 EntryPoint 专用）**：
 
 - OxaChain 的 EntryPoint 是 v0.7 定制 fork：模拟通过 `delegateAndRevert(target, data)`（`0x850aaf62`）最终 `revert DelegateAndRevert(bool success, bytes ret)`（`0x99410554`）包裹 ValidationResult。Alto `SafeValidator.getValidationResultWithTracerV07` 原用 `pimlicoSimulationsAbi`（**无 error 定义**）对顶层 revert data 执行 `decodeErrorResult` → 抛 `AbiErrorSignatureNotFoundError` → `eth_sendUserOperation` 返回 **HTTP 500**。
-- **修复**：`/opt/pocketx/alto/src/esm/rpc/validation/SafeValidator.js`（pm2 实际运行产物；TS 源 `src/rpc/validation/SafeValidator.ts` 同步）：① `EntryPointV07Abi` 回退解码 `DelegateAndRevert`；② `success=true` 时用**手写单 tuple v0.7 ValidationResult**（returnInfo 5 字段 preOpGas/prefund/accountValidationData/paymasterValidationData/paymasterContext + sender/factory/paymaster/aggregator 4 组 StakeInfo，依据 `contracts/src/IEntryPointSimulations.sol` L93-99）`decodeAbiParameters` 解包 ret；③ `success=false` 时解内层 error 抛 `RpcError(SimulateValidation)`；④ 其余 AA24/AA31 映射保留。
+- **修复**：`/opt/infrax/alto/src/esm/rpc/validation/SafeValidator.js`（pm2 实际运行产物；TS 源 `src/rpc/validation/SafeValidator.ts` 同步）：① `EntryPointV07Abi` 回退解码 `DelegateAndRevert`；② `success=true` 时用**手写单 tuple v0.7 ValidationResult**（returnInfo 5 字段 preOpGas/prefund/accountValidationData/paymasterValidationData/paymasterContext + sender/factory/paymaster/aggregator 4 组 StakeInfo，依据 `contracts/src/IEntryPointSimulations.sol` L93-99）`decodeAbiParameters` 解包 ret；③ `success=false` 时解内层 error 抛 `RpcError(SimulateValidation)`；④ 其余 AA24/AA31 映射保留。
 - **验证**：模拟 trace 合法（preOpGas=156,694 / prefund=0.0020500000287 OXA）；pm2 restart 后 chain-smoke ✅。**新链若沿用 OxaChain 定制 EP 或部署新定制 EP，需同样携带该补丁。**
 
 **⚠️ aa-sdk Bundler receipt 解析修复（接受方必读）**：
@@ -225,11 +225,11 @@ interface ExecuteResult { executionId: string; txHash: string; status: 'success'
 interface NonceData { nonce: string; message: string; expiresIn: number; }
 ```
 
-**PocketX aa-sdk 对接映射（P3.1 完成态）**：
+**InfraX aa-sdk 对接映射（P3.1 完成态）**：
 
 | aa-sdk | InfraX SDK | 说明 |
 |--------|-----------|------|
-| `createSessionKey()` 授权登记 | `getNonce` + `createSession` | 用户钱包签 EIP-712 message → Engine 托管 session key（`sessionKeyEnc` 加密存储，PocketX 不落私钥） |
+| `createSessionKey()` 授权登记 | `getNonce` + `createSession` | 用户钱包签 EIP-712 message → Engine 托管 session key（`sessionKeyEnc` 加密存储，InfraX 不落私钥） |
 | `revokeSessionKey()` | `revokeSession(id)` | 本地失效 + Engine 侧 DELETE |
 | `listSessions()` | `listSessions(user, chain)` | 按 (product, network) 过滤 |
 | `SessionKeySigner.signUserOp()` / `signMessage()`（[projects/aa-sdk/src/signers/session-key.ts](file:///tmp/infraX/projects/aa-sdk/src/signers/session-key.ts)） | `execute({sessionId, chain, to, data, value})` | ✅ 已接线（P3.1 完成）：signUserOp/signMessage 映射 `POST /api/v1/execute`，Engine 代签 EOA 交易返回 `txHash` 作为签名结果；Bearer 鉴权 + 15s 超时，engineUrl/token 走 env 兜底 |
@@ -253,9 +253,9 @@ interface NonceData { nonce: string; message: string; expiresIn: number; }
 
 ## 9. 验收清单（InfraX 接受方）
 
-- [ ] 代码仓库接收：**`projects/aa-sdk`**（已移交本仓库）/ `packages/pocketx-ui` / `contracts/` + 文档清单（§3）
+- [ ] 代码仓库接收：**`projects/aa-sdk`**（已移交本仓库）/ `packages/infrax-ui` / `contracts/` + 文档清单（§3）
 - [x] aa-sdk 白标 `@0xinfrax/aa-sdk`：包名/导出/peerDependencies（viem ≥2、permissionless ≥0.2）——**已提供**（`projects/aa-sdk/package.json`，v1.3）
-- [ ] 测试回归：aa-sdk **79/79**、pocketx-ui 76/76、forge 24/24
+- [ ] 测试回归：aa-sdk **79/79**、infrax-ui 76/76、forge 24/24
 - [ ] 链上资产核对：对照 §5 地址 `eth_getCode` 字节码（SessionKey Validator = 7,608 B）+ selector `0xc620957b`/`0x7d993787`
 - [ ] **P0.2 复测**：`projects/aa-sdk/scripts/chain-smoke.mjs`（读仓库根 `.env`）在 OxaChain 上首笔 UserOp 上链成功 + 收据 status success + txHash 非空
 - [ ] **激活向导集成复验**：按 §4.1 装配 `VITE_AA_*` → 挂载 `SmartAccountSetup` → 完整走通 connecting→confirming→estimating→signing→active（onActivated 返回 txHash）

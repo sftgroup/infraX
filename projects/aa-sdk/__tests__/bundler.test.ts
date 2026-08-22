@@ -98,7 +98,7 @@ describe('BundlerClient.sendUserOperation (容灾兜底)', () => {
     }
   });
 
-  // 回归（PocketX 联调反馈 ⑤）：rpc() 需支持自定义 headers（relay 模式注入 X-API-Key）。
+  // 回归（联调反馈 ⑤）：rpc() 需支持自定义 headers（relay 模式注入 X-API-Key）。
   // 构造级 headers 与端点级 bundler.headers 均须注入 viem transport。
   it('injects custom headers into every RPC request (client-level + endpoint-level)', async () => {
     const seen: Array<Record<string, string>> = [];

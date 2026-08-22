@@ -1,7 +1,7 @@
 # AASDK-4 & A-11 技术方案
 
 > 生成日期：2026-08-12 ｜ 关联 tasklist：§9.8.11（AASDK-4）、§9.10（A-11）
-> 需求源：[FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md](./FEATURE_REQUEST_POCKETX_AASDK_ACCESS.md)、
+> 需求源：[FEATURE_REQUEST_INFRAX_AASDK_ACCESS.md](./FEATURE_REQUEST_INFRAX_AASDK_ACCESS.md)、
 > [FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md](./FEATURE_REQUEST_MARKET_RPC_DEX_EXEC.md)
 > 用户裁定：AASDK-4 走方案 A（MpcSigner 双端点兼容，不单独发包）；A-11 DEX 排期执行（P0）
 
@@ -11,10 +11,10 @@
 
 ### 1.1 背景与现状
 
-PocketX 侧现基于 `@pocketx/aa-sdk@0.1.0` 的 `MpcSigner` 契约构建（构造 + 两个签名端点），
+InfraX 侧现基于 `@0xinfrax/aa-sdk@0.1.0` 的 `MpcSigner` 契约构建（构造 + 两个签名端点），
 与 InfraX `aa-sdk`（发布在 `@0xinfrax/session-key-core` 的 `Aa` 命名空间）契约差异：
 
-| 维度 | PocketX 现有（@pocketx/aa-sdk 0.1.0） | InfraX 现有（aa-sdk `MpcSigner`） |
+| 维度 | InfraX 现有（@0xinfrax/aa-sdk 0.1.0） | 现有（aa-sdk `MpcSigner`） |
 |------|--------------------------------------|-----------------------------------|
 | 构造签名 | `new MpcSigner(address, serviceUrl, { email? \| token? })` | `new MpcSigner(address, serviceUrl, token: string)`（仅 token） |
 | signUserOp | `POST /api/v2/mpc/sign { message, mode:'digest', email }` | `POST /api/v2/mpc/sign-digest { token, digest }` |
@@ -22,11 +22,11 @@ PocketX 侧现基于 `@pocketx/aa-sdk@0.1.0` 的 `MpcSigner` 契约构建（构�
 
 InfraX 生产 mpc-server（`projects/mpc/server.ts`，:9104）现有 token 鉴权端点：
 `/api/v2/mpc/sign-message`、`/api/v2/mpc/sign-typed-data`、`/api/v2/mpc/sign-digest`（`getSession(token)` 校验）；
-**无** email 鉴权 `/sign` 端点。用户裁定：不单独发包，维持 `Aa` 命名空间，**功能覆盖** PocketX 契约。
+**无** email 鉴权 `/sign` 端点。用户裁定：不单独发包，维持 `Aa` 命名空间，**功能覆盖** InfraX 契约。
 
 ### 1.2 目标
 
-1. `MpcSigner` 构造兼容 `{ email? | token? }`（双模式），PocketX 零改动接入。
+1. `MpcSigner` 构造兼容 `{ email? | token? }`（双模式），InfraX 零改动接入。
 2. token 模式：保持现有 `sign-digest` / `sign-message` 行为不变。
 3. email 模式：mpc-server 新增 `/api/v2/mpc/sign`（`mode: 'digest' | 'eip191'`，email 鉴权），
    `signUserOp → mode='digest'`、`signMessage → mode='eip191'`。
@@ -42,7 +42,7 @@ mpc-server 现有鉴权 = session token（`unlock` 后发放，含验证码校�
 - 命中后走与 token 模式完全相同的 TSS 2-of-2 签名路径；
 - 未命中 → 401 `email session not unlocked`（提示先 `send-code` + `unlock`）。
 
-> 与 PocketX 旧 `/sign`（email 直接签名）语义的差异在方案评审时同步给对方；该模型下 PocketX
+> 与 InfraX 旧 `/sign`（email 直接签名）语义的差异在方案评审时同步给对方；该模型下 InfraX
 > wallet-base 仍需先完成一次 unlock（其流程已含 email 验证码，无新增交互）。
 
 ### 1.4 接口规格
@@ -87,7 +87,7 @@ export class MpcSigner implements Signer {
 | AASDK-4.1 | mpc-server 新增 `/api/v2/mpc/sign` 端点 | email 定位钱包 + 解锁会话校验 + mode digest/eip191 双分支 TSS 签名；401 语义（email 未解锁）；对齐 `sign-digest`/`sign-message` 返回信封 | P0 |
 | AASDK-4.2 | MpcSigner 双模式改造 | 构造兼容 `string \| {email?\|token?}`；signUserOp/signMessage 双模式路由；barrel 导出 `MpcSignerAuth` | P0 |
 | AASDK-4.3 | 回归与联调验证 | aa-sdk vitest（构造兼容/双模式路由/错误语义）；生产 mpc-server `/sign` 双模式 curl E2E（unlock 后 email 签名 + token 签名一致性比对） | P0 |
-| AASDK-4.4 | PocketX 侧回归（外部） | PocketX 按需求单四.1 替换 import + 适配；wallet-base tsc/vitest 44/44 + build 回归 | —（外部执行） |
+| AASDK-4.4 | InfraX 侧回归（外部） | InfraX 按需求单四.1 替换 import + 适配；wallet-base tsc/vitest 44/44 + build 回归 | —（外部执行） |
 
 > 前置：AASDK-2（导出 `entryPointAbi`）、AASDK-3（导出 `parseBundlers`）在发布版本一并处理；
 > 发布形态 = 现有 `@0xinfrax/session-key-core`（`Aa` 命名空间）升版本，不单独发包。
@@ -207,7 +207,7 @@ chain-rpc (:9130)
 1. aa-sdk vitest：构造兼容（string/token/email 三形态）、双模式路由、401 语义。
 2. 生产 mpc-server：`unlock` 后 `POST /api/v2/mpc/sign {email, message, mode:'digest'|'eip191'}` 与
    token 模式签名一致（同一钱包同一摘要 → 同签名）。
-3. PocketX 侧回归（外部）：wallet-base tsc/vitest 44/44 + build。
+3. InfraX 侧回归（外部）：wallet-base tsc/vitest 44/44 + build。
 
 ### A-11
 1. `dex.quote`：OKX DEX 与 1inch 报价一致性抽样；P95 < 100ms；未配聚合器 → 503。

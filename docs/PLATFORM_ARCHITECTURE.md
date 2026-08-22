@@ -36,7 +36,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 └──────┬─────────────┘   └──────────┬───────────────────────────────┘
        │                            │
   PostgreSQL / SQLite / Redis       PostgreSQL（各服务独立库）
-  （数据域）                        （pocketx_* 系列库）
+  （数据域）                        （infrax_* 系列库）
 └────────────────────────────────────────────────────────────────────┘
 * ml-service 独立服务器 43.156.25.197:9120（2C4G）
 ```
@@ -52,7 +52,7 @@ InfraX = **AI Agent 钱包与数据基础设施平台**，对外提供三类接�
 
 - 服务管理：systemd（`infrax-*` 单元），代码位于 `/home/ubuntu/infraX-1/`，systemd 实际 WorkingDirectory 以 `systemctl cat <unit>` 为准
 - 入口：nginx :80（`/api/v2/*` 分发到各服务；hub-index `/mcp/*`）；部分 HTTP MCP 端口（9108/9105/9103/9110/3011/3012/3013）直连受信方，未经 nginx
-- 数据库：PostgreSQL（各服务独立库 `pocketx_*`）+ data 侧 SQLite + Redis（session-key 分布式锁）
+- 数据库：PostgreSQL（各服务独立库 `infrax_*`）+ data 侧 SQLite + Redis（session-key 分布式锁）
 
 ---
 
@@ -341,7 +341,7 @@ UserOp：agent → aa-relay /v1/userops → EntryPoint v0.7 → Kernel v3 账户
 
 | 事项 | 状态 |
 |---|---|
-| A-4 Paymaster 对接 | 物料清单已定稿待发送，收到 PocketX 回传后闭环（EntryPoint v0.7 验证 → 配 `AA_OXACHAIN_PAYMASTER_URL` → E2E） |
+| A-4 Paymaster 对接 | 物料清单已定稿待发送，收到 InfraX 回传后闭环（EntryPoint v0.7 验证 → 配 `AA_OXACHAIN_PAYMASTER_URL` → E2E） |
 | B-2 Alto executor 充值 | 运营操作：向 executor 转 ≥1 OXA，随后 aa-relay 生产 E2E |
 | x402 rail 凭证 | 各 B 端实例自配凭证启用（平台只提供通道与工具） |
 | 9.6 Phase 1/2.1~2.3/3 | DC 事件分类（未排期）/ TEE 钱包（延后，待环境审批）/ 多市场发布（未排期） |

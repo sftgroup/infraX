@@ -1,6 +1,6 @@
 # @0xinfrax/aa-sdk 快速接入指南（Quickstart）
 
-> 适用：**外部集成方（PocketX 等）经 npm SDK 直用构建 ERC-4337 UserOp**。如需走 HTTP 服务接口（agentx/aitrader 等），见 `docs/SERVICE_API_REFERENCE.md` §7.7。
+> 适用：**外部集成方（InfraX 等）经 npm SDK 直用构建 ERC-4337 UserOp**。如需走 HTTP 服务接口（agentx/aitrader 等），见 `docs/SERVICE_API_REFERENCE.md` §7.7。
 > 版本：`@0xinfrax/aa-sdk@0.1.3`（2026-08-21；0.1.3 新增 InfraXEscrow 充值构建 helper，见 §6）。详细技术方案见 `docs/AA_SDK_TECH_DESIGN.md`。
 
 ---

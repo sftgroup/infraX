@@ -22,7 +22,7 @@ import {
   createKernelAccount,
   activateSmartAccount,
   BundlerClient,
-} from '@pocketx/aa-sdk';
+} from '@0xinfrax/aa-sdk';
 
 // --- 加载仓库根 .env ---------------------------------------------------------
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');

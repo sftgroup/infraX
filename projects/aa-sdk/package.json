@@ -1,7 +1,7 @@
 {
   "name": "@0xinfrax/aa-sdk",
   "version": "0.1.3",
-  "description": "InfraX 共享 ERC-4337 Smart Account SDK（白标自 PocketX @pocketx/aa-sdk）— Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key",
+  "description": "InfraX 共享 ERC-4337 Smart Account SDK — Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

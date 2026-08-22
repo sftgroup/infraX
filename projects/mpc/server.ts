@@ -995,7 +995,7 @@ app.post('/api/v2/mpc/sign-digest', mpcMeter('sign_digest'), asyncHandler(async 
   res.json(apiResponse({ signature, address: session.address }, 'Digest signed'));
 }));
 
-// ─── Sign (AASDK-4.1：email 模式统一签名端点，PocketX MpcSigner 双模式) ───
+// ─── Sign (AASDK-4.1：email 模式统一签名端点，MpcSigner 双模式) ───
 // 请求 { message, mode: 'digest' | 'eip191', email }
 //   mode=digest：message 为 32B 摘要（同 sign-digest，不二次哈希）
 //   mode=eip191：message 为原始消息（同 sign-message，Node 侧 hashMessage）

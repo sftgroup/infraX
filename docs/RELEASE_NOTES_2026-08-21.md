@@ -20,7 +20,7 @@
 | SDK | `@0xinfrax/aa-sdk@0.1.3`：InfraXEscrow 充值构建 helper（REQ-1/REQ-5） |
 | 基础设施 | nginx `/api/v2/data/market/dex/` 公网路由修复（404 → 200） |
 
-**影响面**：AItrader（DEX 策略数据）、AgentX（AA 自动续订计费）、PocketX 等 aa-sdk 调用方。
+**影响面**：AItrader（DEX 策略数据）、AgentX（AA 自动续订计费）、InfraX 等 aa-sdk 调用方。
 
 ---
 

@@ -43,7 +43,7 @@
 | # | 测试项 | 端点 | 预期 | 实际 | 状态 |
 |---|--------|------|------|------|------|
 | 1 | MPC Health | GET :6003/health | 200 | 200 — `{"status":"ok","service":"infrax-pc"}` | ✅ PASS |
-| 2 | MPC Status (未注册) | GET :6003/api/v2/mpc/status?email=audit-test@pocketx.io | 200 | 200 — `{"code":0,"data":{"registered":false}}` | ✅ PASS |
+| 2 | MPC Status (未注册) | GET :6003/api/v2/mpc/status?email=audit-test@infrax.io | 200 | 200 — `{"code":0,"data":{"registered":false}}` | ✅ PASS |
 | 3 | MPC Send Code | POST :6003/api/v2/mpc/send-code | 200 | 200 — `{"code":0,"data":{"message":"Code sent"}}` | ✅ PASS |
 | 4 | MPC Register | POST :6003/api/v2/mpc/register (code:888888) | 201 | 201 — `{"code":0,"message":"MPC wallet created",...}` | ✅ PASS |
 
@@ -55,7 +55,7 @@
   "message": "MPC wallet created",
   "data": {
     "id": "de4bfb51-e503-42ce-a977-971e795d1a42",
-    "email": "audit@pocketx.io",
+    "email": "audit@infrax.io",
     "walletAddress": "0xd4242e411D9141D1A5764998E05F02f8765446FB",
     "createdAt": "2026-07-13T11:28:18.373Z"
   }
@@ -70,8 +70,8 @@
 
 | # | 测试项 | 端点 | 状态 | 详情 |
 |---|--------|------|------|------|
-| 1 | 未注册用户代理查询 | GET :6100/api/v2/mpc/status?email=audit-test@pocketx.io | ✅ PASS | 200 — `{"code":0,"data":{"registered":false}}` |
-| 2 | 已注册用户代理查询 | GET :6100/api/v2/mpc/status?email=audit@pocketx.io | ✅ PASS | 200 — 返回完整钱包信息 |
+| 1 | 未注册用户代理查询 | GET :6100/api/v2/mpc/status?email=audit-test@infrax.io | ✅ PASS | 200 — `{"code":0,"data":{"registered":false}}` |
+| 2 | 已注册用户代理查询 | GET :6100/api/v2/mpc/status?email=audit@infrax.io | ✅ PASS | 200 — 返回完整钱包信息 |
 
 ### 已注册用户通过代理查询的结果
 
@@ -81,7 +81,7 @@
   "message": "success",
   "data": {
     "registered": true,
-    "email": "audit@pocketx.io",
+    "email": "audit@infrax.io",
     "walletAddress": "0xd4242e411D9141D1A5764998E05F02f8765446FB",
     "emailVerified": true,
     "shardCount": 1,

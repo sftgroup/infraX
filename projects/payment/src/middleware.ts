@@ -18,7 +18,7 @@ declare global {
 }
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const ADMIN_JWT_SECRET = 'pocketx-admin-' + crypto.randomBytes(16).toString('hex');
+const ADMIN_JWT_SECRET = 'infrax-admin-' + crypto.randomBytes(16).toString('hex');
 
 /**
  * EIP-191 Wallet Signature Authentication
@@ -64,6 +64,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     return next(Errors.unauthorized('Signature expired'));
   }
 
+  // PocketX 保留（EPF-9 T-4）：签名消息格式，客户端已按此消息签名，改动会导致旧签名验证失败
   const message = `PocketX auth: ${timestamp}`;
   let recovered: string;
   try {

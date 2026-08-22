@@ -1,10 +1,10 @@
-# PocketX → InfraX 物料索取 — OxaChain Paymaster 对接清单
+# InfraX → InfraX 物料索取 — OxaChain Paymaster 对接清单
 
-> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：✅ **已闭环（2026-08-16）**：PocketX 回复澄清——不运营 Paymaster、AA 链上栈归 InfraX 维护、OxaChain Pimlico 官方不支持（既定约束）→ 催料路径关闭，转 **B-4 自建 verifying paymaster** 实施（用户 2026-08-16 裁定启动）。对方确认：EntryPoint v0.7 `0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（08-07 部署 eth_getCode 通过）+ 直接主网小额联调（PocketX 提供小额 OXA）+ 降级"用户自充"已设计。
+> 关联任务：tasklist §9.10 A-4（Paymaster 对接）｜ 定稿：2026-08-11 ｜ 状态：✅ **已闭环（2026-08-16）**：InfraX 回复澄清——不运营 Paymaster、AA 链上栈归 InfraX 维护、OxaChain Pimlico 官方不支持（既定约束）→ 催料路径关闭，转 **B-4 自建 verifying paymaster** 实施（用户 2026-08-16 裁定启动）。对方确认：EntryPoint v0.7 `0x97e4cddcffeaf4580bc6315fee512f2b2d82798a`（08-07 部署 eth_getCode 通过）+ 直接主网小额联调（InfraX 提供小额 OXA）+ 降级"用户自充"已设计。
 
 ## 背景
 
-按交接约定，链上 AA 栈已移交 InfraX 维护。PocketX 侧 aa-sdk 已具备 Paymaster 接入的接口骨架（Pimlico 协议，EntryPoint v0.7），客户端方法（`pimlico_getPaymasterStubData` / `pimlico_getPaymasterData`）与服务端代理（aa-relay）为待建项——收到物料后立即完成实现并联调。目前唯一缺口为 **OxaChain 上可用的 Paymaster 服务**，请按下列清单提供对接物料。
+按交接约定，链上 AA 栈已移交 InfraX 维护。InfraX 侧 aa-sdk 已具备 Paymaster 接入的接口骨架（Pimlico 协议，EntryPoint v0.7），客户端方法（`pimlico_getPaymasterStubData` / `pimlico_getPaymasterData`）与服务端代理（aa-relay）为待建项——收到物料后立即完成实现并联调。目前唯一缺口为 **OxaChain 上可用的 Paymaster 服务**，请按下列清单提供对接物料。
 
 ## 我方已具备（无需提供）
 
@@ -62,7 +62,7 @@
 
 ## 七、多调用者通用化设计（接入时一并确定）
 
-> Paymaster 为**平台统一服务**（非 PocketX 定制）：链上 Paymaster 对所有 UserOp 开放，平台 aa-relay 为统一入口，SDK（session-key-core 0.2.0 `Aa.PaymasterClient`）统一。PocketX 是首个调用者，其他集成方接入路径一致。接入时须一并确定以下通用化设计：
+> Paymaster 为**平台统一服务**（非 InfraX 定制）：链上 Paymaster 对所有 UserOp 开放，平台 aa-relay 为统一入口，SDK（session-key-core 0.2.0 `Aa.PaymasterClient`）统一。InfraX 是首个调用者，其他集成方接入路径一致。接入时须一并确定以下通用化设计：
 
 1. **成本归属**：Paymaster 代付 gas 成本归属——
    - 方案 A：平台统一 sponsor（默认关闭），按集成方 API Key 对账，从其余额扣费
@@ -80,22 +80,22 @@
 
 ---
 
-## 八、PocketX 三项接入阻塞响应（2026-08-16，全部就绪 ✅）
+## 八、InfraX 三项接入阻塞响应（2026-08-16，全部就绪 ✅）
 
-PocketX 链上核实确认（合约 `0xc894ef…852f33` / EntryPoint v0.7 `0x97e4cddc…` / balanceOf≈1 OXA / chainId 19505 / E2E 5/5）后提出 3 项接入阻塞，均已解决：
+InfraX 链上核实确认（合约 `0xc894ef…852f33` / EntryPoint v0.7 `0x97e4cddc…` / balanceOf≈1 OXA / chainId 19505 / E2E 5/5）后提出 3 项接入阻塞，均已解决：
 
 ### ① SDK 发布 ✅ → `@0xinfrax/aa-sdk@0.1.0`
 
 - 原 `@infrax/aa-sdk` 404：`@infrax` scope 私有包发布需付费（E402），改 **`@0xinfrax` scope + `--access public`** 发布
 - `https://registry.npmjs.org/@0xinfrax/aa-sdk/-/aa-sdk-0.1.0.tgz`（43 files，`type: module`，peer: viem ≥2 / permissionless ≥0.2）
-- `@0xinfrax/session-key-core@0.2.1` 亦已发布（PocketX 误查无 scope 名才 404）
+- `@0xinfrax/session-key-core@0.2.1` 亦已发布（InfraX 误查无 scope 名才 404）
 - 若需 git 依赖形式：`https://github.com/sftgroup/infraX` `projects/aa-sdk/`
 
 ### ② 导出补齐 ✅（3 处全齐，需求单三.1/三.2/三.3）
 
 - 三.1 `entryPointAbi`：`activate.ts` `export const`（EntryPoint v0.7 getNonce ABI）✅
 - 三.2 `parseBundlers`：`config.ts` `export function`（JSON 数组 / URL 容错 / 缺失抛错语义保留）✅
-- 三.3 `MpcSigner` 双模式（email/token）——方案 A，PocketX 已确认 ✅
+- 三.3 `MpcSigner` 双模式（email/token）——方案 A，InfraX 已确认 ✅
 - 产物验证：`dist/index.d.ts` barrel 导出 `config.js`/`activate.js`，`import { entryPointAbi, parseBundlers } from '@0xinfrax/aa-sdk'` 可达
 
 ### ③ aa-relay 公网入口 ✅（端口澄清 + 对外 URL）
@@ -104,7 +104,7 @@ PocketX 链上核实确认（合约 `0xc894ef…852f33` / EntryPoint v0.7 `0x97e
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **9131** | aa-relay 网关 | **对外入口**（systemd `infrax-aa-relay`，`PORT=9131`）——PocketX 应对接这里 |
+| **9131** | aa-relay 网关 | **对外入口**（systemd `infrax-aa-relay`，`PORT=9131`）——InfraX 应对接这里 |
 | 9134 | 内部 signer | aa-paymaster 签名服务（`infrax-aa-paymaster.service`），**仅内网**，不可直连；aa-relay 经 `AA_OXACHAIN_PAYMASTER_URL=http://127.0.0.1:9134` 代理 |
 
 **公网入口**：`https://rpc-gw.0xainet.top/aa-relay/`（nginx 172 `rpc-gw` vhost 新增 `/aa-relay/` → `127.0.0.1:9131`）
@@ -121,7 +121,7 @@ PocketX 链上核实确认（合约 `0xc894ef…852f33` / EntryPoint v0.7 `0x97e
 
 **鉴权**：`X-API-Key: infrax-bridge-2fd4fbe0d33805362ac980fde74c86b2`（或 `X-Service-Key` / `Authorization: Bearer`）——所有 `/v1/*` 必须携带，否则 401。
 
-**配置示例（PocketX 侧 aa-sdk env）**：
+**配置示例（InfraX 侧 aa-sdk env）**：
 
 ```bash
 AA_OXACHAIN_PAYMASTER_URL=https://rpc-gw.0xainet.top/aa-relay/v1/paymaster
@@ -131,13 +131,13 @@ AA_OXACHAIN_BUNDLERS=[{"url":"http://43.159.60.46:4338","priority":0}]
 
 **公网验证（2026-08-16）**：`/aa-relay/health` 200；无 key `/v1/userops` 401；带 key 契约校验 400；`/v1/paymaster` stub 请求返回 paymaster `0xc894ef…852f33` + stub data（全链路 公网→CF→nginx→aa-relay:9131→signer:9134 打通）。
 
-**PocketX 后续动作**：切换依赖 → 配置 `AA_OXACHAIN_PAYMASTER_URL` 与 aa-relay 入口 → 带 paymaster 的 UserOp 主网端到端实测 → 闭环归档。
+**InfraX 后续动作**：切换依赖 → 配置 `AA_OXACHAIN_PAYMASTER_URL` 与 aa-relay 入口 → 带 paymaster 的 UserOp 主网端到端实测 → 闭环归档。
 
 ---
 
-## 九、测试额度预存操作记录（2026-08-16 PocketX 需求单 需求1）
+## 九、测试额度预存操作记录（2026-08-16 InfraX 需求单 需求1）
 
-> 背景：PocketX relay 广播至 `/v1/userops` 被 A-10 计费 402 拦截（subscriber ledger 余额 0）。
+> 背景：InfraX relay 广播至 `/v1/userops` 被 A-10 计费 402 拦截（subscriber ledger 余额 0）。
 > 采用方案 A：payments 引擎 ledger 预存 1 OXA 测试额度（联调专用，勿用于生产）。
 > 预存对象（Subscriber/sender）：`0x121E843DA317522634a0b64f3305cD03337f1a83`
 > （联调固定测试私钥推导；运营钱包 `0x52Ec58…8e06` 已直调 factory 预部署，code 61 B）
@@ -148,12 +148,12 @@ AA_OXACHAIN_BUNDLERS=[{"url":"http://43.159.60.46:4338","priority":0}]
 BEGIN;
 -- 台账（幂等：reference 唯一，重复执行不重复入账）
 INSERT INTO payment_credits (reference, payer, amount_wei, asset, chain_id, metadata)
-VALUES ('topup-pocketx-test-20260816-1oxa',
+VALUES ('topup-infrax-test-20260816-1oxa',
         '0x121e843da317522634a0b64f3305cd03337f1a83',
         '1000000000000000000',                                  -- 1 OXA
         '0x0000000000000000000000000000000000000000',          -- 原生资产
         19505,                                                 -- oxachain
-        '{"purpose":"PocketX P0.3 relay test topup (1 OXA)","requested":"2026-08-16"}'::jsonb)
+        '{"purpose":"InfraX P0.3 relay test topup (1 OXA)","requested":"2026-08-16"}'::jsonb)
 ON CONFLICT (reference) DO NOTHING;
 -- 余额（幂等累加：重复执行只加一次）
 INSERT INTO payment_balances (address, asset, balance_wei)
@@ -176,9 +176,9 @@ psql "postgresql://postgres:postgres@localhost:5432/pocketx_payments" -tAc \
 curl -s "http://127.0.0.1:9132/payments/balance?address=0x121E843DA317522634a0b64f3305cD03337f1a83"
 ```
 
-**执行状态**：✅ 已执行（2026-08-16 预存 SQL 在生产 ledger DB 执行成功；`payment_balances` 入账 1 OXA = 1,000,000,000,000,000,000 wei，`payment_credits` 台账 reference=`topup-pocketx-test-20260816-1oxa`，均验证通过；已回复 PocketX 确认，等待其重跑 relay 广播回传 txHash + 存款扣减验证）。
+**执行状态**：✅ 已执行（2026-08-16 预存 SQL 在生产 ledger DB 执行成功；`payment_balances` 入账 1 OXA = 1,000,000,000,000,000,000 wei，`payment_credits` 台账 reference=`topup-infrax-test-20260816-1oxa`，均验证通过；已回复 InfraX 确认，等待其重跑 relay 广播回传 txHash + 存款扣减验证）。
 
-> 注：首次执行曾因 `balance_wei` 为 text 类型、`text + text` 无累加运算符报错回滚；修正为 `(balance_wei::numeric + EXCLUDED.balance_wei::numeric)::text` 后执行成功。链上转账（PocketX 已转 10 OXA）只增链上原生余额，不计入 ledger；ledger 仅 DB 直插或 x402 verify 入账。
+> 注：首次执行曾因 `balance_wei` 为 text 类型、`text + text` 无累加运算符报错回滚；修正为 `(balance_wei::numeric + EXCLUDED.balance_wei::numeric)::text` 后执行成功。链上转账（InfraX 已转 10 OXA）只增链上原生余额，不计入 ledger；ledger 仅 DB 直插或 x402 verify 入账。
 
 ### 补充：为什么计费用 ledger 而非直接读链上余额
 
@@ -197,4 +197,4 @@ curl -s "http://127.0.0.1:9132/payments/balance?address=0x121E843DA317522634a0b6
 3. 自动入账到转出方（subscriber）对应的 ledger 账户，与 DB 直插等效
 ```
 
-> 2026-08-16 联调实测：PocketX 将 10 OXA 转给 subscriber **自身智能账户**（链上原生余额），未走上述桥（转平台钱包 + verify），故 ledger 仍为 0。正确做法是转给平台钱包后调 verify，即自动入账；已预存 1 OXA 足够本次联调（需求 0.00466 OXA）。
+> 2026-08-16 联调实测：InfraX 将 10 OXA 转给 subscriber **自身智能账户**（链上原生余额），未走上述桥（转平台钱包 + verify），故 ledger 仍为 0。正确做法是转给平台钱包后调 verify，即自动入账；已预存 1 OXA 足够本次联调（需求 0.00466 OXA）。

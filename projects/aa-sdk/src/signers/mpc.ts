@@ -3,7 +3,7 @@ import type { Signer } from '../types.js';
 import { isHttpOk, postJson } from '../utils/rpc.js';
 
 /**
- * MpcSigner 认证形态（AASDK-4）：token 模式（现有）或 email 模式（PocketX）。
+ * MpcSigner 认证形态（AASDK-4）：token 模式（现有）或 email 模式（白标接入）。
  *   - token 模式：走现有 /sign-digest /sign-message（解锁会话 token）
  *   - email 模式：走 mpc-server 新增 /api/v2/mpc/sign { message, mode, email }
  *     鉴权语义 = email 关联钱包已解锁会话（不引入裸 email 鉴权）

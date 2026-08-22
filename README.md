@@ -97,7 +97,7 @@ InfraX 是一个 Web3 基础设施平台，提供钱包即服务（WaaS）、多
                                                    └──────────┘
                            ┌──────────────┐
                            │  PostgreSQL   │  :5432
-                           │  pocketx_*    │  7 数据库
+                           │  infrax_*    │  7 数据库
                            └──────────────┘
 ```
 
@@ -188,7 +188,7 @@ postgres://localhost:5432
 ├── pocketx_mpc        (2 表)  — mpc_wallets/mpc_sessions
 ├── pocketx_payments   (11 表) — payment_intents/sessions/credits/transfers/invites 等（通用支付引擎）
 └── pocketx_admin      (3 表)  — users/rpc_configs/settings
-（旧 pocketx_payment 库已归档至 backups/pocketx_payment_20260811.sql，MQ-15 T-7）
+（旧 pocketx_payment 库已归档至 backups/infrax_payment_20260811.sql，MQ-15 T-7）
 
 每个模块拥有独立数据库，模块间不共享 schema。
 跨模块调用通过 HTTP API，不跨库 JOIN。

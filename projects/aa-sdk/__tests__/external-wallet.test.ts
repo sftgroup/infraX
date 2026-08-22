@@ -67,6 +67,7 @@ describe('ExternalWalletSigner', () => {
     const { provider, calls } = makeProvider();
     const signer = new ExternalWalletSigner(provider, ACCOUNT);
     const typedData = {
+      // PocketX 保留（EPF-9 T-4）：EIP-712 domain name，若 SDK 已有外部使用者则不可改动
       domain: { name: 'PocketX', chainId: 84532 },
       types: { UserOperation: [{ name: 'sender', type: 'address' }] },
       primaryType: 'UserOperation',

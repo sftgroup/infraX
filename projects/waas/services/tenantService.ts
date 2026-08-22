@@ -190,6 +190,7 @@ export async function getTenantByApiKey(apiKey: string): Promise<Tenant | null> 
 
 /**
  * Get tenant by wallet address (owner_email = walletAddress@web3.pocketx.local)
+ * PocketX 保留（EPF-9 T-4）：owner_email 邮箱后缀格式，库中存量租户按此格式存储，改动会导致存量租户查询失败
  */
 export async function getTenantByWallet(walletAddress: string): Promise<Tenant | null> {
   const result = await pool.query(

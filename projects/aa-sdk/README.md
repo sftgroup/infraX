@@ -1,9 +1,9 @@
 # @0xinfrax/aa-sdk
 
-InfraX 共享 ERC-4337 智能账户 SDK（白标自 PocketX `@pocketx/aa-sdk`）——Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key。
+InfraX 共享 ERC-4337 智能账户 SDK（白标自 InfraX `@0xinfrax/aa-sdk`）——Kernel v3 + UserOp v0.7 + Bundler + Paymaster + Session Key。
 
 - **npm**: `@0xinfrax/aa-sdk@0.1.3`（2026-08-21 发布；`0.1.1` 补 PaymasterClient/BundlerClient 自定义 headers——relay 模式注入 X-API-Key；`0.1.2` 发布三段批量 disable 等 session 新导出；`0.1.3` 新增 `src/escrow.ts` InfraXEscrow 充值构建 helper——depositFor 等编码 + UserOp（REQ-1/REQ-5，AgentX 自动续订资金）；`@infrax` scope 私有发布需付费订阅，故用 `@0xinfrax` scope + `--access public`）
-- **文档**: `docs/AA_SDK_TECH_DESIGN.md`（技术方案）、`docs/PAYMASTER_PROVISION_REQUEST.md` §八（PocketX 对接与公网入口）
+- **文档**: `docs/AA_SDK_TECH_DESIGN.md`（技术方案）、`docs/PAYMASTER_PROVISION_REQUEST.md` §八（InfraX 对接与公网入口）
 - **关联包**: `@0xinfrax/session-key-core`（`Aa` 命名空间导出同源能力，v0.2.1 已发布）——两通道并存，按需选用
 
 ## 安装
@@ -56,7 +56,7 @@ const stub = await pm.getPaymasterStubData(op, { chain: 'oxachain', entryPoint, 
 const data  = await pm.getPaymasterData(op, { chain: 'oxachain', entryPoint, chainId: 19505 });
 ```
 
-自定义 headers 支持（v0.1.1，PocketX 联调反馈 ⑤）：
+自定义 headers 支持（v0.1.1，InfraX 联调反馈 ⑤）：
 
 - **PaymasterClient**：构造第三参数 `headers`，或 `PaymasterConfig.headers`（config 优先）；relay 模式下注入 `X-API-Key` 过 aa-relay 鉴权
 - **BundlerClient**：构造第二参数 `headers`，或 `BundlerConfig[].headers`（端点级优先）；注入到所有 RPC 请求（send/estimate/receipt 轮询）

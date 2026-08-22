@@ -43,6 +43,7 @@ export async function createCustodialWallet(
     return { id: w.id, address: w.address, chain: w.chain };
   }
 
+  // PocketX 保留（EPF-9 T-4）：namespace 派生种子，改动会导致所有既有地址派生路径改变
   const namespace = crypto.createHash('sha256').update(`${userId}:${chain}:pocketx`).digest();
   const userIndex = namespace.readUInt32BE(0) & 0x7FFFFFFF;
   const mnemonic = getHDMnemonic();

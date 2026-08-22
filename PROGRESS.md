@@ -93,7 +93,7 @@
 | 步骤 | 状态 |
 |------|------|
 | Node.js v20.20.2 + tsx 安装 | ✅ |
-| PostgreSQL 安装 + 7 个 pocketx_* 库创建 | ✅ |
+| PostgreSQL 安装 + 7 个 infrax_* 库创建 | ✅ |
 | 代码从 GitHub 拉取 | ✅ |
 | npm install 全部 8 模块 | ✅ |
 | 7 个上游 typo/缺依赖修复并推送 GitHub | ✅ |

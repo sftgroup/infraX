@@ -1,6 +1,6 @@
 # AA 新链部署规范（B-3，2026-08-11）
 
-> 依据：§9.11 PocketX 交接（vendor/aa-contracts，commit 47568ca / e95564e）。基准脚本 `vendor/aa-contracts/scripts/deploy-oxachain.mjs`（仅存在于生产机 `/home/ubuntu/infraX-1/vendor/`，本地仓库未收录），已可复现 OxaChain（chainId 19505）部署（dry-run 3/3，EntryPoint runtime 17,690 B 与链上一致）。
+> 依据：§9.11 InfraX 交接（vendor/aa-contracts，commit 47568ca / e95564e）。基准脚本 `vendor/aa-contracts/scripts/deploy-oxachain.mjs`（仅存在于生产机 `/home/ubuntu/infraX-1/vendor/`，本地仓库未收录），已可复现 OxaChain（chainId 19505）部署（dry-run 3/3，EntryPoint runtime 17,690 B 与链上一致）。
 
 ## 适用范围
 

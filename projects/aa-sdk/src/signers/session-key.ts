@@ -11,7 +11,7 @@ import { isHttpOk, postJson } from '../utils/rpc.js';
 //   signMessage(message)   → execute({ to, data: message })     # 引擎侧签消息并上链
 // 返回的 txHash 即签名结果（交易广播成功 = 签名完成），权限/限额校验在 Engine 侧强制。
 // 零硬编码：engineUrl/token 缺省从 SESSION_KEY_ENGINE_URL / SESSION_KEY_ENGINE_TOKEN
-// env 读取（AA_SDK_TECH_DESIGN §8.1 / POCKETX_EXPANSION §5.5）。
+// env 读取（AA_SDK_TECH_DESIGN §8.1 / INFRAX_EXPANSION §5.5）。
 // ============================================================================
 
 /** Engine execute 请求体（对齐 @0xinfrax/session-key-core ExecuteRequest） */
