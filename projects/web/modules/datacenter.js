@@ -544,7 +544,7 @@ async function dcLoadNews() {
       var href = n.link || n.url || '#';
       return '<div class="panel" style="margin-bottom:10px"><div class="panel-body" style="font-size:13px">' +
         '<a href="' + esc(href) + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;font-weight:600">' + esc(n.title || n.link || '—') + '</a>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + esc(n.source || '') + (n.published ? ' · ' + esc(new Date(n.published).toLocaleString()) : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + esc(n.source || '') + (n.published ? ' · ' + esc(n.published) : '') + '</div>' +
         (n.snippet ? '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">' + esc(n.snippet) + '</div>' : '') +
       '</div></div>';
     }).join('');
