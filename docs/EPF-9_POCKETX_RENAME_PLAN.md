@@ -80,22 +80,22 @@ admin SPA 侧边栏/登录页/footer 品牌、mpc/vault `/health` 服务标识�
 3. `aa-sdk`：description 清除历史来源表述（包名已为 `@0xinfrax/aa-sdk`）；`chain-smoke.mjs` import 同步。
 4. B 端通知（文案见 §5）——B 端仅依赖 API 契约与 `@0xinfrax/aa-sdk`，无 `pocketx-*` 包依赖，**无需通知**。
 
-### T-3 数据库改名（9 库） —— 🔲 P0（需停机窗口）
+### T-3 数据库改名（9 库） —— ✅ 已完成（commit 99c2a97，2026-08-22 停机窗口执行）
 
 **核心结论：不需要重建任何表** —— `ALTER DATABASE ... RENAME` 只改库名、数据与约束原样保留。
 
-1. **代码默认值**：9 个服务的 `DATABASE_URL` fallback 与 admin `${BASE}/pocketx_*` 拼接 → `infrax_*`。
-2. **DB 用户**：`pocketx_app`（EPF-8 新建，仅 collector 库）→ `ALTER ROLE pocketx_app RENAME TO infrax_app`（同步改 10.3.8.6 授权与 systemd/drop-in、`.env.production.example`）。
-3. **生产迁移**（逐库，停机窗口）：
-   - 停对应服务（或 `SELECT pg_terminate_backend` 清空连接）；
-   - `ALTER DATABASE pocketx_<x> RENAME TO infrax_<x>;`（collector 库在 10.3.8.6，其余库位置部署时确认）；
-   - 更新生产 `.env`/systemd drop-in 的 `DATABASE_URL`（collector 由 systemd `Environment=` 优先）；
-   - 启动服务，验证 health + 抽查关键表行数。
-4. **脚本同步**：`mq14/mq15/mq16_*.sh`、`mpc-e2e-e2.mjs`、`events_partition_migrate.sql` 中的库名。
-5. **admin 池**：改 9 个 Pool 的库名后重启 admin，验证 9 服务状态页全绿。
-6. **验证清单**：见 §6。
+1. **代码默认值**：9 个服务的 `DATABASE_URL` fallback 与 admin `${BASE}/pocketx_*` 拼接 → `infrax_*`（commit 99c2a97，48 文件）。
+2. **DB 用户**：`pocketx_app`（EPF-8 新建，仅 collector 库）→ `ALTER ROLE pocketx_app RENAME TO infrax_app`（10.3.8.6 已执行，31 表 owner 随 OID 关联自动迁移；collector `secrets.conf` 同步改 `infrax_app@infrax_collector`）。
+3. **生产迁移**（2026-08-22 停机窗口执行，9 库全部在 10.3.8.6）：
+   - 停 9 个服务（mpc/vault/waas/dc/payments/collector/chain-rpc/admin-legacy/aa-relay）→ `pg_terminate_backend` 清空连接；
+   - `ALTER DATABASE pocketx_<x> RENAME TO infrax_<x>;` ×9 + `ALTER ROLE pocketx_app RENAME TO infrax_app;`
+   - 生产 systemd（主 unit + drop-in）全部 `pocketx_*` → `infrax_*`（`sed` 替换 + `daemon-reload`），备份在 data 机 `/root/backups/epf9_t3/`；
+   - schema 备份在 data 机 `~/backups/epf9_schema/`（9 库 `pg_dump --schema-only`）。
+4. **脚本同步**：`mq14/mq15/mq16_*.sh`、`mpc-e2e-e2.mjs`、`events_partition_migrate.sql`、`infrax-cleanup.sh` 中的库名（commit 99c2a97）。
+5. **admin 池**：9 个 Pool 的库名 + systemd `WAAS_DB/DC_DB/VAULT_DB/MPC_DB/PAYMENT_DB/COLLECTOR_DB/ADMIN_DB` 全部改为 `infrax_*` 后重启，/api/v2/admin/status 12 服务全绿。
+6. **验证**：9 服务 health 全 200；admin 跨库 API（dashboard/api-usage/settings/rpc/users）正常；collector events 2 分钟写入 4.9 万行；`\l` 列出 9 个 `infrax_*` 库、零 `pocketx_*` 残留。
 
-> ⚠️ 风险提示：`pocketx_collector` 为 10.3.8.6 生产库（有 events 分区表），改名需在**无写入**窗口执行；`ALTER DATABASE RENAME` 不支持事务内回滚，建议先备份 `pg_dump --schema-only` + 保留改名前的连接串记录以便快速回切。
+> ⚠️ 风险提示（已按此执行）：`pocketx_collector` 为 10.3.8.6 生产库（events 分区表），在无写入窗口执行；`ALTER DATABASE RENAME` 不支持事务内回滚，执行前已备份 `pg_dump --schema-only` + 保留改名前的连接串记录（data 机 `/root/backups/epf9_t3/`）便于快速回切。
 
 ### T-4 保留项 —— 永不改（仅加注释）
 
