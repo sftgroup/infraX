@@ -167,6 +167,7 @@ curl -s https://infrax.0xainet.top/api/rag/v1/health
 | events 无新分区/写入停滞 | 分区清单 + reltuples | P0（collector 故障） |
 | infrax-cleanup 日志 ERROR | `grep -i error /var/log/infrax-cleanup.log` | P1（库名/连接漂移） |
 | WAL 目录 >10G | `du -sh /var/lib/pgdata_wal` | P2 |
+| 内存 available <500M / swap >80% | `free -m`（data 机） | P1（data 机 3.7G 承载 24 服务，swap 长期 1.67G/1.98G，见 §12.2） |
 
 ## 10. 历史事故对照（各维度由来）
 
@@ -184,3 +185,31 @@ curl -s https://infrax.0xainet.top/api/rag/v1/health
 - 改 `deploy/infrax-cleanup.sh` 后**必须同步** data 机 `/opt/infrax-cleanup.sh`（service ExecStart 指向 /opt，非仓库路径）
 - 生产 systemd 改动：`daemon-reload` + 核验 ExecMainPID 与 `ss -ltnp` 实际监听 PID（曾有旧进程占端口）
 - 新增密钥走 systemd drop-in（`secrets.conf` root:600），勿写入被 git 跟踪的 `.env.production`（EPF-8 待排期）
+
+## 12. 故障预案（2026-08-23 实况沉淀）
+
+### 12.1 data-service 重启预热陷阱
+
+**现象**（8/23 部署 `db_postgres.py` 修复后 `restart infrax-data` 实测）：进程进入全量 K 线预热——150 标的 × 8 周期 `KlineStore` upsert（~15 分钟），期间进程 STAT=`D`（不可中断 IO 等待）、系统 `wa` 35%、**health 请求 15s 超时无响应**；预热完成后 health 恢复（0.2ms）。
+
+**原因**：data 机 3.7G 内存 + 重度 swap，全量 bars 拉取（150 标的 × 8 周期 × 500 根）占满 IO 与内存。
+
+**预案**：
+1. 重启 `infrax-data` 一律安排在**低峰期**，并**预留 ≥15 分钟预热窗口**（图谱冷构建另有 3-4 分钟 CPU 饱和期，见 GP-2）
+2. 预热窗口内 health 超时**属预期，勿误判为故障**触发重启/告警；判断依据：
+   - 进程 `ps -o stat` 为 `D`、日志滚动 `KlineStore: <SYM>/USDT <period> upserted` → 预热中
+   - 预热完成信号：health 返回 `{"code":0,...}`（<1ms）、`D` → `S`
+3. 预热期间的业务请求可能排队超时，可考虑临时放大 uvicorn timeout 或对 `/bars` 类热数据端点做限流
+4. 若预热 >30 分钟未完成：检查 swap（`free -m`）与磁盘 IO（`iostat`），必要时 `systemctl restart` 重试（避免连续重启，会重置预热）
+
+### 12.2 data 机内存预警（3.7G 承载 24 服务）
+
+**现状**（8/23 快照）：物理内存 3723M，空闲仅 116-165M，`available` ~2G（含 reclaimable cache），**swap 已用 1.67G/1.98G（84%）**。
+
+**风险**：新增服务或请求尖峰时内存不足 → 频繁 swap → IO 放大（swappiness 默认 60）→ 全服务响应劣化（8/23 data-service 预热时即呈此态）。
+
+**预案**：
+1. **监控**：`free -m` 看 `available` 与 swap；`swap 使用率 >80%` 或 `available <500M` 持续 10 分钟 → P1 告警（§9 已登记）
+2. **短期缓解**：`vm.swappiness` 调低（如 10）；必要时扩 swap 文件（`fallocate -l 4G` + `mkswap` + `swapon`）
+3. **长期**：将高频 Python 服务（data-service / ml 拉取）与链栈 Node 服务**分机部署**，或将 data 机内存升配；避免在 data 机新增常驻服务
+4. 部署窗口内（重启/预热）尤其关注 `free -m`，预留缓冲避免 OOM
