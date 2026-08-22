@@ -340,3 +340,11 @@
 | 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | WEB-10 | Market Data 页面缺少分类，CEX/DEX/新闻/日历/宏观数据混杂 | 前端单页混排 + web 代理未覆盖新闻/日历/宏观路由 + collector 鉴权只认 `X-API-Key`（web 注入的 `X-Service-Key` 无效）→ DEX 401 | ① [datacenter.js](file:///home/steven/infraX/projects/web/modules/datacenter.js) `dcRenderMarket` 重构 5 分类 Tab（`dcMTab` 分派 dcMCex/dcMDex/dcMNews/dcMCal/dcMMacro，i18n 新增 28 个 `dc_mkt_*` 键）② server.js 新增 `/snapshots`+`/macro` 代理 ③ collector `apiKeyAuth` 新增 `X-Service-Key` 平台 bridge key 直通分支（config.ts 增 `service.apiKey`，commit e508a84）④ `/snapshots` 返回裸 `{ts,snapshots:{...}}` 无信封，dcLoadNews/dcLoadCal 改 `d.news||d.snapshots.news` 兼容（commit 81c58d2/7757f10）⑤ 新闻时间 `"8/21"` 短格式不再 `new Date` 误解析、日历标题去重 emoji（commit 9c5d23d） | ✅ 已部署（da5b521 + e508a84 + 7757f10 + 9c5d23d） | P1 | browser 生产实测 5 tab 全通：CEX BTC/USDT 实时报价+K线、DEX OKX 400 条 + DexScreener 双表、新闻 78 条真实条目、日历 38 条表格、宏观 CPI/US10Y 卡片；collector 生产经 tsx 直跑 src（免编译），`SERVICE_API_KEY` 走 systemd drop-in `secrets.conf`（与 web bridge key 同源），重启后进程环境变量已核验；公网 `/api/dex/hot-tokens` 200（okx 400 + dexscreener 2） |
+
+### 9.26 LightRAG 显示当前租户已上传文档列表（WSG 前端，2026-08-23）
+
+> **✅ 已部署（commit 2a07366）**：LightRAG 订阅详情页「真实用量」区块由 KPI 统计（文档数/租户/namespace + 最近 1 个 doc_id）增强为 **已上传文档列表表格**。数据源沿用 ragservicer `GET /api/rag/api/v1/namespaces/{ns}/documents`（[engine.py](file:///home/steven/infraX/projects/ragservicer/api/engine.py#L442-L491) 的 `list_documents`，返回 `{total, documents:[{doc_id, size_bytes, chunk_count, created_at, status}]}`，状态映射 indexed/indexing/error/duplicate）。
+
+| 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|---|
+| WEB-11 | LightRAG 页面只显示文档总数，看不到当前租户已上传的具体文档 | `lrLoadRealUsage` 用 `limit=1` 仅拉 1 篇做「最近文档」展示，未渲染列表 | [b2b.js](file:///home/steven/infraX/projects/web/modules/b2b.js) `lrLoadRealUsage` 改 `limit=100`：KPI 下方新增文档表格（doc_id 超长省略 + title 悬浮全量 / 状态徽章四色 indexed·绿 indexing·黄 error·红 duplicate·灰 / 大小 B·KB·MB / 分块数 / 创建时间），超 100 篇提示「仅显示前 N 篇」；i18n 新增 `lr_docs_*` 8 键（zh/en），bump `b2b.js?v=1787600002` + `i18n.js?v=1787600002` | ✅ 已部署（2a07366） | P2 | browser 生产实测：注入现存租户（rag_grants，tenant `u_091a...`）key 后上传 2 篇测试文档 → 表格正确渲染（doc_id/状态/大小/分块/创建时间全列）→ 删除后空态「该租户暂无已上传文档」；无 console 错误；测试数据已清理（total 恢复 0）。注：provision 需钱包签名（afetch `auth:'wallet'`，依赖 MetaMask/personal_sign），headless 无钱包无法走全流程，故用 rag_grants 现存租户直连验证 |
