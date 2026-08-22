@@ -381,8 +381,37 @@ function rpcDocsHtml() {
   '</div>';
 }
 
-// W-8: 钱包维度"我的订阅"（keys 掩码 + 套餐 + 当月用量）
+// W-8: 钱包维度"我的订阅"（keys 掩码 + 套餐 + 当月用量 + 升级卡片）
 function rpcWallet() { try { return user().walletAddress || ''; } catch (e) { return ''; } }
+
+// W-9: 套餐升级卡片 —— 基于 RPC_DEFAULT_PLANS 价格基线，过滤高于当前套餐的候选
+function rpcUpgradeHtml(planName) {
+  var cur = 0;
+  for (var i = 0; i < RPC_DEFAULT_PLANS.length; i++) {
+    if (planName && planName.toLowerCase().indexOf(RPC_DEFAULT_PLANS[i].name.toLowerCase()) !== -1) {
+      cur = RPC_DEFAULT_PLANS[i].price;
+      break;
+    }
+  }
+  var up = RPC_DEFAULT_PLANS.filter(function (p) { return p.price > cur; });
+  if (!up.length) {
+    return '<div style="text-align:center;padding:14px;color:var(--gold-light);font-size:13px;border:1px dashed var(--border);border-radius:var(--r-md);margin-top:16px">' + I18N.t("rpc_upgrade_max") + '</div>';
+  }
+  return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">' +
+    '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:10px">' + I18N.t("rpc_upgrade_title") +
+    ' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">' + I18N.t("rpc_upgrade_note") + '</span></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">' +
+      up.map(function (p) {
+        return '<div class="waas-plan" style="cursor:pointer" data-plan="' + p.id + '" onclick="rpcSubscribe(\'' + p.id + '\')">' +
+          '<div class="waas-plan-badge">' + p.badge + '</div>' +
+          '<div class="waas-plan-name">' + p.emoji + ' RPC ' + p.name + '</div>' +
+          '<div class="waas-plan-price">$' + p.price + '</div><div class="waas-plan-period">/mo</div>' +
+          '<div class="waas-plan-features">' + p.features.join('<br>') + '</div>' +
+          '<button class="btn btn-primary" style="margin-top:12px;width:100%">' + I18N.t("rpc_upgrade_to") + '</button>' +
+        '</div>';
+      }).join('') +
+    '</div></div>';
+}
 
 function rpcMySubHtml(noWallet) {
   if (noWallet) {
@@ -426,6 +455,7 @@ function rpcLoadMySub() {
               '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--gold,#F0B90B),#d98e04)"></div></div>' +
           '</div>';
         }).join('') +
+        rpcUpgradeHtml(keys[0].planName || '') +
         '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:10px">' + I18N.t("rpc_my_sub_note") + '</div>' +
       '</div>';
     })

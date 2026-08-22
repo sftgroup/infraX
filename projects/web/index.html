@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/modules/infrax.css?v=1787304000">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-<script src="/modules/i18n.js?v=1787326000"></script>
+<script src="/modules/i18n.js?v=1787340000"></script>
 </head>
 <body>
 <!-- Background orbs -->
@@ -843,12 +843,11 @@ Body:
         <button class="tab-btn active" data-sub="dc-overview">📊 Overview</button>
         <button class="tab-btn" data-sub="dc-apikey">🔑 API Key</button>
         <button class="tab-btn" data-sub="dc-docs">📖 API Docs</button>
-        <button class="tab-btn" data-sub="dc-explorer">🔍 Explorer</button>
         <button class="tab-btn" data-sub="dc-insights">📈 Insights</button>
         <button class="tab-btn" data-sub="dc-market">📊 Market Data</button>
       </div>
       <div class="sub-panel active" id="sub-dc-overview">
-        <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">
+        <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px">
           <div class="kpi">
             <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">⚡</div>
             <div class="kpi-label">Plan</div>
@@ -864,23 +863,13 @@ Body:
             <div class="kpi-label">Monthly Quota</div>
             <div class="kpi-val" id="dc-quota" style="font-size:20px;font-weight:700">—</div>
           </div>
-          <div class="kpi">
-            <div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🧾</div>
-            <div class="kpi-label" data-i18n="dc_kpi_events_total">链上事件总量</div>
-            <div class="kpi-val" id="dc-total-events" style="font-size:20px;font-weight:700">—</div>
-          </div>
         </div>
         <div class="panel">
           <div class="panel-header">
             <span style="margin-right:8px">🗂️</span> Data Capabilities
-            <span class="stat-chip" style="margin-left:auto">insights · on-chain · market</span>
+            <span class="stat-chip" style="margin-left:auto">insights · market</span>
           </div>
-          <div class="panel-body" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-            <div onclick="dcSwitchTab('dc-explorer')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
-              <div style="font-size:22px;margin-bottom:6px">🔍</div>
-              <div style="font-weight:700;font-size:14px;margin-bottom:4px" data-i18n="dc_feature_events">链上事件</div>
-              <div style="font-size:12px;color:var(--text-muted)" data-i18n="dc_feature_events_desc">转账 / 授权 / DEX 交易等链上事件查询</div>
-            </div>
+          <div class="panel-body" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
             <div onclick="dcSwitchTab('dc-insights')" style="cursor:pointer;border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg-sub,#242a36);transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand,#F0B90B)'" onmouseout="this.style.borderColor='var(--border)'">
               <div style="font-size:22px;margin-bottom:6px">📈</div>
               <div style="font-weight:700;font-size:14px;margin-bottom:4px">Insights</div>
@@ -891,25 +880,6 @@ Body:
               <div style="font-weight:700;font-size:14px;margin-bottom:4px" data-i18n="dc_feature_market">金融行情</div>
               <div style="font-size:12px;color:var(--text-muted)" data-i18n="dc_feature_market_desc">实时报价 · K线 · 宏观数据</div>
             </div>
-          </div>
-        </div>
-        <div class="panel" style="margin-top:16px">
-          <div class="panel-header">
-            <span style="margin-right:8px">🏷️</span> 事件分类分布
-            <span class="stat-chip" id="dc-cat-total" style="margin-left:auto">—</span>
-          </div>
-          <div class="panel-body" id="dc-cat-stats" style="padding-top:8px"></div>
-        </div>
-        <div class="panel" style="margin-top:16px">
-          <div class="panel-header">
-            <span style="margin-right:8px">🕒</span> 最近事件
-            <span class="stat-chip" style="margin-left:auto" id="dc-recent-hint">—</span>
-          </div>
-          <div class="panel-body" style="padding:0;overflow:auto">
-            <table style="width:100%;border-collapse:collapse;font-size:12px">
-              <thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Chain</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Block</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Type</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">From</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">To</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Amount</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">Tx</th></tr></thead>
-              <tbody id="dc-recent-tbody"></tbody>
-            </table>
           </div>
         </div>
       </div>
@@ -954,31 +924,29 @@ Body:
           <div class="panel-body">
             <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">All API requests require the <code>x-dc-api-key</code> header:</p>
             <div class="code-block"><pre>curl -H "x-dc-api-key: YOUR_KEY" \
-  https://infrax.0xainet.top/api/v2/data/events?chain=sepolia</pre></div>
+  https://infrax.0xainet.top/api/v2/data/ticker?symbol=BTC/USDT&market=crypto</pre></div>
           </div>
         </div>
         <div class="panel" style="margin-top:16px">
-          <div class="panel-header">📋 GET /events — Query On-Chain Events</div>
+          <div class="panel-header">💹 GET /ticker — Real-Time Quote</div>
           <div class="panel-body">
             <table class="info-table">
               <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
-              <tr><td><code>chain</code></td><td>string</td><td>sepolia, ethereum, bsc, base, oxa</td></tr>
-              <tr><td><code>address</code></td><td>string</td><td>Filter by from/to address</td></tr>
-              <tr><td><code>contract</code></td><td>string</td><td>Filter by contract</td></tr>
-              <tr><td><code>event_type</code></td><td>string</td><td>transfer</td></tr>
-              <tr><td><code>from_block</code></td><td>number</td><td>Block range start</td></tr>
-              <tr><td><code>to_block</code></td><td>number</td><td>Block range end</td></tr>
-              <tr><td><code>page_size</code></td><td>number</td><td>Results per page (max 500)</td></tr>
-              <tr><td><code>page_token</code></td><td>string</td><td>Cursor for next page</td></tr>
+              <tr><td><code>symbol</code></td><td>string</td><td>e.g. BTC/USDT, AAPL, EUR/USD</td></tr>
+              <tr><td><code>market</code></td><td>string</td><td>crypto, usstock, forex, futures, cnstock, hkstock</td></tr>
+              <tr><td><code>market_type</code></td><td>string</td><td>spot / swap (optional, auto-detect)</td></tr>
             </table>
           </div>
         </div>
         <div class="panel" style="margin-top:16px">
-          <div class="panel-header">📊 GET /stats — Chain Statistics</div>
+          <div class="panel-header">📊 GET /bars — OHLCV History</div>
           <div class="panel-body">
-            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">Returns event counts, latest blocks, and unique txs per chain.</p>
-            <div class="code-block"><pre>GET /api/v2/data/stats
-→ { chains: [{chain, event_count, latest_block, unique_tx}], storage: {totalRows, chains} }</pre></div>
+            <table class="info-table">
+              <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              <tr><td><code>symbol</code></td><td>string</td><td>e.g. BTC/USDT, AAPL, EUR/USD</td></tr>
+              <tr><td><code>timeframe</code></td><td>string</td><td>1m, 5m, 15m, 1h, 4h, 1d, 1w</td></tr>
+              <tr><td><code>limit</code></td><td>number</td><td>Results per page (default 100, max 1000)</td></tr>
+            </table>
           </div>
         </div>
         <div class="panel" style="margin-top:16px">
@@ -988,26 +956,6 @@ Body:
             <p style="margin:10px 0 0"><a href="https://github.com/sftgroup/infraX" target="_blank" style="color:var(--link,#3b82f6);font-weight:600;text-decoration:none">🔗 github.com/sftgroup/infraX</a></p>
           </div>
         </div>
-      </div>
-      <div class="sub-panel" id="sub-dc-explorer">
-        <div class="panel">
-          <div class="panel-header">🔎 Event Explorer</div>
-          <div class="panel-body">
-            <div class="filter-row">
-              <select id="dc-filter-chain" class="select" style="width:150px"></select>
-              <input type="text" id="dc-filter-addr" class="input" placeholder="Address (0x...)" style="width:360px">
-              <select id="dc-filter-type" class="select" style="width:140px"><option value="">All Types</option><option value="transfer">Transfer</option></select>
-              <button class="btn btn-primary" onclick="dcQueryEvents()">🔍 Search</button>
-            </div>
-            <div style="overflow-x:auto;margin-top:16px">
-              <table class="data-table" style="width:100%">
-                <thead><tr><th>Chain</th><th>Block</th><th>Type</th><th>From</th><th>To</th><th>Amount</th><th>TX</th></tr></thead>
-                <tbody id="dc-events-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-tertiary)">Enter filters above and click Search</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <div id="dc-explorer-pager" style="display:flex;justify-content:center;gap:8px;margin-top:12px"></div>
       </div>
       <div class="sub-panel" id="sub-dc-insights">
         <div id="insights-root"><div style="padding:6px"><div class="skeleton" style="width:230px;height:30px;margin:30px auto 14px;border-radius:8px"></div><div class="skeleton-text" style="width:72%;margin:0 auto 10px"></div><div class="skeleton-text short" style="margin:0 auto 30px"></div><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:16px"><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div><div class="skeleton-card" style="width:240px;height:118px"></div></div><div class="skeleton" style="height:56px;width:100%;max-width:760px;margin:0 auto;border-radius:10px"></div></div></div>
