@@ -3,6 +3,10 @@ import { pool } from '../database';
 import { logger } from '../logger';
 import crypto from 'crypto';
 
+// 上游 HTTP 超时（OKX OnchainOS 偶发慢响应；无超时会拖到 nginx 网关 60s → 504）。
+// 命中超时按「上游失败」降级（dexRoutes 各端点 try/catch / Promise.allSettled 兜底）。
+const OKX_TIMEOUT_MS = parseInt(process.env.OKX_MARKET_HTTP_TIMEOUT_MS || '25000', 10);
+
 // ================================================================
 // OKX OnchainOS Market v6 API Client
 // ================================================================
@@ -204,7 +208,15 @@ export class OkxMarketV6Client {
     const maxRetries = 3;
     let attempt = 0;
     for (;;) {
-      const resp = await fetch(url, { method, headers, body: bodyStr || undefined });
+      let resp: Response;
+      try {
+        resp = await fetch(url, { method, headers, body: bodyStr || undefined, signal: AbortSignal.timeout(OKX_TIMEOUT_MS) });
+      } catch (e: any) {
+        if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+          throw new Error(`OKX Market timeout after ${OKX_TIMEOUT_MS}ms: ${path}`);
+        }
+        throw e;
+      }
 
       if (resp.status === 429 || resp.status >= 500) {
         if (attempt >= maxRetries) {

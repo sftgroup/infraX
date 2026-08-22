@@ -152,3 +152,47 @@ gateway dex-data.ts
 | 部署记录 | [DEPLOY_RECORDS.md](file:///home/steven/aihunter-saas/DEPLOY_RECORDS.md) 2026-08-21（key 放行 22:10 / R1-R10 接入 21:30） |
 | tasklist | Phase 14.6（key 轮换）、Phase 17（R1-R10，17.5 key 解冻确认）、待办与延后（3 项上游依赖） |
 | 协作原则 | tasklist 13.5：只通知不代修不代合入 |
+
+---
+
+## 7. InfraX 侧回执（2026-08-23）
+
+> 状态：3 项均已答复；其中 502/504 已修复、SOL 链覆盖已补齐（commit 见文末）。关联 InfraX 代码仓库 `sftgroup/infraX`。
+
+### 7.1 问题一：`token/history` count:0 — 确认为「快照覆盖限制」（非故障）
+
+**数据链路（InfraX collector）**
+- `token/history` 读 collector 自有 PG 表 `okx_market_token_profiles`（[okxMarketScheduler.ts `snapshotTokenProfiles`](file:///home/steven/infraX/projects/collector/src/services/okxMarketScheduler.ts#L180-L227)），非实时上游查询
+- 快照覆盖：**每链 OKX 热门榜 top 30**（`OKX_MARKET_CANDLE_TOKENS` 默认 30），5min 粒度（`schedulerProfileMs=300000`）
+- 默认链：`1,56,8453`（ETH/BSC/BASE）；**SOL(501) 此前未纳入** → SOL 链 history 基本全空（已于本次补齐，见 7.2）
+
+**结论**
+1. `count:0` = 币不在每链热门 top 30 覆盖（非 401/故障/参数问题）
+2. 覆盖策略：当前仅热门 top 30；**不支持任意 address 按需回填**（可评估：扩覆盖上限 / 白名单追加 / 按需快照，需 InfraX 排期）
+3. 建议 AIHunter 侧：History tab 优先展示 hot-tokens 榜单币（保证有快照）；对非榜单币空态提示「无快照覆盖」
+
+### 7.2 问题二：502/504 — 根因确认 + 已修复（2026-08-23）
+
+**根因（两层）**
+1. nginx `location /api/v2/data/market/dex/` **未配置 `proxy_read_timeout`**（默认 60s）；OKX OnchainOS 慢响应时超 60s → 504
+2. collector OKX 客户端 `fetch()` **无超时**（[okxMarketV6.ts](file:///home/steven/infraX/projects/collector/src/services/okxMarketV6.ts)）→ 上游慢/挂起时无限等待，拖到 nginx 超时；OKX 5xx/429 指数退避重试（1s→2s→4s，最多 3 次）+ hot-tokens 逐 token 补池行情（串行）放大延迟 → 502（upstream 中断）
+
+**已落地修复（commit c36c8e6）**
+- nginx：`/api/v2/data/market/dex/` 增加 `proxy_read_timeout 120s`
+- collector：OKX `fetch()` 增加 `AbortSignal.timeout(25000)`（`OKX_MARKET_HTTP_TIMEOUT_MS` 可调），超时抛明确错误并由各端点 try/catch / Promise.allSettled 降级（非 500）
+
+**可观测性建议（供后续）**
+- 可提供上游成功率/延迟指标（collector 已有请求日志，可对接 Prometheus）；当前无 SLA 承诺
+- 上游偶发慢/5xx 属 OKX OnchainOS 侧行为，已通过超时 + 降级收敛影响面
+
+### 7.3 问题三：`dx_6d2a2d` key — 解冻正式回执 + 治理说明
+
+1. **解冻确认**：2026-08-21 放行（`X-API-Key` 200 真实数据；此前 401 为上游权限未生效），当前 9 端点鉴权正常，无需额外操作
+2. **冻结机制**：InfraX admin `PATCH /admin/api-keys/{id}` 置 `enabled=0` 即冻结（api_keys 表 enabled 字段，SHA-256 哈希存储）；**当前无主动通知机制**（key 冻结无 webhook/告警，依赖调用方发现 401）——已列为 InfraX 待办（key 冻结告警）
+3. **配额/限流**：外部 key 统一 `DX_EXTERNAL_KEY_RATE_LIMIT=100` RPM 滑动窗口（collector 鉴权层）；当前 dx_6d2a2d 用量远低于上限
+4. **轮换/续期规范**：建议走 InfraX admin 统一签发 API（`POST /admin/api-keys`），签发后即时生效；轮换前与调用方约定窗口
+
+### 7.4 SOL 链覆盖补齐（2026-08-23）
+
+- `OKX_MARKET_SCHED_CHAINS` 增加 `501`（SOL）：生产 collector 配置 `1,56,8453,501` → SOL 热门币进入 hot-tokens / token-profiles / candles 快照，`token/history` SOL 链可返回数据
+- 生效条件：collector 重启后下一轮快照（5min 内）；历史序列从重启后累积
