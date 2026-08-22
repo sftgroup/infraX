@@ -294,3 +294,13 @@
 | AHR-2 | **上游间歇 502/504（生产实测 ~1/3）** | **三层根因全部修复**：① nginx `/api/v2/data/market/dex/` 无 `proxy_read_timeout`（默认 60s）→ 加 120s；② collector OKX `fetch()` 无超时 → 加 `AbortSignal.timeout(25000)`（`OKX_MARKET_HTTP_TIMEOUT_MS` 可配）；③ web 代理全局 socket 15s → collector 路由改 90s（`COLLECTOR_ROUTE_TIMEOUT_MS` 可配）。生产实测：hot-tokens 冷调 504@15s → 200@24s，缓存命中 0.5s | ✅ 已修复已部署 | P0 | commit c8c78a4（nginx/collector）+ 387576b（web）；生产 `43.163.105.172` 已 pull + 重启 infrax-collector/infrax-web + nginx reload |
 | AHR-3 | **dx_6d2a2d key 解冻** | **2026-08-21 已放行**（`X-API-Key` 200 真实数据）；冻结机制 `PATCH /admin/api-keys/{id}` enabled=0，无主动通知（已列待办：key 冻结告警）；外部 key 统一 100 RPM 滑动窗口；轮换走 admin 统一签发 | ✅ 已答复 | P1 | 见回执 7.3 |
 | AHR-4 | **SOL 链覆盖补齐** | `OKX_MARKET_SCHED_CHAINS` 增加 501（生产 `1,56,8453,501`）→ SOL 热门币进入 hot-tokens/token-profiles/candles 快照，`token/history` SOL 链返回真实数据（生产实测 Bicat count=1） | ✅ 已部署 | P1 | 见回执 7.4；生效于 collector 重启后下一轮快照（5min 内） |
+
+### 9.21 REQ-3 rx key RPC 配额升级（AIHunter，源：`aihunter-saas/docs/requirements-infrax.md` REQ-3，2026-08-23）
+
+> **✅ 已全量实施并部署（2026-08-23，commit 1c34878 已部署生产）**：AIHunter rx_ key `aihunter-saas-rpc-read`（rx_d6f33…6d1f，rpc_keys id=4）rpc_free 配额（1 万/月）耗尽 → 读链 503，阻塞 11.7 NFT mint 端到端验证；按"升级 + 用量清单接口 + 配额告警"全量落地。回执见 [INFRAX_UPSTREAM.md](file:///home/steven/infraX/INFRAX_UPSTREAM.md) 7.5。
+
+| 编号 | 需求 | 结论 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|
+| REQ-3a | **rx key 配额升级（rpc_free → rpc_pro）** | 生产 DB UPDATE rpc_keys id=4 → `rpc_pro`（10 万/月，$79/月档）+ `payment_method='admin'`，配额读取实时、无需重启；实测请求恢复，用量 10004 → 10137 持续增长 | ✅ 已上线（commit 1c34878） | P0 | 见回执 7.5「升级」；用量集中在 8-16 单日 ~1 万次（E2E 批量验证）；后续超 80% 由 REQ-3c 告警提示，可再升 enterprise |
+| REQ-3b | **用量清单接口** | `GET /v1/subscription/admin/keys`（X-Service-Key = CHAIN_RPC_READ_KEY/BROADCAST_KEY）→ 全部 rx_/bx_ keys 掩码/套餐/配额/本月用量/使用率/告警标记 + 汇总；生产实测 6 个 key 清单正确、key id=4 显示 rpc_pro 10137/100000 | ✅ 已上线（commit 1c34878） | P1 | 见回执 7.5「用量清单接口」；dx_/mx_ 外部 key 用量在 data 服务管理面板 |
+| REQ-3c | **配额告警（≥80% 主动提示）** | chain-rpc 定时扫描（默认 30min，启动即扫）：enabled keys 本月用量 ≥ 阈值（默认 80%）→ `logger.warn`（掩码/用量/配额/使用率）+ 可选 webhook POST（`RPC_QUOTA_ALERT_WEBHOOK_URL`）+ admin/keys `alerting` 标记；生产实测注入 8500 条用量达 85% 触发，验证后回滚 | ✅ 已上线（commit 1c34878） | P1 | 见回执 7.5「配额告警」；平台暂无通用 webhook，告警经日志+接口暴露，可对接 Prometheus/日志抓取 |

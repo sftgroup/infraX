@@ -202,3 +202,22 @@ gateway dex-data.ts
 
 - `OKX_MARKET_SCHED_CHAINS` 增加 `501`（SOL）：生产 collector 配置 `1,56,8453,501` → SOL 热门币进入 hot-tokens / token-profiles / candles 快照，`token/history` SOL 链可返回数据
 - 生效条件：collector 重启后下一轮快照（5min 内）；历史序列从重启后累积
+
+### 7.5 REQ-3：rx key RPC 配额升级 + 用量清单 + 告警（2026-08-23）
+
+> 对应 AIHunter 侧 `docs/requirements-infrax.md` REQ-3（rpc_free 10000/10004 耗尽 → 读链 503，阻塞 11.7 NFT mint 端到端验证）。commit 1c34878 已部署生产。
+
+**升级（已生效）**
+- `aihunter-saas-rpc-read`（rx_d6f33…6d1f，rpc_keys id=4）：**rpc_free → rpc_pro**（1 万 → **10 万次/月**，$79/月档；实际用量集中在 8-16 单日 ~1 万次，升级后请求已恢复，实测用量 10004 → 10137 持续增长）
+- 广播 key（bx_5b184）与钱包 key 未动；如需更高档（enterprise 100 万/月）可再升
+
+**用量清单接口（新增）**
+- `GET /v1/subscription/admin/keys`（X-Service-Key = CHAIN_RPC_READ_KEY / BROADCAST_KEY）→ 全部 rx_/bx_ keys 的掩码/套餐/配额/本月用量/使用率/告警标记 + 汇总（total/alerting/阈值）
+- 说明：dx_/mx_ 等 data-service 签发 key 的用量清单在 data 服务管理面板（`/admin/api-keys`，request_count 累计）
+
+**配额告警（新增）**
+- chain-rpc 定时扫描（`RPC_QUOTA_ALERT_INTERVAL_MS` 默认 30min，启动即扫一次）：enabled keys 本月用量 ≥ 阈值（`RPC_QUOTA_ALERT_THRESHOLD` 默认 80%）→ `logger.warn`（掩码/用量/配额/使用率）+ 可选 webhook POST（`RPC_QUOTA_ALERT_WEBHOOK_URL` 配置则推送，未配置仅日志）
+- 生产实测：注入 8500 条用量使 key 达 85% → 告警触发（`RPC quota alert: ... used=8500/10000 (85%)`），验证后已回滚
+- 主动通知：平台暂无通用 webhook 基础设施；告警经日志 + 接口暴露，可对接既有监控（Prometheus/日志抓取）
+
+**验收对照**：`eth_chainId` 恢复 200（用量 < 配额）；`admin/keys` 接口可用；告警机制可用（≥80% 触发）。
