@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>InfraX — Web3 Infrastructure Platform</title>
 <link rel="stylesheet" href="/modules/infrax.css">
+<script src="/modules/i18n.js?v=1787306000"></script>
 <style>
   :root{--brand:#FCD535;--brand-hover:#F0B90B;--bg:#080810;--card:#0f0f1a;--border:#1a1a2e;--text:#cdd6f4;--dim:#7c7c9a;--green:#0ECB81;--red:#F6465D;--blue:#5B9DF5;--purple:#A78BFA}
   *{margin:0;padding:0;box-sizing:border-box}
   body{display:block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
   .gradient-bg{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;background:radial-gradient(ellipse 80% 60% at 50% -20%,rgba(252,213,53,.06),transparent),radial-gradient(ellipse 60% 50% at 90% 80%,rgba(167,139,250,.04),transparent)}
   .container{max-width:1200px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+  .landing-lang{position:fixed;top:18px;right:24px;z-index:20;padding:8px 14px;border-radius:8px;background:rgba(252,213,53,.1);border:1px solid rgba(252,213,53,.25);color:var(--brand);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .landing-lang:hover{background:rgba(252,213,53,.2)}
 
   /* Hero */
   .hero{padding:100px 0 60px;text-align:center}
@@ -83,26 +86,27 @@
 </head>
 <body>
 <div class="gradient-bg"></div>
+<button class="landing-lang" id="landing-lang" onclick="I18N.toggle()">🌐 中文 / EN</button>
 
 <!-- Hero -->
 <section class="hero container">
-  <div class="hero-badge">🚀 v5.0 — Production Ready</div>
-  <h1>One Platform, <span>All of Web3</span></h1>
-  <p>InfraX is the unified infrastructure layer for Web3 applications — from enterprise-grade wallet services to real‑time on‑chain data. Integrate via REST API, TypeScript SDK, or MCP for AI agents.</p>
+  <div class="hero-badge" data-i18n="landing_badge">🚀 v5.0 — Production Ready</div>
+  <h1><span data-i18n="landing_hero_h1_a">One Platform, </span><span data-i18n="landing_hero_h1_b">All of Web3</span></h1>
+  <p data-i18n="landing_hero_desc">InfraX is the unified infrastructure layer for Web3 applications — from enterprise-grade wallet services to real‑time on‑chain data. Integrate via REST API, TypeScript SDK, or MCP for AI agents.</p>
   <div class="hero-actions">
-    <a href="/connect.html" class="btn btn-primary">🚀 Launch App</a>
-    <a href="#core-products" class="btn btn-outline">📖 Explore Products</a>
-    <a href="https://github.com/sftgroup/infraX" class="btn btn-outline" target="_blank">⭐ GitHub</a>
+    <a href="/connect.html" class="btn btn-primary" data-i18n="landing_launch">🚀 Launch App</a>
+    <a href="#core-products" class="btn btn-outline" data-i18n="landing_explore">📖 Explore Products</a>
+    <a href="https://github.com/sftgroup/infraX" class="btn btn-outline" target="_blank" data-i18n="landing_github">⭐ GitHub</a>
   </div>
 </section>
 
 <!-- Stats -->
 <div class="container">
   <div class="stats">
-    <div class="stat"><div class="stat-num">14+</div><div class="stat-label">Services Running</div></div>
-    <div class="stat"><div class="stat-num">10</div><div class="stat-label">Blockchain Networks</div></div>
-    <div class="stat"><div class="stat-num">2.1M+</div><div class="stat-label">On-chain Events</div></div>
-    <div class="stat"><div class="stat-num">7</div><div class="stat-label">MCP Routes</div></div>
+    <div class="stat"><div class="stat-num">14+</div><div class="stat-label" data-i18n="landing_stat_services">Services Running</div></div>
+    <div class="stat"><div class="stat-num">10</div><div class="stat-label" data-i18n="landing_stat_networks">Blockchain Networks</div></div>
+    <div class="stat"><div class="stat-num">2.1M+</div><div class="stat-label" data-i18n="landing_stat_events">On-chain Events</div></div>
+    <div class="stat"><div class="stat-num">7</div><div class="stat-label" data-i18n="landing_stat_mcp">MCP Routes</div></div>
   </div>
 </div>
 
@@ -110,72 +114,72 @@
 <div id="core-products">
 <div class="section container">
   <div class="section-header">
-    <h2>Core Products</h2>
-    <p>Six modular services covering every Web3 infrastructure need</p>
+    <h2 data-i18n="landing_core_title">Core Products</h2>
+    <p data-i18n="landing_core_desc">Six modular services covering every Web3 infrastructure need</p>
   </div>
   <div class="grid">
     <div class="card">
       <span class="card-icon">🦊</span>
-      <h3>WAAS — Wallet as a Service</h3>
-      <p>Enterprise-grade non-custodial wallet infrastructure. Tenant isolation, address pool management, gas fee estimation, and webhook integration — all through a unified REST API.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9109 · Censorship-free identity layer</div>
+      <h3 data-i18n="landing_waas_title">WAAS — Wallet as a Service</h3>
+      <p data-i18n="landing_waas_desc">Enterprise-grade non-custodial wallet infrastructure. Tenant isolation, address pool management, gas fee estimation, and webhook integration — all through a unified REST API.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_waas_port">Port :9109 · Censorship-free identity layer</div>
     </div>
     <div class="card">
       <span class="card-icon">🔐</span>
-      <h3>Vault — Multi-Sig Safe</h3>
-      <p>Gas-less threshold signing with configurable N-of-M policies. Supports Safe{Core} chain execution, risk control rules, and hot wallet balance monitoring for institutional custody.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9107 · Institutional grade security</div>
+      <h3 data-i18n="landing_vault_title">Vault — Multi-Sig Safe</h3>
+      <p data-i18n="landing_vault_desc">Gas-less threshold signing with configurable N-of-M policies. Supports Safe{Core} chain execution, risk control rules, and hot wallet balance monitoring for institutional custody.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_vault_port">Port :9107 · Institutional grade security</div>
     </div>
     <div class="card">
       <span class="card-icon">🧩</span>
-      <h3>MPC — Distributed Signing</h3>
-      <p>Multi-Party Computation wallet with key shard distribution. No single point of failure — signing keys are split across parties and assembled only at transaction time.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9104 · Trustless key management</div>
+      <h3 data-i18n="landing_mpc_title">MPC — Distributed Signing</h3>
+      <p data-i18n="landing_mpc_desc">Multi-Party Computation wallet with key shard distribution. No single point of failure — signing keys are split across parties and assembled only at transaction time.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_mpc_port">Port :9104 · Trustless key management</div>
     </div>
     <div class="card">
       <span class="card-icon">📡</span>
-      <h3>Data Center</h3>
-      <p>Real-time on-chain event subscriptions with customizable filters. Support for Ethereum, BSC, Sepolia, Base, and OxaChain — normalized schemas and reliable delivery.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9102 · Unified event streaming</div>
+      <h3 data-i18n="landing_dc_title">Data Center</h3>
+      <p data-i18n="landing_dc_desc">Real-time on-chain event subscriptions with customizable filters. Support for Ethereum, BSC, Sepolia, Base, and OxaChain — normalized schemas and reliable delivery.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_dc_port">Port :9102 · Unified event streaming</div>
     </div>
     <div class="card">
       <span class="card-icon">💳</span>
-      <h3>Payments</h3>
-      <p>Generic payment engine powering plan subscriptions — on-chain escrow, Stripe fiat, x402, and agent billing (invites / ledger transfers).</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9132 · Universal payment gateway</div>
+      <h3 data-i18n="landing_pay_title">Payments</h3>
+      <p data-i18n="landing_pay_desc">Generic payment engine powering plan subscriptions — on-chain escrow, Stripe fiat, x402, and agent billing (invites / ledger transfers).</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_pay_port">Port :9132 · Universal payment gateway</div>
     </div>
     <div class="card">
       <span class="card-icon">🔍</span>
-      <h3>Collector</h3>
-      <p>High-performance on-chain data ingestion engine. Scans 40+ RPC endpoints across 10 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9101 · 2.1M events indexed</div>
+      <h3 data-i18n="landing_collector_title">Collector</h3>
+      <p data-i18n="landing_collector_desc">High-performance on-chain data ingestion engine. Scans 40+ RPC endpoints across 10 chains, normalizes events, and indexes 2.1M+ historical records with OKX ChainOS integration.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_collector_port">Port :9101 · 2.1M events indexed</div>
     </div>
     <div class="card">
       <span class="card-icon">🔗</span>
-      <h3>Chain RPC — JSON-RPC Gateway</h3>
-      <p>Multi-chain JSON-RPC gateway for B-side integrations. 10 networks with read (<code>rx_</code>) / broadcast (<code>bx_</code>) key separation, ethers / viem drop-in access.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9130 · rpc-gw.0xainet.top</div>
+      <h3 data-i18n="landing_rpc_title">Chain RPC — JSON-RPC Gateway</h3>
+      <p data-i18n="landing_rpc_desc">Multi-chain JSON-RPC gateway for B-side integrations. 10 networks with read (<code>rx_</code>) / broadcast (<code>bx_</code>) key separation, ethers / viem drop-in access.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_rpc_port">Port :9130 · rpc-gw.0xainet.top</div>
     </div>
     <div class="card">
       <span class="card-icon">🔎</span>
-      <h3>LightRAG — Knowledge Graph RAG</h3>
-      <p>Multi-tenant document knowledge base: upload → graph index → semantic retrieval. Tenant + namespace isolation with <code>X-Tenant-ID</code> sharding, REST + MCP dual protocol.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9721 · Multi-tenant RAG</div>
+      <h3 data-i18n="landing_lr_title">LightRAG — Knowledge Graph RAG</h3>
+      <p data-i18n="landing_lr_desc">Multi-tenant document knowledge base: upload → graph index → semantic retrieval. Tenant + namespace isolation with <code>X-Tenant-ID</code> sharding, REST + MCP dual protocol.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_lr_port">Port :9721 · Multi-tenant RAG</div>
     </div>
     <div class="card">
       <span class="card-icon">🤖</span>
-      <h3>Smart Account — ERC-4337 Sessions</h3>
-      <p>Account Abstraction with on-chain session keys. Fine-grained agent permissions, revocation, and rollover via batch UserOps — the SDK layer for AI agents.</p>
-      <span class="tag tag-live">Live</span><span class="tag tag-api">REST API</span>
-      <div class="port">Port :9131 · aa-relay + aa-sdk</div>
+      <h3 data-i18n="landing_aa_title">Smart Account — ERC-4337 Sessions</h3>
+      <p data-i18n="landing_aa_desc">Account Abstraction with on-chain session keys. Fine-grained agent permissions, revocation, and rollover via batch UserOps — the SDK layer for AI agents.</p>
+      <span class="tag tag-live" data-i18n="landing_tag_live">Live</span><span class="tag tag-api" data-i18n="landing_tag_api">REST API</span>
+      <div class="port" data-i18n="landing_aa_port">Port :9131 · aa-relay + aa-sdk</div>
     </div>
   </div>
 </div>
@@ -183,58 +187,58 @@
 <!-- MCP Servers -->
 <div class="section container">
   <div class="section-header">
-    <h2>🤖 MCP — AI Agent Protocol</h2>
-    <p>Seven MCP routes let AI agents interact with blockchain directly</p>
+    <h2 data-i18n="landing_mcp_title">🤖 MCP — AI Agent Protocol</h2>
+    <p data-i18n="landing_mcp_desc">Seven MCP routes let AI agents interact with blockchain directly</p>
   </div>
   <div class="grid grid-4">
     <div class="card">
       <span class="card-icon">🔑</span>
-      <h3>Wallet MCP</h3>
-      <p>AI agents create & manage wallets. Generate addresses, sign transactions, query balances — all via MCP tools.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9110 · SSE & stdio transport</div>
+      <h3 data-i18n="landing_mcp_wallet_title">Wallet MCP</h3>
+      <p data-i18n="landing_mcp_wallet_desc">AI agents create &amp; manage wallets. Generate addresses, sign transactions, query balances — all via MCP tools.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_wallet_port">:9110 · SSE &amp; stdio transport</div>
     </div>
     <div class="card">
       <span class="card-icon">🏦</span>
-      <h3>Vault MCP</h3>
-      <p>Multi-sig operations for AI. Propose, approve, execute Safe transactions with threshold policies.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9108 · Integrated risk control</div>
+      <h3 data-i18n="landing_mcp_vault_title">Vault MCP</h3>
+      <p data-i18n="landing_mcp_vault_desc">Multi-sig operations for AI. Propose, approve, execute Safe transactions with threshold policies.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_vault_port">:9108 · Integrated risk control</div>
     </div>
     <div class="card">
       <span class="card-icon">📊</span>
-      <h3>DC MCP</h3>
-      <p>On-chain data at AI's fingertips. Query events, subscribe to logs, retrieve real-time chain state.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9103 · 5 chains supported</div>
+      <h3 data-i18n="landing_mcp_dc_title">DC MCP</h3>
+      <p data-i18n="landing_mcp_dc_desc">On-chain data at AI's fingertips. Query events, subscribe to logs, retrieve real-time chain state.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_dc_port">:9103 · 5 chains supported</div>
     </div>
     <div class="card">
       <span class="card-icon">🧩</span>
-      <h3>MPC MCP</h3>
-      <p>Distributed key signing via MCP. Register key shards, coordinate signing sessions across parties.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9105 · Threshold signing</div>
+      <h3 data-i18n="landing_mcp_mpc_title">MPC MCP</h3>
+      <p data-i18n="landing_mcp_mpc_desc">Distributed key signing via MCP. Register key shards, coordinate signing sessions across parties.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_mpc_port">:9105 · Threshold signing</div>
     </div>
     <div class="card">
       <span class="card-icon">🔗</span>
-      <h3>Chain RPC MCP</h3>
-      <p>Multi-chain JSON-RPC for agents — balance, block, contract reads and more across 10 networks.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9130 · 10 networks</div>
+      <h3 data-i18n="landing_mcp_rpc_title">Chain RPC MCP</h3>
+      <p data-i18n="landing_mcp_rpc_desc">Multi-chain JSON-RPC for agents — balance, block, contract reads and more across 10 networks.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_rpc_port">:9130 · 10 networks</div>
     </div>
     <div class="card">
       <span class="card-icon">📊</span>
-      <h3>Market MCP</h3>
-      <p>Financial market data for agents — ticker, K-lines, and DEX strategy data (hot tokens / risk / holders).</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:9101 · Market + DEX data</div>
+      <h3 data-i18n="landing_mcp_market_title">Market MCP</h3>
+      <p data-i18n="landing_mcp_market_desc">Financial market data for agents — ticker, K-lines, and DEX strategy data (hot tokens / risk / holders).</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_market_port">:9101 · Market + DEX data</div>
     </div>
     <div class="card">
       <span class="card-icon">🗝️</span>
-      <h3>Session Key MCP</h3>
-      <p>ERC-4337 session management for agents — create, revoke, and rollover on-chain session keys.</p>
-      <span class="tag tag-mcp">MCP</span>
-      <div class="port">:3011 · AA sessions</div>
+      <h3 data-i18n="landing_mcp_session_title">Session Key MCP</h3>
+      <p data-i18n="landing_mcp_session_desc">ERC-4337 session management for agents — create, revoke, and rollover on-chain session keys.</p>
+      <span class="tag tag-mcp" data-i18n="landing_tag_mcp">MCP</span>
+      <div class="port" data-i18n="landing_mcp_session_port">:3011 · AA sessions</div>
     </div>
   </div>
 </div>
@@ -242,19 +246,19 @@
 <!-- SDK -->
 <div class="section container">
   <div class="section-header">
-    <h2>📦 SDK — TypeScript Client</h2>
-    <p>Integrate InfraX into your app with one import</p>
+    <h2 data-i18n="landing_sdk_title">📦 SDK — TypeScript Client</h2>
+    <p data-i18n="landing_sdk_desc">Integrate InfraX into your app with one import</p>
   </div>
   <div style="display:flex;gap:24px;flex-wrap:wrap">
     <div class="card" style="flex:1;min-width:300px">
       <span class="card-icon">⚡</span>
-      <h3>Install</h3>
+      <h3 data-i18n="landing_sdk_install">Install</h3>
       <pre style="background:#000;color:var(--green);padding:16px;border-radius:8px;font-size:13px;overflow-x:auto;margin-top:12px;line-height:1.8">npm install @infrax/sdk</pre>
-      <div class="port" style="margin-top:12px">TypeScript-first · Tree-shakeable · 0 deps</div>
+      <div class="port" style="margin-top:12px" data-i18n="landing_sdk_tip">TypeScript-first · Tree-shakeable · 0 deps</div>
     </div>
     <div class="card" style="flex:1;min-width:300px">
       <span class="card-icon">🛠</span>
-      <h3>Usage</h3>
+      <h3 data-i18n="landing_sdk_usage">Usage</h3>
       <pre style="background:#000;color:var(--text);padding:16px;border-radius:8px;font-size:13px;overflow-x:auto;margin-top:12px;line-height:1.8"><span style="color:var(--purple)">import</span> { <span style="color:var(--blue)">InfraX</span> } <span style="color:var(--purple)">from</span> <span style="color:var(--green)">'@infrax/sdk'</span>;
 
 <span style="color:var(--purple)">const</span> infrax = <span style="color:var(--purple)">new</span> <span style="color:var(--blue)">InfraX</span>({
@@ -269,17 +273,17 @@
     </div>
     <div class="card" style="flex:1;min-width:300px">
       <span class="card-icon">🔗</span>
-      <h3>API Reference</h3>
+      <h3 data-i18n="landing_sdk_api">API Reference</h3>
       <div style="margin-top:12px;line-height:2">
-        <div><code style="color:var(--brand)">infrax.wallet.create()</code> — Create a wallet</div>
-        <div><code style="color:var(--brand)">infrax.wallet.sign()</code> — Sign a transaction</div>
-        <div><code style="color:var(--brand)">infrax.vault.propose()</code> — Propose a Safe tx</div>
-        <div><code style="color:var(--brand)">infrax.vault.approve()</code> — Approve threshold</div>
-        <div><code style="color:var(--brand)">infrax.dc.subscribe()</code> — Subscribe to events</div>
-        <div><code style="color:var(--brand)">infrax.dc.query()</code> — Query on-chain data</div>
-        <div><code style="color:var(--brand)">infrax.mpc.register()</code> — Register key share</div>
-        <div><code style="color:var(--brand)">infrax.mpc.sign()</code> — Coordinated signing</div>
-        <div><code style="color:var(--brand)">infrax.payment.checkout()</code> — Subscribe (Stripe fiat)</div>
+        <div><code style="color:var(--brand)">infrax.wallet.create()</code> <span data-i18n="landing_api_wallet_create">— Create a wallet</span></div>
+        <div><code style="color:var(--brand)">infrax.wallet.sign()</code> <span data-i18n="landing_api_wallet_sign">— Sign a transaction</span></div>
+        <div><code style="color:var(--brand)">infrax.vault.propose()</code> <span data-i18n="landing_api_vault_propose">— Propose a Safe tx</span></div>
+        <div><code style="color:var(--brand)">infrax.vault.approve()</code> <span data-i18n="landing_api_vault_approve">— Approve threshold</span></div>
+        <div><code style="color:var(--brand)">infrax.dc.subscribe()</code> <span data-i18n="landing_api_dc_subscribe">— Subscribe to events</span></div>
+        <div><code style="color:var(--brand)">infrax.dc.query()</code> <span data-i18n="landing_api_dc_query">— Query on-chain data</span></div>
+        <div><code style="color:var(--brand)">infrax.mpc.register()</code> <span data-i18n="landing_api_mpc_register">— Register key share</span></div>
+        <div><code style="color:var(--brand)">infrax.mpc.sign()</code> <span data-i18n="landing_api_mpc_sign">— Coordinated signing</span></div>
+        <div><code style="color:var(--brand)">infrax.payment.checkout()</code> <span data-i18n="landing_api_pay_checkout">— Subscribe (Stripe fiat)</span></div>
       </div>
     </div>
   </div>
@@ -288,13 +292,13 @@
 <!-- Architecture -->
 <div class="section container">
   <div class="section-header">
-    <h2>Architecture</h2>
-    <p>How the pieces fit together</p>
+    <h2 data-i18n="landing_arch_title">Architecture</h2>
+    <p data-i18n="landing_arch_desc">How the pieces fit together</p>
   </div>
   <div class="arch">
     <div class="arch-layers">
       <div class="arch-layer">
-        <div class="arch-label">Frontend</div>
+        <div class="arch-label" data-i18n="landing_arch_frontend">Frontend</div>
         <div class="arch-boxes">
           <div class="arch-box">🌐 Web App :9111</div>
           <div class="arch-box">⚙ Admin Panel :9100</div>
@@ -302,7 +306,7 @@
         </div>
       </div>
       <div class="arch-layer">
-        <div class="arch-label">MCP Servers</div>
+        <div class="arch-label" data-i18n="landing_arch_mcp">MCP Servers</div>
         <div class="arch-boxes">
           <div class="arch-box">🤖 Wallet :9110</div>
           <div class="arch-box">🏦 Vault :9108</div>
@@ -311,7 +315,7 @@
         </div>
       </div>
       <div class="arch-layer">
-        <div class="arch-label">Services</div>
+        <div class="arch-label" data-i18n="landing_arch_services">Services</div>
         <div class="arch-boxes">
           <div class="arch-box">WAAS :9109</div>
           <div class="arch-box">Vault :9107</div>
@@ -322,7 +326,7 @@
         </div>
       </div>
       <div class="arch-layer">
-        <div class="arch-label">Data</div>
+        <div class="arch-label" data-i18n="landing_arch_data">Data</div>
         <div class="arch-boxes">
           <div class="arch-box">🐘 PostgreSQL 16</div>
           <div class="arch-box">⛓ 10 Chains</div>
@@ -336,11 +340,11 @@
 
 <!-- CTA -->
 <div class="cta container">
-  <h2>Ready to build?</h2>
-  <p>Connect your wallet and start building with InfraX infrastructure.</p>
-  <a href="/connect.html" class="btn btn-primary">🚀 Connect Wallet</a>
+  <h2 data-i18n="landing_cta_title">Ready to build?</h2>
+  <p data-i18n="landing_cta_desc">Connect your wallet and start building with InfraX infrastructure.</p>
+  <a href="/connect.html" class="btn btn-primary" data-i18n="landing_cta_connect">🚀 Connect Wallet</a>
 </div>
 
-<footer>InfraX v5.0 · Web3 Infrastructure Platform · 2026</footer>
+<footer data-i18n="landing_footer">InfraX v5.0 · Web3 Infrastructure Platform · 2026</footer>
 </body>
 </html>
