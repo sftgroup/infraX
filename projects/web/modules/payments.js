@@ -117,11 +117,11 @@ async function pmLoadOverview() {
       '<div class="kpi"><div class="kpi-label">Chain</div><div class="kpi-val mono" style="font-size:14px">' + pmEsc(i.chain || '—') + '</div></div>' +
     '</div>';
   } else {
-    infoHtml = '<div style="padding:16px;color:var(--warning);font-size:12px">⚠️ /payments/info 不可用：' + pmEsc(results[1].status === 'rejected' ? results[1].reason.message : '') + '</div>';
+    infoHtml = '<div style="padding:16px;color:var(--warning);font-size:12px">' + I18N.t('pay_info_unavail') + pmEsc(results[1].status === 'rejected' ? results[1].reason.message : '') + '</div>';
   }
 
   var railOrder = ['chain', 'fiat', 'x402', 'mpp', 'a2a', 'period', 'batch', 'invite', 'transfer'];
-  var railLabels = { chain: '链上定价', fiat: 'Stripe 法币', x402: 'x402 链上支付', mpp: 'MPP 支付通道', a2a: 'A2A 两阶段', period: '周期订阅', batch: '批量收款', invite: '账单邀请', transfer: 'Ledger 转账' };
+  var railLabels = { chain: I18N.t('pay_rail_chain'), fiat: I18N.t('pay_rail_fiat'), x402: I18N.t('pay_rail_x402'), mpp: I18N.t('pay_rail_mpp'), a2a: I18N.t('pay_rail_a2a'), period: I18N.t('pay_rail_period'), batch: I18N.t('pay_rail_batch'), invite: I18N.t('pay_rail_invite'), transfer: I18N.t('pay_rail_transfer') };
   var railHtml = '';
   if (caps) {
     railHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">' + railOrder.map(function(k) {
@@ -137,17 +137,17 @@ async function pmLoadOverview() {
       '</div>';
     }).join('') + '</div>';
   } else {
-    railHtml = '<div style="padding:16px;color:var(--warning);font-size:12px">⚠️ capabilities 不可用：' + pmEsc(results[0].status === 'rejected' ? results[0].reason.message : '') + '</div>';
+    railHtml = '<div style="padding:16px;color:var(--warning);font-size:12px">' + I18N.t('pay_caps_unavail') + pmEsc(results[0].status === 'rejected' ? results[0].reason.message : '') + '</div>';
   }
 
   pane.innerHTML =
     infoHtml +
-    '<div class="panel" style="margin-top:16px"><div class="panel-header">🧩 Rails 能力</div><div class="panel-body">' + railHtml + '</div></div>' +
-    '<div class="panel" style="margin-top:14px"><div class="panel-header">💡 使用指引</div><div class="panel-body" style="font-size:12px;color:var(--text-secondary);line-height:1.9">' +
-      '<b>🧾 Invites</b> — 向 payee 发起账单，payee 链上支付（settle）或 payer 用 ledger 余额支付（pay）。<br>' +
-      '<b>🔁 Transfers</b> — ledger 内部转账（debit+credit 原子执行），创建后需 confirm。<br>' +
-      '<b>⚡ A2A</b> — 两阶段意图：先建 intent，再以链上 tx 或 ledger 余额结算。<br>' +
-      '<span style="color:var(--text-muted)">钱包地址（payer/subscriber）默认取当前连接钱包；所有金额单位 wei。</span>' +
+    '<div class="panel" style="margin-top:16px"><div class="panel-header">' + I18N.t('pay_rails_title') + '</div><div class="panel-body">' + railHtml + '</div></div>' +
+    '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('pay_guide_title') + '</div><div class="panel-body" style="font-size:12px;color:var(--text-secondary);line-height:1.9">' +
+      I18N.t('pay_guide_invites') +
+      I18N.t('pay_guide_transfers') +
+      I18N.t('pay_guide_a2a') +
+      '<span style="color:var(--text-muted)">' + I18N.t('pay_guide_wallet') + '</span>' +
     '</div></div>';
 }
 
@@ -157,18 +157,18 @@ function pmLoadInvites() {
   if (!pane) return;
   var addr = user().walletAddress || '';
   pane.innerHTML =
-    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">🧾 创建账单邀请</div><div class="panel-body">' +
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + I18N.t('pay_inv_create') + '</div><div class="panel-body">' +
       '<div class="form-row" style="grid-template-columns:1.6fr 1fr 1fr 1fr auto">' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Payee（收款地址）</label><input class="input mono" id="pm-inv-payee" placeholder="0x…" style="font-size:12px"></div>' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">金额 (ETH)</label><input class="input mono" id="pm-inv-amt" placeholder="0.01" style="font-size:12px"></div>' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">截止 (days)</label><input class="input" id="pm-inv-days" value="7" type="number" min="1" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_payee') + '</label><input class="input mono" id="pm-inv-payee" placeholder="0x…" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_amount') + '</label><input class="input mono" id="pm-inv-amt" placeholder="0.01" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_days') + '</label><input class="input" id="pm-inv-days" value="7" type="number" min="1" style="font-size:12px"></div>' +
         '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Memo</label><input class="input" id="pm-inv-memo" placeholder="invoice #1" style="font-size:12px"></div>' +
-        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateInvite()">＋ 创建</button>' +
+        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateInvite()">' + I18N.t('pay_btn_create') + '</button>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Payer = 当前连接钱包 <code class="mono">' + pmEsc(addr) + '</code></div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + I18N.t('pay_hint_payer') + '<code class="mono">' + pmEsc(addr) + '</code></div>' +
       '<div class="result-box" id="pm-inv-result" style="margin-top:12px"></div>' +
     '</div></div>' +
-    '<div class="panel"><div class="panel-header">📋 邀请列表 <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">payer / payee</span></div>' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('pay_inv_list') + ' <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">payer / payee</span></div>' +
     '<div class="panel-body" style="padding:0" id="pm-inv-list"><div style="text-align:center;padding:28px;color:var(--text-muted)"><span class="spin"></span></div></div></div>';
   pmListInvites();
 }
@@ -180,13 +180,13 @@ async function pmCreateInvite() {
   var memo = document.getElementById('pm-inv-memo').value.trim();
   var days = parseInt(document.getElementById('pm-inv-days').value) || 7;
   if (!payer) return showToast('Connect wallet first', 'error');
-  if (!payee || !amt) return showToast('Payee 和金额必填', 'warning');
+  if (!payee || !amt) return showToast(I18N.t('pay_inv_need'), 'warning');
   var box = document.getElementById('pm-inv-result');
-  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">⏳ 创建中…</div>';
+  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">' + I18N.t('pay_creating') + '</div>';
   try {
     var d = await pmFetch('/payments/invites', { method: 'POST', body: { payer: payer, payee: payee, valueWei: amt, memo: memo, dueAt: days > 0 ? Date.now() + days * 86400000 : undefined } });
     box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' +
-      '✅ 邀请已创建 <code class="mono">' + pmEsc(d.inviteId) + '</code> · ' + pmWei(d.amountWei) + ' ETH → ' + pmEsc(pmShort(d.payee, 14)) + '</div>';
+      I18N.t('pay_inv_created') + '<code class="mono">' + pmEsc(d.inviteId) + '</code> · ' + pmWei(d.amountWei) + ' ETH → ' + pmEsc(pmShort(d.payee, 14)) + '</div>';
     document.getElementById('pm-inv-payee').value = '';
     document.getElementById('pm-inv-amt').value = '';
     pmListInvites();
@@ -207,20 +207,20 @@ async function pmListInvites() {
   var payerList = results[0].status === 'fulfilled' ? (results[0].value.invites || []) : [];
   var payeeList = results[1].status === 'fulfilled' ? (results[1].value.invites || []) : [];
   if (results[0].status === 'rejected' && results[1].status === 'rejected') {
-    el.innerHTML = pmEmpty('invites 不可用：' + pmEsc(results[0].reason.message) + '（rail 未启用则返回 503）');
+    el.innerHTML = pmEmpty(I18N.t('pay_inv_unavail') + pmEsc(results[0].reason.message) + I18N.t('pay_inv_503'));
     return;
   }
   if (!payerList.length && !payeeList.length) {
-    el.innerHTML = pmEmpty('暂无邀请');
+    el.innerHTML = pmEmpty(I18N.t('pay_no_inv'));
     return;
   }
   function row(inv, role) {
     var act = '';
     if (role === 'payee' && inv.status === 'open') {
       act = '<input class="input mono" placeholder="txHash" id="pm-settle-' + inv.inviteId + '" style="width:150px;font-size:11px"> ' +
-        '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="pmSettleInvite(\'' + inv.inviteId + '\')">🔗 结算</button>';
+        '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="pmSettleInvite(\'' + inv.inviteId + '\')">' + I18N.t('pay_btn_settle') + '</button>';
     } else if (role === 'payer' && inv.status === 'open') {
-      act = '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:4px 8px" onclick="pmPayInvite(\'' + inv.inviteId + '\')">💳 Ledger 支付</button> ' +
+      act = '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:4px 8px" onclick="pmPayInvite(\'' + inv.inviteId + '\')">' + I18N.t('pay_btn_ledger') + '</button> ' +
         '<button class="btn btn-sm" style="font-size:11px;padding:4px 8px" onclick="pmCancelInvite(\'' + inv.inviteId + '\')">✕</button>';
     } else if (inv.status !== 'open') {
       act = '<span class="mono" style="font-size:10px;color:var(--text-muted)">' + (inv.settledMethod || inv.status) + '</span>';
@@ -235,40 +235,40 @@ async function pmListInvites() {
     '</tr>';
   }
   el.innerHTML =
-    '<div style="padding:8px 14px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">payer（我发起）: ' + payerList.length + ' · payee（我待收）: ' + payeeList.length + '</div>' +
-    '<table class="data-table" style="width:100%"><thead><tr><th>Invite ID</th><th>对方</th><th>金额</th><th>截止</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+    '<div style="padding:8px 14px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">' + I18N.t('pay_inv_mine') + payerList.length + ' · ' + I18N.t('pay_inv_theirs') + payeeList.length + '</div>' +
+    '<table class="data-table" style="width:100%"><thead><tr><th>Invite ID</th><th>' + I18N.t('pay_th_counterpart') + '</th><th>' + I18N.t('pay_th_amount') + '</th><th>' + I18N.t('pay_th_expire') + '</th><th>' + I18N.t('pay_th_status') + '</th><th>' + I18N.t('pay_th_actions') + '</th></tr></thead><tbody>' +
     payerList.map(function(i) { return row(i, 'payer'); }).join('') +
     payeeList.map(function(i) { return row(i, 'payee'); }).join('') +
     '</tbody></table>';
 }
 
 async function pmPayInvite(inviteId) {
-  if (!confirm('用我的 ledger 余额支付邀请 ' + pmShort(inviteId, 12) + '？')) return;
+  if (!confirm(I18N.t('pay_inv_pay_confirm') + pmShort(inviteId, 12) + I18N.t('pay_inv_pay_confirm_suffix'))) return;
   try {
     var d = await pmFetch('/payments/invites/' + encodeURIComponent(inviteId) + '/pay', { method: 'POST' });
-    showToast('✅ 已支付 (transfer ' + pmShort(d.transferId, 10) + ')', 'success');
+    showToast(I18N.t('pay_paid') + '(transfer ' + pmShort(d.transferId, 10) + ')', 'success');
     pmListInvites();
-  } catch (e) { showToast('支付失败：' + e.message, 'error'); }
+  } catch (e) { showToast(I18N.t('pay_pay_failed') + e.message, 'error'); }
 }
 
 async function pmSettleInvite(inviteId) {
   var tx = document.getElementById('pm-settle-' + inviteId);
   var txHash = tx ? tx.value.trim() : '';
-  if (!txHash) return showToast('请输入 txHash', 'warning');
+  if (!txHash) return showToast(I18N.t('pay_need_txhash'), 'warning');
   try {
     var d = await pmFetch('/payments/invites/' + encodeURIComponent(inviteId) + '/settle', { method: 'POST', body: { txHash: txHash } });
-    showToast('✅ 结算成功 reference=' + pmShort(d.reference, 12), 'success');
+    showToast(I18N.t('pay_settled') + 'reference=' + pmShort(d.reference, 12), 'success');
     pmListInvites();
-  } catch (e) { showToast('结算失败：' + e.message, 'error'); }
+  } catch (e) { showToast(I18N.t('pay_settle_failed') + e.message, 'error'); }
 }
 
 async function pmCancelInvite(inviteId) {
-  if (!confirm('取消邀请 ' + pmShort(inviteId, 12) + '？')) return;
+  if (!confirm(I18N.t('pay_inv_cancel_confirm') + pmShort(inviteId, 12) + I18N.t('pay_q_mark'))) return;
   try {
     await pmFetch('/payments/invites/' + encodeURIComponent(inviteId) + '/cancel', { method: 'POST' });
-    showToast('✅ 已取消', 'success');
+    showToast(I18N.t('pay_cancelled'), 'success');
     pmListInvites();
-  } catch (e) { showToast('取消失败：' + e.message, 'error'); }
+  } catch (e) { showToast(I18N.t('pay_cancel_failed') + e.message, 'error'); }
 }
 
 // ── Transfers ──
@@ -277,17 +277,17 @@ function pmLoadTransfers() {
   if (!pane) return;
   var addr = user().walletAddress || '';
   pane.innerHTML =
-    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">🔁 创建 Ledger 转账</div><div class="panel-body">' +
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + I18N.t('pay_tf_create') + '</div><div class="panel-body">' +
       '<div class="form-row" style="grid-template-columns:1.6fr 1fr 1.2fr auto">' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">To（收款地址）</label><input class="input mono" id="pm-tf-to" placeholder="0x…" style="font-size:12px"></div>' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">金额 (ETH)</label><input class="input mono" id="pm-tf-amt" placeholder="0.01" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_to') + '</label><input class="input mono" id="pm-tf-to" placeholder="0x…" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_amount') + '</label><input class="input mono" id="pm-tf-amt" placeholder="0.01" style="font-size:12px"></div>' +
         '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Reference</label><input class="input" id="pm-tf-ref" placeholder="optional" style="font-size:12px"></div>' +
-        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateTransfer()">＋ 创建</button>' +
+        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateTransfer()">' + I18N.t('pay_btn_create') + '</button>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">From = 当前连接钱包 <code class="mono">' + pmEsc(addr) + '</code> · 创建后需 <b>Confirm</b> 原子执行（debit+credit）。</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + I18N.t('pay_hint_from') + '<code class="mono">' + pmEsc(addr) + '</code>' + I18N.t('pay_tf_confirm_hint') + '</div>' +
       '<div class="result-box" id="pm-tf-result" style="margin-top:12px"></div>' +
     '</div></div>' +
-    '<div class="panel"><div class="panel-header">📋 转账列表</div><div class="panel-body" style="padding:0" id="pm-tf-list"><div style="text-align:center;padding:28px;color:var(--text-muted)"><span class="spin"></span></div></div></div>';
+    '<div class="panel"><div class="panel-header">' + I18N.t('pay_tf_list') + '</div><div class="panel-body" style="padding:0" id="pm-tf-list"><div style="text-align:center;padding:28px;color:var(--text-muted)"><span class="spin"></span></div></div></div>';
   pmListTransfers();
 }
 
@@ -297,12 +297,12 @@ async function pmCreateTransfer() {
   var amt = pmEthToWei(document.getElementById('pm-tf-amt').value);
   var ref = document.getElementById('pm-tf-ref').value.trim();
   if (!from) return showToast('Connect wallet first', 'error');
-  if (!to || !amt) return showToast('To 和金额必填', 'warning');
+  if (!to || !amt) return showToast(I18N.t('pay_tf_need'), 'warning');
   var box = document.getElementById('pm-tf-result');
-  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">⏳ 创建中…</div>';
+  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">' + I18N.t('pay_creating') + '</div>';
   try {
     var d = await pmFetch('/payments/transfers', { method: 'POST', body: { from: from, to: to, valueWei: amt, reference: ref } });
-    box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">✅ 转账已创建 <code class="mono">' + pmEsc(d.transferId) + '</code> · status=' + pmEsc(d.status) + '</div>';
+    box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' + I18N.t('pay_tf_created') + '<code class="mono">' + pmEsc(d.transferId) + '</code> · status=' + pmEsc(d.status) + '</div>';
     document.getElementById('pm-tf-to').value = '';
     document.getElementById('pm-tf-amt').value = '';
     pmListTransfers();
@@ -323,11 +323,11 @@ async function pmListTransfers() {
   var fromList = results[0].status === 'fulfilled' ? (results[0].value.transfers || []) : [];
   var toList = results[1].status === 'fulfilled' ? (results[1].value.transfers || []) : [];
   if (results[0].status === 'rejected' && results[1].status === 'rejected') {
-    el.innerHTML = pmEmpty('transfers 不可用：' + pmEsc(results[0].reason.message));
+    el.innerHTML = pmEmpty(I18N.t('pay_tf_unavail') + pmEsc(results[0].reason.message));
     return;
   }
   if (!fromList.length && !toList.length) {
-    el.innerHTML = pmEmpty('暂无转账');
+    el.innerHTML = pmEmpty(I18N.t('pay_no_tf'));
     return;
   }
   function row(t, role) {
@@ -343,20 +343,20 @@ async function pmListTransfers() {
     '</tr>';
   }
   el.innerHTML =
-    '<div style="padding:8px 14px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">我发起: ' + fromList.length + ' · 我收款: ' + toList.length + '</div>' +
-    '<table class="data-table" style="width:100%"><thead><tr><th>Transfer ID</th><th>对方</th><th>金额</th><th>Reference</th><th>操作</th></tr></thead><tbody>' +
+    '<div style="padding:8px 14px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">' + I18N.t('pay_tf_mine') + fromList.length + ' · ' + I18N.t('pay_tf_theirs') + toList.length + '</div>' +
+    '<table class="data-table" style="width:100%"><thead><tr><th>Transfer ID</th><th>' + I18N.t('pay_th_counterpart') + '</th><th>' + I18N.t('pay_th_amount') + '</th><th>Reference</th><th>' + I18N.t('pay_th_actions') + '</th></tr></thead><tbody>' +
     fromList.map(function(t) { return row(t, 'from'); }).join('') +
     toList.map(function(t) { return row(t, 'to'); }).join('') +
     '</tbody></table>';
 }
 
 async function pmConfirmTransfer(transferId) {
-  if (!confirm('确认执行转账 ' + pmShort(transferId, 12) + '？（原子 debit+credit）')) return;
+  if (!confirm(I18N.t('pay_tf_confirm') + pmShort(transferId, 12) + I18N.t('pay_tf_confirm_suffix'))) return;
   try {
     await pmFetch('/payments/transfers/' + encodeURIComponent(transferId) + '/confirm', { method: 'POST' });
-    showToast('✅ 转账已执行', 'success');
+    showToast(I18N.t('pay_tf_executed'), 'success');
     pmListTransfers();
-  } catch (e) { showToast('执行失败：' + e.message, 'error'); }
+  } catch (e) { showToast(I18N.t('pay_tf_exec_failed') + e.message, 'error'); }
 }
 
 // ── A2A ──
@@ -365,20 +365,20 @@ function pmLoadA2a() {
   if (!pane) return;
   var addr = user().walletAddress || '';
   pane.innerHTML =
-    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">⚡ A2A 两阶段支付</div><div class="panel-body">' +
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + I18N.t('pay_a2a_title') + '</div><div class="panel-body">' +
       '<div class="form-row" style="grid-template-columns:1.6fr 1fr auto">' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Payee（收款地址）</label><input class="input mono" id="pm-a2a-payee" placeholder="0x…" style="font-size:12px"></div>' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">金额 (ETH)</label><input class="input mono" id="pm-a2a-amt" placeholder="0.01" style="font-size:12px"></div>' +
-        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateA2a()">① 建意图</button>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_payee') + '</label><input class="input mono" id="pm-a2a-payee" placeholder="0x…" style="font-size:12px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_amount') + '</label><input class="input mono" id="pm-a2a-amt" placeholder="0.01" style="font-size:12px"></div>' +
+        '<button class="btn btn-primary" style="align-self:end" onclick="pmCreateA2a()">' + I18N.t('pay_btn_intent') + '</button>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">Subscriber = 当前连接钱包 <code class="mono">' + pmEsc(addr) + '</code>。创建后可用 ledger 余额结算（无需链上交易）。</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + I18N.t('pay_hint_subscriber') + '<code class="mono">' + pmEsc(addr) + '</code>' + I18N.t('pay_subscriber_suffix') + '</div>' +
       '<div class="result-box" id="pm-a2a-result" style="margin-top:12px"></div>' +
     '</div></div>' +
-    '<div class="panel"><div class="panel-header">② 结算（ledger 余额模式）</div><div class="panel-body">' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('pay_a2a_settle_title') + '</div><div class="panel-body">' +
       '<div class="form-row" style="grid-template-columns:1.6fr 1fr auto">' +
         '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">paymentId</label><input class="input mono" id="pm-a2a-pid" placeholder="a2a_…" style="font-size:12px"></div>' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">金额 (ETH)</label><input class="input mono" id="pm-a2a-settle-amt" placeholder="与意图一致" style="font-size:12px"></div>' +
-        '<button class="btn btn-primary" style="align-self:end" onclick="pmSettleA2a()">② 结算</button>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('pay_lb_amount') + '</label><input class="input mono" id="pm-a2a-settle-amt" placeholder="' + I18N.t('pay_settle_amt_ph') + '" style="font-size:12px"></div>' +
+        '<button class="btn btn-primary" style="align-self:end" onclick="pmSettleA2a()">' + I18N.t('pay_btn_settle2') + '</button>' +
       '</div>' +
       '<div class="result-box" id="pm-a2a-settle-result" style="margin-top:12px"></div>' +
     '</div></div>';
@@ -389,14 +389,14 @@ async function pmCreateA2a() {
   var payee = document.getElementById('pm-a2a-payee').value.trim();
   var amt = pmEthToWei(document.getElementById('pm-a2a-amt').value);
   if (!subscriber) return showToast('Connect wallet first', 'error');
-  if (!payee || !amt) return showToast('Payee 和金额必填', 'warning');
+  if (!payee || !amt) return showToast(I18N.t('pay_inv_need'), 'warning');
   var box = document.getElementById('pm-a2a-result');
-  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">⏳ 创建意图…</div>';
+  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">' + I18N.t('pay_creating_intent') + '</div>';
   try {
     var d = await pmFetch('/payments/a2a', { method: 'POST', body: { subscriber: subscriber, valueWei: amt, payee: payee } });
     box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' +
-      '✅ 意图已创建 <code class="mono">' + pmEsc(d.paymentId) + '</code> · ' + pmWei(d.amountWei) + ' ETH<br>' +
-      '<button class="btn btn-sm" style="margin-top:8px" onclick="document.getElementById(\'pm-a2a-pid\').value=\'' + pmEsc(d.paymentId) + '\';document.getElementById(\'pm-a2a-settle-amt\').value=document.getElementById(\'pm-a2a-amt\').value;showToast(\'已填入结算表单\',\'info\')">↳ 填入结算</button></div>';
+      I18N.t('pay_intent_created') + '<code class="mono">' + pmEsc(d.paymentId) + '</code> · ' + pmWei(d.amountWei) + ' ETH<br>' +
+      '<button class="btn btn-sm" style="margin-top:8px" onclick="document.getElementById(\'pm-a2a-pid\').value=\'' + pmEsc(d.paymentId) + '\';document.getElementById(\'pm-a2a-settle-amt\').value=document.getElementById(\'pm-a2a-amt\').value;showToast(I18N.t(\'pay_fill_settle_toast\'),\'info\')">' + I18N.t('pay_fill_settle') + '</button></div>';
   } catch (e) {
     box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:12px;color:var(--error)">❌ ' + pmEsc(e.message) + '</div>';
   }
@@ -406,12 +406,12 @@ async function pmSettleA2a() {
   var subscriber = user().walletAddress;
   var paymentId = document.getElementById('pm-a2a-pid').value.trim();
   var amt = pmEthToWei(document.getElementById('pm-a2a-settle-amt').value);
-  if (!paymentId || !amt) return showToast('paymentId 和金额必填', 'warning');
+  if (!paymentId || !amt) return showToast(I18N.t('pay_need_pid'), 'warning');
   var box = document.getElementById('pm-a2a-settle-result');
-  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">⏳ 结算中…</div>';
+  box.innerHTML = '<div style="padding:10px;color:var(--text-muted)">' + I18N.t('pay_settling') + '</div>';
   try {
     var d = await pmFetch('/payments/a2a/settle', { method: 'POST', body: { paymentId: paymentId, mode: 'balance', subscriber: subscriber, amountWei: amt } });
-    box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">✅ 结算成功 · credited ' + pmWei(d.creditedWei) + ' ' + pmEsc(d.asset || '') + '</div>';
+    box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' + I18N.t('pay_settle_ok') + pmWei(d.creditedWei) + ' ' + pmEsc(d.asset || '') + '</div>';
   } catch (e) {
     box.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:12px;color:var(--error)">❌ ' + pmEsc(e.message) + '</div>';
   }

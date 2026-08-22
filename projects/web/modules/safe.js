@@ -57,7 +57,7 @@ async function safeLoadOwned() {
         '<div style="text-align:right">' +
         '<div style="font-size:12px;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' pending' : '') + '</div>' +
         "<button class='btn btn-primary btn-sm' onclick='safeShowPropose(\"" + s.address + "\")' style='margin-top:4px'>Propose</button> " +
-        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button>" : '') + '</div>' +
+        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='" + I18N.t('safe_txns_title') + "'>📋 Txns</button>" : '') + '</div>' +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -83,7 +83,7 @@ async function safeLoadParticipating() {
         '<div style="font-size:11px;color:var(--text-muted);word-break:break-all">' + (s.address || '') + '</div></div>' +
         '<div style="text-align:right">' +
         '<div style="font-size:13px;font-weight:600;color:var(--warning)">' + (s.pending_tx_count > 0 ? s.pending_tx_count + ' to sign' : '') + '</div>' +
-        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='交易明细 + 审批/执行'>📋 Txns</button>" : '') + '</div>' +
+        (safeValidAddr(s.address) ? "<button class='btn btn-outline btn-sm' onclick='safeShowDetail(\"" + s.address + "\")' style='margin-top:4px' title='" + I18N.t('safe_txns_title') + "'>📋 Txns</button>" : '') + '</div>' +
         '</div></div>';
     }).join('');
   } catch (e) { list.innerHTML = '<div class="empty"><div class="empty-text" style="color:var(--error)">Failed to load</div></div>'; }
@@ -149,9 +149,9 @@ async function safeShowDetail(address) {
   overlay.innerHTML =
     '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:12px;padding:24px;width:760px;max-width:94vw;max-height:88vh;overflow:auto">' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
-        '<div style="font-size:16px;font-weight:700">🛡️ Safe 交易审批</div>' +
+        '<div style="font-size:16px;font-weight:700">' + I18N.t('safe_approve_title') + '</div>' +
         '<code class="mono" style="font-size:11px;color:var(--text-muted)">' + safeEsc(safeShort(address, 18)) + '</code>' +
-        '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="this.closest(\'.modal-overlay\').remove()">✕ 关闭</button>' +
+        '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="this.closest(\'.modal-overlay\').remove()">' + I18N.t('safe_close') + '</button>' +
       '</div>' +
       '<div id="safe-detail-body" style="font-size:12px;color:var(--text-secondary)">' +
         '<div style="text-align:center;padding:32px;color:var(--text-muted)"><span class="spin"></span> Loading transactions…</div>' +
@@ -176,7 +176,7 @@ async function safeLoadDetail(address, overlay) {
     '</div>';
 
     if (!txs.length) {
-      body.innerHTML = info + '<div style="padding:28px;text-align:center;color:var(--text-muted)">No transactions — 用 Propose 发起第一笔</div>';
+      body.innerHTML = info + '<div style="padding:28px;text-align:center;color:var(--text-muted)">' + I18N.t('safe_no_txns') + '</div>';
       return;
     }
     var explorerBase = safeExplorerBase(safe.chainId || CHAIN_IDS[activeChain]);
@@ -191,18 +191,18 @@ async function safeLoadDetail(address, overlay) {
         '<td><span style="font-size:11px">' + safeTxStatus(t.status) + '</span>' +
           (t.sig_count != null ? ' <span class="mono" style="font-size:10px;color:var(--text-muted)">' + t.sig_count + '/' + (safe.threshold || '?') + '</span>' : '') + '</td>' +
         '<td style="white-space:nowrap">' +
-          (canConfirm ? '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:3px 8px" onclick="safeConfirmTx(\'' + address + '\',\'' + t.safe_tx_hash + '\')">✍️ 签名</button> ' : '') +
-          (canExecute ? '<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:var(--success);color:#fff;border:none" onclick="safeExecuteTx(\'' + t.safe_tx_hash + '\')">🚀 执行</button>' : '') +
+          (canConfirm ? '<button class="btn btn-sm btn-primary" style="font-size:11px;padding:3px 8px" onclick="safeConfirmTx(\'' + address + '\',\'' + t.safe_tx_hash + '\')">' + I18N.t('safe_sign') + '</button> ' : '') +
+          (canExecute ? '<button class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:var(--success);color:#fff;border:none" onclick="safeExecuteTx(\'' + t.safe_tx_hash + '\')">' + I18N.t('safe_execute') + '</button>' : '') +
           (t.tx_hash ? '<a class="mono" style="font-size:10px;color:var(--text-muted)" href="' + explorerBase + '/tx/' + t.tx_hash + '" target="_blank">' + safeShort(t.tx_hash, 10) + '</a>' : '') +
         '</td>' +
       '</tr>';
     }).join('');
 
     body.innerHTML = info +
-      '<table class="data-table" style="width:100%"><thead><tr><th>Tx Hash</th><th>To</th><th>Value</th><th>Nonce</th><th>Status</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.7">💡 签名 = 对 safeTxHash 做 personal_sign（EIP-191）；达到 threshold 后端自动执行。若签名失败（MetaMask 拒绝），可复制 hash 用 ethers <code>signMessage</code> 手动签名后调用 API。</div>';
+      '<table class="data-table" style="width:100%"><thead><tr><th>Tx Hash</th><th>To</th><th>Value</th><th>Nonce</th><th>Status</th><th>' + I18N.t('safe_th_ops') + '</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.7">' + I18N.t('safe_sign_hint') + '</div>';
   } catch (e) {
-    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">加载失败：' + safeEsc(e.message) + '</div>';
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--error)">' + I18N.t('safe_load_failed') + safeEsc(e.message) + '</div>';
   }
 }
 
@@ -215,25 +215,25 @@ async function safeConfirmTx(address, safeTxHash) {
   try {
     var sig = await window.ethereum.request({ method: 'personal_sign', params: [safeTxHash, addr] });
     var r = await afetch('/api/vault/safe/confirm', { method: 'POST', body: { safeAddress: address, safeTxHash: safeTxHash, signature: sig } });
-    showToast(r.sigCount >= r.threshold ? '✅ Threshold met — ready to execute' : '✅ 已签名 (' + r.sigCount + '/' + r.threshold + ')', 'success');
+    showToast(r.sigCount >= r.threshold ? '✅ Threshold met — ready to execute' : I18N.t('safe_signed') + r.sigCount + '/' + r.threshold + ')', 'success');
     var overlay = document.querySelector('.modal-overlay[data-safe-addr]');
     if (overlay) safeLoadDetail(address, overlay); else safeLoadOwned();
   } catch (e) {
-    showToast(e.message || '签名失败', 'error');
+    showToast(e.message || I18N.t('safe_sign_failed'), 'error');
   } finally {
     if (btn) { btn.classList.remove('btn-loading'); btn.disabled = false; }
   }
 }
 
 async function safeExecuteTx(safeTxHash) {
-  if (!confirm('确认在链上执行该 Safe 交易（' + safeShort(safeTxHash, 14) + '）？')) return;
+  if (!confirm(I18N.t('safe_confirm_execute') + safeShort(safeTxHash, 14) + I18N.t('safe_confirm_qm'))) return;
   try {
     var r = await afetch('/api/vault/safe/execute', { method: 'POST', body: { safeTxHash: safeTxHash } });
-    showToast('🚀 已执行: ' + (r.txHash || safeShort(safeTxHash, 10)), 'success');
+    showToast(I18N.t('safe_executed') + (r.txHash || safeShort(safeTxHash, 10)), 'success');
     var overlay = document.querySelector('.modal-overlay[data-safe-addr]');
     if (overlay) safeLoadDetail(overlay.getAttribute('data-safe-addr'), overlay);
   } catch (e) {
-    showToast('执行失败：' + e.message, 'error');
+    showToast(I18N.t('safe_execute_failed') + e.message, 'error');
   }
 }
 

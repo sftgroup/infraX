@@ -34,9 +34,9 @@ async function dcInit() {
     if (intro) {
       intro.innerHTML = '<div style="text-align:center;padding:60px">' +
         '<div style="font-size:48px;margin-bottom:12px">🔌</div>' +
-        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">Connect wallet to view Data & Insights</div>' +
-        '<a href="/connect.html" style="color:var(--gold);font-size:14px">→ Go to Connect</a>' +
-        '<div style="margin-top:20px"><button class="btn btn-secondary" onclick="dcSkipToInsights()">📈 浏览 Insights（无需钱包）</button></div></div>';
+        '<div style="font-size:16px;color:var(--gold-light);margin-bottom:8px">' + I18N.t('dc_connect_wallet') + '</div>' +
+        '<a href="/connect.html" style="color:var(--gold);font-size:14px">' + I18N.t('dc_go_connect') + '</a>' +
+        '<div style="margin-top:20px"><button class="btn btn-secondary" onclick="dcSkipToInsights()">' + I18N.t('dc_skip_insights') + '</button></div></div>';
     }
     return;
   }
@@ -47,7 +47,7 @@ async function dcInit() {
       // MQ-16 T-1: 付费订阅待支付 → 停留在 intro 并提示等待支付确认
       if (dcUsage.dcSubStatus === 'pending') {
         var sEl = document.getElementById('dc-sub-status');
-        if (sEl) sEl.innerHTML = '<span style="color:var(--warning)">⏳ 订阅待支付确认</span> <button class="btn btn-sm btn-primary" onclick="dcRecheckPayment()" style="margin-left:8px">刷新支付状态</button>';
+        if (sEl) sEl.innerHTML = '<span style="color:var(--warning)">' + I18N.t('sub_pending') + '</span> <button class="btn btn-sm btn-primary" onclick="dcRecheckPayment()" style="margin-left:8px">' + I18N.t('sub_refresh') + '</button>';
         var ie = document.getElementById('dc-intro');
         var de = document.getElementById('dc-dash');
         if (ie) ie.style.display = 'block';
@@ -107,20 +107,20 @@ async function dcSubscribe(planId) {
     if (pay.rail === 'chain') {
       var isNative = !pay.payToken || pay.payToken === '0x0000000000000000000000000000000000000000';
       var amount = pay.price !== undefined ? (Number(pay.price) / 1e18).toFixed(4) + ' ' + (isNative ? 'ETH' : pay.payToken) : '';
-      setStatus('⏳ 请在钱包中完成链上订阅（chainId ' + pay.chainId + '）<br>' +
+      setStatus(I18N.t('sub_chain_wait') + pay.chainId + I18N.t('sub_chain_close') +
         'SubscriptionManager: <code>' + pay.subscriptionManager + '</code><br>' +
-        '金额: <b>' + amount + '</b> / ' + (pay.period || 'month') + '<br>' +
-        '<small>当前钱包即 subscriber，支付确认后自动生效</small>', true);
-      showToast('等待链上支付确认…', 'info');
+        I18N.t('sub_amount') + ': <b>' + amount + '</b> / ' + (pay.period || 'month') + '<br>' +
+        '<small>' + I18N.t('sub_self_subscriber') + '</small>', true);
+      showToast(I18N.t('sub_chain_confirming'), 'info');
       dcPollSubscription();
     } else if (pay.rail === 'fiat') {
-      setStatus('⏳ 跳转支付页…', true);
+      setStatus(I18N.t('sub_redirecting'), true);
       window.location.href = pay.sessionUrl;
     } else if (pay.rail === 'x402') {
       var amountEth = pay.priceWei ? (Number(pay.priceWei) / 1e18).toFixed(4) : '';
-      setStatus('⏳ 请向 <code>' + pay.payTo + '</code> 转账 ' + amountEth + ' ETH（' + pay.network + '）<br>' +
-        '<small>转账完成后请输入交易哈希（txHash）确认</small>', true);
-      showToast('完成转账后提交 txHash', 'info');
+      setStatus(I18N.t('sub_transfer_to') + '<code>' + pay.payTo + '</code>' + I18N.t('sub_transfer_suffix') + amountEth + I18N.t('sub_eth_net_open') + pay.network + I18N.t('sub_net_close') +
+        '<small>' + I18N.t('sub_transfer_hint') + '</small>', true);
+      showToast(I18N.t('sub_submit_txhash'), 'info');
       dcSubmitX402(pay.network);
     }
   } catch (e) {
@@ -142,34 +142,34 @@ function dcPollSubscription(timeoutMs) {
         await dcRefreshUsage();
         showToast('Data plan activated!', 'success');
         var statusEl = document.getElementById('dc-sub-status');
-        if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ 支付确认，套餐已激活</span>';
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">' + I18N.t('sub_activated') + '</span>';
         await dcLoadDashboard();
       }
     } catch (_) {}
     if (Date.now() - started > (timeoutMs || 5 * 60 * 1000)) {
       clearInterval(dcPollTimer); dcPollTimer = null;
       var statusEl = document.getElementById('dc-sub-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⏰ 等待支付超时，请确认已支付后重试</span>';
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">' + I18N.t('sub_timeout') + '</span>';
     }
   }, 4000);
 }
 
 // MQ-16 T-1: x402 rail — 提示用户输入链上转账 txHash 并调 /verify 激活订阅
 async function dcSubmitX402(network) {
-  var txHash = window.prompt('请输入 ' + (network || '链上') + ' 转账的交易哈希（txHash）:');
+  var txHash = window.prompt(I18N.t('sub_prompt_txhash') + (network || I18N.t('sub_prompt_chain')) + I18N.t('sub_prompt_suffix'));
   if (!txHash) return;
   try {
     var d = await afetch('/api/v2/data/verify', { method: 'POST', auth: 'none', body: { txHash: txHash } });
     if (d.verified && d.activated) {
-      showToast('支付已确认，套餐已激活!', 'success');
+      showToast(I18N.t('sub_activated_toast'), 'success');
       await dcRefreshUsage();
       var statusEl = document.getElementById('dc-sub-status');
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">✅ 支付确认，套餐已激活</span>';
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--success)">' + I18N.t('sub_activated') + '</span>';
       await dcLoadDashboard();
     } else if (d.verified) {
-      showToast('支付已确认，但未找到待处理订阅', 'error');
+      showToast(I18N.t('sub_verified_no_sub'), 'error');
     } else {
-      showToast('支付未确认', 'error');
+      showToast(I18N.t('sub_not_confirmed'), 'error');
     }
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -180,10 +180,10 @@ async function dcRecheckPayment() {
     var d = await afetch('/api/v2/data/payment-check', { method: 'POST', auth: 'none' });
     if (d.status === 'active') {
       await dcRefreshUsage();
-      showToast('支付已确认，套餐已激活!', 'success');
+      showToast(I18N.t('sub_activated_toast'), 'success');
       await dcLoadDashboard();
     } else {
-      showToast('支付仍在确认中…', 'warning');
+      showToast(I18N.t('sub_still_confirming'), 'warning');
     }
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -235,7 +235,7 @@ async function dcLoadOverview(hdrs) {
     var catBox = document.getElementById('dc-cat-stats');
     var catTotal = document.getElementById('dc-cat-total');
     if (!cats.length) {
-      if (catBox) catBox.innerHTML = '<div class="empty" style="padding:20px 0;color:var(--text-muted)">暂无分类数据</div>';
+      if (catBox) catBox.innerHTML = '<div class="empty" style="padding:20px 0;color:var(--text-muted)">' + I18N.t('dc_no_cat_data') + '</div>';
       if (catTotal) catTotal.textContent = '';
     } else {
       var sum = cats.reduce(function(a, c) { return a + (c.count || 0); }, 0);
@@ -260,11 +260,11 @@ async function dcLoadOverview(hdrs) {
     var tbody = document.getElementById('dc-recent-tbody');
     var hint = document.getElementById('dc-recent-hint');
     if (!rows.length) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">暂无事件</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">' + I18N.t('dc_no_events') + '</td></tr>';
       if (hint) hint.textContent = '';
       return;
     }
-    if (hint) hint.textContent = '最新 ' + rows.length + ' 条';
+    if (hint) hint.textContent = I18N.t('dc_latest') + rows.length + I18N.t('dc_latest_suffix');
     if (tbody) {
       tbody.innerHTML = rows.map(function(e) {
         var sf = (e.from_address || '').slice(0, 10) + '...';
@@ -362,7 +362,7 @@ function dcRenderMarket() {
   var selStyle = 'font-size:12px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card,#1b1f27);color:var(--text,#e8eaed)';
   root.innerHTML =
     '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-      '<input id="dc-m-symbol" placeholder="Symbol · 如 BTC/USDT" value="BTC/USDT" style="' + inputStyle + '">' +
+      '<input id="dc-m-symbol" placeholder="' + I18N.t('dc_symbol_placeholder') + '" value="BTC/USDT" style="' + inputStyle + '">' +
       '<select id="dc-m-market" style="' + selStyle + 'width:120px">' +
         '<option value="crypto" selected>crypto</option><option value="usstock">usstock</option><option value="forex">forex</option><option value="futures">futures</option><option value="cnstock">cnstock</option><option value="hkstock">hkstock</option>' +
       '</select>' +
@@ -372,8 +372,8 @@ function dcRenderMarket() {
       '<select id="dc-m-tf" style="' + selStyle + 'width:84px">' +
         '<option value="1h">1h</option><option value="4h">4h</option><option value="1d" selected>1d</option>' +
       '</select>' +
-      '<button class="btn btn-sm btn-primary" onclick="dcLoadMarket()">🔄 查询</button>' +
-      '<span style="font-size:11px;color:var(--text-muted)">金融行情 · /ticker /bars（data :9112）</span>' +
+      '<button class="btn btn-sm btn-primary" onclick="dcLoadMarket()">🔄 ' + I18N.t('dc_query') + '</button>' +
+      '<span style="font-size:11px;color:var(--text-muted)">' + I18N.t('dc_market_hint') + '</span>' +
     '</div></div>' +
     '<div id="dc-market-result"></div>';
   dcLoadMarket();
@@ -398,7 +398,7 @@ async function dcLoadMarket() {
       var up = (t.changePercent || 0) >= 0;
       var color = up ? '#0ecb81' : '#F6465D';
       var arrow = up ? '▲' : '▼';
-      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-header">💹 ' + esc(symbol) + ' · 实时报价' +
+      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-header">💹 ' + esc(symbol) + ' ' + I18N.t('dc_ticker_title') +
         '<span style="margin-left:auto;font-weight:700;color:' + color + '">' + arrow + ' ' + formatNumber(t.changePercent) + '%</span></div>' +
         '<div class="panel-body"><div class="kpi-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">' +
         '<div class="kpi"><div class="kpi-label">Price</div><div class="kpi-val" style="color:' + color + '">' + formatNumber(t.price) + '</div></div>' +
@@ -408,22 +408,22 @@ async function dcLoadMarket() {
         '<div class="kpi"><div class="kpi-label">Open</div><div class="kpi-val">' + formatNumber(t.open) + '</div></div>' +
         '</div></div></div>';
     } else {
-      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + '（' + esc(market) + '）无实时报价 — crypto 用 BTC/USDT，其余市场用对应代码</div></div>';
+      html += '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + ' (' + esc(market) + ') ' + I18N.t('dc_no_ticker') + '</div></div>';
     }
     if (bars.length) {
-      html += '<div class="panel"><div class="panel-header">📊 ' + esc(symbol) + ' · ' + esc(tf) + ' K线（近 ' + bars.length + ' 根）</div>' +
-        '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">时间</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">开盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最高</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">最低</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">收盘</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">成交量</th></tr></thead><tbody>' +
+      html += '<div class="panel"><div class="panel-header">📊 ' + esc(symbol) + ' · ' + esc(tf) + ' ' + I18N.t('dc_bars_title') + bars.length + I18N.t('dc_bars_suffix') + '</div>' +
+        '<div class="panel-body" style="padding:0;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-muted)"><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_time') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_open') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_high') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_low') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_close') + '</th><th style="padding:8px 10px;border-bottom:1px solid var(--border)">' + I18N.t('dc_th_volume') + '</th></tr></thead><tbody>' +
         bars.map(function(b) {
           var ts = b.ts || b.timestamp || 0;
-          var time = ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—';
+          var time = ts ? new Date(ts).toLocaleString(I18N.getLang() === 'en' ? 'en-US' : 'zh-CN', { hour12: false }) : '—';
           return '<tr style="border-bottom:1px solid var(--border)"><td class="dc-mono">' + time + '</td><td style="padding:6px 10px">' + formatNumber(b.open) + '</td><td style="padding:6px 10px">' + formatNumber(b.high) + '</td><td style="padding:6px 10px">' + formatNumber(b.low) + '</td><td style="padding:6px 10px">' + formatNumber(b.close) + '</td><td style="padding:6px 10px">' + formatNumber(b.volume) + '</td></tr>';
         }).join('') + '</tbody></table></div></div>';
     } else {
-      html += '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + ' · ' + esc(tf) + ' 无 K 线数据</div></div>';
+      html += '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + esc(symbol) + ' · ' + esc(tf) + ' ' + I18N.t('dc_no_bars') + '</div></div>';
     }
     box.innerHTML = html;
   } catch (e) {
-    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">加载失败：' + esc(e && e.message ? e.message : String(e)) + '</div></div>';
+    box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--binance-red,#F6465D)">' + I18N.t('dc_load_failed') + esc(e && e.message ? e.message : String(e)) + '</div></div>';
   }
 }
 
@@ -434,9 +434,9 @@ function myKeysMsg(text, ok) {
   if (!el) return;
   if (myKeysNewKey) {
     el.innerHTML = '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(14,203,129,0.06)">' +
-      '<div style="font-weight:700;margin-bottom:4px">新 key —— 仅此一次显示，请立即复制保存</div>' +
+      '<div style="font-weight:700;margin-bottom:4px">' + I18N.t('mykeys_new_once') + '</div>' +
       '<div class="mono" style="word-break:break-all;margin-bottom:6px">' + esc(myKeysNewKey) + '</div>' +
-      '<button class="btn btn-xs" onclick="myKeysCopyNew()">📋 复制</button></div>';
+      '<button class="btn btn-xs" onclick="myKeysCopyNew()">📋 ' + I18N.t('copy') + '</button></div>';
     myKeysNewKey = null;
     return;
   }
@@ -451,10 +451,10 @@ function myKeysRender(resp) {
   const tbody = document.getElementById('mykeys-tbody');
   const hint = document.getElementById('mykeys-hint');
   if (!tbody) return;
-  if (hint) hint.textContent = user().walletAddress ? ('owner: ' + user().walletAddress.slice(0, 6) + '…' + user().walletAddress.slice(-4)) : '未连接钱包';
+  if (hint) hint.textContent = user().walletAddress ? ('owner: ' + user().walletAddress.slice(0, 6) + '…' + user().walletAddress.slice(-4)) : I18N.t('mykeys_no_wallet');
   const keys = (resp && resp.keys) || [];
   if (!keys.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">暂无 key，在上方签发第一个</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-muted)">' + I18N.t('mykeys_empty') + '</td></tr>';
     return;
   }
   tbody.innerHTML = keys.map(function(k) {
@@ -463,13 +463,13 @@ function myKeysRender(resp) {
       '<td style="font-weight:600">' + esc(k.label) + '</td>' +
       '<td><span class="dc-chain-badge">' + esc(k.scope || 'data') + '（' + scopeBadge + '）</span></td>' +
       '<td class="mono">' + esc(k.key_masked) + '</td>' +
-      '<td>' + (k.enabled ? '<span style="color:var(--green,#0ecb81)">启用</span>' : '<span style="color:var(--binance-red,#F6465D)">禁用</span>') + '</td>' +
+      '<td>' + (k.enabled ? '<span style="color:var(--green,#0ecb81)">' + I18N.t('mykeys_enabled') + '</span>' : '<span style="color:var(--binance-red,#F6465D)">' + I18N.t('mykeys_disabled') + '</span>') + '</td>' +
       '<td class="mono">' + k.rate_limit + '/min</td>' +
       '<td class="mono">' + (k.request_count || 0) + '</td>' +
       '<td class="mono">' + fmtTime(k.last_used_at) + '</td>' +
       '<td><span style="display:inline-flex;gap:6px">' +
-        '<button class="btn btn-xs" title="轮换" onclick="myKeysRotate(' + k.id + ')">🔄</button>' +
-        '<button class="btn btn-xs" title="吊销" onclick="myKeysDelete(' + k.id + ')">🗑️</button>' +
+        '<button class="btn btn-xs" title="' + I18N.t('mykeys_rotate_title') + '" onclick="myKeysRotate(' + k.id + ')">🔄</button>' +
+        '<button class="btn btn-xs" title="' + I18N.t('mykeys_revoke_title') + '" onclick="myKeysDelete(' + k.id + ')">🗑️</button>' +
       '</span></td>' +
     '</tr>';
   }).join('');
@@ -482,44 +482,44 @@ async function myKeysLoad() {
     myKeysRender(resp || { keys: [] });
     myKeysMsg('');
   } catch (e) {
-    myKeysMsg('加载失败：' + e.message, false);
+    myKeysMsg(I18N.t('mykeys_load_failed') + e.message, false);
   }
 }
 async function myKeysCreate() {
-  if (!user().walletAddress) { myKeysMsg('请先连接钱包', false); return; }
+  if (!user().walletAddress) { myKeysMsg(I18N.t('mykeys_connect_wallet'), false); return; }
   const labelEl = document.getElementById('mykeys-label');
   const label = (labelEl && labelEl.value || '').trim();
-  if (!label) { myKeysMsg('请填写 label', false); return; }
+  if (!label) { myKeysMsg(I18N.t('mykeys_need_label'), false); return; }
   myKeysNewKey = null;
   try {
     const resp = await afetch('/api/v2/data/my-keys', { method: 'POST', auth: 'wallet', body: { label: label, scope: 'data' } });
     if (resp && resp.api_key) {
       myKeysNewKey = resp.api_key;
-      myKeysMsg('签发成功（新 key 仅显示一次）', true);
+      myKeysMsg(I18N.t('mykeys_issued'), true);
       if (labelEl) labelEl.value = '';
       myKeysLoad();
       showToast('New key issued — copy below', 'success');
     } else {
-      myKeysMsg('签发失败：服务端未返回 key', false);
+      myKeysMsg(I18N.t('mykeys_issue_failed'), false);
     }
   } catch (e) {
-    myKeysMsg('签发失败：' + e.message, false);
+    myKeysMsg(I18N.t('mykeys_issue_error') + e.message, false);
   }
 }
 async function myKeysRotate(id) {
   try {
     const resp = await afetch('/api/v2/data/my-keys/' + id + '/rotate', { method: 'POST', auth: 'wallet' });
-    if (resp && resp.api_key) { myKeysNewKey = resp.api_key; myKeysMsg('已轮换（新 key 仅显示一次）', true); }
+    if (resp && resp.api_key) { myKeysNewKey = resp.api_key; myKeysMsg(I18N.t('mykeys_rotated'), true); }
     myKeysLoad();
-  } catch (e) { myKeysMsg('轮换失败：' + e.message, false); }
+  } catch (e) { myKeysMsg(I18N.t('mykeys_rotate_error') + e.message, false); }
 }
 async function myKeysDelete(id) {
-  if (!confirm('确认吊销该 key？吊销后立即失效')) return;
+  if (!confirm(I18N.t('mykeys_confirm_revoke'))) return;
   try {
     await afetch('/api/v2/data/my-keys/' + id, { method: 'DELETE', auth: 'wallet' });
-    myKeysMsg('已吊销', true);
+    myKeysMsg(I18N.t('mykeys_revoked'), true);
     myKeysLoad();
-  } catch (e) { myKeysMsg('吊销失败：' + e.message, false); }
+  } catch (e) { myKeysMsg(I18N.t('mykeys_revoke_error') + e.message, false); }
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 

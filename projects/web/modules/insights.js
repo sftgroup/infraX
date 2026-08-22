@@ -57,7 +57,7 @@ function insRenderShell() {
   root.innerHTML =
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">' +
       '<div style="font-size:15px;font-weight:700">📡 Insights · Data Plane</div>' +
-      '<span style="font-size:11px;padding:2px 10px;border-radius:999px;background:rgba(14,203,129,.12);color:#4ade80">dx_ key 直通</span>' +
+      '<span style="font-size:11px;padding:2px 10px;border-radius:999px;background:rgba(14,203,129,.12);color:#4ade80">' + I18N.t('ins_dx_badge') + '</span>' +
     '</div>' +
     '<div class="tab-row">' +
       '<button class="tab-btn active" data-ins-tab="graph">🕸️ Graph</button>' +
@@ -97,18 +97,18 @@ async function insLoadGraph() {
   if (!pane) return;
   pane.innerHTML =
     '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-      '<input class="input" id="ins-g-symbol" placeholder="Symbol（空=全图）" value="' + insEsc(INS_STATE.graphSymbol) + '" style="width:160px;font-size:12px">' +
+      '<input class="input" id="ins-g-symbol" placeholder="' + I18N.t('ins_g_symbol_ph') + '" value="' + insEsc(INS_STATE.graphSymbol) + '" style="width:160px;font-size:12px">' +
       '<select class="input" id="ins-g-ns" style="width:130px;font-size:12px">' +
         '<option value="market"' + (INS_STATE.graphNs === 'market' ? ' selected' : '') + '>market</option>' +
         '<option value="onchain"' + (INS_STATE.graphNs === 'onchain' ? ' selected' : '') + '>onchain</option>' +
         '<option value="default"' + (INS_STATE.graphNs === 'default' ? ' selected' : '') + '>default</option>' +
       '</select>' +
-      '<button class="btn btn-sm btn-primary" onclick="insLoadGraph()">🔄 加载</button>' +
-      '<span style="font-size:11px;color:var(--text-muted)">知识图谱力导向图 · ragservicer</span>' +
+      '<button class="btn btn-sm btn-primary" onclick="insLoadGraph()">' + I18N.t('ins_load') + '</button>' +
+      '<span style="font-size:11px;color:var(--text-muted)">' + I18N.t('ins_graph_hint') + '</span>' +
     '</div></div>' +
     '<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px">' +
-      '<div class="panel"><div class="panel-header">🕸️ 知识图谱（entities）</div><div class="panel-body" id="ins-graph-viz" style="height:520px;padding:0"></div></div>' +
-      '<div class="panel"><div class="panel-header">🔗 相关性边表（edges · 60日 |ρ|≥0.6）</div><div class="panel-body" id="ins-edges-table" style="padding:0;max-height:520px;overflow:auto"></div></div>' +
+      '<div class="panel"><div class="panel-header">' + I18N.t('ins_graph_entities') + '</div><div class="panel-body" id="ins-graph-viz" style="height:520px;padding:0"></div></div>' +
+      '<div class="panel"><div class="panel-header">' + I18N.t('ins_edges_title') + '</div><div class="panel-body" id="ins-edges-table" style="padding:0;max-height:520px;overflow:auto"></div></div>' +
     '</div>';
 
   INS_STATE.graphSymbol = document.getElementById('ins-g-symbol').value.trim();
@@ -122,9 +122,9 @@ async function insLoadGraph() {
   ]);
 
   if (results[0].status === 'fulfilled') insRenderGraphViz(viz, results[0].value);
-  else viz.innerHTML = insEmpty('entities 不可用：' + insEsc(results[0].reason && results[0].reason.message));
+  else viz.innerHTML = insEmpty(I18N.t('ins_entities_unavail') + insEsc(results[0].reason && results[0].reason.message));
   if (results[1].status === 'fulfilled') insRenderEdgesMaybePoll(edgesEl, results[1].value, INS_STATE.edgeSymbols);
-  else edgesEl.innerHTML = insEmpty('edges 不可用：' + insEsc(results[1].reason && results[1].reason.message));
+  else edgesEl.innerHTML = insEmpty(I18N.t('ins_edges_unavail') + insEsc(results[1].reason && results[1].reason.message));
 }
 
 // GP-2：edges 冷态（meta.status=building）→ 展示「生成中」并轮询（最多 12 次 × 5s）
@@ -132,7 +132,7 @@ function insRenderEdgesMaybePoll(el, data, symbols) {
   if (!el) return;
   if (data && data.meta && data.meta.status === 'building') {
     var tries = 0;
-    el.innerHTML = insEmpty('🔨 图谱生成中…' + (data.meta.job_id ? '（job ' + data.meta.job_id + '）' : '') + '，后台构建完成后自动刷新');
+    el.innerHTML = insEmpty(I18N.t('ins_graph_building') + (data.meta.job_id ? '（job ' + data.meta.job_id + '）' : '') + I18N.t('ins_graph_building_suffix'));
     var timer = setInterval(async function() {
       tries++;
       try {
@@ -142,7 +142,7 @@ function insRenderEdgesMaybePoll(el, data, symbols) {
         insRenderEdges(el, d);
       } catch (e) {
         clearInterval(timer);
-        el.innerHTML = insEmpty('edges 不可用：' + insEsc(e && e.message));
+        el.innerHTML = insEmpty(I18N.t('ins_edges_unavail') + insEsc(e && e.message));
       }
     }, 5000);
     return;
@@ -243,7 +243,7 @@ function insRenderGraphViz(el, data) {
       '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/></marker></defs>' +
       edgeHtml + nodeHtml +
     '</svg>' +
-    '<div style="position:absolute;left:10px;bottom:10px;font-size:10px;color:var(--text-muted);background:rgba(15,18,36,.7);padding:4px 10px;border-radius:6px">' + nodes.length + ' nodes · ' + eList.length + ' edges · 鼠标悬停查看实体名</div>';
+    '<div style="position:absolute;left:10px;bottom:10px;font-size:10px;color:var(--text-muted);background:rgba(15,18,36,.7);padding:4px 10px;border-radius:6px">' + nodes.length + ' nodes · ' + eList.length + ' edges · ' + I18N.t('ins_viz_hint') + '</div>';
 }
 
 function insRenderEdges(el, data) {
@@ -264,7 +264,7 @@ function insRenderEdges(el, data) {
       '<span class="mono" style="width:44px;text-align:right;color:' + color + '">' + (w > 0 ? '+' : '') + w.toFixed(2) + '</span>' +
     '</div>';
   }).join('');
-  el.innerHTML = '<div style="padding:8px 12px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">' + (data.meta && data.meta.updated_at ? '更新: ' + new Date(data.meta.updated_at).toLocaleString() : '') + '</div>' + rows;
+  el.innerHTML = '<div style="padding:8px 12px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border)">' + (data.meta && data.meta.updated_at ? I18N.t('ins_updated') + new Date(data.meta.updated_at).toLocaleString() : '') + '</div>' + rows;
 }
 
 // ── Factors：最新因子表 + gf_* 历史曲线 ──
@@ -273,22 +273,22 @@ async function insLoadFactors() {
   if (!pane) return;
   pane.innerHTML =
     '<div class="panel" style="margin-bottom:14px"><div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-      '<input class="input" id="ins-f-symbols" value="' + insEsc(INS_STATE.factorSymbols) + '" style="width:150px;font-size:12px" placeholder="Symbols 逗号分隔">' +
+      '<input class="input" id="ins-f-symbols" value="' + insEsc(INS_STATE.factorSymbols) + '" style="width:150px;font-size:12px" placeholder="' + I18N.t('ins_f_symbols_ph') + '">' +
       '<select class="input" id="ins-f-cat" style="width:150px;font-size:12px">' +
-        '<option value="">全部因子</option>' +
+        '<option value="">' + I18N.t('ins_all_factors') + '</option>' +
         '<option value="external"' + (INS_STATE.factorCategory === 'external' ? ' selected' : '') + '>external (fear_greed/vix/dxy/us10y)</option>' +
         '<option value="sentiment"' + (INS_STATE.factorCategory === 'sentiment' ? ' selected' : '') + '>sentiment</option>' +
         '<option value="news"' + (INS_STATE.factorCategory === 'news' ? ' selected' : '') + '>news</option>' +
         '<option value="snapshot"' + (INS_STATE.factorCategory === 'snapshot' ? ' selected' : '') + '>snapshot</option>' +
       '</select>' +
-      '<button class="btn btn-sm btn-primary" onclick="insLoadFactors()">🔄 加载</button>' +
+      '<button class="btn btn-sm btn-primary" onclick="insLoadFactors()">' + I18N.t('ins_load') + '</button>' +
     '</div></div>' +
-    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">🧮 最新因子值</div><div class="panel-body" style="padding:0;max-height:360px;overflow:auto" id="ins-factors-table"></div></div>' +
-    '<div class="panel"><div class="panel-header">📉 gf_* 日频历史曲线（graph 因子 · asof）</div>' +
+    '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + I18N.t('ins_latest_factors') + '</div><div class="panel-body" style="padding:0;max-height:360px;overflow:auto" id="ins-factors-table"></div></div>' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('ins_hist_title') + '</div>' +
       '<div class="panel-body" style="display:flex;gap:10px;align-items:center;padding-bottom:0">' +
         '<select class="input" id="ins-h-symbol" style="width:110px;font-size:12px"></select>' +
         '<select class="input" id="ins-h-factor" style="width:180px;font-size:12px"></select>' +
-        '<button class="btn btn-sm" onclick="insRenderHistory()">📊 绘制</button>' +
+        '<button class="btn btn-sm" onclick="insRenderHistory()">' + I18N.t('ins_plot') + '</button>' +
       '</div>' +
       '<div class="panel-body" style="height:300px" id="ins-history-chart"></div>' +
     '</div>';
@@ -303,7 +303,7 @@ async function insLoadFactors() {
   ]);
 
   if (results[0].status === 'fulfilled') insRenderFactorsTable(tbl, results[0].value);
-  else tbl.innerHTML = insEmpty('factors 不可用：' + insEsc(results[0].reason && results[0].reason.message));
+  else tbl.innerHTML = insEmpty(I18N.t('ins_factors_unavail') + insEsc(results[0].reason && results[0].reason.message));
 
   INS_STATE.histRaw = results[1].status === 'fulfilled' ? results[1].value : null;
   insPopulateHistorySelects();
@@ -410,9 +410,9 @@ function insRenderRagForm() {
   var pane = document.getElementById('ins-pane-rag');
   if (!pane) return;
   pane.innerHTML =
-    '<div class="panel"><div class="panel-header">🔎 RAG 知识检索（ragservicer · market/onchain 知识增强）</div><div class="panel-body">' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('ins_rag_title') + '</div><div class="panel-body">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-        '<input class="input" id="ins-rag-q" value="' + insEsc(INS_STATE.ragQuery) + '" style="flex:1;min-width:240px;font-size:13px" placeholder="检索问题，如 Bitcoin on-chain liquidity">' +
+        '<input class="input" id="ins-rag-q" value="' + insEsc(INS_STATE.ragQuery) + '" style="flex:1;min-width:240px;font-size:13px" placeholder="' + I18N.t('ins_rag_q_ph') + '">' +
         '<label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="ins-rag-m" ' + (INS_STATE.ragNs.indexOf('market') >= 0 ? 'checked' : '') + '> market</label>' +
         '<label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="ins-rag-o" ' + (INS_STATE.ragNs.indexOf('onchain') >= 0 ? 'checked' : '') + '> onchain</label>' +
         '<button class="btn btn-primary" onclick="insDoRag()">🔎 Retrieve</button>' +
@@ -423,14 +423,14 @@ function insRenderRagForm() {
 
 async function insDoRag() {
   var q = document.getElementById('ins-rag-q').value.trim();
-  if (!q) return showToast('请输入检索问题', 'warning');
+  if (!q) return showToast(I18N.t('ins_rag_need_q'), 'warning');
   var ns = [];
   if (document.getElementById('ins-rag-m').checked) ns.push('market');
   if (document.getElementById('ins-rag-o').checked) ns.push('onchain');
   INS_STATE.ragQuery = q;
   INS_STATE.ragNs = ns;
   var box = document.getElementById('ins-rag-result');
-  box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">⏳ 检索中…</div>';
+  box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">' + I18N.t('ins_rag_searching') + '</div>';
   try {
     var d = await insFetch('/rag/retrieve', { method: 'POST', body: { query: q, namespaces: ns.length ? ns : null, top_k: 8 } });
     if (!d || !d.results || !d.results.length) {
@@ -445,24 +445,24 @@ async function insDoRag() {
         '<div class="panel-body" style="font-size:12px;line-height:1.7;color:var(--text-secondary);max-height:180px;overflow:auto;white-space:pre-wrap">' + insEsc(c) + '</div></div>';
     }).join('');
   } catch (e) {
-    box.innerHTML = insEmpty('RAG 检索失败：' + insEsc(e.message));
+    box.innerHTML = insEmpty(I18N.t('ins_rag_failed') + insEsc(e.message));
   }
 }
 
 // ── ML 预测 ──
 var INS_ML_ENDPOINTS = [
-  { key: 'tree_predictions', label: '🌳 LightGBM 方向预测', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'volatility', label: '📊 Kronos 波动率预测', agg: 'avg_volatility_score', aggLabel: 'avg vol score' },
-  { key: 'consensus', label: '🤝 跨模型信号共识', agg: 'avg_prob_up', aggLabel: 'avg consensus' },
-  { key: 'bolt', label: '⚡ Chronos-Bolt 概率预测', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'moirai', label: '🌐 Moirai 2.0 跨资产预测', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'timesfm', label: '⏱️ TimesFM 2.5 点预测', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
+  { key: 'tree_predictions', labelKey: 'ins_ml_lgb', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
+  { key: 'volatility', labelKey: 'ins_ml_kronos', agg: 'avg_volatility_score', aggLabel: 'avg vol score' },
+  { key: 'consensus', labelKey: 'ins_ml_consensus', agg: 'avg_prob_up', aggLabel: 'avg consensus' },
+  { key: 'bolt', labelKey: 'ins_ml_bolt', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
+  { key: 'moirai', labelKey: 'ins_ml_moirai', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
+  { key: 'timesfm', labelKey: 'ins_ml_timesfm', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
 ];
 
 async function insLoadMl() {
   var pane = document.getElementById('ins-pane-ml');
   if (!pane) return;
-  pane.innerHTML = '<div class="panel"><div class="panel-header">🤖 ML 模型推理（ml-service · TTL 缓存 · data=null 属预期）</div><div class="panel-body" id="ins-ml-cards"><div style="text-align:center;padding:24px;color:var(--text-muted)">⏳ 并行拉取模型预测…</div></div></div>';
+  pane.innerHTML = '<div class="panel"><div class="panel-header">' + I18N.t('ins_ml_title') + '</div><div class="panel-body" id="ins-ml-cards"><div style="text-align:center;padding:24px;color:var(--text-muted)">' + I18N.t('ins_ml_loading') + '</div></div></div>';
 
   var results = await Promise.allSettled(INS_ML_ENDPOINTS.map(function(e) {
     return insFetch('/ml/' + e.key);
@@ -473,7 +473,7 @@ async function insLoadMl() {
   INS_ML_ENDPOINTS.forEach(function(e, i) {
     var r = results[i];
     if (r.status !== 'fulfilled' || r.value == null) {
-      html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + e.label + '</div><div class="panel-body" style="font-size:11px;color:var(--text-muted)">' + insEsc((r.status === 'fulfilled' ? '' : (r.reason && r.reason.message)) || 'data=null（缓存未就绪/模型不可用）') + '</div></div>';
+      html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + I18N.t(e.labelKey) + '</div><div class="panel-body" style="font-size:11px;color:var(--text-muted)">' + insEsc((r.status === 'fulfilled' ? '' : (r.reason && r.reason.message)) || I18N.t('ins_ml_null')) + '</div></div>';
       return;
     }
     var d = r.value;
@@ -489,7 +489,7 @@ async function insLoadMl() {
       return '<tr><td class="mono" style="font-weight:600">' + insEsc(s.symbol || '?') + '</td>' +
         (first ? '<td class="mono">' + first[0] + ': ' + Number(first[1]).toFixed(4) + '</td>' : '<td style="color:var(--text-muted)">—</td>') + '</tr>';
     }).join('');
-    html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + e.label +
+    html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + I18N.t(e.labelKey) +
       '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + insEsc(d.model || '') + ' · ' + (d.n_symbols || syms.length) + ' syms</span></div>' +
       '<div class="panel-body" style="padding-top:10px">' + aggHtml +
       (rows ? '<table class="data-table"><thead><tr><th>Symbol</th><th>Signal</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-muted)">no symbols</div>') +

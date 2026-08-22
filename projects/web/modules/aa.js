@@ -73,11 +73,11 @@ function aaSignDigest(digest, reason) {
       // MetaMask 默认禁用 eth_sign → 进入手动签名流程
       var userOpHash = digest;
       var manual = window.prompt(
-        reason + '\n\n请签名以下 userOpHash（raw digest，ethers: signer.signMessage({raw: hash})）\n' + userOpHash + '\n\n粘贴签名（0x…）:\n',
+        reason + '\n\n' + I18N.t('aa_manual_sign_hint') + '\n' + userOpHash + '\n\n' + I18N.t('aa_paste_sig') + '\n',
         ''
       );
       if (manual && manual.trim().length > 10) resolve(manual.trim());
-      else reject(new Error('签名已取消'));
+      else reject(new Error(I18N.t('aa_sign_cancelled')));
     });
   });
 }
@@ -169,7 +169,7 @@ async function aaLoadAll() {
       var d = await aaFetch('/v1/account/derive', { method: 'POST', body: { chain: aaState.chain, owner: owner } });
       if (d && d.accountAddress) aaSaveAccount(d.accountAddress);
     } catch (e) {
-      aaRenderOverviewError('账户派生失败：' + (e.message || 'aa-relay 不可达') + '（确认后端 aa-relay 已启动）');
+      aaRenderOverviewError(I18N.t('aa_derive_failed') + (e.message || 'aa-relay unreachable') + I18N.t('aa_derive_failed_suffix'));
       return;
     }
   }
@@ -201,7 +201,7 @@ function aaRenderOverview() {
   var funds = l.funds || null;
 
   var modeHtml = p.mode === 'escrow-onchain'
-    ? '<span style="color:var(--warning)">escrow-onchain（链上托管）</span>'
+    ? '<span style="color:var(--warning)">' + I18N.t('aa_mode_escrow') + '</span>'
     : '<span style="color:var(--text-brand)">session-subscription</span>';
 
   var feeHtml = (p.fees && p.fees.length)
@@ -212,7 +212,7 @@ function aaRenderOverview() {
 
   var topupHtml = '';
   if (p.topup && p.topup.method && p.topup.method !== 'n/a') {
-    topupHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">💰 充值引导 · ' + aaEsc(p.topup.method) + '</div><div class="panel-body" style="font-size:13px;line-height:1.9">' +
+    topupHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('aa_topup_title') + aaEsc(p.topup.method) + '</div><div class="panel-body" style="font-size:13px;line-height:1.9">' +
       (p.topup.steps || []).map(function(s, i) { return '<div style="display:flex;gap:10px;margin-bottom:6px"><span class="mono" style="color:var(--brand);font-weight:700">' + (i + 1) + '</span><span>' + aaEsc(s) + '</span></div>'; }).join('') +
       '</div></div>';
   }
@@ -223,33 +223,33 @@ function aaRenderOverview() {
     var epDep = funds.epDepositWei != null ? aaFmtWei(funds.epDepositWei) : '—';
     var native = funds.nativeWei != null ? aaFmtWei(funds.nativeWei) : '—';
     var low = Number(funds.escrowWei || 0) === 0;
-    fundsHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">📦 托管资金明细（escrow）</div><div class="panel-body">' +
+    fundsHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('aa_funds_escrow_title') + '</div><div class="panel-body">' +
       '<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">' +
-        '<div class="kpi"><div class="kpi-label">Escrow 余额</div><div class="kpi-val mono" style="font-size:20px;font-weight:700;color:' + (low ? 'var(--error)' : 'var(--success)') + '">' + escrow + ' OXA</div></div>' +
-        '<div class="kpi"><div class="kpi-label">EntryPoint 存款</div><div class="kpi-val mono" style="font-size:20px;font-weight:700">' + epDep + ' ETH</div></div>' +
-        '<div class="kpi"><div class="kpi-label">账户原生余额</div><div class="kpi-val mono" style="font-size:20px;font-weight:700">' + native + ' ETH</div></div>' +
+        '<div class="kpi"><div class="kpi-label">' + I18N.t('aa_kpi_escrow') + '</div><div class="kpi-val mono" style="font-size:20px;font-weight:700;color:' + (low ? 'var(--error)' : 'var(--success)') + '">' + escrow + ' OXA</div></div>' +
+        '<div class="kpi"><div class="kpi-label">' + I18N.t('aa_kpi_epdep') + '</div><div class="kpi-val mono" style="font-size:20px;font-weight:700">' + epDep + ' ETH</div></div>' +
+        '<div class="kpi"><div class="kpi-label">' + I18N.t('aa_kpi_native') + '</div><div class="kpi-val mono" style="font-size:20px;font-weight:700">' + native + ' ETH</div></div>' +
       '</div>' +
-      (low ? '<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:12px;color:var(--error)">⚠️ Escrow 余额为 0 —— 广播 UserOp 前需先充值（见下方充值引导），否则计费预扣将失败（402）。</div>' : '') +
+      (low ? '<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:12px;color:var(--error)">' + I18N.t('aa_escrow_zero') + '</div>' : '') +
       '</div></div>';
   } else if (l.balance) {
-    fundsHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">📒 Ledger 余额</div><div class="panel-body"><div class="mono" style="font-size:22px;font-weight:700;color:var(--success)">' + aaFmtWei(l.balanceWei) + ' ETH</div></div></div>';
+    fundsHtml = '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('aa_ledger_balance_title') + '</div><div class="panel-body"><div class="mono" style="font-size:22px;font-weight:700;color:var(--success)">' + aaFmtWei(l.balanceWei) + ' ETH</div></div></div>';
   }
 
   var accountHtml = aaState.account
-    ? '<div class="addr-pill" style="font-size:13px;cursor:pointer" onclick="copyText(\'' + aaState.account + '\')" title="点击复制">🤖 ' + aaState.account.slice(0, 12) + '…' + aaState.account.slice(-8) + '</div>'
+    ? '<div class="addr-pill" style="font-size:13px;cursor:pointer" onclick="copyText(\'' + aaState.account + '\')" title="' + I18N.t('aa_copy_click') + '">🤖 ' + aaState.account.slice(0, 12) + '…' + aaState.account.slice(-8) + '</div>'
     : '<span class="text-dim">—</span>';
 
   pane.innerHTML =
     '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">' +
-      '<div class="kpi-card" style="border-top:3px solid var(--brand-purple)"><div class="kpi-label">Smart Account</div><div class="kpi-val" style="font-size:14px;font-weight:700;margin-top:6px">' + accountHtml + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:6px">Kernel v3 · owner=' + aaShort(user().walletAddress, 6) + '</div></div>' +
-      '<div class="kpi-card" style="border-top:3px solid var(--success)"><div class="kpi-label">Ledger Balance</div><div class="kpi-val mono" style="font-size:22px;font-weight:700;margin-top:4px">' + aaFmtWei(l.balanceWei) + ' <span style="font-size:12px;color:var(--text-muted)">ETH</span></div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">paymaster 代付余额</div></div>' +
-      '<div class="kpi-card" style="border-top:3px solid var(--warning)"><div class="kpi-label">Billing Mode</div><div class="kpi-val" style="font-size:14px;font-weight:700;margin-top:8px">' + modeHtml + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:6px">' + (p.configured ? '计费已配置' : '计费未配置（免费）') + '</div></div>' +
-      '<div class="kpi-card" style="border-top:3px solid var(--brand)"><div class="kpi-label">Sessions</div><div class="kpi-val mono" style="font-size:22px;font-weight:700;margin-top:4px">' + (aaState.sessions.length || 0) + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">链上绑定: ' + (aaState.sessions.length ? (aaState.sessions[0].isBound ? '✅' : '⚠️ 未部署') : '—') + '</div></div>' +
+      '<div class="kpi-card" style="border-top:3px solid var(--brand-purple)"><div class="kpi-label">Smart Account</div><div class="kpi-val" style="font-size:14px;font-weight:700;margin-top:6px">' + accountHtml + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:6px">' + I18N.t('aa_owner_hint') + aaShort(user().walletAddress, 6) + '</div></div>' +
+      '<div class="kpi-card" style="border-top:3px solid var(--success)"><div class="kpi-label">Ledger Balance</div><div class="kpi-val mono" style="font-size:22px;font-weight:700;margin-top:4px">' + aaFmtWei(l.balanceWei) + ' <span style="font-size:12px;color:var(--text-muted)">ETH</span></div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">' + I18N.t('aa_paymaster_balance') + '</div></div>' +
+      '<div class="kpi-card" style="border-top:3px solid var(--warning)"><div class="kpi-label">Billing Mode</div><div class="kpi-val" style="font-size:14px;font-weight:700;margin-top:8px">' + modeHtml + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:6px">' + (p.configured ? I18N.t('aa_billing_configured') : I18N.t('aa_billing_not_configured')) + '</div></div>' +
+      '<div class="kpi-card" style="border-top:3px solid var(--brand)"><div class="kpi-label">Sessions</div><div class="kpi-val mono" style="font-size:22px;font-weight:700;margin-top:4px">' + (aaState.sessions.length || 0) + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">' + I18N.t('aa_chain_bound') + (aaState.sessions.length ? (aaState.sessions[0].isBound ? '✅' : I18N.t('aa_not_deployed')) : '—') + '</div></div>' +
     '</div>' +
-    '<div class="panel"><div class="panel-header">💳 计费费率（' + aaEsc(p.mode || 'n/a') + '）</div><div class="panel-body" style="padding:0"><table class="data-table"><thead><tr><th>Operation</th><th>Fee</th></tr></thead><tbody>' + feeHtml + '</tbody></table></div></div>' +
-    '<div class="panel" style="margin-top:14px"><div class="panel-header">🤖 Auto-Renew 自动续订</div><div class="panel-body" style="font-size:13px;color:var(--text-secondary);line-height:1.8">' +
-      'Session 自动续订由平台网关 daemon 在到期前用 session key 签发 UserOp 续订订阅。<br>' +
-      '<span style="color:var(--text-muted)">本面板提供支撑能力：轮换（replace）可无缝更换 session key；撤销（revoke）可立即吊销。续订前请确保 <b>escrow 余额充足</b>（上方托管明细）。</span>' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('aa_fee_title_prefix') + aaEsc(p.mode || 'n/a') + I18N.t('aa_fee_title_suffix') + '</div><div class="panel-body" style="padding:0"><table class="data-table"><thead><tr><th>Operation</th><th>Fee</th></tr></thead><tbody>' + feeHtml + '</tbody></table></div></div>' +
+    '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('aa_autorenew_title') + '</div><div class="panel-body" style="font-size:13px;color:var(--text-secondary);line-height:1.8">' +
+      I18N.t('aa_autorenew_desc') +
+      '<span style="color:var(--text-muted)">' + I18N.t('aa_autorenew_support') + '</span>' +
     '</div></div>' +
     fundsHtml +
     topupHtml;
@@ -260,7 +260,7 @@ function aaRenderSessions() {
   var pane = document.getElementById('aa-pane-sessions');
   if (!pane) return;
   if (!aaState.account) {
-    pane.innerHTML = '<div class="empty">Account 未初始化（先进入 Overview 派生）</div>';
+    pane.innerHTML = '<div class="empty">' + I18N.t('aa_no_account') + '</div>';
     return;
   }
   var list = aaState.sessions || [];
@@ -269,9 +269,9 @@ function aaRenderSessions() {
     return;
   }
   pane.innerHTML =
-    '<div class="panel"><div class="panel-header">🔑 Session 列表 <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">' + list.length + ' 条 · account=' + aaShort(aaState.account, 8) + '</span></div>' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('aa_session_list_title') + '<span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto">' + list.length + I18N.t('aa_session_count_suffix') + aaShort(aaState.account, 8) + '</span></div>' +
     '<div class="panel-body" style="padding:0"><table class="data-table">' +
-    '<thead><tr><th>Session ID</th><th>Signer (key)</th><th>有效期</th><th>权限</th><th>创建时间</th><th>操作</th></tr></thead><tbody>' +
+    '<thead><tr><th>Session ID</th><th>Signer (key)</th><th>' + I18N.t('aa_th_valid') + '</th><th>' + I18N.t('aa_th_perms') + '</th><th>' + I18N.t('aa_th_created') + '</th><th>' + I18N.t('aa_th_actions') + '</th></tr></thead><tbody>' +
     list.map(function(s) {
       return '<tr>' +
         '<td class="mono" style="font-size:12px">' + aaShort(s.sessionId, 12) + '</td>' +
@@ -279,8 +279,8 @@ function aaRenderSessions() {
         '<td style="font-size:12px">' + aaExpiry(s.validUntil) + '<br><span class="mono" style="font-size:10px;color:var(--text-muted)">until ' + (s.validUntil || '—') + '</span></td>' +
         '<td>' + aaPermSummary(s.permissions) + '</td>' +
         '<td class="mono" style="font-size:11px">' + (s.createdAt ? new Date(s.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '—') + '</td>' +
-        '<td style="white-space:nowrap"><button class="btn btn-sm" style="font-size:12px;padding:4px 10px" onclick="aaStartRevoke(\'' + s.sessionId + '\')" title="两阶段撤销（本地停用 + 签名上链）">🚫 Revoke</button> ' +
-        '<button class="btn btn-sm" style="font-size:12px;padding:4px 10px;background:var(--surface-hover)" onclick="aaStartReplace(\'' + s.sessionId + '\')" title="轮换 session key（两笔 UserOp）">🔄 Replace</button></td>' +
+        '<td style="white-space:nowrap"><button class="btn btn-sm" style="font-size:12px;padding:4px 10px" onclick="aaStartRevoke(\'' + s.sessionId + '\')" title="' + I18N.t('aa_revoke_title') + '">🚫 Revoke</button> ' +
+        '<button class="btn btn-sm" style="font-size:12px;padding:4px 10px;background:var(--surface-hover)" onclick="aaStartReplace(\'' + s.sessionId + '\')" title="' + I18N.t('aa_replace_title') + '">🔄 Replace</button></td>' +
       '</tr>';
     }).join('') +
     '</tbody></table></div></div>';
@@ -291,27 +291,27 @@ function aaRenderCreateForm() {
   var pane = document.getElementById('aa-pane-create');
   if (!pane) return;
   if (!user().walletAddress) {
-    pane.innerHTML = '<div class="empty">请先连接钱包</div>';
+    pane.innerHTML = '<div class="empty">' + I18N.t('aa_connect_first') + '</div>';
     return;
   }
   var now = Math.floor(Date.now() / 1000);
   var defValid = now + 30 * 86400;
   var defPerms = '[{"target":"0x0000000000000000000000000000000000000001","selectors":["0x8a7b9a6b"],"valueLimit":"1000000000000000000","countLimit":100}]';
   pane.innerHTML =
-    '<div class="panel"><div class="panel-header">➕ 创建 Session</div><div class="panel-body">' +
+    '<div class="panel"><div class="panel-header">' + I18N.t('aa_create_title') + '</div><div class="panel-body">' +
       '<div class="form-row" style="grid-template-columns:1fr 1fr">' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Owner（当前连接钱包）</label><div class="addr-pill mono" style="font-size:12px;margin-top:4px">' + aaShort(user().walletAddress, 12) + '</div></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('aa_lb_owner') + '</label><div class="addr-pill mono" style="font-size:12px;margin-top:4px">' + aaShort(user().walletAddress, 12) + '</div></div>' +
         '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">Product</label><select class="input" id="aa-product" style="margin-top:4px"><option value="default">default</option></select></div>' +
       '</div>' +
       '<div class="form-row" style="grid-template-columns:1fr 1fr">' +
-        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">有效天数</label><input class="input" id="aa-valid-days" type="number" value="30" min="1" style="margin-top:4px"></div>' +
+        '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('aa_lb_valid_days') + '</label><input class="input" id="aa-valid-days" type="number" value="30" min="1" style="margin-top:4px"></div>' +
         '<div><label style="font-size:12px;font-weight:600;color:var(--text-dim)">validUntil (unix)</label><input class="input mono" id="aa-valid-until" value="' + defValid + '" style="margin-top:4px"></div>' +
       '</div>' +
-      '<label style="font-size:12px;font-weight:600;color:var(--text-dim)">Permissions（JSON 数组）</label>' +
+      '<label style="font-size:12px;font-weight:600;color:var(--text-dim)">' + I18N.t('aa_lb_perms') + '</label>' +
       '<textarea class="input mono" id="aa-perms" rows="4" style="margin-top:4px;font-size:12px;white-space:pre">' + defPerms + '</textarea>' +
-      '<div style="font-size:11px;color:var(--text-muted);margin:8px 0 12px;line-height:1.7">字段：<code>target</code> 授权合约地址 · <code>selectors</code> 函数选择器（空=全部）· <code>valueLimit</code> 单笔转账额度(wei) · <code>countLimit</code> 调用次数上限。target=哨兵 <code>0x…0001</code> 表示原生币任意转账授权。</div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin:8px 0 12px;line-height:1.7">' + I18N.t('aa_perms_hint') + '</div>' +
       '<button class="btn btn-primary" id="aa-create-btn" onclick="aaCreateSession()">🚀 Create Session</button> ' +
-      '<button class="btn btn-outline" onclick="aaFillPermPresets()">✨ 填充示例</button>' +
+      '<button class="btn btn-outline" onclick="aaFillPermPresets()">' + I18N.t('aa_fill_example') + '</button>' +
       '<div class="result-box" id="aa-create-result" style="margin-top:14px"></div>' +
     '</div></div>';
 }
@@ -340,10 +340,10 @@ async function aaCreateSession() {
   try {
     permissions = JSON.parse(document.getElementById('aa-perms').value);
     if (!Array.isArray(permissions) || !permissions.length) throw new Error('empty');
-  } catch (e) { return showToast('Permissions 必须是合法 JSON 数组', 'error'); }
+  } catch (e) { return showToast(I18N.t('aa_perms_invalid'), 'error'); }
 
   btn.classList.add('btn-loading');
-  result.innerHTML = '<div style="padding:10px;color:var(--text-muted)">⏳ 派生账户 + 生成 session key…</div>';
+  result.innerHTML = '<div style="padding:10px;color:var(--text-muted)">' + I18N.t('aa_deriving') + '</div>';
   try {
     var d = await aaFetch('/v1/session', {
       method: 'POST',
@@ -353,28 +353,28 @@ async function aaCreateSession() {
     // 复用/冲突处理
     if (d.reused) {
       result.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' +
-        '✅ 复用既有兼容 session（零链上交易）<br><code class="mono">' + d.sessionId + '</code><br>session key: <code class="mono">' + d.sessionKey + '</code></div>';
+        I18N.t('aa_reused') + '<code class="mono">' + d.sessionId + '</code><br>session key: <code class="mono">' + d.sessionKey + '</code></div>';
     } else if (!d.isBound) {
       result.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(14,203,129,.08);border:1px solid rgba(14,203,129,.3);font-size:13px">' +
-        '<b>✅ Session 已生成（本地）</b><br>' +
+        I18N.t('aa_created_local') +
         'Smart Account: <code class="mono">' + d.accountAddress + '</code><br>' +
         'Session ID: <code class="mono">' + d.sessionId + '</code><br>' +
-        'Session Key <span style="color:var(--warning)">（仅此一次）</span>: <code class="mono">' + d.sessionKey + '</code><br><br>' +
-        '<b>下一步：链上 enable（需 owner 签名 + UserOp 广播）</b><br>' +
-        '复制下方 enableCallData，使用 SDK/CLI 组装 UserOp 并调 <code>POST /v1/userops</code> 上链后，session 才真正生效：<br>' +
+        I18N.t('aa_key_once') + '<code class="mono">' + d.sessionKey + '</code><br><br>' +
+        I18N.t('aa_next_enable') +
+        I18N.t('aa_copy_calldata') +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><code class="mono" id="aa-enable-cd" style="font-size:11px;word-break:break-all;flex:1">' + d.enableCallData + '</code>' +
         '<button class="btn btn-sm" onclick="copyText(document.getElementById(\'aa-enable-cd\').textContent)">📋 Copy</button></div>' +
-        '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">💡 提示：enable 需在撤销/替换上链确认后构建（digest 绑定 nonce）。参考 SDK 快速开始文档的两笔轮换流程。</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + I18N.t('aa_enable_hint') + '</div>' +
         '</div>';
     } else {
       result.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:13px">' +
-        '⚠️ 账户已绑定不兼容 session（' + (d.needsSessionRevoke ? '需先撤销' : '') + '）。请到 Sessions 页对旧 session 执行 Revoke 后重试。</div>';
+        I18N.t('aa_conflict_prefix') + (d.needsSessionRevoke ? I18N.t('aa_need_revoke') : '') + I18N.t('aa_conflict_suffix') + '</div>';
     }
     aaLoadAll();
   } catch (e) {
     // 409 session-conflict：错误体中带 accountAddress
     if (e.data && e.data.accountAddress) aaSaveAccount(e.data.accountAddress);
-    result.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:13px;color:var(--error)">❌ ' + aaEsc(e.message || '创建失败') + '</div>';
+    result.innerHTML = '<div style="padding:12px;border-radius:8px;background:rgba(246,70,93,.08);border:1px solid rgba(246,70,93,.3);font-size:13px;color:var(--error)">❌ ' + aaEsc(e.message || I18N.t('aa_create_failed')) + '</div>';
   } finally {
     btn.classList.remove('btn-loading');
   }
@@ -382,10 +382,10 @@ async function aaCreateSession() {
 
 // ── Revoke（两阶段：disable → 签名 → revoke）──
 async function aaStartRevoke(sessionId) {
-  if (!confirm('确认撤销 session ' + sessionId.slice(0, 12) + '…？\n阶段1：本地停用 + 构建上链撤销 UserOp。')) return;
+  if (!confirm(I18N.t('aa_revoke_confirm_prefix') + sessionId.slice(0, 12) + I18N.t('aa_revoke_confirm_suffix'))) return;
   var msg = document.createElement('div');
   msg.style.cssText = 'margin:10px 0;padding:12px;border-radius:8px;background:var(--surface-input);font-size:13px;color:var(--text-muted)';
-  msg.textContent = '⏳ 构建撤销 draft…';
+  msg.textContent = I18N.t('aa_building_draft');
   document.body.appendChild(msg);
   try {
     var d = await aaFetch('/v1/session/disable', {
@@ -394,14 +394,14 @@ async function aaStartRevoke(sessionId) {
     });
     msg.remove();
     if (!d || !d.draft || !d.draft.userOpHash) {
-      showToast('draft 构建失败（已本地停用）', 'warning');
+      showToast(I18N.t('aa_draft_failed'), 'warning');
       aaLoadAll();
       return;
     }
     aaState.pendingRevoke = { sessionId: sessionId, draft: d.draft };
     aaPromptSign(
-      '撤销上链确认',
-      '签名以下 disable UserOp 的 userOpHash（owner EOA，raw digest）：',
+      I18N.t('aa_revoke_title_prompt'),
+      I18N.t('aa_revoke_desc'),
       d.draft.userOpHash,
       function(sig) { aaSubmitRevoke(sessionId, d.draft, sig); }
     );
@@ -417,11 +417,11 @@ async function aaSubmitRevoke(sessionId, draft, signature) {
       method: 'POST',
       body: { chain: aaState.chain, account: aaState.account, owner: user().walletAddress, sessionId: sessionId, userOpHash: draft.userOpHash, signature: signature, op: draft.op, wait: true },
     });
-    showToast('✅ Session 已撤销 on-chain: ' + (r.userOpHash || '').slice(0, 12) + '…', 'success');
+    showToast(I18N.t('aa_revoked_onchain') + (r.userOpHash || '').slice(0, 12) + '…', 'success');
     aaState.pendingRevoke = null;
     aaLoadAll();
   } catch (e) {
-    showToast('撤销上链失败：' + e.message, 'error');
+    showToast(I18N.t('aa_revoke_failed') + e.message, 'error');
   }
 }
 
@@ -429,18 +429,18 @@ async function aaSubmitRevoke(sessionId, draft, signature) {
 async function aaStartReplace(oldSessionId) {
   var now = Math.floor(Date.now() / 1000);
   var perms = window.prompt(
-    '轮换 session ' + oldSessionId.slice(0, 12) + '…\n请输入新 session 的 permissions（JSON 数组）:\n',
+    I18N.t('aa_replace_prompt_prefix') + oldSessionId.slice(0, 12) + I18N.t('aa_replace_prompt_suffix'),
     '[{"target":"0x0000000000000000000000000000000000000001","selectors":[],"valueLimit":"50000000000000000","countLimit":20}]'
   );
   if (!perms) return;
   var permissions;
-  try { permissions = JSON.parse(perms); } catch (e) { return showToast('Permissions JSON 非法', 'error'); }
-  var days = window.prompt('有效天数（默认 30）:', '30');
+  try { permissions = JSON.parse(perms); } catch (e) { return showToast(I18N.t('aa_perms_json_invalid'), 'error'); }
+  var days = window.prompt(I18N.t('aa_valid_days_prompt'), '30');
   var validUntil = now + (parseInt(days || '30', 10) || 30) * 86400;
 
   var msg = document.createElement('div');
   msg.style.cssText = 'margin:10px 0;padding:12px;border-radius:8px;background:var(--surface-input);font-size:13px;color:var(--text-muted)';
-  msg.textContent = '⏳ 阶段1：生成新 session key + 构建 disable 旧 draft…';
+  msg.textContent = I18N.t('aa_replace_building');
   document.body.appendChild(msg);
   try {
     var d = await aaFetch('/v1/session/replace', {
@@ -451,13 +451,13 @@ async function aaStartReplace(oldSessionId) {
     if (d.accountAddress) aaSaveAccount(d.accountAddress);
     aaState.pendingReplace = d;
     if (!d.disableDraft || !d.disableDraft.userOpHash) {
-      showToast('disable draft 构建失败（新 session 已本地落库）', 'warning');
+      showToast(I18N.t('aa_replace_draft_failed'), 'warning');
       aaLoadAll();
       return;
     }
     aaPromptSign(
-      '轮换确认（阶段2/2）',
-      '签名 disable 旧 session 的 userOpHash（新 session key 已生成，将在此次上链后接管）：',
+      I18N.t('aa_replace_title_prompt'),
+      I18N.t('aa_replace_desc'),
       d.disableDraft.userOpHash,
       function(sig) { aaSubmitReplace(d, sig); }
     );
@@ -473,15 +473,14 @@ async function aaSubmitReplace(d, signature) {
       method: 'POST',
       body: { chain: aaState.chain, product: aaState.product, account: aaState.account, owner: user().walletAddress, oldSessionId: d.oldSessionId, userOpHash: d.disableDraft.userOpHash, signature: signature, op: d.disableDraft.op, wait: true },
     });
-    showToast('✅ 旧 session 已上链禁用: ' + (r.userOpHash || '').slice(0, 12) + '…', 'success');
-    var note = '轮换完成（阶段1/2）。新 session key 已保存可用于复用：\n' + d.sessionKey +
-      '\n\n阶段2：新 session 链上 enable 需用 SDK buildEnableSessionUserOp 组装 UserOp 并 POST /v1/userops 广播（enable digest 绑定阶段1的 nonce，需在阶段1确认后构建）。';
-    window.prompt('新 session key（复制保存）', d.sessionKey);
+    showToast(I18N.t('aa_old_disabled') + (r.userOpHash || '').slice(0, 12) + '…', 'success');
+    var note = I18N.t('aa_replace_note_prefix') + d.sessionKey + I18N.t('aa_replace_note_suffix');
+    window.prompt(I18N.t('aa_new_key_prompt'), d.sessionKey);
     showToast(note, 'info');
     aaState.pendingReplace = null;
     aaLoadAll();
   } catch (e) {
-    showToast('轮换上链失败：' + e.message, 'error');
+    showToast(I18N.t('aa_replace_failed') + e.message, 'error');
   }
 }
 
@@ -492,16 +491,16 @@ function aaPromptSign(title, desc, userOpHash, onSigned) {
   overlay.innerHTML =
     '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:12px;padding:24px;width:560px;max-width:92vw">' +
       '<div style="font-size:16px;font-weight:700;margin-bottom:8px">' + aaEsc(title) + '</div>' +
-      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.7">' + aaEsc(desc) + '<br>MetaMask 默认禁用 eth_sign，签名失败时会切换为手动模式。</div>' +
-      '<div style="font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:4px">userOpHash（raw digest）</div>' +
+      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.7">' + aaEsc(desc) + I18N.t('aa_metamask_hint') + '</div>' +
+      '<div style="font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:4px">' + I18N.t('aa_hash_label') + '</div>' +
       '<div style="display:flex;gap:8px;margin-bottom:12px"><code class="mono" id="aa-sig-hash" style="font-size:11px;word-break:break-all;flex:1;background:var(--surface-input);padding:8px 10px;border-radius:6px">' + userOpHash + '</code>' +
       '<button class="btn btn-sm" onclick="copyText(document.getElementById(\'aa-sig-hash\').textContent)">📋</button></div>' +
-      '<label style="font-size:11px;font-weight:600;color:var(--text-dim)">签名（0x…）</label>' +
-      '<textarea class="input mono" id="aa-sig-input" rows="2" style="margin-top:4px;font-size:11px" placeholder="钱包 eth_sign 自动填入，或手动粘贴"></textarea>' +
+      '<label style="font-size:11px;font-weight:600;color:var(--text-dim)">' + I18N.t('aa_sig_label') + '</label>' +
+      '<textarea class="input mono" id="aa-sig-input" rows="2" style="margin-top:4px;font-size:11px" placeholder="' + I18N.t('aa_sig_placeholder') + '"></textarea>' +
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
-        '<button class="btn btn-outline btn-sm" onclick="this.closest(\'div\').parentElement.parentElement.remove()">取消</button>' +
-        '<button class="btn btn-primary btn-sm" onclick="aaAutoSign()">🦊 钱包签名</button>' +
-        '<button class="btn btn-primary btn-sm" onclick="aaConfirmSig()">确认签名</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="this.closest(\'div\').parentElement.parentElement.remove()">' + I18N.t('cancel') + '</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="aaAutoSign()">' + I18N.t('aa_wallet_sign') + '</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="aaConfirmSig()">' + I18N.t('aa_confirm_sign') + '</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(overlay);
@@ -512,13 +511,13 @@ function aaPromptSign(title, desc, userOpHash, onSigned) {
       if (ta) ta.value = sig;
       aaConfirmSig();
     }).catch(function(e) {
-      showToast(e.message || '签名失败', 'error');
+      showToast(e.message || I18N.t('aa_sign_failed'), 'error');
     });
   };
   window.aaConfirmSig = function() {
     var ta = document.getElementById('aa-sig-input');
     var sig = ta && ta.value.trim();
-    if (!sig) return showToast('请先签名', 'warning');
+    if (!sig) return showToast(I18N.t('aa_sign_first'), 'warning');
     overlay.remove();
     onSigned(sig);
   };
