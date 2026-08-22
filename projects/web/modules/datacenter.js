@@ -565,7 +565,8 @@ async function dcLoadCal() {
   box.innerHTML = '<div style="padding:14px 4px"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text" style="width:66%"></div></div>';
   try {
     var d = await afetch('/snapshots?type=calendar', { auth: 'none' }) || {};
-    var cal = d.calendar;
+    // data-service 返回 {ts, snapshots:{calendar:[...]}}（无信封），兼容直接 {calendar}
+    var cal = d.calendar || (d.snapshots && d.snapshots.calendar);
     var items = Array.isArray(cal) ? cal : (cal && cal.items ? cal.items : []);
     if (!items.length) {
       box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_cal') + '</div></div>';
