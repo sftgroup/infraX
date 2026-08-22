@@ -322,3 +322,13 @@
 | 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | WEB-8 | Insights 四个子 tab 点击后内容区全黑 | core.js L303 全局委托把子 tab 当主 tab 处理：隐藏所有 sub-panel 后 `getElementById('sub-undefined')` 为 null 无法恢复 | core.js L306-309 守卫：无 `data-sub` 的 `.tab-btn`（Insights 子 tab）直接 return，不进入 sub-panel 切换 | ✅ 已部署（commit 9c2a89f） | P0 | 涉及 core.js + index.html（版本号 bump）；本地 browser 实测修复生效（点击子 tab 后 `sub-dc-insights` 保持 `active`/`block`，`ins-pane` 正常切换，无 console 错误）；生产源站与公网 `/index.html` 均已确认新版本号；接口层 6 项（graph/entities/edges、factors/current、history、rag/retrieve、ml/*）生产均 200 有数据，与黑屏无关 |
+
+### 9.24 Insights ML 卡片 no symbols 修复（WSG 前端缺陷 + 生产鉴权链路，2026-08-23）
+
+> **✅ 已修复部署（commit c56847d + a23dede + nginx 注入）**：ML tab 6 张模型卡片（🌳 LightGBM / 📊 Kronos / 🤝 共识 / ⚡ Bolt / 🌐 Moirai / ⏱️ TimesFM）全部显示「0 syms / no symbols」。两层根因：
+> 1. **前端结构不匹配（commit c56847d）**：`tree_predictions` 返回 `predictions[]`（无顶层 avg/symbols）、`volatility` 用 `avg_volatility_score`、`consensus` 用 `avg_consensus_score`，原 [insights.js](file:///home/steven/infraX/projects/web/modules/insights.js) 只适配 `symbols`+`avg_prob_up` → `INS_ML_ENDPOINTS` 增 `arrKey`/`aggKey`/聚合均值回退。
+> 2. **生产鉴权 401（nginx 注入修复）**：公网 `location /ml/` 与 `location /api/ml/` 直连 ml-service（43.156.25.197:9120）且未注入鉴权头，而 ml-service 已启用 `app_auth` 强制鉴权（`ML_API_KEY=infrax-bridge-*`，与 web `SERVICE_API_KEY` 同源）→ 全部请求 401 → 前端把 `{"detail":"unauthorized"}` 当正常响应解析 → 无 rows。修复：nginx 两个 location 均增 `proxy_set_header X-Service-Key "infrax-bridge-*"`（ml-service 统一鉴权契约接受），`nginx -t` + reload 后公网 6 端点全 200。
+
+| 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|---|
+| WEB-9 | ML tab 6 卡片全「0 syms / no symbols」 | ① 前端只适配 `symbols`+`avg_prob_up`，tree_predictions 是 `predictions[]` 且各端点聚合字段不同 ② 公网 `/ml/` nginx 直连 ml-service 未注入鉴权 → 401 | ① insights.js `INS_ML_ENDPOINTS` 增 `arrKey`/`aggKey`/均值回退（commit c56847d）② nginx `/ml/`+`/api/ml/` 注入 `X-Service-Key`（2026-08-23，reload 生效） | ✅ 已部署（c56847d + a23dede） | P0 | browser 生产实测：5/6 卡片 30 syms 真实数据（LightGBM/共识/Bolt/Moirai/TimesFM）；Kronos 显示 data=null 属预期（TTL 缓存 miss 时 fail-silent，公网直连 200 有 29 syms）；LightGBM 卡片头部模型名曾渲染 `[object Object]`（model 为对象），commit a23dede 提取 `model.name` 修复并 bump `insights.js?v=1787600200`；nginx 修改为生产机 /etc/nginx/sites-enabled/infrax（非仓库文件，已备注于 DEPLOYMENT.md） |

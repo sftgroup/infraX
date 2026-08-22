@@ -182,6 +182,7 @@ ssh ubuntu@43.156.25.197   # ML 机
 | `/api/data/*`、`/api/v1/*` | `http://127.0.0.1:9112/` | 数据栈（`/api/v1/*` 为旧契约兼容段） |
 | `/api/rag/*` | **`http://10.3.8.6:9721/`** | ragservicer（**已指向新机**，M-3 调整） |
 | `/api/ml/*` | **`http://43.156.25.197:9120/ml/`** | ml-service 推理机（`/api/ml/health` → `/health`，2026-08-19 新增） |
+| `/ml/*` | **`http://43.156.25.197:9120`** | ml-service 裸路由（SDK `mlUrl` 缺省回退，2026-08-19 新增） |
 | `/api/v2/*`、`/api/vault` | web `server.js` → 各 91xx 服务 | 区块链栈 |
 | `/api/v2/data/my-keys` | **`http://127.0.0.1:9111/`** | **nginx 专用 location（2026-08-20 新增）**：`/api/v2/data/my-keys`（B-11-3 用户级 key）必须走 web `server.js` → data `:9112`（钱包签名鉴权）；若不经此专用路由，会被下方 `location /api/v2/data/`（→ dc `:9102`）截获导致 404。勿删！ |
 | `/mcp/*` | `http://127.0.0.1:3008/` | hub-index 统一 MCP 入站（`/mcp/message`，2026-08-19 实测 `/mcp/health` 200） |
@@ -190,6 +191,7 @@ ssh ubuntu@43.156.25.197   # ML 机
 | `/` | admin/web 前端 | InfraX Web3 平台（需登录态） |
 
 - 80 端口一律 301 → 443；TLS 经 Cloudflare 边缘证书（自动续期）
+- **nginx `/ml/*`、`/api/ml/*` 鉴权注入（2026-08-23）**：ml-service 已启用 `app_auth` 强制鉴权（`ML_API_KEY`），nginx 直连上述两个 location 均配置 `proxy_set_header X-Service-Key "infrax-bridge-*"`（与 web `SERVICE_API_KEY` 同源，ml-service 统一鉴权契约接受 `X-Service-Key`）；缺失会导致公网 `/ml/*` 全部 401、前端 ML 卡片 "no symbols"（WEB-9）。该配置为生产机 `/etc/nginx/sites-enabled/infrax` 本地文件，非 git 跟踪。
 - **唯一对外域名 `https://infrax.0xainet.top`**（DNS→Cloudflare→172）；2026-08-19 实测：`/api/data/health`、`/api/rag/api/v1/health`、`/api/v1/health`、`/api/v2/data/stats`（需 key）、`/mcp/health` 均到达本栈并返回 JSON
 - ⚠️ **`infrax.app` 域名已失效**：2026-08-19 实测解析至 `34.111.179.208`（Google Frontend），返回外部页面而非 infraX；对外一律使用 `infrax.0xainet.top`，`infrax.app` 待域名方处理/回收（此前文档若引用均需改用 `infrax.0xainet.top`）
 - Chain RPC 公网 HTTPS 入口：`https://rpc-gw.0xainet.top`（nginx TLS 反代 `:9130`，certbot 自动续期，见 [docs/API_ACCESS.md](./docs/API_ACCESS.md)）
