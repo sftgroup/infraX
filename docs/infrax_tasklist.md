@@ -198,6 +198,11 @@
 >   - **RPC 升级卡片**：`rpcLoadMySub` 在 keys 列表后追加套餐升级区块（`rpcUpgradeHtml`，b2b.js）——基于 `RPC_DEFAULT_PLANS` 价格基线按当前 `planName` 过滤更高价位候选（如 Free → Pro/Enterprise 双卡），复用 `waas-plan` 卡片样式点击走 `rpcSubscribe`；已是 Enterprise 显示"🏆 当前已是最高方案"；新增 `rpc_upgrade_*` 5 键（zh/en 齐全）。
 >   - **datacenter 清理**：链上事件整体迁至 Chain RPC 后移除 Explorer tab / 事件分类分布 / 最近事件 / 事件总量 KPI（kpi-grid 4→3 列）/ `GET /events`·`GET /stats` 文档；API Docs 改为市场数据文档（`/ticker` /bars 参数表）；Data Capabilities 卡片 3→2（Insights / Market）；datacenter.js 删除 `dcLoadOverview`/`dcQueryEvents`/`DC_CHAINS`/`dcEventsPageToken`；i18n 删除无引用 `dc_*` 7 键（字典 787→785）。
 >   - **验证**：本地 playwright 实测 `rpcUpgradeHtml` 全场景（Free→2 卡 / Pro→1 卡 / Enterprise→MAX / 包含匹配容错）+ 中英切换正常、dc-dash 无 explorer/无事件面板、console 0 errors；check-i18n-keys 785 键全通过；生产实测 i18n.js?v=1787340000 生效、dc 结构正确、0 console 错误；生产 `43.163.105.172` git pull 至 3f5d540。
+> - **W-9c（✅，2026-08-23，commit f3064a8 已部署生产）**：LightRAG 页面新增套餐 + 内部详情页（纯前端先行，用户确认范围）。
+>   - **套餐**：介绍页新增套餐卡片区（Free $0 / Pro $79 / Enterprise $299 静态目录，复用 waas-plan 样式），点击 `lrActivate` 激活并进入详情页；localStorage `px_rag_plan` 本地记忆。
+>   - **内部详情页**（lr-dash）：4 KPI（方案/租户数/文档配额/调用配额，随套餐联动）+ 4 tabs —— 我的订阅（当前套餐 + 配额 + `lrUpgradeHtml` 升级卡片，点击 `lrSwitchPlan` 切换，Enterprise 显示最高方案提示）、API Key（`lr_ key` 本地保存 `px_rag_key` 明文仅本机）、节点状态（真实 health 探针 `/api/rag/api/v1/health` → service/instances 实测 17 实例）、API Docs（ragservicer 5 核心端点 insert/query/delete/instances/health）。
+>   - **顺带修复**：core.js 清理 dc-explorer 残留 subLoader 绑定；版本号 bump 时补齐上轮 b2b.js/datacenter.js 未 bump 的缓存问题（统一 v=1787360000）。
+>   - **验证**：本地 playwright 全流程（激活→KPI/tabs/升级卡→Pro 切→Enterprise MAX→key 保存→中英切换）0 console 错误；check-i18n-keys 820 键全通过；生产实测（套餐卡/详情页/节点状态 instances:17 真实数据/无横向溢出/0 console 错误）；生产 `43.163.105.172` git pull 至 f3064a8。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
 
