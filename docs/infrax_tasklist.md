@@ -181,6 +181,14 @@
 > **W-8h（骨架屏，2026-08-21）**：页面加载过程全面骨架屏化，提升首屏体验——① index.html 静态容器：dashboard Usage / WaaS Subscription Plan / Sweep Targets / 管理端 mykeys 表格、以及 aa-root、payments-root、rpc-root、lightrag-root、insights-root、dc-market-root 6 个 JS 渲染容器由 "Loading…" 文本替换为 `.skeleton` 骨架屏（标题条 + 文本行 + 卡片网格 + 内容块）；② 异步加载区：rpc-key-box、rpc-status-root、rpc 我的订阅、链上事件表格、dc 事件表格、dc 行情结果、insights graph 面板、payments overview 面板全部改为骨架行/卡片（复用现有 `.skeleton/.skeleton-text/.skeleton-card` shimmer 动画类，零新增 CSS）；③ 兼容性：waas-ov-sub-status 保留 id（waas.js 以 textContent 写入时骨架自动被替换）；④ playwright 实测：阻断 JS 后 rpc-root 7 骨架元素 / dash-usage 3 条，JS 加载后骨架全部消失并渲染真实内容，隐藏 tab 面板骨架在激活时懒加载替换；缓存版本号 bump 1787305000。补充修复：ncDash 未连接分支直接 return 导致 dash-usage 骨架持续闪烁 —— 在该分支同步替换为 "🔌 Connect wallet to view usage" 提示；同时 ncDash 的 LightRAG 健康检查同步 `/api/rag/health` → `/api/rag/api/v1/health`（W-8g 同源，Dashboard 页一并修正）；生产实测 dash-usage 显示 connect 提示 ✓（cb7b130）。
 > ⚠️ **遗留**：交易对面板双榜单（OKX + DexScreener）来源联调待 AIHunter 前端。
 
+> **W-9（全平台多语言，2026-08-23，commit 92160ee 已部署生产）**：web 门户全平台中英文切换。
+> - **P0（✅）**：抽取 admin.html 内联 I18N v1.0 为共享库 `modules/i18n.js`（`I18N.zh` 显式中文字典 + `I18N.en` 按键名自动生成 + `EN_OVERRIDES` 显式英文覆盖；`I18N.t()`/`setLang()`/`scan()`；`px_lang` localStorage 共享；`i18n:changed` 事件驱动动态内容刷新）；admin.html 迁移复用。
+> - **P1（✅）**：index.html 引入 i18n.js + topbar 语言切换按钮 + 静态文本 data-i18n 化（sidebar nav / nav-section / topbar / Dashboard KPI 与服务表头，nav-label 子 span 包裹兼容 badge）。
+> - **P2（✅）**：Dashboard(nc-wallet.js) 与 core.js 动态文本 i18n 化（未连接提示 / setDashRow / setDashHealthRow 状态 / usage 行 / 表头，`DASH_LABEL_KEYS` 重渲染后 label 跟随语言；core.js `PAGE_TITLES` 键值化、错误消息/toast 键化、`i18n:changed` 监听重载当前页 loader）；admin-login.html 全静态文本 + login_* 键。
+> - **P3（✅）**：b2b.js Chain RPC / LightRAG 全套界面文本 i18n 化（rpc_intro 介绍+套餐 / 链上事件 / KPI+Key 面板 / 节点状态 / API Docs / 我的订阅 / 签发与订阅支付全流程 / LightRAG 介绍页）；修复 `rpc/lightrag` loader 的 `dataset.loaded` guard 阻断 i18n:changed 重载（core.js 重载前 `delete root.dataset.loaded`）。
+> - **验证**：本地 :6100 playwright 实测 RPC/LightRAG/Docs/节点状态页中英切换、生产 https://infrax.0xainet.top 主门户+RPC 页切换（含真实健康状态 🟢 正常/Up），console 0 errors；生产 `43.163.105.172` git pull 至 92160ee。
+> - **⚠️ P4（待排期，low）**：其余模块（waas / dc / aa / safe / mpc / payments / insights）及 **landing.html 落地页**（生产 `/` 301 至 landing.html，目前仅主门户 i18n）分批 i18n 化。
+
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
 
 > AIServicer 反馈：2026-08-21 上午 SQLite 写锁 10-11s（建租户/上传 500 `database is locked`，health 劣化 5.5s，故障 20+ 分钟）；晚间 21:40 复发——health 稳定 10s ×3、写 20s、GET 20s 超时，客户 bitbyte transaction 知识库 0/7 上传失败。本地已有部分缓解（busy_timeout `30797b3` + last_used_at 节流 `98d2a18`），但晚间复发说明慢任务持锁（LightRAG 分钟级索引）仍阻塞全部写路径。
