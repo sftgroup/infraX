@@ -667,29 +667,251 @@ function rpcLoadEvents() {
 }
 
 // ─── LightRAG ───────────────────────────────────────────────────────
+// W-9c: LightRAG 套餐 + 内部详情页（纯前端先行：本地演示，真实订阅后端对接中）
+const LR_DEFAULT_PLANS = [
+  { id: 'lr_free', name: 'Free', price: 0, badge: 'Free', emoji: '🆓', tenants: 1, docs: 100, calls: 10000, features: ['1 tenant', '100 docs', '10,000 calls/mo'] },
+  { id: 'lr_pro', name: 'Pro', price: 79, badge: 'Popular', emoji: '⚡', tenants: 10, docs: 5000, calls: 100000, features: ['10 tenants', '5,000 docs', '100,000 calls/mo'] },
+  { id: 'lr_enterprise', name: 'Enterprise', price: 299, badge: 'Enterprise', emoji: '🏭', tenants: -1, docs: 50000, calls: 1000000, features: ['Unlimited tenants', '50,000 docs', '1,000,000 calls/mo'] },
+];
+
+function lrGetPlan() { try { return JSON.parse(localStorage.getItem('px_rag_plan') || 'null'); } catch (e) { return null; } }
+function lrSavePlan(p) { try { localStorage.setItem('px_rag_plan', JSON.stringify(p)); } catch (e) {} }
+function lrFindPlan(id) { for (var i = 0; i < LR_DEFAULT_PLANS.length; i++) if (LR_DEFAULT_PLANS[i].id === id) return LR_DEFAULT_PLANS[i]; return null; }
+
+function lrPlanCard(p) {
+  var style = p.price === 0 ? ' style="border-color:var(--brand,#F0B90B)"' : '';
+  return '<div class="waas-plan"' + style + ' data-plan="' + p.id + '" onclick="lrActivate(\'' + p.id + '\')">' +
+    '<div class="waas-plan-badge">' + p.badge + '</div>' +
+    '<div class="waas-plan-name">' + p.emoji + ' LightRAG ' + p.name + '</div>' +
+    '<div class="waas-plan-price">$' + p.price + '</div><div class="waas-plan-period">/mo</div>' +
+    '<div class="waas-plan-features">' + p.features.join('<br>') + '</div>' +
+    '<button class="btn btn-primary" style="margin-top:12px;width:100%">' + (p.price === 0 ? I18N.t("lr_get_started") : I18N.t("lr_subscribe")) + '</button>' +
+  '</div>';
+}
+
+function lrIntroHtml() {
+  return '<div class="waas-intro" style="max-width:820px;margin:0 auto">' +
+    '<div class="waas-intro-hero">' +
+      '<div class="waas-intro-icon">🔎</div>' +
+      '<h2>' + I18N.t("lr_title") + '</h2>' +
+      '<p>' + I18N.t("lr_desc") + '</p>' +
+      '<div id="b2b-lightrag-health" style="margin-bottom:20px;font-size:13px"></div>' +
+      '<div class="waas-feature-row">' +
+        b2bFeature('🏢', I18N.t("lr_feature_tenant"), I18N.t("lr_feature_tenant_sub")) +
+        b2bFeature('🔀', I18N.t("lr_feature_shard"), I18N.t("lr_feature_shard_sub")) +
+        b2bFeature('🔌', I18N.t("lr_feature_proto"), I18N.t("lr_feature_proto_sub")) +
+      '</div>' +
+      b2bAccess([
+        [I18N.t("lr_access_public"), 'https://infrax.0xainet.top/api/rag'],
+        [I18N.t("lr_access_auth"), 'X-API-Key: lr_xxxx (or Bearer)'],
+        [I18N.t("lr_access_tenant"), 'X-Tenant-ID: &lt;botId&gt; (shared key mode)'],
+      ]) +
+    '</div>' +
+    '<div id="lr-intro-sub">' +
+      '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);text-align:center;margin-top:30px;margin-bottom:14px">' + I18N.t("lr_choose_plan") + '</div>' +
+      '<div class="waas-plan-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;justify-content:center">' +
+        LR_DEFAULT_PLANS.map(lrPlanCard).join('') +
+      '</div>' +
+      '<p class="waas-intro-note">' + I18N.t("lr_free_note") + '</p>' +
+    '</div>' +
+  '</div>';
+}
+
+function lrDashHtml() {
+  return '<div style="max-width:1100px;margin:0 auto">' +
+    '<div class="kpi-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">' +
+      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">⚡</div><div class="kpi-label">' + I18N.t("lr_kpi_plan") + '</div><div class="kpi-val gold" id="lr-kpi-plan" style="font-size:20px;font-weight:700">—</div></div>' +
+      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🏢</div><div class="kpi-label">' + I18N.t("lr_kpi_tenants") + '</div><div class="kpi-val" id="lr-kpi-tenants" style="font-size:20px;font-weight:700">—</div></div>' +
+      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">📄</div><div class="kpi-label">' + I18N.t("lr_kpi_docs") + '</div><div class="kpi-val" id="lr-kpi-docs" style="font-size:20px;font-weight:700">—</div></div>' +
+      '<div class="kpi"><div class="kpi-icon" style="font-size:20px;line-height:1;margin-bottom:8px">🔌</div><div class="kpi-label">' + I18N.t("lr_kpi_calls") + '</div><div class="kpi-val" id="lr-kpi-calls" style="font-size:20px;font-weight:700">—</div></div>' +
+    '</div>' +
+    '<div class="tab-row">' +
+      '<button class="tab-btn active" data-sub="lr-sub">' + I18N.t("lr_tab_sub") + '</button>' +
+      '<button class="tab-btn" data-sub="lr-key">' + I18N.t("lr_tab_key") + '</button>' +
+      '<button class="tab-btn" data-sub="lr-status">' + I18N.t("lr_tab_status") + '</button>' +
+      '<button class="tab-btn" data-sub="lr-docs">' + I18N.t("lr_tab_docs") + '</button>' +
+    '</div>' +
+    '<div class="sub-panel active" id="sub-lr-sub" style="text-align:left"><div id="lr-my-sub"></div></div>' +
+    '<div class="sub-panel" id="sub-lr-key" style="text-align:left">' + lrKeyHtml() + '</div>' +
+    '<div class="sub-panel" id="sub-lr-status" style="text-align:left">' + lrStatusHtml() + '</div>' +
+    '<div class="sub-panel" id="sub-lr-docs" style="text-align:left">' + lrDocsHtml() + '</div>' +
+  '</div>';
+}
+
+// W-9c: API Key（本地保存 lr_ key，明文仅本机）
+function lrKeyHtml() {
+  var saved = '';
+  try { saved = localStorage.getItem('px_rag_key') || ''; } catch (e) {}
+  return '<div class="panel">' +
+    '<div class="panel-header">🔑 API Key <span class="stat-chip" style="margin-left:auto">' + I18N.t("lr_key_hint") + '</span></div>' +
+    '<div class="panel-body">' +
+      (saved ? '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">' + I18N.t("lr_key_saved_label") + '</div>' +
+        '<code style="font-size:13px;color:var(--gold-light);word-break:break-all">' + saved + '</code></div>' : '') +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        '<input type="text" id="lr-key-input" class="input" placeholder="' + I18N.t("lr_key_save_ph") + '" style="flex:1;min-width:260px">' +
+        '<button class="btn btn-primary" onclick="lrSaveKey()">' + I18N.t("lr_key_save_btn") + '</button>' +
+      '</div>' +
+      '<p style="font-size:12.5px;color:var(--text-tertiary);margin:12px 0 0">' + I18N.t("lr_key_empty") + '</p>' +
+    '</div></div>';
+}
+
+function lrSaveKey() {
+  var inp = document.getElementById('lr-key-input');
+  if (!inp || !inp.value.trim()) { showToast(I18N.t("lr_key_need"), 'error'); return; }
+  try { localStorage.setItem('px_rag_key', inp.value.trim()); } catch (e) {}
+  showToast(I18N.t("lr_key_saved_toast"), 'success');
+  var panel = document.getElementById('sub-lr-key');
+  if (panel) panel.innerHTML = lrKeyHtml();
+}
+
+// W-9c: 节点状态（真实 health 探针）
+function lrStatusHtml() {
+  return '<div class="panel"><div class="panel-header">🟢 ' + I18N.t("lr_tab_status") + '</div>' +
+    '<div class="panel-body" id="lr-status-body"><div class="skeleton-text" style="width:92%"></div><div class="skeleton-text short"></div></div></div>';
+}
+
+function lrLoadStatus() {
+  var el = document.getElementById('lr-status-body');
+  if (!el) return;
+  fetch('/api/rag/api/v1/health').then(function (r) { return r.json(); }).then(function (d) {
+    var data = (d && d.data) || {};
+    var ok = d && (d.code === 0 || d.code === '0' || typeof d.code === 'undefined');
+    el.innerHTML = '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">' +
+      '<span class="status ' + (ok ? 'success' : 'failed') + '">' + (ok ? I18N.t("dash_status_up") : I18N.t("dash_status_down")) + '</span>' +
+      '<span style="font-size:13px">service: <code>' + (data.service || 'infrax-ragservicer') + '</code></span>' +
+      '<span style="font-size:13px">instances: <strong>' + (data.instances === undefined ? '-' : data.instances) + '</strong></span>' +
+      '<span style="font-size:13px">endpoint: <code>https://infrax.0xainet.top/api/rag/api/v1/health</code></span>' +
+    '</div>';
+  }).catch(function () {
+    el.innerHTML = '<span class="status failed">' + I18N.t("dash_status_down") + '</span>';
+  });
+}
+
+// W-9c: API Docs（ragservicer 核心端点）
+function lrDocsHtml() {
+  var rows = [
+    ['📄', 'POST /api/v1/documents/insert', I18N.t("lr_doc_insert"), 'X-API-Key · X-Tenant-ID'],
+    ['🔎', 'POST /api/v1/query', I18N.t("lr_doc_query"), 'X-API-Key · X-Tenant-ID'],
+    ['🗑️', 'DELETE /api/v1/documents/delete', I18N.t("lr_doc_delete"), 'X-API-Key · X-Tenant-ID'],
+    ['📁', 'GET /api/v1/instances', I18N.t("lr_doc_instances"), 'X-API-Key (admin)'],
+    ['❤️', 'GET /api/v1/health', I18N.t("lr_doc_health"), '—'],
+  ];
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<div class="panel" style="margin-bottom:14px"><div class="panel-header">' + rows[i][0] + ' ' + rows[i][1] + '</div>' +
+      '<div class="panel-body"><p style="font-size:13px;color:var(--text-secondary);margin:0 0 8px">' + rows[i][2] + '</p>' +
+      '<code style="font-size:12px;color:var(--text-tertiary)">' + rows[i][3] + '</code></div></div>';
+  }
+  return '<div>' + html + '<p style="font-size:12.5px;color:var(--text-tertiary)">' + I18N.t("lr_docs_note") + '</p></div>';
+}
+
+// W-9c: 套餐升级卡片 —— 基于 LR_DEFAULT_PLANS 价格基线，过滤高于当前套餐的候选
+function lrUpgradeHtml(planName) {
+  var cur = 0;
+  for (var i = 0; i < LR_DEFAULT_PLANS.length; i++) {
+    if (planName && planName.toLowerCase().indexOf(LR_DEFAULT_PLANS[i].name.toLowerCase()) !== -1) {
+      cur = LR_DEFAULT_PLANS[i].price;
+      break;
+    }
+  }
+  var up = LR_DEFAULT_PLANS.filter(function (p) { return p.price > cur; });
+  if (!up.length) {
+    return '<div style="text-align:center;padding:14px;color:var(--gold-light);font-size:13px;border:1px dashed var(--border);border-radius:var(--r-md);margin-top:16px">' + I18N.t("lr_upgrade_max") + '</div>';
+  }
+  return '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">' +
+    '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:10px">' + I18N.t("lr_upgrade_title") +
+    ' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">' + I18N.t("lr_upgrade_note") + '</span></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">' +
+      up.map(function (p) {
+        return '<div class="waas-plan" style="cursor:pointer" data-plan="' + p.id + '" onclick="lrSwitchPlan(\'' + p.id + '\')">' +
+          '<div class="waas-plan-badge">' + p.badge + '</div>' +
+          '<div class="waas-plan-name">' + p.emoji + ' LightRAG ' + p.name + '</div>' +
+          '<div class="waas-plan-price">$' + p.price + '</div><div class="waas-plan-period">/mo</div>' +
+          '<div class="waas-plan-features">' + p.features.join('<br>') + '</div>' +
+          '<button class="btn btn-primary" style="margin-top:12px;width:100%">' + I18N.t("lr_upgrade_to") + '</button>' +
+        '</div>';
+      }).join('') +
+    '</div></div>';
+}
+
+// W-9c: 我的订阅（本地套餐 + 配额 + 升级卡片）
+function lrLoadMySub() {
+  var el = document.getElementById('lr-my-sub');
+  if (!el) return;
+  var plan = lrGetPlan();
+  var p = plan ? lrFindPlan(plan.id) : null;
+  if (!p) {
+    el.innerHTML = '<div style="text-align:center;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)">' +
+      '<div style="font-size:30px;margin-bottom:10px">🔌</div>' +
+      '<div style="font-size:14px;color:var(--gold-light);margin-bottom:10px">' + I18N.t("lr_no_plan") + '</div>' +
+      '<button class="btn btn-primary" onclick="lrResetToIntro()">' + I18N.t("lr_activate_now") + '</button></div>';
+    return;
+  }
+  el.innerHTML = '<div style="background:var(--surface-card);border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;text-align:left">' +
+    '<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-tertiary);margin-bottom:12px">' + I18N.t("lr_my_sub") + '</div>' +
+    '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">' +
+      '<div><div style="font-size:20px;font-weight:700;color:var(--gold-light)">' + p.emoji + ' LightRAG ' + p.name + '</div>' +
+      '<div style="font-size:12px;color:var(--text-tertiary)">$' + p.price + '/mo</div></div>' +
+      '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_kpi_tenants") + '</div><div style="font-size:16px;font-weight:600">' + (p.tenants === -1 ? '∞' : p.tenants) + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_kpi_docs") + '</div><div style="font-size:16px;font-weight:600">' + formatNumber(p.docs) + '</div></div>' +
+      '<div><div style="font-size:12px;color:var(--text-tertiary)">' + I18N.t("lr_kpi_calls") + '</div><div style="font-size:16px;font-weight:600">' + formatNumber(p.calls) + '</div></div>' +
+    '</div>' +
+    lrUpgradeHtml(p.name) +
+    '<div style="font-size:11.5px;color:var(--text-tertiary);margin-top:10px">' + I18N.t("lr_my_sub_note") + '</div>' +
+  '</div>';
+}
+
+function lrLoadDashboard() {
+  var intro = document.getElementById('lr-intro');
+  var dash = document.getElementById('lr-dash');
+  if (!intro || !dash) return;
+  intro.style.display = 'none';
+  dash.style.display = 'block';
+  var plan = lrGetPlan();
+  var p = plan ? lrFindPlan(plan.id) : null;
+  setHtml('lr-kpi-plan', p ? p.name : '—');
+  setHtml('lr-kpi-tenants', p ? (p.tenants === -1 ? '∞' : String(p.tenants)) : '—');
+  setHtml('lr-kpi-docs', p ? formatNumber(p.docs) : '—');
+  setHtml('lr-kpi-calls', p ? formatNumber(p.calls) : '—');
+  lrLoadMySub();
+  lrLoadStatus();
+}
+
+function lrRefresh() {
+  var plan = lrGetPlan();
+  if (plan && plan.id) lrLoadDashboard();
+}
+
+function lrActivate(planId) {
+  var p = lrFindPlan(planId);
+  if (!p) return;
+  lrSavePlan({ id: p.id, name: p.name });
+  showToast(I18N.t("lr_activated_toast"), 'success');
+  lrLoadDashboard();
+}
+
+function lrSwitchPlan(planId) {
+  var p = lrFindPlan(planId);
+  if (!p) return;
+  lrSavePlan({ id: p.id, name: p.name });
+  showToast(I18N.t("lr_switched_toast"), 'success');
+  lrLoadDashboard();
+}
+
+function lrResetToIntro() {
+  var intro = document.getElementById('lr-intro');
+  var dash = document.getElementById('lr-dash');
+  if (intro) intro.style.display = 'block';
+  if (dash) dash.style.display = 'none';
+}
+
 function lightragInit() {
   var root = document.getElementById('lightrag-root');
   if (!root || root.dataset.loaded) return;
   root.dataset.loaded = '1';
   root.innerHTML =
-    '<div class="waas-intro" style="max-width:760px;margin:0 auto">' +
-      '<div class="waas-intro-hero">' +
-        '<div class="waas-intro-icon">🔎</div>' +
-        '<h2>' + I18N.t("lr_title") + '</h2>' +
-        '<p>' + I18N.t("lr_desc") + '</p>' +
-        '<div id="b2b-lightrag-health" style="margin-bottom:20px;font-size:13px"></div>' +
-        '<div class="waas-feature-row">' +
-          b2bFeature('🏢', I18N.t("lr_feature_tenant"), I18N.t("lr_feature_tenant_sub")) +
-          b2bFeature('🔀', I18N.t("lr_feature_shard"), I18N.t("lr_feature_shard_sub")) +
-          b2bFeature('🔌', I18N.t("lr_feature_proto"), I18N.t("lr_feature_proto_sub")) +
-        '</div>' +
-        b2bAccess([
-          [I18N.t("lr_access_public"), 'https://infrax.0xainet.top/api/rag'],
-          [I18N.t("lr_access_auth"), 'X-API-Key: lr_xxxx (or Bearer)'],
-          [I18N.t("lr_access_tenant"), 'X-Tenant-ID: &lt;botId&gt; (shared key mode)'],
-        ]) +
-        '<div class="waas-intro-note">' + I18N.t("lr_note") + '</div>' +
-      '</div>' +
-    '</div>';
+    '<div id="lr-intro">' + lrIntroHtml() + '</div>' +
+    '<div id="lr-dash" style="display:none">' + lrDashHtml() + '</div>';
   b2bHealthBar('lightrag', 'b2b-lightrag-health');
+  lrRefresh();
 }

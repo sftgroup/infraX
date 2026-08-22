@@ -317,7 +317,7 @@ document.addEventListener('click', function (e) {
     'mpc-reg': mpcReg, 'mpc-rec': mpcRec, 'mpc-dash': mpcDash, 'mpc-send': mpcSendLoad, 'mpc-recv': mpcReceiveLoad,
     'waas-dash-overview': waasLoadOverviewWithState, 'waas-dash-tokens': waasTokens, 'waas-dash-addresses': waasAddresses,
     'waas-dash-sweep': waasSweep, 'waas-dash-withdrawals': waasWithdrawals, 'waas-dash-api': waasApiTab,
-    'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'dc-explorer': dcSwitchTab.bind(null, 'dc-explorer'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {},
+    'dc-overview': dcSwitchTab.bind(null, 'dc-overview'), 'dc-apikey': dcSwitchTab.bind(null, 'dc-apikey'), 'dc-docs': dcSwitchTab.bind(null, 'dc-docs'), 'safe-owned': safeLoadOwned, 'safe-participating': safeLoadParticipating, 'safe-create-fm': function () {}, 'safe-propose-fm': function () {},
     'safe-pending': function () {}, 'safe-owners': function () {}
   };
   if (subLoaders[s]) subLoaders[s]();
