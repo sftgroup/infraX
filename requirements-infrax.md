@@ -1,7 +1,7 @@
 # B 端数据服务（infraX）需求清单
 
 - 日期：2026-08-17
-- 更新：2026-08-23（新增 REQ-3 rx key RPC 配额升级；上游问题关联见 INFRAX_UPSTREAM.md）
+- 更新：2026-08-23（新增 REQ-3 rx key RPC 配额升级【已解决】；runs/10 404 回执；上游问题关联见 INFRAX_UPSTREAM.md）
 - 接收方：B 端数据服务（infraX，43.163.105.172）
 - 来源：生产环境全量测试（28 用例）+ 市场状态页数据排查
 - **版本封版：2026-08-18 infraX v0.6.0**（data-service：REQ-1/REQ-2 实现 + 快照截断修复，生产已生效；配套 `infra-data-client` PyPI 0.2.0）
@@ -71,11 +71,11 @@
 | 1.1 | /snapshots 截断修复正式合入 | 高 | ✅ 已合入（v0.6.0 附带修复） |
 | REQ-1 | K 线数据整体缺失（/bars 全周期 count:0） | 高 | ✅ 已完成（v0.6.0 封版，USDC 对补采） |
 | REQ-2 | 热力图全市场覆盖（付费源启用） | 中 | ✅ 已完成（v0.6.0 封版；commodities 部分受限于 yfinance/TD 限流，解封后自愈） |
-| REQ-3 | rx key RPC 配额升级（生产读链 503） | 高 | 🔴 待处理（2026-08-23 新增，阻塞 AIHunter 11.7 NFT mint 端到端验证） |
+| REQ-3 | rx key RPC 配额升级（生产读链 503） | 高 | ✅ 已解决（2026-08-23 rx key 升级 rpc_pro，catalog/factors 实测 200） |
 
 ---
 
-## 五、REQ-3【高】rx key RPC 配额耗尽（rpc_free 10000/10004，生产读链 503）【2026-08-23 新增】
+## 五、REQ-3【高】rx key RPC 配额耗尽（rpc_free 10000/10004，生产读链 503）【2026-08-23 新增，✅ 已解决】
 
 - **现象**：`POST /v1/rpc/oxa`（生产 rx_ key）`eth_chainId` / `eth_getBalance` 返回 `{"code":503,"message":"RPC quota exhausted — upgrade your plan at /v1/subscription/plans","data":{"used":10004,"quota":10000,"plan":"rpc_free"}}`
 - **影响（AIHunter 侧）**：gateway 所有链上读（NFT mint `populateTransaction`、`agentExistsOnChain`、余额/交易回执确认）全部 503；**阻塞 11.7 完整发布端到端验证**（Pinata 已配置就绪，仅差链上读）
@@ -84,6 +84,13 @@
   2. 提供配额使用告警（used/quota ≥ 80% 主动通知，避免静默耗尽影响上线窗口）；
   3. 提供各 key（rx_/bx_/dx_）当前配额与用量清单接口。
 - **验收**：`eth_chainId` 返回 200；used < quota × 0.8；告警机制可用。
+
+### ✅ 已解决（2026-08-23 InfraX 回执）
+
+- InfraX 侧已升级 rx key 至 **rpc_pro** 计划（本月用量 11072/10 万，余量充足）
+- `data-service /factors/catalog` 实测 **200**；AIHunter 生产 `GET /api/market-data/catalog` / `factors` 实测 **200**；/factory 因子目录恢复正常（Technical/Macro/Sentiment 因子正常列出，无「因子目录不可用」提示）
+- AIHunter 前端在 503 期间降级为 **fail-silent**（因子区显示「因子目录不可用」提示，页面不崩溃）——被确认为**正确行为**，无需改动
+- 11.7 NFT mint 端到端验证的链上读阻塞**已解除**，可重试实弹验证
 
 ---
 
@@ -94,4 +101,19 @@
 | 1 | `token/history` 对多数币 `count:0`（画像快照覆盖限制） | 观测中 | 快照覆盖范围与数据来源 |
 | 2 | 上游间歇 502/504（生产实测 ~1/3，last-ok 缓存已兜底） | 观测中 | 根因与 SLA |
 | 3 | `dx_6d2a2d` key 解冻 | 已恢复 | 正式回执 + 通知机制 |
-| 4 | rx key RPC 配额耗尽（rpc_free 10000/10004，503） | 阻塞中 | 升级/配额/告警（见 REQ-3） |
+| 4 | rx key RPC 配额耗尽（rpc_free 10000/10004，503） | ✅ 已恢复（rpc_pro，11072/10 万） | 见 REQ-3 已解决 |
+| 5 | `/api/strategy-factory/runs/10` 404（AIHunter 侧） | AIHunter 侧数据问题，只通知不代修 | 自查建议见下 |
+
+---
+
+## 七、上游回执（2026-08-23）
+
+### 7.1 `/api/strategy-factory/runs/10` 404 —— AIHunter 侧数据问题（只通知不代修）
+
+- **现象**：`/factory` 历史运行记录第 1 条 id=10，`GET /api/strategy-factory/runs/10` 返回 404
+- **InfraX 判定**：非 B 端数据服务问题，属 AIHunter 侧运行记录数据缺口
+- **自查建议**：
+  1. 按用户隔离，查询自有 `strategy_factory_runs` 记录表，确认 id=10 是否归属当前查询用户；
+  2. 若记录存在但归属其他用户 → 前端应按用户过滤展示（不越权拉取他人运行详情）；
+  3. 若记录不存在（数据被清理/迁移丢失）→ 详情接口对缺失 id 返回 404 属预期行为，前端应在「运行结果」列表点击时对 404 做降级提示；
+  4. 复核 `GET /runs?limit=20` 返回列表是否与详情 id 集合一致（列表含但详情 404 = 数据不一致，需修复）。
