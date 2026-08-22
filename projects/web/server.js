@@ -182,16 +182,19 @@ function proxyRequest(req, res, target) {
 // ─── 服务状态聚合（WSG-2）─────────────────────────────────────
 // 顺序与前端 modules/status.js STATUS_SERVICES 保持一致（name/url 由前端渲染，本侧按 index 对应 status/ms）。
 // 探测走内网直连（不绕 nginx/公网），每服务 3s 超时，并发执行；结果缓存 STATUS_CACHE_MS。
+// 服务状态探测（WSG-2）：统一使用各服务无需鉴权的 /health 健康端点，
+// 避免探测带鉴权接口（如 mpc/status、safe/status、tenants/my）返回 401 造成误报，
+// 监控页应显示客观真实运行状态（进程存活 + 延迟），不涉及 API key 鉴权。
 const STATUS_SERVICES = [
   { probe: { host: RPC_HOST, port: RPC_PORT, path: '/health' } },                            // Chain RPC
   { probe: { host: RAG_HOST, port: RAG_PORT, path: '/api/v1/health' } },                      // LightRAG
   { probe: { host: DATA_HOST, port: DATA_PORT, path: '/health' } },                           // Data Service
   { probe: { host: ML_HOST, port: ML_PORT, path: '/health' } },                               // ML Service
-  { probe: { host: MPC_HOST, port: MPC_PORT, path: '/api/v2/mpc/status' } },                  // MPC Wallet
-  { probe: { host: VAULT_HOST, port: VAULT_PORT, path: '/api/vault/safe/status' } },          // Safe Vault
-  { probe: { host: WAAS_HOST, port: WAAS_PORT, path: '/api/v2/saas/tenants/my' } },           // WaaS
-  { probe: { host: DC_HOST, port: DC_PORT, path: '/api/v2/data/usage' } },                    // Data & Insights
-  { probe: { host: AA_HOST, port: AA_PORT, path: '/v1/plans' } },                             // Smart Account
+  { probe: { host: MPC_HOST, port: MPC_PORT, path: '/health' } },                             // MPC Wallet
+  { probe: { host: VAULT_HOST, port: VAULT_PORT, path: '/health' } },                         // Safe Vault
+  { probe: { host: WAAS_HOST, port: WAAS_PORT, path: '/health' } },                           // WaaS
+  { probe: { host: DC_HOST, port: DC_PORT, path: '/health' } },                               // Data & Insights
+  { probe: { host: AA_HOST, port: AA_PORT, path: '/health' } },                               // Smart Account
 ];
 
 function probeService(p) {

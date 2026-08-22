@@ -5,18 +5,19 @@
  * 前端仅请求单接口渲染，避免每用户每刷新打 9 个公网请求；fail-silent 降级。
  */
 
-// 服务清单：name 展示名 / url 公网探测端点（展示用）— 实际探测由 web 后端聚合
-//（/api/v2/system/status，内网直连 + 30s 缓存），本列表顺序与后端 STATUS_SERVICES 一致。
+// 服务清单：name 展示名 / url 内网健康探测目标（展示用）— 实际探测由 web 后端聚合
+//（/api/v2/system/status，内网直连各服务 /health + 30s 缓存），本列表顺序与后端 STATUS_SERVICES 一致。
+// 监控展示的是系统自身客观运行状态（进程存活 + 延迟），不涉及任何 API key 鉴权。
 var STATUS_SERVICES = [
-  { name: '🔗 Chain RPC', url: '/api/v2/rpc/health' },
-  { name: '🔎 LightRAG', url: '/api/rag/api/v1/health' },
-  { name: '📡 Data Service', url: '/api/data/health' },
-  { name: '🧠 ML Service', url: '/api/ml/health' },
-  { name: '🔐 MPC Wallet', url: '/api/v2/mpc/status' },
-  { name: '🛡️ Safe Vault', url: '/api/vault/safe/status' },
-  { name: '🏢 WaaS', url: '/api/v2/saas/tenants/my' },
-  { name: '📡 Data & Insights', url: '/api/v2/data/usage' },
-  { name: robotIcon(13) + ' Smart Account', url: '/v1/plans' }
+  { name: '🔗 Chain RPC', url: ':9130 /health' },
+  { name: '🔎 LightRAG', url: ':9721 /api/v1/health' },
+  { name: '📡 Data Service', url: ':9112 /health' },
+  { name: '🧠 ML Service', url: ':9120 /health' },
+  { name: '🔐 MPC Wallet', url: ':9104 /health' },
+  { name: '🛡️ Safe Vault', url: ':9107 /health' },
+  { name: '🏢 WaaS', url: ':9109 /health' },
+  { name: '📡 Data & Insights', url: ':9102 /health' },
+  { name: robotIcon(13) + ' Smart Account', url: ':9131 /health' }
 ];
 
 var _statusTimer = null;
