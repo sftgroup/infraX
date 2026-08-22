@@ -305,3 +305,12 @@
 | REQ-3a | **rx key 配额升级（rpc_free → rpc_pro）** | 生产 DB UPDATE rpc_keys id=4 → `rpc_pro`（10 万/月，$79/月档）+ `payment_method='admin'`，配额读取实时、无需重启；实测请求恢复，用量 10004 → 10137 持续增长 | ✅ 已上线（commit 1c34878） | P0 | 见回执 7.5「升级」；用量集中在 8-16 单日 ~1 万次（E2E 批量验证）；后续超 80% 由 REQ-3c 告警提示，可再升 enterprise |
 | REQ-3b | **用量清单接口** | `GET /v1/subscription/admin/keys`（X-Service-Key = CHAIN_RPC_READ_KEY/BROADCAST_KEY）→ 全部 rx_/bx_ keys 掩码/套餐/配额/本月用量/使用率/告警标记 + 汇总；生产实测 6 个 key 清单正确、key id=4 显示 rpc_pro 10137/100000 | ✅ 已上线（commit 1c34878） | P1 | 见回执 7.5「用量清单接口」；dx_/mx_ 外部 key 用量在 data 服务管理面板 |
 | REQ-3c | **配额告警（≥80% 主动提示）** | chain-rpc 定时扫描（默认 30min，启动即扫）：enabled keys 本月用量 ≥ 阈值（默认 80%）→ `logger.warn`（掩码/用量/配额/使用率）+ 可选 webhook POST（`RPC_QUOTA_ALERT_WEBHOOK_URL`）+ admin/keys `alerting` 标记；生产实测注入 8500 条用量达 85% 触发，验证后回滚 | ✅ 已上线（commit 1c34878） | P1 | 见回执 7.5「配额告警」；平台暂无通用 webhook，告警经日志+接口暴露，可对接 Prometheus/日志抓取 |
+
+### 9.22 AIHunter /factory 页面两条观察回执（源：AIHunter 侧页面实测反馈，2026-08-23）
+
+> **✅ 已逐条核实 + 回执登记**（见 [INFRAX_UPSTREAM.md](file:///home/steven/infraX/INFRAX_UPSTREAM.md) 7.6）：① catalog 503 已恢复（rx 升级 rpc_pro + data-service 实测 200）；② runs/10 404 判定为 AIHunter 侧数据问题，只通知不代修。
+
+| 编号 | 问题 | 结论 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|
+| AFR-1 | **/factory 因子目录 `GET /api/market-data/catalog` → 503** | **InfraX 侧已恢复**：根因 rx key（id=4）rpc_free 1 万/月耗尽连带的间歇不可达；已升级 rpc_pro（10 万/月，本月已用 11072≈11%）；data-service `/factors/catalog` 生产实测 200 完整目录（bridge key :9111→:9112）。AIHunter 前端降级「因子目录不可用」为 fail-silent 正确行为 | ✅ 已答复 | P2 | 见回执 7.6①；若 AIHunter 仍复现，自查 `DATA_SERVICE_URL`（IP 直连）可达性与 10s 超时 |
+| AFR-2 | **/factory 历史运行 `GET /api/strategy-factory/runs/10` → 404** | **AIHunter 侧数据问题，只通知不代修**（协作原则 13.5）：python-backend `get_run(10, user_id)` 按用户隔离查自有运行记录表，run 10 不存在或归属他人；可能原因旧记录清理/表重建 id 不连续/归属他用户。建议 AIHunter 前端处理 404 + 明确记录保留策略 | ✅ 已答复 | P3 | 见回执 7.6②；InfraX 无此数据 |

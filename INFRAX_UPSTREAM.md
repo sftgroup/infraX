@@ -221,3 +221,18 @@ gateway dex-data.ts
 - 主动通知：平台暂无通用 webhook 基础设施；告警经日志 + 接口暴露，可对接既有监控（Prometheus/日志抓取）
 
 **验收对照**：`eth_chainId` 恢复 200（用量 < 配额）；`admin/keys` 接口可用；告警机制可用（≥80% 触发）。
+
+### 7.6 AIHunter /factory 页面两条观察回执（2026-08-23）
+
+> AIHunter 侧 /factory 页面实测发现：`GET /api/market-data/catalog → 503`（因子目录不可用）与 `GET /api/strategy-factory/runs/10 → 404`。InfraX 侧逐条核实。
+
+**① 因子目录 503（rx 配额耗尽连带）— 已恢复，无需 InfraX 改动**
+- 链路：AIHunter gateway `dsFetch('/factors/catalog')` → InfraX data-service `:9112/factors/catalog`（X-Service-Key）；B 端非 2xx/不可达时 AIHunter 返回 `503 {code:50301}`，前端降级「因子目录不可用」（fail-silent 设计，降级行为正确）
+- 根因：8 月中旬 rx key（`aihunter-saas-rpc-read`，rpc_keys id=4）rpc_free 1 万/月配额耗尽，读链 503 连带的间歇不可达现象
+- 现状实证：rx key 已升级 **rpc_pro**（10 万/月，REQ-3 2026-08-23），本月已用 11072（≈11%）配额充足；data-service `/factors/catalog` 生产实测 **200 完整因子目录**（bridge key，:9111→:9112）
+- 若 AIHunter 侧仍复现 503：需自查 `DATA_SERVICE_URL`（生产 `https://43.163.105.172/api/data` IP 直连）可达性与超时（默认 10s）
+
+**② 历史运行 #10 404（旧记录不存在）— AIHunter 侧数据问题，只通知不代修**
+- 链路：`GET /api/strategy-factory/runs/10` → AIHunter python-backend `get_run(10, user_id)` 查**自有运行记录表**，按用户隔离；run 10 不存在或归属他人 → `404 {code:404, run 10 not found}`
+- 可能原因：旧记录被清理 / 表重建后 id 不连续 / 记录归属其他用户
+- 建议 AIHunter 自查：runs 列表点击旧记录时前端处理 404（提示"记录已失效"或从列表移除）；确认运行记录保留策略（旧记录是否可删、id 是否可复用）
