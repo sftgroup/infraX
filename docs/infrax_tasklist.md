@@ -187,7 +187,13 @@
 > - **P2（✅）**：Dashboard(nc-wallet.js) 与 core.js 动态文本 i18n 化（未连接提示 / setDashRow / setDashHealthRow 状态 / usage 行 / 表头，`DASH_LABEL_KEYS` 重渲染后 label 跟随语言；core.js `PAGE_TITLES` 键值化、错误消息/toast 键化、`i18n:changed` 监听重载当前页 loader）；admin-login.html 全静态文本 + login_* 键。
 > - **P3（✅）**：b2b.js Chain RPC / LightRAG 全套界面文本 i18n 化（rpc_intro 介绍+套餐 / 链上事件 / KPI+Key 面板 / 节点状态 / API Docs / 我的订阅 / 签发与订阅支付全流程 / LightRAG 介绍页）；修复 `rpc/lightrag` loader 的 `dataset.loaded` guard 阻断 i18n:changed 重载（core.js 重载前 `delete root.dataset.loaded`）。
 > - **验证**：本地 :6100 playwright 实测 RPC/LightRAG/Docs/节点状态页中英切换、生产 https://infrax.0xainet.top 主门户+RPC 页切换（含真实健康状态 🟢 正常/Up），console 0 errors；生产 `43.163.105.172` git pull 至 92160ee。
-> - **⚠️ P4（待排期，low）**：其余模块（waas / dc / aa / safe / mpc / payments / insights）及 **landing.html 落地页**（生产 `/` 301 至 landing.html，目前仅主门户 i18n）分批 i18n 化。
+> - **P4（✅，2026-08-23，commit 0a818e7 + 06331e6 已部署生产）**：其余模块与 landing.html 落地页 i18n 化。
+>   - **P4a（✅）**：审计 waas/dc/aa/safe/mpc/payments/insights 中文残留 + landing.html 文案分布。
+>   - **P4b（✅）**：landing.html 落地页 i18n 化（生产 `/` 301 入口，hero/特性/套餐/FAQ/CTA 全套键，`ins_*`/`land_*` 系列）。
+>   - **P4c（✅）**：waas.js / dc.js 模块 i18n 化（订阅方案/充值/扫款/结算目标、行情/事件/图谱面板文本键化）。
+>   - **P4d（✅）**：payments.js（78 处，`pay_*` 系列 rail/invites/transfers/A2A 全流程）、aa.js（96 处，`aa_*` 系列 Overview/Sessions/Create/签名弹窗）、insights.js（`labelKey` 化 INS_ML_ENDPOINTS + 图谱构建/RAG 面板）、safe.js / mpc.js 兜底清扫；关键拼接模式统一拆前缀+后缀键（如 `pay_inv_pay_confirm`+id+`pay_inv_pay_confirm_suffix`、`aa_revoke_confirm_prefix`+id+`aa_revoke_confirm_suffix`）。
+>   - **P4e（✅）**：新建 `scripts/check-i18n-keys.js`（vm 沙箱加载 i18n.js，交叉校验所有模块 `I18N.t()` 引用的 zh/en 键齐全，787 键全部通过）；本地 playwright 实测 payments/aa/insights/lightrag 渲染正常；生产 playwright 实测 landing + 主门户中英切换、0 console 错误；i18n.js 字典 575→787 键后 bump 缓存版本号 `?v=1787326000`（4 个 HTML）；生产 `43.163.105.172` git pull 至 06331e6。
+>   - **i18n 全平台完成（P0~P4）**：共享库 + 主门户 + 管理端 + landing + 全部 11 个功能模块。
 
 ### 9.15 RAGSERVICER 写锁可用性（RWL，源：`docs/ISSUE_RAGSERVICER_WRITELOCK_20260821.md`，AIServicer 提交，2026-08-21）
 
