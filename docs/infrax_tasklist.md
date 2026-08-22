@@ -348,3 +348,11 @@
 | 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
 |---|---|---|---|---|---|---|
 | WEB-11 | LightRAG 页面只显示文档总数，看不到当前租户已上传的具体文档 | `lrLoadRealUsage` 用 `limit=1` 仅拉 1 篇做「最近文档」展示，未渲染列表 | [b2b.js](file:///home/steven/infraX/projects/web/modules/b2b.js) `lrLoadRealUsage` 改 `limit=100`：KPI 下方新增文档表格（doc_id 超长省略 + title 悬浮全量 / 状态徽章四色 indexed·绿 indexing·黄 error·红 duplicate·灰 / 大小 B·KB·MB / 分块数 / 创建时间），超 100 篇提示「仅显示前 N 篇」；i18n 新增 `lr_docs_*` 8 键（zh/en），bump `b2b.js?v=1787600002` + `i18n.js?v=1787600002` | ✅ 已部署（2a07366） | P2 | browser 生产实测：注入现存租户（rag_grants，tenant `u_091a...`）key 后上传 2 篇测试文档 → 表格正确渲染（doc_id/状态/大小/分块/创建时间全列）→ 删除后空态「该租户暂无已上传文档」；无 console 错误；测试数据已清理（total 恢复 0）。注：provision 需钱包签名（afetch `auth:'wallet'`，依赖 MetaMask/personal_sign），headless 无钱包无法走全流程，故用 rag_grants 现存租户直连验证 |
+
+### 9.27 服务状态监控页显示客观真实运行状态（WSG-2 优化，2026-08-23）
+
+> **✅ 已部署（commit 10b5aad）**：监控页（`/api/v2/system/status`）改为纯客观健康探测，去除一切 API key 鉴权相关展示。监控页监控的是平台自身运行状态（进程存活 + 延迟），不应出现「需鉴权/未订阅」等信息。
+
+| 编号 | 现象 | 根因 | 修复 | 状态 | 优先级 | 备注 |
+|---|---|---|---|---|---|---|
+| WSG-2 | 监控页部分服务显示「🟡 可达（需鉴权/未订阅）」且详情列展示带鉴权的公网探测 URL，用户误以为监控需要 API key | 后端 `STATUS_SERVICES` 探测路径选了需鉴权接口：MPC `/api/v2/mpc/status`、Vault `/api/vault/safe/status`、WaaS `/api/v2/saas/tenants/my`、DC `/api/v2/data/usage`、AA `/v1/plans` → 内网探测返回 401；前端详情列显示这些公网 URL，i18n `st_warn` 文案含「需鉴权」 | ① [server.js](file:///home/steven/infraX/projects/web/server.js#L185-L198) 探测路径统一改为各服务无需鉴权的 `/health`（LightRAG 保持 `/api/v1/health`）——实测 9 服务全部 200 ② [status.js](file:///home/steven/infraX/projects/web/modules/status.js#L8-L21) 详情列由公网探测 URL 改为内网健康探测目标（`:port /health`）③ i18n `st_desc`/`st_warn` 文案移除「经公网网关探测」「需鉴权/未订阅」，bump `status.js?v=1787600001` + `i18n.js?v=1787600003` | ✅ 已部署（10b5aad） | P1 | 生产复验 `/api/v2/system/status`：9 服务全 200（MPC/Vault/WaaS/DC/AA 原 401 → 现 200，延迟 14-36ms）；browser 实测监控页 KPI「正常服务 9/9、异常服务 0/9、平均延迟 21ms」，表格全 🟢 正常 + 内网端点，无鉴权字样、无 console 错误 |
