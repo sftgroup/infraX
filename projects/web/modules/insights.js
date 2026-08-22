@@ -450,13 +450,19 @@ async function insDoRag() {
 }
 
 // ── ML 预测 ──
+// 端点结构（ml-service）：
+//   tree_predictions: {generated_at, model, predictions:[{symbol,direction,prob_up,...}]}（无顶层 avg/symbols）
+//   volatility:       {generated_at, n_symbols, model, avg_volatility_score, symbols:[{symbol,volatility_score,...}]}
+//   consensus:        {generated_at, signals, n_symbols, avg_consensus_score, symbols:[{symbol,consensus_score,...}]}
+//   bolt/moirai/timesfm: {generated_at, n_symbols, model, avg_prob_up, symbols:[{symbol,direction,prob_up,...}]}
+// 渲染统一：arrKey 取数组；聚合取 d[agg]，缺失时从数组 aggKey 计算均值回退。
 var INS_ML_ENDPOINTS = [
-  { key: 'tree_predictions', labelKey: 'ins_ml_lgb', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'volatility', labelKey: 'ins_ml_kronos', agg: 'avg_volatility_score', aggLabel: 'avg vol score' },
-  { key: 'consensus', labelKey: 'ins_ml_consensus', agg: 'avg_prob_up', aggLabel: 'avg consensus' },
-  { key: 'bolt', labelKey: 'ins_ml_bolt', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'moirai', labelKey: 'ins_ml_moirai', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
-  { key: 'timesfm', labelKey: 'ins_ml_timesfm', agg: 'avg_prob_up', aggLabel: 'avg prob_up' },
+  { key: 'tree_predictions', labelKey: 'ins_ml_lgb', agg: 'avg_prob_up', aggKey: 'prob_up', aggLabel: 'avg prob_up', arrKey: 'predictions' },
+  { key: 'volatility', labelKey: 'ins_ml_kronos', agg: 'avg_volatility_score', aggKey: 'volatility_score', aggLabel: 'avg vol score', arrKey: 'symbols' },
+  { key: 'consensus', labelKey: 'ins_ml_consensus', agg: 'avg_consensus_score', aggKey: 'consensus_score', aggLabel: 'avg consensus', arrKey: 'symbols' },
+  { key: 'bolt', labelKey: 'ins_ml_bolt', agg: 'avg_prob_up', aggKey: 'prob_up', aggLabel: 'avg prob_up', arrKey: 'symbols' },
+  { key: 'moirai', labelKey: 'ins_ml_moirai', agg: 'avg_prob_up', aggKey: 'prob_up', aggLabel: 'avg prob_up', arrKey: 'symbols' },
+  { key: 'timesfm', labelKey: 'ins_ml_timesfm', agg: 'avg_prob_up', aggKey: 'prob_up', aggLabel: 'avg prob_up', arrKey: 'symbols' },
 ];
 
 async function insLoadMl() {
@@ -477,22 +483,30 @@ async function insLoadMl() {
       return;
     }
     var d = r.value;
-    var aggVal = d[e.agg];
+    var rows = (d && (d[e.arrKey] || d.symbols || d.predictions)) || [];
+    // 聚合：优先顶层字段，缺失时从数组 aggKey 计算均值（tree_predictions 无顶层 avg）
+    var aggVal = d ? d[e.agg] : null;
+    if (aggVal == null && rows.length) {
+      var vals = rows.map(function(x) { return Number(x && x[e.aggKey]); }).filter(function(v) { return isFinite(v); });
+      if (vals.length) aggVal = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+    }
     var aggHtml = aggVal != null
       ? '<div class="kpi" style="background:var(--surface-input);border-radius:8px;padding:8px 12px;margin-bottom:8px"><div class="kpi-label" style="font-size:10px">' + e.aggLabel + '</div><div class="kpi-val mono" style="font-size:18px;font-weight:700;color:' + (aggVal >= 0.5 ? 'var(--success)' : 'var(--warning)') + '">' + Number(aggVal).toFixed(3) + '</div></div>'
       : '';
-    var syms = d.symbols || [];
-    var rows = syms.slice(0, 12).map(function(s) {
+    var symRows = rows.slice(0, 12).map(function(s) {
       if (typeof s === 'string') return '<tr><td class="mono">' + insEsc(s) + '</td><td style="color:var(--text-muted)">—</td></tr>';
-      var first = null;
-      Object.keys(s).forEach(function(k) { if (first === null && k !== 'symbol' && typeof s[k] === 'number') first = [k, s[k]]; });
-      return '<tr><td class="mono" style="font-weight:600">' + insEsc(s.symbol || '?') + '</td>' +
-        (first ? '<td class="mono">' + first[0] + ': ' + Number(first[1]).toFixed(4) + '</td>' : '<td style="color:var(--text-muted)">—</td>') + '</tr>';
+      var val = Number(s[e.aggKey]);
+      var valTxt = isFinite(val)
+        ? '<td class="mono">' + val.toFixed(4) + '</td>'
+        : (s.direction
+            ? '<td><span style="color:' + (String(s.direction).toLowerCase() === 'up' ? 'var(--success)' : 'var(--error)') + '">' + insEsc(String(s.direction)) + '</span></td>'
+            : '<td style="color:var(--text-muted)">—</td>');
+      return '<tr><td class="mono" style="font-weight:600">' + insEsc(s.symbol || '?') + '</td>' + valTxt + '</tr>';
     }).join('');
     html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + I18N.t(e.labelKey) +
-      '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + insEsc(d.model || '') + ' · ' + (d.n_symbols || syms.length) + ' syms</span></div>' +
+      '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + insEsc(d.model || '') + ' · ' + (d.n_symbols || rows.length) + ' syms</span></div>' +
       '<div class="panel-body" style="padding-top:10px">' + aggHtml +
-      (rows ? '<table class="data-table"><thead><tr><th>Symbol</th><th>Signal</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-muted)">no symbols</div>') +
+      (symRows ? '<table class="data-table"><thead><tr><th>Symbol</th><th>Signal</th></tr></thead><tbody>' + symRows + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-muted)">no symbols</div>') +
       '<div style="font-size:9px;color:var(--text-muted);margin-top:6px">' + (d.generated_at ? 'generated: ' + new Date(d.generated_at * 1000 || d.generated_at).toLocaleString() : '') + '</div>' +
       '</div></div>';
   });
