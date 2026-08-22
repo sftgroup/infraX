@@ -503,8 +503,11 @@ async function insLoadMl() {
             : '<td style="color:var(--text-muted)">—</td>');
       return '<tr><td class="mono" style="font-weight:600">' + insEsc(s.symbol || '?') + '</td>' + valTxt + '</tr>';
     }).join('');
+    // model 字段可能是对象（tree_predictions 的 model: {name, params,...}），提取 name 避免渲染成 [object Object]
+    var m = d.model;
+    var modelLabel = (m && typeof m === 'object') ? (m.name || m.model || '') : (m || '');
     html += '<div class="panel" style="min-height:120px"><div class="panel-header" style="font-size:12px">' + I18N.t(e.labelKey) +
-      '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + insEsc(d.model || '') + ' · ' + (d.n_symbols || rows.length) + ' syms</span></div>' +
+      '<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">' + insEsc(modelLabel) + ' · ' + (d.n_symbols || rows.length) + ' syms</span></div>' +
       '<div class="panel-body" style="padding-top:10px">' + aggHtml +
       (symRows ? '<table class="data-table"><thead><tr><th>Symbol</th><th>Signal</th></tr></thead><tbody>' + symRows + '</tbody></table>' : '<div style="font-size:11px;color:var(--text-muted)">no symbols</div>') +
       '<div style="font-size:9px;color:var(--text-muted);margin-top:6px">' + (d.generated_at ? 'generated: ' + new Date(d.generated_at * 1000 || d.generated_at).toLocaleString() : '') + '</div>' +
