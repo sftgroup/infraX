@@ -10,12 +10,12 @@
 
 | 编号 | 需求 | 状态 | 优先级 |
 |---|---|---|---|
-| GF-1 | 存量文档图谱构建修复（检索不再 `[no-context]`） | 🔲 待 B 端 | **P0** |
-| GF-2 | 图谱检索回归验证（query/retrieve 返回实体上下文） | 🔲 待 B 端 | **P0** |
-| GF-3 | 图谱因子端点 `/factors/graph`（数值化图谱信号） | 🔲 待 B 端 | **P1** |
-| GF-4 | 图谱因子目录并入 `/factors/catalog` | 🔲 待 B 端 | P1 |
-| GF-5 | 可视化数据端点 `/graph/entities`（力导向图 nodes/edges） | 🔲 待 B 端 | P1 |
-| GF-6 | AItrader 专用 `RAGSERVICER_API_KEY`（现借用 aiservicer） | 🔲 待 B 端 | P2 |
+| GF-1 | 存量文档图谱构建修复（检索不再 `[no-context]`） | ✅ B 端已修复（2026-08-22） | **P0** |
+| GF-2 | 图谱检索回归验证（query/retrieve 返回实体上下文） | ✅ B 端已回归（2026-08-22） | **P0** |
+| GF-3 | 图谱因子端点 `/factors/graph`（数值化图谱信号） | ⚠️ 数据面已就绪（待 B 端 service-key 治理，见 RK-3） | **P1** |
+| GF-4 | 图谱因子目录并入 `/factors/catalog` | ⚠️ 已实现（service-level key 限制同上） | P1 |
+| GF-5 | 可视化数据端点 `/graph/entities`（力导向图 nodes/edges） | ✅ 数据已回归（namespace=market，BTC 81 节点/131 边） | P1 |
+| GF-6 | AItrader 专用 `RAGSERVICER_API_KEY`（现借用 aiservicer） | ✅ key 已签发 `lr_a1a683d4…`（见 AITRADER_RAG_KEY_REQ.md） | P2 |
 
 ---
 
@@ -38,6 +38,24 @@
 2. `GET /api/v1/admin/config`：确认 LLM（DeepSeek）与 embedding（all-MiniLM-L6-v2 / DashScope）配置、密钥有效
 3. 对存量 `crypto:daily:*` 文档执行**批量重灌**（`POST /documents/batch`，`async=false` 同步）或触发重构建任务
 4. 重灌后回归：`retrieve` 命中 `crypto:daily:20260816*` 内容
+
+### 2.4 B 端修复记录（2026-08-22，已部署 43.156.78.59）
+
+**根因（非注入失败）**：fork 版 LightRAG 共享存储层以 `(workspace=namespace)` 为键跨租户缓存 KV（documents 列表能列出 default 租户文档），但 NanoVectorDB 按 `working_dir/<workspace>/` 独立文件加载。`aitrader` 租户无自有数据时：KV 显示"在库"、VDB 为空 → 检索 `[no-context]`。同时 08-21 生产事故后 default/market 的 KV/VDB 被 36 篇数据覆盖，08-06~08-15 存量（743 篇）的 text_chunks 与向量索引丢失。
+
+**修复三步**：
+1. **engine.py 回退补丁**：租户目录无任何数据文件时，回退共享 default 租户同名 namespace 的存储目录（`api/engine.py` `get_rag`）。
+2. **存量 KV 合并**：数据机（43.163.105.172 `~/infraX-1/projects/ragservicer/data/default/market/`，08-16 快照）7 个 KV 文件与生产合并（按 key 去重、list 字段取并集）：text_chunks 846→880、full_docs 743→777、doc_status 1008→1042、entity_chunks 1366→1393、relation_chunks 4165→4207、full_entities/full_relations 743→934。
+3. **VDB 重建（1024 维 DashScope embedding）**：graphml 为超集（1172 节点/3817 边，含存量+近期），直接以图节点/边为权威源重建三个向量库 —— `vdb_entities` 1172 条（content=entity_name+description）、`vdb_relationships` 3817 条（content=keywords+src+tgt+description）、`vdb_chunks` 880 条（合并后 text_chunks）。脚本 `/tmp/backfill_market.py`（生产机），169s 完成。
+
+**回归结果**（default 与 aitrader 双租户 × mix/naive × 4 组存量查询共 16 例）：
+- 全部返回实体/关系/Chunk 上下文，零 `[no-context]`；mix 28~39KB、naive 2.8~4.6KB
+- `GET /namespaces/market/documents` total=1042（含 `crypto:daily:20260806T2206` 等存量）
+- `GET /graph/entities?namespace=market&symbol=BTC` 200：81 节点/131 边（双租户一致）
+
+**回滚**：重建前全量备份于 `data/default/market_backup_20260822_pre_backfill/`。
+
+> ⚠️ 注意：实体描述/关系沿用 08-16 前 LLM 抽取结果（未重跑 LLM，40h+ 不可行）；测试期插入的 `crypto:daily:20260810T0528`、`crypto:daily:20260811T0045` 两篇与存量同 id 已去重。
 
 ---
 

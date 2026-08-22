@@ -95,6 +95,26 @@ def get_rag(tenant_id: str, namespace: str = "default"):
                 wd = str(Path(cfg.storage.working_dir) / tenant_id)
                 Path(wd).mkdir(parents=True, exist_ok=True)
 
+                # B端只读消费场景（2026-08-22 GF-1/GF-2 实证）：fork 版共享
+                # 存储层以 (workspace=namespace) 为键跨租户共享 KV（documents
+                # 列表能列出 default 租户的文档），但 VDB 按
+                # working_dir/<workspace>/ 独立文件加载。租户（如 aitrader）
+                # 从未有自有数据时其 VDB 为空 → 文档"在库但检索 [no-context]"。
+                # 此处：租户目录无任何数据文件时，回退共享 default 租户同名
+                # namespace 的存储目录，使 KV 与 VDB 一致。
+                ns_dir = Path(wd) / namespace
+                default_ns_dir = Path(cfg.storage.working_dir) / "default" / namespace
+                if (
+                    tenant_id != "default"
+                    and not any(ns_dir.glob("*"))
+                    and any(default_ns_dir.glob("vdb_*.json"))
+                ):
+                    logger.info(
+                        f"{key}: no own data in {ns_dir}, "
+                        f"falling back to default tenant storage ({default_ns_dir})"
+                    )
+                    wd = str(Path(cfg.storage.working_dir) / "default")
+
                 rag = LightRAG(
                     working_dir=wd,
                     workspace=namespace,
