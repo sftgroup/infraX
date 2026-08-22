@@ -533,7 +533,8 @@ async function dcLoadNews() {
   var lang = document.getElementById('dc-n-lang').value;
   try {
     var d = await afetch('/snapshots?type=news' + (lang && lang !== 'all' ? '&lang=' + encodeURIComponent(lang) : ''), { auth: 'none' }) || {};
-    var news = d.news;
+    // data-service 返回 {ts, snapshots:{news:{items}}}（无信封），兼容直接 {news}
+    var news = d.news || (d.snapshots && d.snapshots.news);
     var items = Array.isArray(news) ? news : (news && news.items ? news.items : []);
     if (!items.length) {
       box.innerHTML = '<div class="panel"><div class="panel-body" style="color:var(--text-muted);font-size:13px">' + I18N.t('dc_mkt_no_news') + '</div></div>';
