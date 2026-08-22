@@ -73,6 +73,14 @@ setInterval(() => {
  * API Key authentication middleware with rate limiting.
  */
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction): void {
+  // 平台 bridge key 直通（内部代理 web server.js 统一注入 X-Service-Key，WEB-10）：
+  // 与 /api/v2/data/my-keys 等 data 服务契约一致，匹配即放行（视为外部 key，跳过本地配额）
+  const svcKey = req.headers['x-service-key'] as string;
+  if (config.service.apiKey && svcKey && svcKey === config.service.apiKey) {
+    (req as any).apiKey = { external: true, label: 'service-bridge', rateLimit: Infinity, marketPlanId: 'market_pro' };
+    return next();
+  }
+
   const key = req.headers['x-api-key'] as string;
   if (!key) {
     res.status(401).json({ code: -1, message: 'Missing X-API-Key header' });

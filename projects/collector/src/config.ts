@@ -89,6 +89,12 @@ export const config = {
     externalRateLimit: parseInt(process.env.DX_EXTERNAL_KEY_RATE_LIMIT || '100', 10),
   },
 
+  // 平台 bridge key（与 web SERVICE_API_KEY / data 等统一契约，WEB-10）：
+  // X-Service-Key 匹配时放行（内部代理 web server.js 访问，跳过 X-API-Key 校验），见 apiKeyAuth.ts
+  service: {
+    apiKey: process.env.SERVICE_API_KEY || '',
+  },
+
   // Reclassifier (raw_event → classified)
   reclassifier: {
     intervalMs: parseInt(process.env.RECLASSIFY_INTERVAL_MS || '30000', 10),
