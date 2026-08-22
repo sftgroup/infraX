@@ -130,7 +130,7 @@ function aaRenderShell() {
   }).join('');
   root.innerHTML =
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">' +
-      '<div style="font-size:15px;font-weight:700">🤖 AA Session Manager</div>' +
+      '<div style="font-size:15px;font-weight:700">' + robotIcon(16) + ' AA Session Manager</div>' +
       '<span style="font-size:11px;padding:2px 10px;border-radius:999px;background:rgba(124,58,237,.12);color:#a78bfa">ERC-4337</span>' +
       '<select class="input" style="width:200px;font-size:13px;margin-left:auto" onchange="aaSwitchChain(this.value)">' + chainOpts + '</select>' +
     '</div>' +
@@ -159,7 +159,7 @@ async function aaLoadAll() {
   var owner = user().walletAddress;
   var pane = document.getElementById('aa-pane-overview');
   if (!owner) {
-    if (pane) pane.innerHTML = '<div style="text-align:center;padding:60px"><div style="font-size:44px;margin-bottom:12px">🤖</div><div style="font-size:15px;color:var(--warning)">Connect wallet to manage Smart Account sessions</div><a href="/connect.html" style="color:var(--gold);font-size:13px">→ Go to Connect</a></div>';
+    if (pane) pane.innerHTML = '<div style="text-align:center;padding:60px"><div style="margin-bottom:12px">' + robotIcon(44) + '</div><div style="font-size:15px;color:var(--warning)">Connect wallet to manage Smart Account sessions</div><a href="/connect.html" style="color:var(--gold);font-size:13px">→ Go to Connect</a></div>';
     return;
   }
 
@@ -236,7 +236,7 @@ function aaRenderOverview() {
   }
 
   var accountHtml = aaState.account
-    ? '<div class="addr-pill" style="font-size:13px;cursor:pointer" onclick="copyText(\'' + aaState.account + '\')" title="' + I18N.t('aa_copy_click') + '">🤖 ' + aaState.account.slice(0, 12) + '…' + aaState.account.slice(-8) + '</div>'
+    ? '<div class="addr-pill" style="font-size:13px;cursor:pointer" onclick="copyText(\'' + aaState.account + '\')" title="' + I18N.t('aa_copy_click') + '">' + robotIcon(13) + ' ' + aaState.account.slice(0, 12) + '…' + aaState.account.slice(-8) + '</div>'
     : '<span class="text-dim">—</span>';
 
   pane.innerHTML =
@@ -247,7 +247,7 @@ function aaRenderOverview() {
       '<div class="kpi-card" style="border-top:3px solid var(--brand)"><div class="kpi-label">Sessions</div><div class="kpi-val mono" style="font-size:22px;font-weight:700;margin-top:4px">' + (aaState.sessions.length || 0) + '</div><div class="kpi-sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">' + I18N.t('aa_chain_bound') + (aaState.sessions.length ? (aaState.sessions[0].isBound ? '✅' : I18N.t('aa_not_deployed')) : '—') + '</div></div>' +
     '</div>' +
     '<div class="panel"><div class="panel-header">' + I18N.t('aa_fee_title_prefix') + aaEsc(p.mode || 'n/a') + I18N.t('aa_fee_title_suffix') + '</div><div class="panel-body" style="padding:0"><table class="data-table"><thead><tr><th>Operation</th><th>Fee</th></tr></thead><tbody>' + feeHtml + '</tbody></table></div></div>' +
-    '<div class="panel" style="margin-top:14px"><div class="panel-header">' + I18N.t('aa_autorenew_title') + '</div><div class="panel-body" style="font-size:13px;color:var(--text-secondary);line-height:1.8">' +
+    '<div class="panel" style="margin-top:14px"><div class="panel-header">' + robotIcon(14) + ' ' + I18N.t('aa_autorenew_title') + '</div><div class="panel-body" style="font-size:13px;color:var(--text-secondary);line-height:1.8">' +
       I18N.t('aa_autorenew_desc') +
       '<span style="color:var(--text-muted)">' + I18N.t('aa_autorenew_support') + '</span>' +
     '</div></div>' +

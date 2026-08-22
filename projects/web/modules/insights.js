@@ -63,7 +63,7 @@ function insRenderShell() {
       '<button class="tab-btn active" data-ins-tab="graph">🕸️ Graph</button>' +
       '<button class="tab-btn" data-ins-tab="factors">📈 Factors</button>' +
       '<button class="tab-btn" data-ins-tab="rag">🔎 RAG</button>' +
-      '<button class="tab-btn" data-ins-tab="ml">🤖 ML</button>' +
+      '<button class="tab-btn" data-ins-tab="ml">' + robotIcon(13) + ' ML</button>' +
     '</div>' +
     '<div class="ins-pane active" id="ins-pane-graph"><div style="padding:6px"><div class="skeleton" style="height:26px;width:45%;margin:18px auto 10px;border-radius:8px"></div><div class="skeleton-card" style="height:150px;max-width:680px;margin:0 auto 12px"></div><div class="skeleton-text" style="width:70%;margin:0 auto"></div><div class="skeleton-text short" style="margin:0 auto"></div></div></div>' +
     '<div class="ins-pane" id="ins-pane-factors"></div>' +
@@ -462,7 +462,7 @@ var INS_ML_ENDPOINTS = [
 async function insLoadMl() {
   var pane = document.getElementById('ins-pane-ml');
   if (!pane) return;
-  pane.innerHTML = '<div class="panel"><div class="panel-header">' + I18N.t('ins_ml_title') + '</div><div class="panel-body" id="ins-ml-cards"><div style="text-align:center;padding:24px;color:var(--text-muted)">' + I18N.t('ins_ml_loading') + '</div></div></div>';
+  pane.innerHTML = '<div class="panel"><div class="panel-header">' + robotIcon(14) + ' ' + I18N.t('ins_ml_title') + '</div><div class="panel-body" id="ins-ml-cards"><div style="text-align:center;padding:24px;color:var(--text-muted)">' + I18N.t('ins_ml_loading') + '</div></div></div>';
 
   var results = await Promise.allSettled(INS_ML_ENDPOINTS.map(function(e) {
     return insFetch('/ml/' + e.key);

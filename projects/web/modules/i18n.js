@@ -11,6 +11,19 @@
   'use strict';
   var I18N = window.I18N = {};
 
+  // ── 全局机器人 SVG 图标（替换 emoji 🤖，跨平台渲染一致，跟随 currentColor）──
+  window.robotIcon = function (size) {
+    size = size || 16;
+    return '<svg class="robot-ico" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;flex-shrink:0;display:inline-block">' +
+      '<rect x="4" y="8" width="16" height="12" rx="2.5"/>' +
+      '<path d="M12 8V4.5"/>' +
+      '<circle cx="12" cy="2.8" r="1.4"/>' +
+      '<circle cx="9.4" cy="13.2" r="1.35" fill="currentColor" stroke="none"/>' +
+      '<circle cx="14.6" cy="13.2" r="1.35" fill="currentColor" stroke="none"/>' +
+      '<path d="M10 16.2q2 1.6 4 0"/>' +
+    '</svg>';
+  };
+
   // ═══════════════ Translation Tables (zh) ═══════════════
   I18N.zh = {
     // ── 通用 ──
@@ -57,7 +70,7 @@
     "nav_mpc": "🔐 MPC 钱包",
     "nav_waas": "🏢 WaaS",
     "nav_safe": "🛡️ 多签保险库",
-    "nav_aa": "🤖 智能账户",
+    "nav_aa": "智能账户",
     "nav_payments": "💳 支付",
     "topbar_disconnect": "↩ 断开连接",
     "section_b2b_api": "B2B API",
@@ -560,7 +573,7 @@
     "landing_aa_title": "Smart Account — ERC-4337 会话",
     "landing_aa_desc": "链上会话密钥的账户抽象。细粒度 Agent 权限、撤销与批量 UserOp 轮换——AI Agent 的 SDK 层。",
     "landing_aa_port": "端口 :9131 · aa-relay + aa-sdk",
-    "landing_mcp_title": "🤖 MCP — AI Agent 协议",
+    "landing_mcp_title": "MCP — AI Agent 协议",
     "landing_mcp_desc": "七个 MCP 路由让 AI Agent 直接与区块链交互",
     "landing_tag_mcp": "MCP",
     "landing_mcp_wallet_title": "Wallet MCP",
@@ -723,7 +736,7 @@
     "ins_ml_bolt": "⚡ Chronos-Bolt 概率预测",
     "ins_ml_moirai": "🌐 Moirai 2.0 跨资产预测",
     "ins_ml_timesfm": "⏱️ TimesFM 2.5 点预测",
-    "ins_ml_title": "🤖 ML 模型推理（ml-service · TTL 缓存 · data=null 属预期）",
+    "ins_ml_title": "ML 模型推理（ml-service · TTL 缓存 · data=null 属预期）",
     "ins_ml_loading": "⏳ 并行拉取模型预测…",
     "ins_ml_null": "data=null（缓存未就绪/模型不可用）",
 
@@ -831,7 +844,7 @@
     "aa_not_deployed": "⚠️ 未部署",
     "aa_fee_title_prefix": "💳 计费费率（",
     "aa_fee_title_suffix": "）",
-    "aa_autorenew_title": "🤖 Auto-Renew 自动续订",
+    "aa_autorenew_title": "Auto-Renew 自动续订",
     "aa_autorenew_desc": "Session 自动续订由平台网关 daemon 在到期前用 session key 签发 UserOp 续订订阅。<br>",
     "aa_autorenew_support": "本面板提供支撑能力：轮换（replace）可无缝更换 session key；撤销（revoke）可立即吊销。续订前请确保 <b>escrow 余额充足</b>（上方托管明细）。",
     "aa_no_account": "Account 未初始化（先进入 Overview 派生）",
@@ -969,7 +982,7 @@
     "nav_mpc": "🔐 MPC Wallet",
     "nav_waas": "🏢 WaaS",
     "nav_safe": "🛡️ Safe Vault",
-    "nav_aa": "🤖 Smart Account",
+    "nav_aa": "Smart Account",
     "nav_payments": "💳 Payments",
     "topbar_disconnect": "↩ Disconnect",
     "section_b2b_api": "B2B API",
@@ -1292,7 +1305,7 @@
     "landing_aa_title": "Smart Account — ERC-4337 Sessions",
     "landing_aa_desc": "Account Abstraction with on-chain session keys. Fine-grained agent permissions, revocation, and rollover via batch UserOps — the SDK layer for AI agents.",
     "landing_aa_port": "Port :9131 · aa-relay + aa-sdk",
-    "landing_mcp_title": "🤖 MCP — AI Agent Protocol",
+    "landing_mcp_title": "MCP — AI Agent Protocol",
     "landing_mcp_desc": "Seven MCP routes let AI agents interact with blockchain directly",
     "landing_tag_mcp": "MCP",
     "landing_mcp_wallet_title": "Wallet MCP",
@@ -1467,7 +1480,7 @@
     "ins_ml_bolt": "⚡ Chronos-Bolt Probability",
     "ins_ml_moirai": "🌐 Moirai 2.0 Cross-asset",
     "ins_ml_timesfm": "⏱️ TimesFM 2.5 Point Forecast",
-    "ins_ml_title": "🤖 ML Model Inference (ml-service · TTL cache · data=null expected)",
+    "ins_ml_title": "ML Model Inference (ml-service · TTL cache · data=null expected)",
     "ins_ml_loading": "⏳ Fetching model predictions…",
     "ins_ml_null": "data=null (cache not ready / model unavailable)",
 
@@ -1573,7 +1586,7 @@
     "aa_not_deployed": "⚠️ not deployed",
     "aa_fee_title_prefix": "💳 Billing Rates (",
     "aa_fee_title_suffix": ")",
-    "aa_autorenew_title": "🤖 Auto-Renew",
+    "aa_autorenew_title": "Auto-Renew",
     "aa_autorenew_desc": "Session auto-renewal is signed by the platform gateway daemon using the session key before expiry.<br>",
     "aa_autorenew_support": "This panel provides supporting capabilities: replace swaps the session key seamlessly; revoke disables immediately. Before renewal make sure <b>escrow balance is sufficient</b> (see funds detail above).",
     "aa_no_account": "Account not initialized (derive one in the Overview tab first)",

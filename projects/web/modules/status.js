@@ -14,7 +14,7 @@ var STATUS_SERVICES = [
   { name: '🛡️ Safe Vault', url: '/api/vault/safe/status' },
   { name: '🏢 WaaS', url: '/api/v2/saas/tenants/my' },
   { name: '📡 Data & Insights', url: '/api/v2/data/usage' },
-  { name: '🤖 Smart Account', url: '/v1/plans' }
+  { name: robotIcon(13) + ' Smart Account', url: '/v1/plans' }
 ];
 
 var _statusTimer = null;
