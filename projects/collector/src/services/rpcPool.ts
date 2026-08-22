@@ -119,7 +119,11 @@ export class RpcPoolManager {
         const block = await this.fetchBlockWithRetry(endpoint, bn, chain);
         if (block) blocks.push(block);
       } catch (err: any) {
-        logger.warn(`[rpc-pool] Failed to fetch block ${bn} on ${chain} via ${endpoint.key}`, {
+        // message 静态化（block 号移入 meta），使 EPF-5 限流键稳定，防动态 block 号绕过限流刷屏
+        logger.warn('[rpc-pool] Failed to fetch block', {
+          block: bn,
+          chain,
+          endpoint: endpoint.key,
           error: err.message,
         });
       }
@@ -313,10 +317,10 @@ export class RpcPoolManager {
   private markEndpointDegraded(endpoint: RpcEndpoint): void {
     if (endpoint.status === 'healthy') {
       endpoint.status = 'degraded';
-      logger.warn(`[rpc-pool] Endpoint degraded: ${endpoint.key} (fetch failed)`);
+      logger.warn('[rpc-pool] Endpoint degraded', { endpoint: endpoint.key, reason: 'fetch failed' });
     } else if (endpoint.status === 'degraded') {
       endpoint.status = 'down';
-      logger.error(`[rpc-pool] Endpoint down: ${endpoint.key} (fetch failed)`);
+      logger.error('[rpc-pool] Endpoint down', { endpoint: endpoint.key, reason: 'fetch failed' });
     }
   }
 
@@ -360,10 +364,10 @@ export class RpcPoolManager {
           // Mark degraded
           if (ep.status === 'healthy') {
             ep.status = 'degraded';
-            logger.warn(`[rpc-pool] Endpoint degraded: ${ep.key} (${chain})`);
+            logger.warn('[rpc-pool] Endpoint degraded', { endpoint: ep.key, chain });
           } else if (ep.status === 'degraded') {
             ep.status = 'down';
-            logger.error(`[rpc-pool] Endpoint down: ${ep.key} (${chain})`);
+            logger.error('[rpc-pool] Endpoint down', { endpoint: ep.key, chain });
           }
         }
       }
